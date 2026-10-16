@@ -891,5 +891,8 @@
     "Keep destination draft": "Keep destination draft",
     "Keep removed list's draft": "Keep removed list's draft",
     "Choose the commit draft to preserve": "Choose the commit draft to preserve",
-    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Remove {source} and move its changes to {target}? File content and staging are preserved."
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Remove {source} and move its changes to {target}? File content and staging are preserved.",
+    "Commit partial text and structural changes separately.": "Commit partial text and structural changes separately.",
+    "Commit Whole Files": "Commit Whole Files",
+    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "These deleted or renamed files have stale change assignments. Commit their complete changes?"
 }

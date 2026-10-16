@@ -1037,6 +1037,7 @@ export class UndockedViewProvider {
             commitRepositoryRoot === this.selectedRepositoryRoot &&
             requestSequence === this.repositorySwitchSeq;
         const commitDraftStorageKey = this.getCommitDraftStorageKey();
+        const expectedDraft = this.getStoredCommitDraft(commitRepositoryRoot);
         this.assertBranchMessageRoot(msg, commitRepositoryRoot);
         const rootGitOps = this.gitOps.deriveFor(commitRepositoryRoot);
         const actionDeps = {
@@ -1047,7 +1048,9 @@ export class UndockedViewProvider {
             fireWorkingTreeChanged: () => {
                 if (canRefresh()) this._onDidChangeWorkingTree.fire();
             },
-            postCommitted: () => this.deliverCommitted(commitRepositoryRoot, commitDraftStorageKey),
+            /** Keeps cleanup tied to the initiating root and draft across asynchronous Git work and repository switches. */
+            postCommitted: () =>
+                this.deliverCommitted(commitRepositoryRoot, commitDraftStorageKey, expectedDraft),
             maybeOfferPublishBranch: () => Promise.resolve(),
         };
         const fileActionDeps = {
@@ -1472,15 +1475,19 @@ export class UndockedViewProvider {
         }
     }
 
-    /** Clears only the captured repository draft after its commit completes. */
-    private async deliverCommitted(root: string, storageKey: string): Promise<void> {
+    /** Clears only unchanged captured draft text; a later edit also suppresses native/webview clearing. */
+    private async deliverCommitted(
+        root: string,
+        storageKey: string,
+        expected: string,
+    ): Promise<void> {
         let clearCommitMessage =
             vscode.workspace
                 .getConfiguration("intelligit")
                 .get<boolean>("clearLastCommit", true) !== false;
         if (clearCommitMessage && this.workspaceState) {
             try {
-                await saveAggregateDraft(this.workspaceState, storageKey, "");
+                await saveAggregateDraft(this.workspaceState, storageKey, "", expected);
             } catch {
                 clearCommitMessage = false;
             }
@@ -1519,6 +1526,7 @@ export class UndockedViewProvider {
         if (previous) return previous;
         const gitOps = this.gitOps.deriveFor(root);
         const current = () => this.repoRootUri.fsPath === root;
+        const expectedDraft = this.getStoredCommitDraft(root);
         const workflow = new ChangeWorkflowHost({
             root,
             extensionUri: this.extensionUri,
@@ -1546,8 +1554,9 @@ export class UndockedViewProvider {
                     await this.loadInitial();
                 },
                 fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
+                /** Fences fallback aggregate cleanup with the root and text captured when this workflow was created. */
                 postCommitted: () =>
-                    this.deliverCommitted(root, this.getCommitDraftStorageKey(root)),
+                    this.deliverCommitted(root, this.getCommitDraftStorageKey(root), expectedDraft),
                 maybeOfferPublishBranch: () => Promise.resolve(),
             },
             runCommit: (operation) => this.runCommitActionWithLease(root, () => operation()),

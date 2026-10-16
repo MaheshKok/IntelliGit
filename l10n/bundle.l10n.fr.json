@@ -891,5 +891,8 @@
     "Keep destination draft": "Conserver le brouillon de destination",
     "Keep removed list's draft": "Conserver le brouillon de la liste supprimée",
     "Choose the commit draft to preserve": "Choisir le brouillon de commit à conserver",
-    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Supprimer {source} et déplacer ses modifications vers {target} ? Le contenu des fichiers et l’index sont conservés."
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Supprimer {source} et déplacer ses modifications vers {target} ? Le contenu des fichiers et l’index sont conservés.",
+    "Commit partial text and structural changes separately.": "Créez des commits distincts pour les modifications partielles de texte et les modifications structurelles.",
+    "Commit Whole Files": "Créer un commit des fichiers entiers",
+    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "Les affectations des modifications de ces fichiers supprimés ou renommés sont obsolètes. Créer un commit de toutes leurs modifications ?"
 }

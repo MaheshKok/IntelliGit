@@ -891,5 +891,8 @@
     "Keep destination draft": "대상 목록의 초안 유지",
     "Keep removed list's draft": "삭제할 목록의 초안 유지",
     "Choose the commit draft to preserve": "유지할 커밋 초안 선택",
-    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "{source}을(를) 삭제하고 변경 사항을 {target}(으)로 이동할까요? 파일 내용과 스테이징 상태는 유지됩니다."
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "{source}을(를) 삭제하고 변경 사항을 {target}(으)로 이동할까요? 파일 내용과 스테이징 상태는 유지됩니다.",
+    "Commit partial text and structural changes separately.": "텍스트의 부분 변경과 구조적 변경을 별도로 커밋하세요.",
+    "Commit Whole Files": "파일 전체 커밋",
+    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "삭제되거나 이름이 변경된 이 파일들의 변경 할당이 오래되었습니다. 파일의 모든 변경을 커밋할까요?"
 }

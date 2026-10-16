@@ -164,9 +164,13 @@ async function partialEditor() {
 }
 
 describe("root-bound selected-change host", () => {
-    it.each(["delete", "rename"])(
-        "requires whole-file confirmation for a tracked %s before committing it",
-        async (operation) => {
+    it.each(
+        ["delete", "rename"].flatMap((operation) =>
+            ["all", "named"].map((scope) => [operation, scope]),
+        ),
+    )(
+        "requires whole-file confirmation for a tracked %s before committing it in %s",
+        async (operation, scope) => {
             const file = operation === "rename" ? "renamed.txt" : "file.txt";
             git(operation === "rename" ? ["mv", "file.txt", file] : ["rm", "-f", "file.txt"]);
             await host.reconcile(await gitOps.getStatus({ withStats: false }));
@@ -179,7 +183,7 @@ describe("root-bound selected-change host", () => {
                 type: "commitChangelist",
                 repositoryRoot: root,
                 revision: store.get(root).revision,
-                listId: "all",
+                listId: scope === "all" ? "all" : store.get(root).activeId,
                 paths: [file],
                 message: "structural change",
                 amend: false,
@@ -198,8 +202,63 @@ describe("root-bound selected-change host", () => {
                 open,
                 "structural files cannot enter the partial snapshot path",
             ).not.toHaveBeenCalled();
+            const errors = posted.filter(
+                (message) => (message as { type: string }).type === "error",
+            );
+            expect(errors, JSON.stringify(errors)).toEqual([]);
             expect(git(["log", "-1", "--format=%s"])).toBe("structural change\n");
             expect(git(["status", "--porcelain"])).toBe("");
+        },
+    );
+
+    it.each(["delete", "rename"])(
+        "refuses whole-file review of a tracked %s with lines owned by another list",
+        async (operation) => {
+            const created = await store.create(root, store.get(root).revision, "Other");
+            const otherId = created.lists.find((list) => list.name === "Other")!.id;
+            const ownership = created.changes["file.txt"];
+            const fingerprints = ownership.tracking!.anchors.map((anchor) => anchor.fingerprint);
+            await store.assignChanges(
+                root,
+                created.revision,
+                "file.txt",
+                ownership.contentId,
+                otherId,
+                [fingerprints[0]],
+                new Set(fingerprints),
+            );
+            const file = operation === "rename" ? "renamed.txt" : "file.txt";
+            git(operation === "rename" ? ["mv", "file.txt", file] : ["rm", "-f", "file.txt"]);
+            await host.reconcile(await gitOps.getStatus({ withStats: false }));
+            const before = store.get(root);
+            const index = git(["ls-files", "--stage"]);
+            vi.mocked(vscode.window.showWarningMessage).mockClear();
+
+            await host.handle({
+                type: "commitChangelist",
+                repositoryRoot: root,
+                revision: before.revision,
+                listId: before.activeId,
+                paths: [file],
+                message: "must not consume another list",
+            });
+
+            expect(
+                posted,
+                "foreign line ownership must refuse before whole-file review",
+            ).toContainEqual(
+                expect.objectContaining({
+                    type: "error",
+                    message: expect.stringContaining("The files belong to another changelist."),
+                }),
+            );
+            expect(
+                vscode.window.showWarningMessage,
+                "foreign line ownership must refuse before whole-file review",
+            ).not.toHaveBeenCalled();
+            expect(git(["rev-parse", "HEAD"])).toBe(baselineHead);
+            expect(git(["ls-files", "--stage"])).toBe(index);
+            expect(store.get(root)).toEqual(before);
         },
     );
 
@@ -220,9 +279,71 @@ describe("root-bound selected-change host", () => {
         });
         expect(vscode.window.showWarningMessage).toHaveBeenCalled();
         expect(open).not.toHaveBeenCalled();
+        expect(git(["rev-parse", "HEAD"]), "cancelled review must preserve HEAD").toBe(
+            baselineHead,
+        );
+        expect(git(["ls-files", "--stage"])).toBe(index);
+        expect(store.get(root)).toEqual(before);
+    });
+
+    it("preserves an explicit empty inclusion on the source of a tracked rename", async () => {
+        const ownership = store.get(root).changes["file.txt"];
+        await store.recordSelection(root, "file.txt", ownership.contentId, "all", [], 4);
+        git(["mv", "file.txt", "renamed.txt"]);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        const before = store.get(root);
+        const index = git(["ls-files", "--stage"]);
+        vi.mocked(vscode.window.showWarningMessage).mockClear();
+        await host.handle({
+            type: "commitChangelist",
+            repositoryRoot: root,
+            revision: before.revision,
+            listId: "all",
+            paths: ["renamed.txt"],
+            message: "must not broaden inclusion",
+        });
+        expect(posted, "source inclusion must not broaden into a whole-file commit").toContainEqual(
+            expect.objectContaining({
+                type: "error",
+                message: expect.stringContaining(
+                    "Commit partial text and structural changes separately.",
+                ),
+            }),
+        );
+        expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
         expect(git(["rev-parse", "HEAD"])).toBe(baselineHead);
         expect(git(["ls-files", "--stage"])).toBe(index);
         expect(store.get(root)).toEqual(before);
+    });
+
+    it("refuses a structural change that changes again while whole-file review is open", async () => {
+        git(["rm", "-f", "file.txt"]);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        const before = store.get(root);
+        const index = git(["ls-files", "--stage"]);
+        vi.mocked(vscode.window.showWarningMessage).mockImplementationOnce(async () => {
+            await writeFile(path.join(root, "file.txt"), "restored while reviewing\n");
+            return "Commit Whole Files" as never;
+        });
+        await host.handle({
+            type: "commitChangelist",
+            repositoryRoot: root,
+            revision: before.revision,
+            listId: "all",
+            paths: ["file.txt"],
+            message: "must not commit restored text",
+        });
+        expect(posted, "changed structural status must refuse before Git mutation").toContainEqual(
+            expect.objectContaining({
+                type: "error",
+                message: expect.stringContaining("Refresh before committing"),
+            }),
+        );
+        expect(git(["rev-parse", "HEAD"])).toBe(baselineHead);
+        expect(git(["ls-files", "--stage"])).toBe(index);
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(
+            "restored while reviewing\n",
+        );
     });
 
     it("refuses mixed partial and structural work before opening snapshots or changing Git", async () => {

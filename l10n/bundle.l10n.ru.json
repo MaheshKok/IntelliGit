@@ -891,5 +891,8 @@
     "Keep destination draft": "Сохранить черновик целевого списка",
     "Keep removed list's draft": "Сохранить черновик удаляемого списка",
     "Choose the commit draft to preserve": "Выберите черновик коммита для сохранения",
-    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Удалить {source} и переместить изменения в {target}? Содержимое файлов и состояние индекса сохранятся."
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Удалить {source} и переместить изменения в {target}? Содержимое файлов и состояние индекса сохранятся.",
+    "Commit partial text and structural changes separately.": "Коммитьте частичные изменения текста и структурные изменения отдельно.",
+    "Commit Whole Files": "Закоммитить файлы целиком",
+    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "Назначения изменений этих удалённых или переименованных файлов устарели. Закоммитить все их изменения?"
 }

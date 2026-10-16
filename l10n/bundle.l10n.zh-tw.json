@@ -891,5 +891,8 @@
     "Keep destination draft": "保留目標清單草稿",
     "Keep removed list's draft": "保留被移除清單的草稿",
     "Choose the commit draft to preserve": "選擇要保留的提交草稿",
-    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "移除 {source} 並將其變更移至 {target}？檔案內容和暫存狀態將保留。"
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "移除 {source} 並將其變更移至 {target}？檔案內容和暫存狀態將保留。",
+    "Commit partial text and structural changes separately.": "請分別提交部分文字變更和結構性變更。",
+    "Commit Whole Files": "提交整個檔案",
+    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "這些已刪除或重新命名檔案的變更歸組已過時。要提交它們的全部變更嗎？"
 }

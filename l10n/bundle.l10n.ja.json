@@ -891,5 +891,8 @@
     "Keep destination draft": "移動先の下書きを保持",
     "Keep removed list's draft": "削除するリストの下書きを保持",
     "Choose the commit draft to preserve": "保持するコミットの下書きを選択",
-    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "{source} を削除して変更を {target} に移動しますか？ファイル内容とステージング状態は保持されます。"
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "{source} を削除して変更を {target} に移動しますか？ファイル内容とステージング状態は保持されます。",
+    "Commit partial text and structural changes separately.": "テキストの部分的な変更と構造的な変更は別々にコミットしてください。",
+    "Commit Whole Files": "ファイル全体をコミット",
+    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "削除または名前変更されたこれらのファイルでは、変更の割り当てが古くなっています。ファイルの変更全体をコミットしますか？"
 }

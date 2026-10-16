@@ -227,6 +227,7 @@ export async function readPartialRef(executor: GitExecutor): Promise<string> {
     return result.exitCode === 0 ? result.stdout.toString("utf8").trim() : "HEAD";
 }
 
+/** Reads a bounded Git blob and refuses truncated or unsupported text before exposing it as a snapshot. */
 async function readPartialBlob(executor: GitExecutor, oid: string): Promise<string> {
     const result = await executor.runBinary(["cat-file", "blob", oid], {
         maxOutputBytes: MAX_PARTIAL_TEXT_BYTES,
@@ -238,6 +239,7 @@ async function readPartialBlob(executor: GitExecutor, oid: string): Promise<stri
     return result.stdout.toString("utf8");
 }
 
+/** Rejects binary, invalid UTF-8, and excessive byte or line sizes instead of silently reducing a selection. */
 function assertText(bytes: Buffer): void {
     if (bytes.length > MAX_PARTIAL_TEXT_BYTES || !isUtf8(bytes) || bytes.includes(0)) {
         throw new PartialChangesUnsupportedError(
@@ -259,6 +261,7 @@ function assertText(bytes: Buffer): void {
     }
 }
 
+/** Requires one exact stage-zero regular-file entry; conflicts and special entries stay on the whole-file path. */
 function singleBlobEntry(index: string, file: string) {
     const match = /^(100644|100755) ([a-f0-9]{40,64}) 0\t([^\0]+)\0$/.exec(index);
     if (!match || match[3] !== file || /^0+$/.test(match[2])) {
@@ -269,6 +272,7 @@ function singleBlobEntry(index: string, file: string) {
     return { mode: match[1], oid: match[2] };
 }
 
+/** Refuses custom filters and encodings, returning the checked attributes for later snapshot identity checks. */
 async function readAttributes(executor: GitExecutor, file: string): Promise<string> {
     const output = await executor.run([
         "--literal-pathspecs",
@@ -290,6 +294,7 @@ async function readAttributes(executor: GitExecutor, file: string): Promise<stri
     return output;
 }
 
+/** Accepts unchanged bytes or Git-equivalent CRLF normalization; other clean conversions fail closed. */
 async function canonicalWorktree(
     executor: GitExecutor,
     file: string,
@@ -308,6 +313,7 @@ async function canonicalWorktree(
     return normalized.toString("utf8");
 }
 
+/** Diffs private temporary text without external diff helpers; bounded output is parsed before files are removed. */
 async function computeBlocks(executor: GitExecutor, base: string, target: string) {
     if (base === target) return [];
     const directory = await mkdtemp(path.join(tmpdir(), "intelligit-change-diff-"));

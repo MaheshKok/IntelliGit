@@ -67,16 +67,17 @@ export function changelistDraftBridge(
     };
 }
 
-/** Compatibility composer events have no list identity and therefore address All only. */
+/** Compatibility composers address All; an expected draft fences delayed commit cleanup. */
 export function saveAggregateDraft(
     storage: vscode.Memento | undefined,
     storageKey: string,
     text: string,
+    expected?: string,
 ): Promise<unknown> {
     if (!storageKey.startsWith("commitDraft:"))
         throw new Error("Unknown commit draft storage key.");
     const root = storageKey.slice("commitDraft:".length);
-    return ChangelistStore.forStorage(storage).saveDraft(root, "all", undefined, text);
+    return ChangelistStore.forStorage(storage).saveDraft(root, "all", expected, text);
 }
 
 /**

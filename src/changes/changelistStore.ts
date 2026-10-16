@@ -982,6 +982,7 @@ function validStateHeader(state: ChangelistState): boolean {
     );
 }
 
+/** Rejects malformed persisted ownership, unknown list references, and invalid inclusion or range metadata. */
 function validOwnership(ownership: ChangeOwnership, ids: ReadonlySet<string>): boolean {
     if (
         !metadataRecord(ownership) ||

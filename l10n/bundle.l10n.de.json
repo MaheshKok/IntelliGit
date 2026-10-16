@@ -891,5 +891,8 @@
     "Keep destination draft": "Zielentwurf beibehalten",
     "Keep removed list's draft": "Entwurf der entfernten Liste beibehalten",
     "Choose the commit draft to preserve": "Zu behaltenden Commit-Entwurf auswählen",
-    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "{source} entfernen und seine Änderungen nach {target} verschieben? Dateiinhalte und Staging bleiben erhalten."
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "{source} entfernen und seine Änderungen nach {target} verschieben? Dateiinhalte und Staging bleiben erhalten.",
+    "Commit partial text and structural changes separately.": "Partielle Textänderungen und strukturelle Änderungen getrennt committen.",
+    "Commit Whole Files": "Vollständige Dateien committen",
+    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "Die Änderungszuordnungen dieser gelöschten oder umbenannten Dateien sind veraltet. Alle Änderungen dieser Dateien committen?"
 }

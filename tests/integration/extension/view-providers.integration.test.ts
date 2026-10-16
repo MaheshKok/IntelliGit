@@ -976,16 +976,20 @@ async function setupCommitPanelProvider(
         secrets?: ReturnType<typeof makeSecretStorage>;
         shelfService?: unknown;
         coordinator?: unknown;
+        root?: string;
     } = {},
 ) {
     const { CommitPanelViewProvider } = await import("../../../src/views/CommitPanelViewProvider");
-    const gitOps = makeGitOpsMock();
+    const gitOps = makeGitOpsMock(options.root);
     configure?.(gitOps);
     const draftStore = createMemento();
     const provider = new CommitPanelViewProvider(
         { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
         gitOps as unknown as object,
-        { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+        { fsPath: options.root ?? "/repo", path: options.root ?? "/repo" } as unknown as {
+            fsPath: string;
+            path: string;
+        },
         draftStore as unknown as object,
         options.secrets as unknown as object,
         options.shelfService
@@ -2379,9 +2383,13 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it.each(["commit", "commitAndPush", "commitSelected"])(
-        "UndockedViewProvider preserves a newer aggregate draft during %s",
-        async (type) => {
+    it.each(
+        ["commit", "commitAndPush", "commitSelected"].flatMap((type) =>
+            ["same host", "second host"].map((writer) => [type, writer]),
+        ),
+    )(
+        "UndockedViewProvider preserves a newer aggregate draft during %s from %s",
+        async (type, writer) => {
             const { UndockedViewProvider } =
                 await import("../../../src/views/UndockedViewProvider");
             const gitOps = makeGitOpsMock();
@@ -2393,21 +2401,27 @@ describe("view providers integration", () => {
                         finishCommit = () => resolve("ok");
                     }),
             );
-            const workspaceStore = createMemento({ "commitDraft:/repo": "captured draft" });
+            const gitDir = await mkdtemp(path.join(tmpdir(), "intelligit-draft-hosts-"));
+            const workspaceStore = createMemento({ [`commitDraft:${gitDir}`]: "captured draft" });
             const provider = createTestUndockedViewProvider(
                 UndockedViewProvider,
                 { fsPath: "/ext", path: "/ext" } as never,
                 gitOps as never,
-                { fsPath: "/repo", path: "/repo" } as never,
+                { fsPath: gitDir, path: gitDir } as never,
                 makeCredentialStore() as never,
                 workspaceStore as never,
             );
             const testProvider = provider as unknown as {
                 panel: { webview: { postMessage: typeof postMessageSpy }; dispose: () => void };
                 handleMessage(message: unknown): Promise<void>;
+                nativeCommitInputBridge: { setFromPanel(root: string, message: string): void };
             };
             testProvider.panel = { webview: { postMessage: postMessageSpy }, dispose: vi.fn() };
+            const nativeMirror = vi.spyOn(testProvider.nativeCommitInputBridge, "setFromPanel");
             try {
+                await ChangelistStore.forStorage(workspaceStore).connect(gitDir, gitDir);
+                const secondHost = new ChangelistStore(createMemento());
+                await secondHost.connect(gitDir, gitDir);
                 const commit = testProvider.handleMessage({
                     type,
                     message: "captured draft",
@@ -2417,17 +2431,22 @@ describe("view providers integration", () => {
                 });
                 await flushMicrotasks();
                 expect(gitOps.commit).toHaveBeenCalled();
-                await testProvider.handleMessage({
-                    type: "saveCommitDraft",
-                    repositoryRoot: "/repo",
-                    message: "newer draft",
-                });
+                if (writer === "second host") {
+                    await secondHost.saveDraft(gitDir, "all", "captured draft", "newer draft");
+                } else {
+                    await testProvider.handleMessage({
+                        type: "saveCommitDraft",
+                        repositoryRoot: gitDir,
+                        message: "newer draft",
+                    });
+                }
                 finishCommit();
                 await commit;
                 expect(
-                    ChangelistStore.forStorage(workspaceStore).draft("/repo", "all"),
+                    ChangelistStore.forStorage(workspaceStore).draft(gitDir, "all"),
                     "commit completion must preserve the newer aggregate draft",
                 ).toBe("newer draft");
+                expect(nativeMirror).not.toHaveBeenCalledWith(gitDir, "");
                 expect(postMessageSpy).toHaveBeenCalledWith(
                     expect.objectContaining({
                         type: "committed",
@@ -2436,9 +2455,54 @@ describe("view providers integration", () => {
                 );
             } finally {
                 provider.dispose();
+                await removeScratchDirectories(gitDir);
             }
         },
     );
+
+    it("UndockedViewProvider retains stored commit text when clearLastCommit is false", async () => {
+        commitChecksConfiguration.clearLastCommit = false;
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const gitOps = makeGitOpsMock();
+        gitOps.deriveFor.mockImplementation(() => gitOps);
+        const workspaceStore = createMemento({ "commitDraft:/repo": "retained draft" });
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
+            { fsPath: "/ext", path: "/ext" } as never,
+            gitOps as never,
+            { fsPath: "/repo", path: "/repo" } as never,
+            makeCredentialStore() as never,
+            workspaceStore as never,
+        );
+        const testProvider = provider as unknown as {
+            panel: { webview: { postMessage: typeof postMessageSpy }; dispose: () => void };
+            handleMessage(message: unknown): Promise<void>;
+            nativeCommitInputBridge: { setFromPanel(root: string, message: string): void };
+        };
+        testProvider.panel = { webview: { postMessage: postMessageSpy }, dispose: vi.fn() };
+        const nativeMirror = vi.spyOn(testProvider.nativeCommitInputBridge, "setFromPanel");
+        try {
+            for (const type of ["commit", "commitAndPush", "commitSelected"]) {
+                postMessageSpy.mockClear();
+                await testProvider.handleMessage({
+                    type,
+                    message: "retained draft",
+                    amend: false,
+                    push: false,
+                    paths: ["src/a.ts"],
+                });
+                expect(ChangelistStore.forStorage(workspaceStore).draft("/repo", "all")).toBe(
+                    "retained draft",
+                );
+                expect(postMessageSpy).toHaveBeenCalledWith(
+                    expect.objectContaining({ type: "committed", clearCommitMessage: false }),
+                );
+            }
+            expect(nativeMirror).not.toHaveBeenCalledWith("/repo", "");
+        } finally {
+            provider.dispose();
+        }
+    });
 
     it("UndockedViewProvider reports commit completion when draft cleanup rejects", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
@@ -6928,10 +6992,26 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it.each(["commit", "commitAndPush", "commitSelected"])(
-        "CommitPanelViewProvider preserves a newer aggregate draft during %s",
-        async (type) => {
-            const { provider, gitOps, webview, draftStore } = await setupCommitPanelProvider();
+    it.each(
+        ["commit", "commitAndPush", "commitSelected"].flatMap((type) =>
+            ["same host", "second host"].map((writer) => [type, writer]),
+        ),
+    )(
+        "CommitPanelViewProvider preserves a newer aggregate draft during %s from %s",
+        async (type, writer) => {
+            // Match the provider's module instance after the earlier hydration test resets modules.
+            const { ChangelistStore } = await import("../../../src/changes/changelistStore");
+            const gitDir = await mkdtemp(path.join(tmpdir(), "intelligit-draft-hosts-"));
+            const { provider, gitOps, webview, draftStore } = await setupCommitPanelProvider(
+                undefined,
+                { root: gitDir },
+            );
+            const bridge = (
+                provider as unknown as {
+                    nativeCommitInputBridge: { setFromPanel(root: string, message: string): void };
+                }
+            ).nativeCommitInputBridge;
+            const nativeMirror = vi.spyOn(bridge, "setFromPanel");
             let finishCommit!: () => void;
             gitOps.commit.mockImplementation(
                 () =>
@@ -6941,6 +7021,9 @@ describe("view providers integration", () => {
             );
             try {
                 await webview.send({ type: "saveCommitDraft", message: "captured draft" });
+                await ChangelistStore.forStorage(draftStore).connect(gitDir, gitDir);
+                const secondHost = new ChangelistStore(createMemento());
+                await secondHost.connect(gitDir, gitDir);
                 const commit = webview.send({
                     type,
                     message: "captured draft",
@@ -6950,13 +7033,18 @@ describe("view providers integration", () => {
                 });
                 await flushMicrotasks();
                 expect(gitOps.commit).toHaveBeenCalled();
-                await webview.send({ type: "saveCommitDraft", message: "newer draft" });
+                if (writer === "second host") {
+                    await secondHost.saveDraft(gitDir, "all", "captured draft", "newer draft");
+                } else {
+                    await webview.send({ type: "saveCommitDraft", message: "newer draft" });
+                }
                 finishCommit();
                 await commit;
                 expect(
-                    ChangelistStore.forStorage(draftStore).draft("/repo", "all"),
+                    ChangelistStore.forStorage(draftStore).draft(gitDir, "all"),
                     "commit completion must preserve the newer aggregate draft",
                 ).toBe("newer draft");
+                expect(nativeMirror).not.toHaveBeenCalledWith(gitDir, "");
                 expect(postMessageSpy).toHaveBeenCalledWith(
                     expect.objectContaining({
                         type: "committed",
@@ -6965,6 +7053,7 @@ describe("view providers integration", () => {
                 );
             } finally {
                 provider.dispose();
+                await removeScratchDirectories(gitDir);
             }
         },
     );

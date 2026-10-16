@@ -213,6 +213,7 @@ export class ChangeWorkflowHost {
         }
     }
 
+    /** Reports this root's authoritative metadata, cross-host busy state, and recovery needs; read failures stay root-scoped. */
     private post(): void {
         try {
             this.deps.post({
@@ -500,6 +501,7 @@ export class ChangeWorkflowHost {
     private open(file: string, requestedList: string | undefined): void {
         const listId = requestedList ?? "all";
         new PartialChangesPanel(this.deps.extensionUri, file, {
+            /** Tracks loaded working bytes, tolerating a revision race only when authoritative content already matches. */
             load: async (side) => {
                 const revision = this.store.get(this.deps.root).revision;
                 const view = await this.partial.open(file, side);
@@ -526,6 +528,7 @@ export class ChangeWorkflowHost {
                 const lists = this.store.view(this.deps.root);
                 return { file: view, contentId: snapshot.contentId, lists, listId };
             },
+            /** Holds the metadata lease across staging and restores prepared inclusion when an unpublished operation fails. */
             stage: async (selection) => {
                 const snapshot = this.assertFileSelection(file, selection);
                 const release = await this.store.beginCommit(this.deps.root);
@@ -671,7 +674,87 @@ export class ChangeWorkflowHost {
         return snapshot;
     }
 
-    /** Checks list identity and revision, then commits exact whole-file or partial inclusion; stale ranges and partial amend are refused. */
+    /** Keeps exact inclusion and ownership fences while obtaining review for stale structural files. */
+    private async reviewCommitPaths(
+        paths: readonly string[],
+        state: ChangelistState,
+        id: string,
+        amend: boolean,
+    ): Promise<"partial" | "whole" | "cancelled"> {
+        const structural = new Map<string, WorkingFile>();
+        let structuralStatus: WorkingFile[] = [];
+        if (paths.some((file) => state.changes[file]?.stale)) {
+            const status = await this.deps.gitOps.getStatus({ withStats: false });
+            for (const file of status) {
+                if (
+                    paths.includes(file.path) &&
+                    state.changes[file.path]?.stale &&
+                    (file.status === "D" || file.status === "R")
+                )
+                    structural.set(file.path, file);
+            }
+            structuralStatus = status.filter((file) => structural.has(file.path));
+        }
+        const hasPartial = paths.some(
+            (file) =>
+                state.changes[file]?.selections?.[id] !== undefined ||
+                (!structural.has(file) &&
+                    (state.changes[file]?.stale ||
+                        (id !== "all" && state.changes[file]?.tracking !== undefined) ||
+                        Object.keys(state.changes[file]?.lines ?? {}).length > 0)),
+        );
+        if (
+            structural.size &&
+            (hasPartial ||
+                [...structural.values()].some(
+                    ({ sourcePath }) =>
+                        sourcePath && state.changes[sourcePath]?.selections?.[id] !== undefined,
+                ))
+        )
+            throw new Error(
+                vscode.l10n.t("Commit partial text and structural changes separately."),
+            );
+        if (hasPartial) {
+            if (amend) throw new Error("Partial amend requires the whole-file commit workflow.");
+            if (paths.length > 64) throw new Error("Select 1 to 64 text files.");
+            return "partial";
+        }
+        if (id !== "all" && paths.some((file) => state.files[file] !== id))
+            throw new Error("The files belong to another changelist.");
+        if (!structural.size) return "whole";
+        if (
+            id !== "all" &&
+            [...structural.values()].some((file) =>
+                [file.path, ...(file.sourcePath ? [file.sourcePath] : [])].some(
+                    (name) =>
+                        (state.files[name] !== undefined && state.files[name] !== id) ||
+                        Object.values(state.changes[name]?.lines ?? {}).some(
+                            (owner) => owner !== id,
+                        ),
+                ),
+            )
+        )
+            throw new Error("The files belong to another changelist.");
+        const confirmLabel = vscode.l10n.t("Commit Whole Files");
+        const confirm = await vscode.window.showWarningMessage(
+            vscode.l10n.t(
+                "These deleted or renamed files have stale change assignments. Commit their complete changes?",
+            ),
+            { modal: true, detail: paths.join("\n") },
+            confirmLabel,
+        );
+        if (confirm !== confirmLabel) return "cancelled";
+        const latest = await this.deps.gitOps.getStatus({ withStats: false });
+        if (
+            this.store.get(this.deps.root).revision !== state.revision ||
+            JSON.stringify(latest.filter((file) => structural.has(file.path))) !==
+                JSON.stringify(structuralStatus)
+        )
+            throw new Error("Changelists changed. Refresh before committing.");
+        return "whole";
+    }
+
+    /** Checks list/revision and exact inclusion; stale structural files require review, while tracked text keeps snapshot fences. */
     private async commitList(
         message: Extract<ChangelistOutbound, { type: "commitChangelist" }>,
     ): Promise<void> {
@@ -682,16 +765,9 @@ export class ChangeWorkflowHost {
         const id = assertString(message.listId, "listId");
         if (id !== "all" && !state.lists.some((list) => list.id === id))
             throw new Error("Unknown changelist.");
-        const hasPartial = paths.some(
-            (file) =>
-                state.changes[file]?.stale ||
-                (id !== "all" && state.changes[file]?.tracking !== undefined) ||
-                Object.keys(state.changes[file]?.lines ?? {}).length > 0 ||
-                state.changes[file]?.selections?.[id] !== undefined,
-        );
-        if (!hasPartial) {
-            if (id !== "all" && paths.some((file) => state.files[file] !== id))
-                throw new Error("The files belong to another changelist.");
+        const route = await this.reviewCommitPaths(paths, state, id, message.amend === true);
+        if (route === "cancelled") return;
+        if (route === "whole") {
             await commitSelectedFromPanel(
                 {
                     ...this.deps.actions,
@@ -707,9 +783,6 @@ export class ChangeWorkflowHost {
             );
             return;
         }
-        if (message.amend)
-            throw new Error("Partial amend requires the whole-file commit workflow.");
-        if (paths.length > 64) throw new Error("Select 1 to 64 text files.");
         const selections: SelectedFileChanges[] = [];
         let initialSnapshot: PartialFileSnapshot | undefined;
         const inclusions: {
@@ -720,6 +793,8 @@ export class ChangeWorkflowHost {
         }[] = [];
         const consumed: { path: string; fingerprints: ReadonlySet<string> }[] = [];
         for (const file of paths) {
+            if (state.changes[file]?.stale)
+                throw new Error("Change assignments need review. Reopen the partial editor.");
             const view = await this.partial.open(file);
             const snapshot = this.partial.snapshot(view.snapshotId);
             initialSnapshot ??= snapshot;
@@ -859,6 +934,7 @@ export class ChangeWorkflowHost {
         }
     }
 
+    /** Removes consumed ownership against fresh remaining changes; cleanup failure requests review without undoing the commit. */
     private async consumeSelection(
         files: readonly { path: string; fingerprints: ReadonlySet<string> }[],
         scope: string,

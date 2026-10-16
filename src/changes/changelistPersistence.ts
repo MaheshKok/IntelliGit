@@ -25,6 +25,7 @@ export class ChangelistPersistence {
     private readonly lock: RepositoryLock;
     readonly filename: string;
 
+    /** Binds paths already canonicalized by open; metadata locking remains separate from Git's index lock. */
     private constructor(
         readonly root: string,
         readonly gitDir: string,
