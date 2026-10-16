@@ -48,7 +48,9 @@ describe("Workbench", () => {
         // Two presses, not one. A `runCommand` that sends the chord once and then waits gives up on
         // exactly the dropped first chord that took four flow rows red on Linux, so counting the
         // presses is the assertion -- checking only that *a* press happened stays green through it.
-        expect(keyboard.press).toHaveBeenCalledTimes(2);
+        expect(keyboard.press.mock.calls.filter(([key]) => key === expectedShortcut)).toHaveLength(
+            2,
+        );
         expect(keyboard.press).toHaveBeenCalledWith(expectedShortcut);
         // The explicit bound is half the payload: on Playwright's 30s default, a step that runs
         // after the palette has closed burns the whole budget on a dead element instead of failing
@@ -59,6 +61,45 @@ describe("Workbench", () => {
         );
         expect(option.click).toHaveBeenCalledOnce();
         await expect(workbench.readVisibleNotifications()).resolves.toEqual(["Committed"]);
+    });
+
+    it("refreshes a stale palette when a command registers after its first snapshot", async () => {
+        let visible = false;
+        let registered = false;
+        let offered = false;
+        let selected = false;
+        const keyboard = {
+            press: vi.fn((key: string) => {
+                if (key === "Escape") visible = false;
+                else if (!visible) {
+                    visible = true;
+                    offered = registered;
+                }
+            }),
+        };
+        const commandInput = { waitFor: vi.fn(), fill: vi.fn() };
+        const option = {
+            click: vi.fn(() => {
+                if (!offered) {
+                    registered = true;
+                    return Promise.reject(new Error("command absent from this picker snapshot"));
+                }
+                selected = true;
+                return Promise.resolve();
+            }),
+            allTextContents: vi.fn().mockResolvedValue([]),
+        };
+        const page = {
+            keyboard,
+            getByPlaceholder: () => commandInput,
+            getByRole: () => option,
+        } as unknown as Page;
+
+        await expect(
+            new Workbench(page).runCommand("View: Show IntelliGit"),
+            "a retry must discover commands registered after the first picker snapshot",
+        ).resolves.toBeUndefined();
+        expect(selected).toBe(true);
     });
 
     /**
@@ -119,9 +160,9 @@ describe("Workbench", () => {
             // The second chord is the finding. Retrying only the failed step would keep driving the
             // widget that already went away, which is the timeout this fixes.
             expect(
-                keyboard.press,
+                keyboard.press.mock.calls.filter(([key]) => key !== "Escape"),
                 "a closed palette has to be re-opened, not re-driven",
-            ).toHaveBeenCalledTimes(2);
+            ).toHaveLength(2);
             expect(
                 commandInput.fill,
                 "the re-opened palette has to be typed into again",
@@ -138,7 +179,7 @@ describe("Workbench", () => {
         await expect(new Workbench(page).runCommand("View: Toggle Panel")).rejects.toThrow(
             /Failed to select "View: Toggle Panel"/,
         );
-        expect(keyboard.press).toHaveBeenCalledTimes(5);
+        expect(keyboard.press.mock.calls.filter(([key]) => key !== "Escape")).toHaveLength(5);
     });
 
     it("gives up after a bounded number of chords and rethrows Playwright's own error", async () => {
@@ -150,7 +191,7 @@ describe("Workbench", () => {
         const page = { keyboard, getByPlaceholder: () => commandInput } as unknown as Page;
 
         await expect(new Workbench(page).runCommand("View: Show IntelliGit")).rejects.toBe(timeout);
-        expect(keyboard.press).toHaveBeenCalledTimes(5);
+        expect(keyboard.press.mock.calls.filter(([key]) => key !== "Escape")).toHaveLength(5);
         expect(commandInput.fill).not.toHaveBeenCalled();
     });
 
