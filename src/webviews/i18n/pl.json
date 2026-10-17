@@ -501,5 +501,16 @@
     "changes.includeList": "Uwzględnij {name} w commicie",
     "changes.fileCount": "Liczba plików: {count}",
     "changes.listActions": "Działania dla {name}",
-    "changes.emptyList": "Brak zmian na tej liście"
+    "changes.emptyList": "Brak zmian na tej liście",
+    "changes.statsUnavailable": "Statystyki wierszy niedostępne",
+    "changes.moreActions": "Operacje na wybranych zmianach",
+    "changes.exportPatch": "Eksportuj wybraną łatkę...",
+    "changes.shelveSelected": "Odłóż wybrane zmiany...",
+    "changes.rollbackSelected": "Wycofaj wybrane zmiany...",
+    "changes.amendSelected": "Popraw commit wybranymi zmianami",
+    "changes.amendLastCommit": "Popraw ostatni commit",
+    "changes.patchExported": "Wyeksportowano wybraną łatkę",
+    "changes.selectionSaved": "Zapisano wybrane zmiany w Shelf",
+    "changes.selectionShelved": "Odłożono wybrane zmiany",
+    "changes.selectionRolledBack": "Wycofano wybrane zmiany"
 }

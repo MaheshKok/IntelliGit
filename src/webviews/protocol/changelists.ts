@@ -63,7 +63,12 @@ export type PartialEditorOutbound =
     | { type: "ready"; side?: "working" | "index" }
     | { type: "stageSelection"; selection: SelectedFileChanges }
     | { type: "useSelection"; selection: SelectedFileChanges }
-    | { type: "commitSelection"; selection: SelectedFileChanges; message: string }
+    | { type: "commitSelection"; selection: SelectedFileChanges; message: string; amend?: boolean }
+    | {
+          type: "selectedOperation";
+          selection: SelectedFileChanges;
+          operation: "export" | "save" | "shelve" | "rollback";
+      }
     | {
           type: "assignSelection";
           selection: SelectedFileChanges;
@@ -80,7 +85,14 @@ export type PartialEditorReply =
           contentId: string;
           lists: ChangelistState;
           listId: string;
+          canShelf?: boolean;
+          lastCommitMessage?: string;
+          /** A refreshed snapshot can arrive before the host releases its action lease. */
+          pending?: boolean;
       }
-    | { type: "partialError"; message: string }
+    | { type: "partialError"; message: string; reloadRequired?: boolean }
     | { type: "partialStaged" }
+    | { type: "partialCanceled" }
+    | { type: "partialReady" }
+    | { type: "partialOperationCompleted"; operation: "export" | "save" | "shelve" | "rollback" }
     | { type: "partialCommitted"; commit: string };

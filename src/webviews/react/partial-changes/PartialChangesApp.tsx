@@ -27,6 +27,8 @@ import { changeIds, selectedContent } from "../../../changes/selection";
 import type { ChangeBlock, ChangeLine } from "../../protocol/changeSelection";
 import type { PartialEditorOutbound, PartialEditorReply } from "../../protocol/changelists";
 import "./partial-changes.css";
+import { SelectedChangeOperations } from "./SelectedChangeOperations";
+import { JETBRAINS_UI } from "../shared/tokens";
 
 type FileData = Extract<PartialEditorReply, { type: "partialFile" }>;
 interface SavedSelection {
@@ -36,6 +38,11 @@ interface SavedSelection {
 }
 type DiffRow = { kind: "block"; block: ChangeBlock } | { kind: "line"; line: ChangeLine };
 const ROW_HEIGHT = 22;
+const PARTIAL_CHECKBOX_TOKENS = {
+    "--intelligit-pycharm-checkbox-unchecked-border": JETBRAINS_UI.color.checkboxUncheckedBorder,
+    "--intelligit-pycharm-checkbox-checked-bg": JETBRAINS_UI.color.checkboxCheckedBackground,
+    "--intelligit-pycharm-blue": JETBRAINS_UI.color.focus,
+} as React.CSSProperties;
 
 /** A read-only full-document preview uses CodeMirror's native viewport and search. */
 function SelectionPreview({ content, filePath }: { content: string; filePath: string }) {
@@ -247,6 +254,12 @@ function initialSelection(
         .map((line) => line.id);
 }
 
+/** Completion and pending state share the existing live status area. */
+function operationStatus(commit: string, busy: boolean, notice: string): string {
+    if (commit) return `${t("changes.committed")} ${commit.slice(0, 8)}`;
+    return busy ? t("changes.pending") : notice;
+}
+
 /** Presents immutable host snapshots; only identities and explicit selections are sent back. */
 export function PartialChangesApp() {
     const api = getVsCodeApi<PartialEditorOutbound, SavedSelection>();
@@ -258,6 +271,9 @@ export function PartialChangesApp() {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
     const [commit, setCommit] = useState("");
+    const [amend, setAmend] = useState(false);
+    const [notice, setNotice] = useState("");
+    const [needsReload, setNeedsReload] = useState(false);
     const current = useRef<FileData | null>(null);
     const currentSelected = useRef(selected);
     useLayoutEffect(() => {
@@ -286,14 +302,26 @@ export function PartialChangesApp() {
                         : reply.lists.activeId,
                 );
                 setSide(reply.file.side);
-                setBusy(false);
+                setBusy(reply.pending === true);
+                setNeedsReload(false);
                 setError("");
             } else if (reply.type === "partialError") {
                 setError(reply.message);
                 setBusy(false);
+                if (reply.reloadRequired) setNeedsReload(true);
             } else if (reply.type === "partialCommitted") {
                 setCommit(reply.commit);
                 setBusy(false);
+            } else if (reply.type === "partialReady") {
+                setBusy(false);
+            } else if (reply.type === "partialOperationCompleted") {
+                const notices = {
+                    export: "changes.patchExported",
+                    save: "changes.selectionSaved",
+                    shelve: "changes.selectionShelved",
+                    rollback: "changes.selectionRolledBack",
+                };
+                setNotice(t(notices[reply.operation]));
             }
         };
         window.addEventListener("message", receive);
@@ -328,15 +356,25 @@ export function PartialChangesApp() {
             return next;
         });
     };
-    const send = (kind: "stage" | "commit" | "assign" | "use") => {
-        if (!data || busy || commit || !selected.size) return;
+    const send = (
+        kind: "stage" | "commit" | "assign" | "use" | "export" | "save" | "shelve" | "rollback",
+    ) => {
+        if (!data || busy || commit || needsReload || !selected.size) return;
         const selection = { snapshotId: data.file.snapshotId, lineIds: [...selected] };
         setBusy(true);
         setError("");
+        setNotice("");
         if (kind === "use") api.postMessage({ type: "useSelection", selection });
         else if (kind === "stage") api.postMessage({ type: "stageSelection", selection });
         else if (kind === "commit")
-            api.postMessage({ type: "commitSelection", selection, message });
+            api.postMessage({
+                type: "commitSelection",
+                selection,
+                message,
+                ...(amend ? { amend: true } : {}),
+            });
+        else if (kind === "export" || kind === "save" || kind === "shelve" || kind === "rollback")
+            api.postMessage({ type: "selectedOperation", selection, operation: kind });
         else
             api.postMessage({
                 type: "assignSelection",
@@ -346,11 +384,12 @@ export function PartialChangesApp() {
             });
     };
     const locked = busy || commit.length > 0;
-    const mutable = !locked && selected.size > 0;
+    const mutationsLocked = locked || needsReload;
+    const mutable = !mutationsLocked && selected.size > 0;
     const assignable = mutable && side === "working";
     const committable = mutable && message.trim().length > 0 && deferred === selected;
     return (
-        <main className="partial-changes">
+        <main className="partial-changes" style={PARTIAL_CHECKBOX_TOKENS}>
             <header className="partial-toolbar">
                 <strong title={data?.file.path}>{data?.file.path ?? t("changes.partial")}</strong>
                 <select
@@ -397,7 +436,7 @@ export function PartialChangesApp() {
                                     selected.size > 0 &&
                                     selected.size < changeIds(data.file.blocks).length
                                 }
-                                disabled={locked}
+                                disabled={mutationsLocked}
                                 onChange={() => toggle(changeIds(data.file.blocks))}
                             />
                         ) : null}
@@ -411,7 +450,7 @@ export function PartialChangesApp() {
                             blocks={data.file.blocks}
                             selected={selected}
                             toggle={toggle}
-                            disabled={locked}
+                            disabled={mutationsLocked}
                         />
                     ) : (
                         <div role="status">{t("changes.loading")}</div>
@@ -448,6 +487,12 @@ export function PartialChangesApp() {
                         {side === "working" ? <VscArrowUp /> : <VscArrowDown />}
                         {side === "working" ? t("changes.stage") : t("changes.unstage")}
                     </button>
+                    <SelectedChangeOperations
+                        enabled={mutable && deferred === selected}
+                        canShelf={data?.canShelf === true}
+                        canRemove={side === "working"}
+                        onChoose={send}
+                    />
                 </div>
                 <textarea
                     aria-label={t("changes.commitMessage")}
@@ -466,16 +511,23 @@ export function PartialChangesApp() {
                     }}
                 />
                 <div className="partial-commit">
-                    <span role="status">
-                        {commit
-                            ? `${t("changes.committed")} ${commit.slice(0, 8)}`
-                            : busy
-                              ? t("changes.pending")
-                              : ""}
-                    </span>
+                    <label className="partial-amend">
+                        <VscCheckbox
+                            ariaLabel={t("changes.amendLastCommit")}
+                            isChecked={amend}
+                            disabled={mutationsLocked}
+                            onChange={() => {
+                                if (!amend && !message.trim())
+                                    setMessage(data?.lastCommitMessage ?? "");
+                                setAmend(!amend);
+                            }}
+                        />
+                        <span>{t("changes.amendLastCommit")}</span>
+                    </label>
+                    <span role="status">{operationStatus(commit, busy, notice)}</span>
                     <button disabled={!committable} onClick={() => send("commit")}>
                         <VscCheck />
-                        {t("changes.commit")}
+                        {t(amend ? "changes.amendSelected" : "changes.commit")}
                     </button>
                 </div>
             </footer>

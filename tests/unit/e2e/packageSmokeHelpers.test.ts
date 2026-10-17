@@ -2,9 +2,38 @@ import { describe, expect, it } from "vitest";
 
 import {
     assertExactInstalledExtensionVersion,
+    assertPinnedVSCodeRuntimeVersion,
     buildInstalledExtensionLaunchArgs,
     buildPackageCliInvocation,
 } from "../../e2e/hostFixtures/packageSmokeHelpers";
+
+describe("actual VS Code runtime identity", () => {
+    it("accepts an exact numeric download pin", () => {
+        expect(() => assertPinnedVSCodeRuntimeVersion("1.107.0", "1.107.0", false)).not.toThrow();
+    });
+
+    it("rejects a different app hidden behind the requested cache name", () => {
+        expect(() => assertPinnedVSCodeRuntimeVersion("1.106.0", "1.107.0", false)).toThrow(
+            "requested 1.107.0, running 1.106.0",
+        );
+    });
+
+    it("reports explicit executable overrides without pretending they match the nominal pin", () => {
+        expect(() => assertPinnedVSCodeRuntimeVersion("1.132.0", "1.137.0", true)).not.toThrow();
+    });
+
+    it.each(["stable", "insiders"])("accepts a resolved %s channel", (channel) => {
+        expect(() =>
+            assertPinnedVSCodeRuntimeVersion("1.137.0-insider", channel, false),
+        ).not.toThrow();
+    });
+
+    it.each([undefined, null, 107, ""])("rejects a missing runtime version %o", (actual) => {
+        expect(() => assertPinnedVSCodeRuntimeVersion(actual, "1.107.0", true)).toThrow(
+            "no valid package version",
+        );
+    });
+});
 
 describe("buildPackageCliInvocation", () => {
     it("builds an install command from the resolved CLI tuple and fresh directories", () => {

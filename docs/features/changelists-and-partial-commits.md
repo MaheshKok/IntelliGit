@@ -47,9 +47,14 @@ nonempty drafts requires a choice to append both or keep one.
 - Binary/non-UTF-8 files, adds/deletes/renames/mode changes, submodules, sparse or
   assume-unchanged entries and custom filters/working-tree encodings use the
   existing whole-file/native workflow instead.
-- Partial amend and partial stash/shelf/rollback are not implemented. A commit
-  mixing partial text selections and unsupported structural changes must be
-  split into separate explicit actions.
+- The partial editor can export a selected patch, Save to Shelf without removing
+  local content, shelve or roll back selected working changes, and explicitly
+  amend the latest commit with selected text. Selected removal first saves a
+  recoverable content-only shelf. Unshelving that selection restores content,
+  not its original staging choices.
+- Named-list amend, partial Git stash and commits mixing supported partial text
+  with structural changes remain separate whole-file/native actions. Partial
+  removal is available on the working-tree side, not the index-side preview.
 - No semantic/AST merge engine, LSP integration or full JetBrains equivalence is
   implied. Pure browser extension hosts without the Node Git backend are outside
   this workflow.
@@ -214,6 +219,15 @@ Electron rendering, undo history, remote storage and competing processes. That s
 whole-record persistence and synchronous reads with a measurable cost at 10,000 split
 files; the phase-five end-to-end checks must include that cost rather than reuse the older
 renderer-only result.
+
+Initial full-stat host refresh
+cost roughly one second at 10,000 changed files in that prototype. The Changes
+views now skip full-stat scans above 200 status rows and request bounded literal
+path batches for visible rows. A status-only scan still walks the repository;
+this is not a claim of constant-time Git status or remote end-to-end latency.
+
+See [selected operations and lazy statistics](selected-operations-and-lazy-stats.md)
+for operation semantics, recovery and validation boundaries.
 
 Focused verification:
 

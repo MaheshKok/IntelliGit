@@ -73,7 +73,10 @@
                         }
                     }
                 },
-                "listId": "all"
+                "listId": "all",
+                "canShelf": false,
+                "lastCommitMessage": "Merge branch 'topic/mergeable'",
+                "pending": false
             }
         }
     ]

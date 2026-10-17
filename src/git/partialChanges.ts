@@ -2,6 +2,7 @@ import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { changeIds, selectedContent, validateSelection } from "../changes/selection";
+import { changeFingerprint } from "../changes/parseDiff";
 import type { ChangeFileView, SelectedFileChanges } from "../webviews/protocol/changeSelection";
 import type { GitExecutor } from "./executor";
 import { mapWithConcurrency } from "../utils/concurrency";
@@ -10,6 +11,7 @@ import {
     MAX_PARTIAL_TEXT_BYTES,
     readPartialSnapshot,
     readPartialRef,
+    readPartialWorktree,
     type PartialFileSnapshot,
 } from "./partialSnapshot";
 import {
@@ -69,6 +71,148 @@ export class PartialChanges {
         return snapshot;
     }
 
+    /** Prefills from this snapshot's immutable commit, with the same byte limit as a new message. */
+    async readCommitMessage(snapshotId: string): Promise<string> {
+        const snapshot = this.snapshot(snapshotId);
+        const result = await this.executor.runBinary(
+            ["-c", "i18n.logOutputEncoding=UTF-8", "show", "-s", "--format=%B", snapshot.head],
+            { maxOutputBytes: 256 * 1024, signal: AbortSignal.timeout(10_000) },
+        );
+        return result.truncated ? "" : result.stdout.toString("utf8").trim();
+    }
+
+    /** Revalidates a selection while a host-owned shelf transaction holds repository serialization. */
+    async validate(selection: SelectedFileChanges, guard: DirtyBufferGuard): Promise<void> {
+        const snapshot = this.snapshot(selection.snapshotId);
+        validateSelection(snapshot.view.blocks, selection.lineIds);
+        if (!selection.lineIds.length) throw new Error("Select changes first.");
+        await this.assertSnapshotCurrent(snapshot, guard);
+    }
+
+    /** Creates a Git patch for exactly the selected content; no real index or worktree is written. */
+    async exportPatch(selection: SelectedFileChanges, guard: DirtyBufferGuard): Promise<Buffer> {
+        const snapshot = this.snapshot(selection.snapshotId);
+        const content = selectedContent(
+            snapshot.view.base,
+            snapshot.view.blocks,
+            selection.lineIds,
+        );
+        if (!selection.lineIds.length) throw new Error("Select changes first.");
+        return this.executor.runWithinMutationGate(async () => {
+            await this.validate(selection, guard);
+            const directory = await mkdtemp(path.join(tmpdir(), "intelligit-selected-patch-"));
+            try {
+                const index = path.join(directory, "index");
+                await this.executor.runBinary(["read-tree", snapshot.head], {
+                    env: { GIT_INDEX_FILE: index },
+                });
+                await this.writeBlob(index, snapshot, content);
+                const patch = await this.executor.runBinary(
+                    [
+                        "-c",
+                        "diff.suppressBlankEmpty=false",
+                        "--literal-pathspecs",
+                        "diff",
+                        "--cached",
+                        "--binary",
+                        "--full-index",
+                        "--no-ext-diff",
+                        "--no-textconv",
+                        "--no-color",
+                        "--src-prefix=a/",
+                        "--dst-prefix=b/",
+                        snapshot.head,
+                        "--",
+                        snapshot.view.path,
+                    ],
+                    {
+                        env: { GIT_INDEX_FILE: index },
+                        maxOutputBytes: 8 * 1024 * 1024,
+                        signal: AbortSignal.timeout(10_000),
+                    },
+                );
+                if (patch.truncated || !patch.stdout.length)
+                    throw new Error("The selected patch is empty or exceeds its supported size.");
+                await this.validate(selection, guard);
+                return patch.stdout;
+            } finally {
+                await rm(directory, { recursive: true, force: true });
+            }
+        });
+    }
+
+    /** Removes only selected working changes, reconciling staged content under a durable two-surface journal. */
+    async rollback(
+        selection: SelectedFileChanges,
+        guard: DirtyBufferGuard,
+        faults: PartialTransactionFaults = {},
+    ): Promise<void> {
+        const snapshot = this.snapshot(selection.snapshotId);
+        if (snapshot.view.side !== "working")
+            throw new Error("Rollback requires working-tree changes.");
+        const ids = validateSelection(snapshot.view.blocks, selection.lineIds);
+        if (!ids.size) throw new Error("Select changes first.");
+        const selected = selectedContent(
+            snapshot.view.base,
+            snapshot.view.blocks,
+            selection.lineIds,
+        );
+        const remaining = selectedContent(
+            snapshot.view.base,
+            snapshot.view.blocks,
+            changeIds(snapshot.view.blocks).filter((id) => !ids.has(id)),
+        );
+        await this.executor.runWithinMutationGate(async () => {
+            await this.validate(selection, guard);
+            const directory = await mkdtemp(path.join(tmpdir(), "intelligit-selected-rollback-"));
+            try {
+                const retainedIndex =
+                    snapshot.indexed === snapshot.view.base
+                        ? snapshot.indexed
+                        : snapshot.indexed === snapshot.working
+                          ? remaining
+                          : await this.mergeText(
+                                directory,
+                                snapshot.indexed,
+                                selected,
+                                snapshot.view.base,
+                            );
+                const original = await readPartialWorktree(snapshot.root, snapshot.view.path);
+                if (!(await this.worktreeBytes(snapshot, snapshot.working)).equals(original))
+                    throw new Error(
+                        "The file's line endings require the whole-file/native workflow.",
+                    );
+                const after = await this.worktreeBytes(snapshot, remaining);
+                const index = path.join(directory, "index");
+                await copyFile(snapshot.indexPath, index);
+                await this.materializeIndex(index);
+                await this.writeBlob(index, snapshot, retainedIndex);
+                const afterSnapshot = {
+                    ...snapshot,
+                    working: remaining,
+                    worktreeHash: changeFingerprint(after),
+                };
+                await publishPartialIndex(
+                    this.executor,
+                    snapshot,
+                    index,
+                    undefined,
+                    () => this.assertSnapshotCurrent(snapshot, guard),
+                    faults,
+                    {
+                        path: snapshot.view.path,
+                        before: original,
+                        after,
+                        recheckAfter: () => this.assertSnapshotCurrent(afterSnapshot, guard),
+                    },
+                );
+                this.clear();
+            } finally {
+                await rm(directory, { recursive: true, force: true });
+            }
+        });
+    }
+
     /** Applies selected working changes, or removes selected indexed changes, without a worktree write. */
     async stage(
         selection: SelectedFileChanges,
@@ -113,6 +257,7 @@ export class PartialChanges {
         message: string,
         assertNoDirtyBuffer: DirtyBufferGuard,
         faults: PartialTransactionFaults = {},
+        options: { amend?: boolean } = {},
     ): Promise<string> {
         if (!message.trim() || Buffer.byteLength(message, "utf8") > 256 * 1024) {
             throw new Error("Enter a supported commit message.");
@@ -156,6 +301,7 @@ export class PartialChanges {
             message,
             assertNoDirtyBuffer,
             faults,
+            options,
         );
     }
 
@@ -217,6 +363,7 @@ export class PartialChanges {
         message: string,
         assertNoDirtyBuffer: DirtyBufferGuard,
         faults: PartialTransactionFaults,
+        options: { amend?: boolean } = {},
     ): Promise<string> {
         const first = (await readPrepared(0)).snapshot;
         for (let index = 0; index < paths.length; index++) {
@@ -265,6 +412,7 @@ export class PartialChanges {
                     directory,
                     message,
                     expectedTree,
+                    options,
                 );
                 await this.assertCurrent(paths, readPrepared, assertNoDirtyBuffer);
                 await publishPartialIndex(
@@ -351,6 +499,18 @@ export class PartialChanges {
         this.bytes = 0;
     }
 
+    /** Single-file operations share the same complete transaction fences as prepared commits. */
+    private assertSnapshotCurrent(
+        snapshot: PartialFileSnapshot,
+        guard: DirtyBufferGuard,
+    ): Promise<void> {
+        return this.assertCurrent(
+            [snapshot.view.path],
+            () => Promise.resolve({ snapshot, content: snapshot.working }),
+            guard,
+        );
+    }
+
     /** Rechecks all captured files with bounded reads and metadata/dirty-buffer guards on both sides. */
     private async assertCurrent(
         paths: readonly string[],
@@ -412,14 +572,23 @@ export class PartialChanges {
     ): Promise<string> {
         if (snapshot.indexed === snapshot.view.base || snapshot.indexed === selected)
             return selected;
+        return this.mergeText(directory, selected, snapshot.view.base, snapshot.indexed);
+    }
+
+    private async mergeText(
+        directory: string,
+        selected: string,
+        base: string,
+        indexed: string,
+    ): Promise<string> {
         await mkdir(directory, { recursive: true, mode: 0o700 });
         const selectedPath = path.join(directory, "selected");
         const basePath = path.join(directory, "base");
         const indexPath = path.join(directory, "indexed");
         await Promise.all([
             writeFile(selectedPath, selected, { mode: 0o600 }),
-            writeFile(basePath, snapshot.view.base, { mode: 0o600 }),
-            writeFile(indexPath, snapshot.indexed, { mode: 0o600 }),
+            writeFile(basePath, base, { mode: 0o600 }),
+            writeFile(indexPath, indexed, { mode: 0o600 }),
         ]);
         const result = await this.executor.runBinary(
             ["merge-file", "-p", "--", selectedPath, basePath, indexPath],
@@ -433,6 +602,25 @@ export class PartialChanges {
         const content = result.stdout.toString("utf8");
         assertContentSize(content);
         return content;
+    }
+
+    /** Git performs the inverse clean conversion; a non-round-tripping original is never rewritten. */
+    private async worktreeBytes(snapshot: PartialFileSnapshot, content: string): Promise<Buffer> {
+        assertContentSize(content);
+        const oid = await this.executor.runBinary(["hash-object", "-w", "--stdin"], {
+            input: Buffer.from(content),
+        });
+        const result = await this.executor.runBinary(
+            [
+                "cat-file",
+                "--filters",
+                `--path=${snapshot.view.path}`,
+                oid.stdout.toString("utf8").trim(),
+            ],
+            { maxOutputBytes: MAX_PARTIAL_TEXT_BYTES, signal: AbortSignal.timeout(10_000) },
+        );
+        if (result.truncated) throw new Error("The rollback exceeds the supported text size.");
+        return result.stdout;
     }
 }
 

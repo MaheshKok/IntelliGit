@@ -1,9 +1,12 @@
-import { open, readdir } from "node:fs/promises";
+import { lstat, open, readdir } from "node:fs/promises";
 import path from "node:path";
 
 const MAX_HOST_LOG_BYTES = 256 * 1024;
+const MAX_LOG_FILES = 12;
+const MAX_TOTAL_LOG_BYTES = 1024 * 1024;
+const STARTUP_LOG_NAMES = new Set(["exthost.log", "main.log", "renderer.log", "sharedprocess.log"]);
 
-/** Captures only bounded extension-host log tails from the smoke's disposable profile. */
+/** Captures bounded startup and extension-host tails only from the smoke's disposable profile. */
 export async function readPackageSmokeHostLogs(
     userDataDir: string,
 ): Promise<{ name: string; body: Buffer }[]> {
@@ -19,12 +22,21 @@ export async function readPackageSmokeHostLogs(
         throw error;
     });
     const logs = [];
-    for (const entry of entries.sort()) {
-        if (path.basename(entry) !== "exthost.log") continue;
-        const file = await open(path.join(logsRoot, entry), "r");
+    let remaining = MAX_TOTAL_LOG_BYTES;
+    const candidates = entries
+        .filter((entry) => STARTUP_LOG_NAMES.has(path.basename(entry)))
+        .sort()
+        .reverse()
+        .slice(0, MAX_LOG_FILES);
+    for (const entry of candidates) {
+        if (!remaining) break;
+        const target = path.join(logsRoot, entry);
+        const details = await lstat(target);
+        if (!details.isFile() || details.isSymbolicLink()) continue;
+        const file = await open(target, "r");
         try {
             const { size } = await file.stat();
-            const body = Buffer.alloc(Math.min(size, MAX_HOST_LOG_BYTES));
+            const body = Buffer.alloc(Math.min(size, MAX_HOST_LOG_BYTES, remaining));
             const { bytesRead } = await file.read(
                 body,
                 0,
@@ -32,9 +44,10 @@ export async function readPackageSmokeHostLogs(
                 Math.max(0, size - body.length),
             );
             logs.push({ name: entry.split(path.sep).join("-"), body: body.subarray(0, bytesRead) });
+            remaining -= bytesRead;
         } finally {
             await file.close();
         }
     }
-    return logs;
+    return logs.sort((left, right) => left.name.localeCompare(right.name));
 }

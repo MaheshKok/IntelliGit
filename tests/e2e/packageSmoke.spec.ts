@@ -21,6 +21,7 @@ import {
 } from "./hostFixtures/resolveVSCodeExecutable";
 import {
     assertExactInstalledExtensionVersion,
+    assertPinnedVSCodeRuntimeVersion,
     buildInstalledExtensionLaunchArgs,
     buildPackageCliInvocation,
 } from "./hostFixtures/packageSmokeHelpers";
@@ -184,6 +185,59 @@ test.describe("installed VSIX package smoke", () => {
             await window.waitForLoadState("domcontentloaded");
             await dismissFirstRunDialogs(window);
 
+            const runtime = await electronApp.evaluate(({ app }) => ({
+                applicationVersion: app.getVersion(),
+                appPath: app.getAppPath(),
+                executable: app.getPath("exe"),
+                userData: app.getPath("userData"),
+                node: process.versions.node,
+                electron: process.versions.electron,
+                chrome: process.versions.chrome,
+                portableMode: Boolean(process.env.VSCODE_PORTABLE),
+                profileArgs: process.argv.filter((argument) =>
+                    [
+                        "--user-data-dir=",
+                        "--extensions-dir=",
+                        "--profile=",
+                        "--disable-extensions",
+                    ].some((prefix) => argument.startsWith(prefix)),
+                ),
+                developmentExtension: process.argv.some((argument) =>
+                    argument.startsWith("--extensionDevelopmentPath"),
+                ),
+            }));
+            console.log(`[package smoke] process runtime: ${JSON.stringify(runtime)}`);
+            const appPackage = JSON.parse(
+                await readFile(path.join(runtime.appPath, "package.json"), "utf8"),
+            ) as { version?: unknown };
+            const appProduct = JSON.parse(
+                await readFile(path.join(runtime.appPath, "product.json"), "utf8"),
+            ) as { commit?: unknown };
+            const runtimeInfo = {
+                ...runtime,
+                packageVersion:
+                    typeof appPackage.version === "string" ? appPackage.version : "<invalid>",
+                commit:
+                    typeof appProduct.commit === "string"
+                        ? appProduct.commit.slice(0, 80)
+                        : "<unknown>",
+                requestedVersion: requestedVSCodeVersion,
+                expectedExecutable: executablePath,
+                expectedUserData: userDataDir,
+                expectedExtensions: extensionsDir,
+            };
+            console.log(`[package smoke] actual runtime: ${JSON.stringify(runtimeInfo)}`);
+            await testInfo.attach("installed-runtime.json", {
+                body: JSON.stringify(runtimeInfo, null, 2),
+                contentType: "application/json",
+            });
+            expect(runtime.developmentExtension).toBe(false);
+            assertPinnedVSCodeRuntimeVersion(
+                appPackage.version,
+                requestedVSCodeVersion,
+                Boolean(process.env.INTELLIGIT_VSCODE_EXECUTABLE?.trim()),
+            );
+
             const intelliGitView = new IntelliGitView(window);
             const frame = await intelliGitView.reveal();
             const root = frame.locator("#root");
@@ -238,8 +292,14 @@ test.describe("installed VSIX package smoke", () => {
             expect(await runGitRaw(workspacePath, ["ls-files", "-u"], environment)).not.toBe("");
             await new Workbench(window).runCommand("Open Conflict Session");
             const conflicts = await intelliGitView.revealConflictSession();
-            await expect(conflicts.locator("tbody tr.row")).toHaveCount(1);
-            await conflicts.locator("tbody tr.row").click();
+            const conflictedRow = conflicts.locator("tbody tr.row");
+            await expect(conflictedRow).toHaveCount(1);
+            await expect(conflictedRow).toHaveAttribute("aria-selected", "true");
+            await expect(conflictedRow).toContainText("package-smoke.ts");
+            // Exercise the chooser's explicit action; native row-click opening has its own E2E coverage.
+            await conflicts
+                .getByRole("button", { name: en["mergeSession.merge"], exact: true })
+                .click();
             const merge = await intelliGitView.revealMergeWorkbench();
             await expect(
                 merge.locator('[data-testid="merge-editor-1"] .cm-content'),

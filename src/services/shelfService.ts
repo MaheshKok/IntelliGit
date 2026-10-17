@@ -25,6 +25,7 @@ import {
     type StructuralResolutionInput,
 } from "./shelfServiceOperations";
 import { captureShelfArtifacts } from "./shelfServiceCapture";
+import { captureSelectedShelf, type SelectedShelfInput } from "./shelfSelectedCapture";
 import {
     ShelfConflictSessionService,
     type ApplyShelfConflictResolutionInput,
@@ -171,6 +172,27 @@ export class ShelfService {
                 { token: input.idempotencyToken, operation: "shelve", payload },
                 create,
             );
+        });
+    }
+    /** Saves an exact host selection before a separately fenced removal; this method never reverts files. */
+    async saveSelectedChanges(
+        input: SelectedShelfInput,
+        verify: () => Promise<void>,
+    ): Promise<ShelfMutationResult> {
+        assertShelfName(input.name);
+        return this.withMutation(async () => {
+            await verify();
+            const captured = await captureSelectedShelf(
+                this.options.store,
+                input,
+                this.recordBaseRevisions,
+            );
+            return {
+                status: "ok",
+                entries: [],
+                shelfId: captured.shelfId,
+                newGeneration: captured.generation,
+            };
         });
     }
     /** Applies whole selected entries only; flattened mode never writes the Git index. */

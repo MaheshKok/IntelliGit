@@ -6,9 +6,24 @@ import path from "node:path";
 export async function assertChangeBuffersSaved(
     root: string,
     files: readonly string[],
+    options: { allowMissingTargets?: boolean } = {},
 ): Promise<void> {
     const targets = new Set(
-        await Promise.all(files.map((file) => realpath(path.join(root, file)))),
+        await Promise.all(
+            files.map((file) =>
+                realpath(path.join(root, file)).catch(async (error: unknown) => {
+                    if (
+                        !options.allowMissingTargets ||
+                        (error as NodeJS.ErrnoException | null)?.code !== "ENOENT"
+                    )
+                        throw error;
+                    return path.join(
+                        await realpath(path.dirname(path.join(root, file))),
+                        path.basename(file),
+                    );
+                }),
+            ),
+        ),
     );
     const documents = [
         ...vscode.workspace.textDocuments,

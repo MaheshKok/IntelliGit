@@ -491,5 +491,16 @@
     "changes.includeList": "Inclure {name} dans le commit",
     "changes.fileCount": "Nombre de fichiers : {count}",
     "changes.listActions": "Actions pour {name}",
-    "changes.emptyList": "Aucune modification dans cette liste"
+    "changes.emptyList": "Aucune modification dans cette liste",
+    "changes.statsUnavailable": "Statistiques de lignes indisponibles",
+    "changes.moreActions": "Actions sur les modifications sélectionnées",
+    "changes.exportPatch": "Exporter le correctif sélectionné...",
+    "changes.shelveSelected": "Remiser les modifications sélectionnées...",
+    "changes.rollbackSelected": "Annuler les modifications sélectionnées...",
+    "changes.amendSelected": "Amender avec les modifications sélectionnées",
+    "changes.amendLastCommit": "Amender le dernier commit",
+    "changes.patchExported": "Correctif sélectionné exporté",
+    "changes.selectionSaved": "Modifications sélectionnées enregistrées dans Shelf",
+    "changes.selectionShelved": "Modifications sélectionnées remisées",
+    "changes.selectionRolledBack": "Modifications sélectionnées annulées"
 }

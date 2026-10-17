@@ -175,6 +175,19 @@
 .partial-actions {
     flex-wrap: wrap;
 }
+.partial-changes .partial-more-actions {
+    width: 28px;
+    flex-shrink: 0;
+    padding: 0;
+}
+.partial-amend {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 26px;
+    font-size: 12px;
+    max-width: 100%;
+}
 .partial-footer textarea {
     resize: vertical;
     width: 100%;

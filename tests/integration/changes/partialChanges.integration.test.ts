@@ -376,6 +376,38 @@ describe("partial changes on real Git", () => {
         },
     );
 
+    it("preserves an external index changed at the final commit recovery boundary", async () => {
+        const view = await workflow.open("text.txt");
+        await expect(
+            workflow.commit([firstBlock(view)], "interrupted", () => undefined, {
+                afterPublish: async () => {
+                    throw new Error("crash");
+                },
+            }),
+        ).rejects.toThrow("commit succeeded");
+        const head = git(["rev-parse", "HEAD"]);
+        const index = path.join(root, ".git/index");
+        const external = path.join(root, ".git/external-index");
+        await copyFile(index, external);
+        const oid = execFileSync("git", ["hash-object", "-w", "--stdin"], {
+            cwd: root,
+            encoding: "utf8",
+            input: "external staged\n",
+        }).trim();
+        execFileSync("git", ["update-index", "--add", "--cacheinfo", "100644", oid, "other.txt"], {
+            cwd: root,
+            env: { ...process.env, GIT_INDEX_FILE: external },
+        });
+        const expected = await readFile(external);
+        expect(
+            await workflow.recover({ beforeRecoveryPublish: () => copyFile(external, index) }),
+        ).toBe(false);
+        expect(await readFile(index)).toEqual(expected);
+        expect(git(["show", ":other.txt"])).toBe("external staged\n");
+        expect(git(["rev-parse", "HEAD"])).toBe(head);
+        expect(workflow.recoveryIssues()[0].kind).toBe("quarantined");
+    });
+
     it("quarantines a refused record without blocking a later valid reconciliation", async () => {
         const view = await workflow.open("text.txt");
         await expect(

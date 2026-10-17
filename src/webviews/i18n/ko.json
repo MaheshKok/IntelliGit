@@ -471,5 +471,16 @@
     "changes.includeList": "커밋에 {name} 포함",
     "changes.fileCount": "파일 수: {count}",
     "changes.listActions": "{name} 작업",
-    "changes.emptyList": "이 목록에 변경 사항이 없습니다"
+    "changes.emptyList": "이 목록에 변경 사항이 없습니다",
+    "changes.statsUnavailable": "줄 수를 사용할 수 없음",
+    "changes.moreActions": "선택한 변경 작업",
+    "changes.exportPatch": "선택한 패치 내보내기...",
+    "changes.shelveSelected": "선택한 변경 보관 후 제거...",
+    "changes.rollbackSelected": "선택한 변경 롤백...",
+    "changes.amendSelected": "선택한 변경으로 커밋 수정",
+    "changes.amendLastCommit": "마지막 커밋 수정",
+    "changes.patchExported": "선택한 패치를 내보냈습니다",
+    "changes.selectionSaved": "선택한 변경을 Shelf에 저장했습니다",
+    "changes.selectionShelved": "선택한 변경을 보관하고 제거했습니다",
+    "changes.selectionRolledBack": "선택한 변경을 롤백했습니다"
 }

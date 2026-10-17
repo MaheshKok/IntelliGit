@@ -52,7 +52,7 @@ export async function assertPartialOperationIdle(gitDir: string): Promise<void> 
 }
 
 /** Reads contained, unchanged UTF-8 regular files without normalizing their bytes. */
-async function readPartialWorktree(root: string, file: string): Promise<Buffer> {
+export async function readPartialWorktree(root: string, file: string): Promise<Buffer> {
     const target = path.join(root, assertRepoRelativePath(file));
     await assertContainedParent(root, target);
     const before = await lstat(target);
@@ -139,7 +139,7 @@ export async function readPartialSnapshot(
     const base = await readPartialBlob(executor, original[2]);
     const indexed = await readPartialBlob(executor, entry.oid);
     const raw = await readPartialWorktree(root, file);
-    const attributes = await readAttributes(executor, file);
+    const attributes = await readPartialAttributes(executor, file);
     const working = await canonicalWorktree(executor, file, raw);
     const target = side === "working" ? working : indexed;
     const blocks = await computeBlocks(executor, base, target);
@@ -193,7 +193,7 @@ export async function assertPartialSnapshotCurrent(
         verifyRepository ? readPartialRef(executor) : Promise.resolve(snapshot.ref),
         verifyRepository ? readPartialIndex(snapshot) : Promise.resolve(undefined),
         readPartialWorktree(snapshot.root, snapshot.view.path),
-        readAttributes(executor, snapshot.view.path),
+        readPartialAttributes(executor, snapshot.view.path),
     ]);
     if (
         head.trim() !== snapshot.head ||
@@ -272,8 +272,8 @@ function singleBlobEntry(index: string, file: string) {
     return { mode: match[1], oid: match[2] };
 }
 
-/** Refuses custom filters and encodings, returning the checked attributes for later snapshot identity checks. */
-async function readAttributes(executor: GitExecutor, file: string): Promise<string> {
+/** Fingerprints the conversion attributes and refuses filters outside the ordinary-text workflow. */
+export async function readPartialAttributes(executor: GitExecutor, file: string): Promise<string> {
     const output = await executor.run([
         "--literal-pathspecs",
         "check-attr",

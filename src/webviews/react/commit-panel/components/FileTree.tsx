@@ -11,6 +11,7 @@ import { useFileDrag } from "../hooks/useFileDrag";
 import type { ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { t } from "../../shared/i18n";
 import type { TreeEntry } from "../types";
+import { useVisibleFileStats } from "../hooks/useVisibleFileStats";
 
 interface Props {
     repositoryRoot?: string;
@@ -145,7 +146,9 @@ function splitStagedPaths(files: WorkingFile[]): Set<string> {
 function sumStats(
     files: WorkingFile[],
     includeDeletions: boolean,
-): { additions: number; deletions: number } {
+): { additions: number; deletions: number } | undefined {
+    if (files.some((file) => file.statsState === "pending" || file.statsState === "unavailable"))
+        return undefined;
     let additions = 0;
     let deletions = 0;
     for (const file of files) {
@@ -184,6 +187,7 @@ function FileSection({
     onFileDragEnd,
     checkboxVisibility = "visible",
 }: FileSectionProps): React.ReactElement {
+    const requestStats = useVisibleFileStats(repositoryRoot);
     const isDirectoryExpanded = useCallback(
         (path: string) => expandedDirs.has(path),
         [expandedDirs],
@@ -200,6 +204,7 @@ function FileSection({
             return {
                 isSelected: false,
                 onSelect: () => undefined,
+                onVisible: file.statsState === "pending" ? () => requestStats(file) : undefined,
                 onSelectWithEvent: (event: React.MouseEvent<HTMLElement>) =>
                     onFileClick(event, file),
                 vscodeContext: JSON.stringify({
@@ -246,6 +251,7 @@ function FileSection({
             onShelfFileDragStart,
             onToggleFile,
             repositoryRoot,
+            requestStats,
             // Required, but no mutation can currently observe it: every `files` change
             // already invalidates this callback through `dragSelectedPaths`, which
             // `useFileDrag` derives from `unversioned`. Dropping it therefore stays

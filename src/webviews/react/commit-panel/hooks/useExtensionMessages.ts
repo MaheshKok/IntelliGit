@@ -12,6 +12,7 @@ import type {
 import type { WorkingFile } from "../../../../types";
 import { commitMessageGenerationPrefix } from "../../shared/commitMessageDraft";
 import { recordHostMessage, recordHydrationAsk } from "../../shared/hydrationDiagnostics";
+import { mergeWorkingFileStats } from "../../../protocol/workingFileStats";
 
 const LEGACY_REPOSITORY_ROOT = "";
 
@@ -246,6 +247,11 @@ function reducer(
     action: CommitPanelAction,
 ): MultiRepositoryCommitPanelState {
     switch (action.type) {
+        case "SET_WORKING_FILE_STATS":
+            return updateKnownRepository(state, action.repositoryRoot, (repository) => ({
+                ...repository,
+                files: mergeWorkingFileStats(repository.files, action.reply),
+            }));
         case "SET_REPOSITORIES": {
             const roots = new Set(action.repositories.map((repository) => repository.root));
             const activeRepositoryRoot =
@@ -466,6 +472,13 @@ export function useExtensionMessages(): [
             // dropped is a different bug from one that was never answered at all.
             recordHostMessage(msg);
             switch (msg.type) {
+                case "workingFileStats":
+                    applyAction({
+                        type: "SET_WORKING_FILE_STATS",
+                        repositoryRoot: msg.repositoryRoot,
+                        reply: msg,
+                    });
+                    break;
                 case "setRepositories":
                     applyAction({
                         type: "SET_REPOSITORIES",

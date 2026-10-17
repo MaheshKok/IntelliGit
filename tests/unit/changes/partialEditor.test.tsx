@@ -52,6 +52,176 @@ beforeEach(() => {
 });
 
 describe("selected change editor protocol", () => {
+    it("keeps actions locked until the host finishes its post-operation snapshot reload", () => {
+        const mounted = mount(<PartialChangesApp />);
+        try {
+            receive({ ...data, canShelf: true });
+            const more = mounted.container.querySelector<HTMLButtonElement>(
+                '[aria-label="Selected-change actions"]',
+            )!;
+            act(() => more.click());
+            const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+                (element) => element.textContent === "Save to Shelf",
+            )!;
+            act(() => item.click());
+            receive({ type: "partialOperationCompleted", operation: "save" });
+            expect(more.disabled).toBe(true);
+            receive({ ...data, canShelf: true, pending: true });
+            expect(more.disabled).toBe(true);
+            receive({ type: "partialReady" });
+            expect(more.disabled).toBe(false);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("does not take focus back from a host picker opened by a menu action", () => {
+        const mounted = mount(<PartialChangesApp />);
+        const picker = document.createElement("input");
+        document.body.appendChild(picker);
+        try {
+            receive({ ...data, canShelf: true });
+            act(() =>
+                mounted.container
+                    .querySelector<HTMLButtonElement>('[aria-label="Selected-change actions"]')!
+                    .click(),
+            );
+            api.postMessage.mockImplementationOnce(() => picker.focus());
+            const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+                (element) => element.textContent === "Save to Shelf",
+            )!;
+            act(() => item.click());
+            expect(document.activeElement).toBe(picker);
+        } finally {
+            picker.remove();
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("requires a fresh snapshot after a successful operation whose view reload failed", () => {
+        const mounted = mount(<PartialChangesApp />);
+        try {
+            receive({ ...data, canShelf: true });
+            receive({ type: "partialOperationCompleted", operation: "rollback" });
+            receive({
+                type: "partialError",
+                message: "Operation completed; reload required.",
+                reloadRequired: true,
+            });
+            receive({ type: "partialReady" });
+            expect(
+                mounted.container.querySelector<HTMLButtonElement>(
+                    '[aria-label="Selected-change actions"]',
+                )!.disabled,
+            ).toBe(true);
+            const reload = mounted.container.querySelector<HTMLButtonElement>(
+                '[aria-label="Reload changes"]',
+            )!;
+            expect(reload.disabled).toBe(false);
+            receive({ ...data, file: { ...data.file, snapshotId: "fresh" } });
+            expect(
+                mounted.container.querySelector<HTMLButtonElement>(
+                    '[aria-label="Selected-change actions"]',
+                )!.disabled,
+            ).toBe(false);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it.each([
+        ["export", "Export selected patch..."],
+        ["save", "Save to Shelf"],
+        ["shelve", "Shelve selected changes..."],
+        ["rollback", "Rollback selected changes..."],
+    ])(
+        "sends only host identities for %s and retains the selection after native cancellation",
+        (operation, label) => {
+            const mounted = mount(<PartialChangesApp />);
+            try {
+                receive({ ...data, canShelf: true });
+                act(() =>
+                    mounted.container
+                        .querySelector<HTMLButtonElement>('[aria-label="Selected-change actions"]')!
+                        .click(),
+                );
+                const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+                    (element) => element.textContent === label,
+                )!;
+                expect(item).toBeDefined();
+                act(() => item.click());
+                expect(api.postMessage).toHaveBeenLastCalledWith({
+                    type: "selectedOperation",
+                    operation,
+                    selection: { snapshotId: "session", lineIds: ["0:1", "0:2"] },
+                });
+                receive({ type: "partialCanceled" });
+                receive({ type: "partialReady" });
+                expect(
+                    mounted.container.querySelector<HTMLButtonElement>(
+                        '[aria-label="Selected-change actions"]',
+                    )!.disabled,
+                ).toBe(false);
+                expect(
+                    [
+                        ...mounted.container.querySelectorAll<HTMLInputElement>(
+                            ".partial-line input",
+                        ),
+                    ].every((box) => box.checked),
+                ).toBe(true);
+            } finally {
+                unmount(mounted.root, mounted.container);
+            }
+        },
+    );
+
+    it("disables working-tree removal for an index-side selection", () => {
+        const mounted = mount(<PartialChangesApp />);
+        try {
+            receive({ ...data, canShelf: true, file: { ...data.file, side: "index" } });
+            act(() =>
+                mounted.container
+                    .querySelector<HTMLButtonElement>('[aria-label="Selected-change actions"]')!
+                    .click(),
+            );
+            for (const item of [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]) {
+                const removes =
+                    item.textContent?.startsWith("Shelve selected") ||
+                    item.textContent?.startsWith("Rollback selected");
+                expect(item.getAttribute("aria-disabled")).toBe(removes ? "true" : "false");
+            }
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("requires explicit amend, preloads the last message and sends no push instruction", () => {
+        const mounted = mount(<PartialChangesApp />);
+        try {
+            receive({ ...data, lastCommitMessage: "Original message" });
+            const amend = mounted.container.querySelector<HTMLInputElement>(
+                'input[aria-label="Amend latest commit"]',
+            )!;
+            expect(amend.checked).toBe(false);
+            act(() => amend.click());
+            expect(mounted.container.querySelector("textarea")!.value).toBe("Original message");
+            const action = [
+                ...mounted.container.querySelectorAll<HTMLButtonElement>("button"),
+            ].find((element) => element.textContent === "Amend selected changes")!;
+            act(() => action.click());
+            expect(api.postMessage).toHaveBeenLastCalledWith({
+                type: "commitSelection",
+                message: "Original message",
+                amend: true,
+                selection: { snapshotId: "session", lineIds: ["0:1", "0:2"] },
+            });
+            receive({ type: "partialCanceled" });
+            receive({ type: "partialReady" });
+            expect(amend.checked).toBe(true);
+            expect(action.disabled).toBe(false);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
     it("fences a deletion-merged selection even when a pane retains the same content snapshot", () => {
         const mounted = mount(<PartialChangesApp />);
         try {

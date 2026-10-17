@@ -91,9 +91,11 @@ export class IntelliGitView {
 
     /** Reveals IntelliGit in the sidebar and returns its webview document. */
     public async reveal(timeoutMs = DEFAULT_REVEAL_TIMEOUT_MS): Promise<FrameLocator> {
-        // Window restoration can open the sidebar between an aria-expanded read and a click.
-        // The Show command is idempotent; an activity-bar toggle can close the restored view.
-        await new Workbench(this.page).runCommand("View: Show IntelliGit");
+        // Focus is idempotent and targets Commit even when the container's Show action is gated.
+        // Activity-bar toggles can close a view restored between an expanded-state read and click.
+        await new Workbench(this.page).runCommand("IntelliGit: Focus on Commit View", {
+            reopenVisiblePalette: true,
+        });
         return this.frameOwning(SIDEBAR_MARKER, timeoutMs);
     }
 

@@ -12,6 +12,7 @@ import {
 import { resolveVSCodeExecutable } from "./hostFixtures/resolveVSCodeExecutable";
 import { IntelliGitView } from "./pageObjects/intelliGitView";
 import { Workbench } from "./pageObjects/workbench";
+import { mapWithConcurrency } from "../../src/utils/concurrency";
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const FILE = "partial-target.ts";
@@ -380,6 +381,385 @@ test.describe("Selected changes and changelists", () => {
             );
         } finally {
             await app.close();
+        }
+    });
+
+    test("exports only selected text through the real Save dialog without changing source or staging", async ({
+        fixtureWorkspace,
+    }, testInfo) => {
+        const { workspace } = fixtureWorkspace;
+        await mkdir(path.join(workspace.root, ".vscode"), { recursive: true });
+        const settingsPath = path.join(workspace.root, ".vscode/settings.json");
+        const settings = await readFile(settingsPath, "utf8")
+            .then((text) => JSON.parse(text) as Record<string, unknown>)
+            .catch((error: unknown) => {
+                if ((error as NodeJS.ErrnoException | null)?.code !== "ENOENT") throw error;
+                return {};
+            });
+        await writeFile(
+            settingsPath,
+            JSON.stringify({ ...settings, "files.simpleDialog.enable": true }),
+        );
+        await runGit(workspace.root, ["add", "--", ".vscode/settings.json"], workspace.env);
+        await runGit(
+            workspace.root,
+            ["commit", "-m", "Native save fixture", "--only", "--", ".vscode/settings.json"],
+            workspace.env,
+        );
+        await createFiles(workspace.root, workspace.env);
+        await runGit(workspace.root, ["config", "color.ui", "always"], workspace.env);
+        const head = await runGit(workspace.root, ["rev-parse", "HEAD"], workspace.env);
+        const index = await runGit(workspace.root, ["write-tree"], workspace.env);
+        const output = path.join(workspace.root, "selected-proof.patch");
+        const app = await launchFixtureWorkspace({
+            executablePath: await resolveVSCodeExecutable(REPO_ROOT),
+            repoRoot: REPO_ROOT,
+            workspace,
+            channelDir: fixtureWorkspace.channelDir,
+            timeout: 60_000,
+        });
+        try {
+            const page = await app.firstWindow();
+            await dismissFirstRunDialogs(page);
+            await waitForE2eChannelReady(fixtureWorkspace.channelDir);
+            const view = new IntelliGitView(page);
+            const sidebar = await view.reveal();
+            await chooseFile(sidebar);
+            await sidebar.getByRole("button", { name: "Partial changes", exact: true }).click();
+            const editor = await view.revealPartialChanges(FILE);
+            await expect(editor.locator(".partial-block")).toHaveCount(2);
+            await editor.getByRole("checkbox", { name: "Select block 1", exact: true }).uncheck();
+            await editor
+                .getByRole("button", { name: "Selected-change actions", exact: true })
+                .click();
+            await editor
+                .getByRole("menuitem", { name: "Export selected patch...", exact: true })
+                .click();
+            const input = page.locator(".quick-input-widget .quick-input-box input");
+            await expect(input).toBeVisible();
+            await input.fill(output);
+            await page.getByRole("button", { name: "OK", exact: true }).click();
+            await expect
+                .poll(() => readFile(output, "utf8").catch(() => ""))
+                .toContain("+export const first = 3;");
+            await expect(editor.getByRole("status")).toContainText("Selected patch exported");
+            const patch = await readFile(output, "utf8");
+            expect(patch).not.toContain("+export const second = 4;");
+            expect(patch).not.toContain("\u001b");
+            await runGit(workspace.root, ["apply", "--reverse", "--check", output], workspace.env);
+            expect(await readFile(path.join(workspace.root, FILE), "utf8")).toBe(working);
+            expect(await runGit(workspace.root, ["write-tree"], workspace.env)).toBe(index);
+            expect(await runGit(workspace.root, ["rev-parse", "HEAD"], workspace.env)).toBe(head);
+            await page.screenshot({ path: testInfo.outputPath("selected-patch-native-save.png") });
+        } finally {
+            await app.close();
+        }
+    });
+
+    test("saves and shelves selected content through the native editor and unshelves beside the remainder", async ({
+        fixtureWorkspace,
+    }, testInfo) => {
+        const { workspace } = fixtureWorkspace;
+        await createFiles(workspace.root, workspace.env);
+        await runGit(workspace.root, ["config", "color.diff", "always"], workspace.env);
+        const head = await runGit(workspace.root, ["rev-parse", "HEAD"], workspace.env);
+        const app = await launchFixtureWorkspace({
+            executablePath: await resolveVSCodeExecutable(REPO_ROOT),
+            repoRoot: REPO_ROOT,
+            workspace,
+            channelDir: fixtureWorkspace.channelDir,
+            timeout: 60_000,
+        });
+        try {
+            const page = await app.firstWindow();
+            await dismissFirstRunDialogs(page);
+            await waitForE2eChannelReady(fixtureWorkspace.channelDir);
+            const view = new IntelliGitView(page);
+            const sidebar = await view.reveal();
+            await chooseFile(sidebar);
+            await sidebar.getByRole("button", { name: "Partial changes", exact: true }).click();
+            const editor = await view.revealPartialChanges(FILE);
+            await expect(editor.locator(".partial-block")).toHaveCount(2);
+            await editor.getByRole("checkbox", { name: "Select block 1", exact: true }).uncheck();
+            const input = page.locator(".quick-input-widget .quick-input-box input");
+            await editor
+                .getByRole("button", { name: "Selected-change actions", exact: true })
+                .click();
+            await editor.getByRole("menuitem", { name: "Save to Shelf", exact: true }).click();
+            await input.fill("Selected copy");
+            await input.press("Enter");
+            await expect(editor.getByRole("status")).toContainText(
+                "Selected changes saved to Shelf",
+            );
+            expect(await readFile(path.join(workspace.root, FILE), "utf8")).toBe(working);
+            expect(await runGit(workspace.root, ["show", `:${OTHER}`], workspace.env)).toBe(
+                "user staged\n",
+            );
+            await editor
+                .getByRole("button", { name: "Selected-change actions", exact: true })
+                .click();
+            await editor
+                .getByRole("menuitem", { name: "Shelve selected changes...", exact: true })
+                .click();
+            await input.fill("Selected shelf");
+            await input.press("Enter");
+            await page
+                .getByRole("button", { name: "Shelve selected changes", exact: true })
+                .click();
+            await expect
+                .poll(() => readFile(path.join(workspace.root, FILE), "utf8"))
+                .toBe(base.replace("second = 2", "second = 4"));
+            await expect(editor.getByRole("status")).toContainText("Selected changes shelved");
+            expect(await runGit(workspace.root, ["show", `:${FILE}`], workspace.env)).toBe(base);
+            expect(await runGit(workspace.root, ["show", `:${OTHER}`], workspace.env)).toBe(
+                "user staged\n",
+            );
+            expect(await runGit(workspace.root, ["rev-parse", "HEAD"], workspace.env)).toBe(head);
+            await sidebar.getByRole("tab", { name: /^Shelf/ }).click();
+            await sidebar.getByText("Selected shelf", { exact: true }).click({ button: "right" });
+            await sidebar.getByRole("menuitem", { name: "Unshelve Silently", exact: true }).click();
+            await expect
+                .poll(() => readFile(path.join(workspace.root, FILE), "utf8"))
+                .toBe(working);
+            expect(await runGit(workspace.root, ["show", `:${OTHER}`], workspace.env)).toBe(
+                "user staged\n",
+            );
+            await page.screenshot({ path: testInfo.outputPath("selected-shelf-roundtrip.png") });
+        } finally {
+            await app.close();
+        }
+    });
+
+    test("rolls back only a selected staged block and retains a visible recovery shelf", async ({
+        fixtureWorkspace,
+    }, testInfo) => {
+        const { workspace } = fixtureWorkspace;
+        await createFiles(workspace.root, workspace.env);
+        await runGit(workspace.root, ["add", "--", FILE], workspace.env);
+        const head = await runGit(workspace.root, ["rev-parse", "HEAD"], workspace.env);
+        const app = await launchFixtureWorkspace({
+            executablePath: await resolveVSCodeExecutable(REPO_ROOT),
+            repoRoot: REPO_ROOT,
+            workspace,
+            channelDir: fixtureWorkspace.channelDir,
+            timeout: 60_000,
+        });
+        try {
+            const page = await app.firstWindow();
+            await dismissFirstRunDialogs(page);
+            await waitForE2eChannelReady(fixtureWorkspace.channelDir);
+            const view = new IntelliGitView(page);
+            const sidebar = await view.reveal();
+            await chooseFile(sidebar);
+            await sidebar.getByRole("button", { name: "Partial changes", exact: true }).click();
+            const editor = await view.revealPartialChanges(FILE);
+            await expect(editor.locator(".partial-block")).toHaveCount(2);
+            await editor.getByRole("checkbox", { name: "Select block 1", exact: true }).uncheck();
+            await editor
+                .getByRole("button", { name: "Selected-change actions", exact: true })
+                .click();
+            await editor
+                .getByRole("menuitem", { name: "Rollback selected changes...", exact: true })
+                .click();
+            await expect(page.locator(".monaco-dialog-box")).toContainText(
+                "A recovery shelf will be kept",
+            );
+            await page
+                .getByRole("button", { name: "Rollback selected changes", exact: true })
+                .click();
+            const remaining = base.replace("second = 2", "second = 4");
+            await expect
+                .poll(() => readFile(path.join(workspace.root, FILE), "utf8"))
+                .toBe(remaining);
+            await expect(editor.getByRole("status")).toContainText("Selected changes rolled back");
+            expect(await runGit(workspace.root, ["show", `:${FILE}`], workspace.env)).toBe(
+                remaining,
+            );
+            expect(await runGit(workspace.root, ["show", `:${OTHER}`], workspace.env)).toBe(
+                "user staged\n",
+            );
+            expect(await runGit(workspace.root, ["rev-parse", "HEAD"], workspace.env)).toBe(head);
+            await sidebar.getByRole("tab", { name: /^Shelf/ }).click();
+            await expect(
+                sidebar.getByText(`Before selected rollback: ${FILE}`, { exact: true }),
+            ).toBeVisible();
+            await page.screenshot({ path: testInfo.outputPath("selected-rollback-recovery.png") });
+        } finally {
+            await app.close();
+        }
+    });
+
+    test("amends a selected block only after native confirmation and preserves the other draft and staging", async ({
+        fixtureWorkspace,
+    }, testInfo) => {
+        const { workspace } = fixtureWorkspace;
+        await createFiles(workspace.root, workspace.env);
+        const parents = await runGit(
+            workspace.root,
+            ["show", "-s", "--format=%P", "HEAD"],
+            workspace.env,
+        );
+        const author = await runGit(
+            workspace.root,
+            ["show", "-s", "--format=%an <%ae> %aI", "HEAD"],
+            workspace.env,
+        );
+        const app = await launchFixtureWorkspace({
+            executablePath: await resolveVSCodeExecutable(REPO_ROOT),
+            repoRoot: REPO_ROOT,
+            workspace,
+            channelDir: fixtureWorkspace.channelDir,
+            timeout: 60_000,
+        });
+        try {
+            const page = await app.firstWindow();
+            await dismissFirstRunDialogs(page);
+            await waitForE2eChannelReady(fixtureWorkspace.channelDir);
+            const view = new IntelliGitView(page);
+            const sidebar = await view.reveal();
+            await sidebar.locator("#commit-area-message").fill("Keep sidebar draft");
+            await chooseFile(sidebar);
+            await sidebar.getByRole("button", { name: "Partial changes", exact: true }).click();
+            const editor = await view.revealPartialChanges(FILE);
+            await expect(editor.locator(".partial-block")).toHaveCount(2);
+            await editor.getByRole("checkbox", { name: "Select block 1", exact: true }).uncheck();
+            await editor
+                .getByRole("checkbox", { name: "Amend latest commit", exact: true })
+                .check();
+            await expect(
+                editor.getByRole("textbox", { name: "Commit message", exact: true }),
+            ).toHaveValue("Partial baseline");
+            await editor
+                .getByRole("textbox", { name: "Commit message", exact: true })
+                .fill("Native selected amend");
+            await editor
+                .getByRole("button", { name: "Amend selected changes", exact: true })
+                .click();
+            await expect(page.locator(".monaco-dialog-box")).toContainText(
+                "No force push will be performed",
+            );
+            await page.getByRole("button", { name: "Amend selected changes", exact: true }).click();
+            await expect
+                .poll(() => runGit(workspace.root, ["log", "-1", "--format=%s"], workspace.env))
+                .toBe("Native selected amend\n");
+            await expect(editor.getByRole("status")).toContainText("Committed");
+            expect(
+                await runGit(workspace.root, ["show", "-s", "--format=%P", "HEAD"], workspace.env),
+            ).toBe(parents);
+            expect(
+                await runGit(
+                    workspace.root,
+                    ["show", "-s", "--format=%an <%ae> %aI", "HEAD"],
+                    workspace.env,
+                ),
+            ).toBe(author);
+            expect(await runGit(workspace.root, ["show", `HEAD:${FILE}`], workspace.env)).toBe(
+                base.replace("first = 1", "first = 3"),
+            );
+            expect(await readFile(path.join(workspace.root, FILE), "utf8")).toBe(working);
+            expect(await runGit(workspace.root, ["show", `:${OTHER}`], workspace.env)).toBe(
+                "user staged\n",
+            );
+            await expect(sidebar.locator("#commit-area-message")).toHaveValue("Keep sidebar draft");
+            await page.screenshot({ path: testInfo.outputPath("selected-amend-confirmed.png") });
+        } finally {
+            await app.close();
+        }
+    });
+
+    test("loads a large native tree with bounded rows and only path-scoped working statistics", async ({
+        fixtureWorkspace,
+    }, testInfo) => {
+        const { workspace } = fixtureWorkspace;
+        const paths = Array.from(
+            { length: 1000 },
+            (_, index) => `large/file-${String(index).padStart(4, "0")}.txt`,
+        );
+        await mkdir(path.join(workspace.root, "large"));
+        await mapWithConcurrency(paths, 32, (file) =>
+            writeFile(path.join(workspace.root, file), "base\n"),
+        );
+        await runGit(workspace.root, ["add", "--", "large"], workspace.env);
+        await runGit(
+            workspace.root,
+            ["commit", "-m", "Large statistics baseline", "--only", "--", "large"],
+            workspace.env,
+        );
+        await mapWithConcurrency(paths, 32, (file) =>
+            writeFile(path.join(workspace.root, file), "base\nchanged\n"),
+        );
+        const trace = path.join(workspace.root, ".git", "viewport-stats.jsonl");
+        const app = await launchFixtureWorkspace({
+            executablePath: await resolveVSCodeExecutable(REPO_ROOT),
+            repoRoot: REPO_ROOT,
+            workspace: { ...workspace, env: { ...workspace.env, GIT_TRACE2_EVENT: trace } },
+            channelDir: fixtureWorkspace.channelDir,
+            timeout: 60_000,
+        });
+        let statistics: { event: string; argv?: string[] }[] = [];
+        try {
+            const page = await app.firstWindow();
+            await dismissFirstRunDialogs(page);
+            await waitForE2eChannelReady(fixtureWorkspace.channelDir);
+            const sidebar = await new IntelliGitView(page).reveal();
+            const graph = page.getByRole("button", { name: "Graph Section", exact: true });
+            if ((await graph.getAttribute("aria-expanded")) === "true")
+                await graph.getByRole("heading", { name: "Graph", exact: true }).click();
+            await expect(graph).toHaveAttribute("aria-expanded", "false");
+            const tree = sidebar.getByTestId("virtual-commit-tree");
+            await expect(tree).toBeVisible();
+            expect(await tree.locator("[data-virtual-row-index]").count()).toBeLessThan(100);
+            await expect(tree.getByTitle(paths[0], { exact: true })).toBeVisible();
+            await expect(tree.getByText("+1", { exact: true }).first()).toBeVisible();
+            const first = tree.locator("[data-virtual-row-index]").first();
+            await first.focus();
+            await first.press("End");
+            await expect(tree.getByTitle(paths.at(-1)!, { exact: true })).toBeVisible();
+            await expect(tree.getByText("+1", { exact: true }).last()).toBeVisible();
+            expect(await tree.locator("[data-virtual-row-index]").count()).toBeLessThan(100);
+            await page.screenshot({ path: testInfo.outputPath("native-lazy-working-stats.png") });
+        } finally {
+            await app.close();
+            try {
+                const events = (await readFile(trace, "utf8"))
+                    .trim()
+                    .split("\n")
+                    .map((line) => JSON.parse(line) as { event: string; argv?: string[] });
+                statistics = events.filter((event) => {
+                    const args = event.argv;
+                    if (
+                        event.event !== "start" ||
+                        !args?.includes("diff") ||
+                        !args.includes("--numstat")
+                    )
+                        return false;
+                    const separator = args.indexOf("--");
+                    // The built-in Git extension also traces committed-range comparisons.
+                    const options = args.slice(
+                        args.indexOf("diff") + 1,
+                        separator < 0 ? args.length : separator,
+                    );
+                    return options.every((argument) => argument.startsWith("-"));
+                });
+                const output = testInfo.outputPath("working-statistics-commands.json");
+                await writeFile(output, JSON.stringify(statistics));
+                await testInfo.attach("working-statistics-commands", {
+                    path: output,
+                    contentType: "application/json",
+                });
+            } catch (error) {
+                await testInfo.attach("working-statistics-trace-error", {
+                    body: String(error),
+                    contentType: "text/plain",
+                });
+            }
+        }
+        expect(statistics.length).toBeGreaterThan(0);
+        for (const event of statistics) {
+            expect(event.argv).toContain("--literal-pathspecs");
+            const separator = event.argv!.indexOf("--");
+            expect(separator).toBeGreaterThan(0);
+            expect(event.argv!.length - separator - 1).toBeLessThanOrEqual(128);
         }
     });
 

@@ -154,3 +154,21 @@ export function assertExactInstalledExtensionVersion(
         );
     }
 }
+
+/** Numeric download pins must match the running app, not just its cache directory's name. */
+export function assertPinnedVSCodeRuntimeVersion(
+    actualVersion: unknown,
+    requestedVersion: string,
+    executableOverride: boolean,
+): void {
+    if (typeof actualVersion !== "string" || !actualVersion.trim())
+        throw new Error("The running VS Code application has no valid package version.");
+    if (
+        !executableOverride &&
+        /^\d+\.\d+\.\d+$/.test(requestedVersion) &&
+        actualVersion !== requestedVersion
+    )
+        throw new Error(
+            `VS Code runtime version mismatch: requested ${requestedVersion}, running ${actualVersion}.`,
+        );
+}

@@ -471,5 +471,16 @@
     "changes.includeList": "{name} をコミットに含める",
     "changes.fileCount": "ファイル数: {count}",
     "changes.listActions": "{name} の操作",
-    "changes.emptyList": "このリストに変更はありません"
+    "changes.emptyList": "このリストに変更はありません",
+    "changes.statsUnavailable": "行数を取得できません",
+    "changes.moreActions": "選択した変更の操作",
+    "changes.exportPatch": "選択したパッチをエクスポート...",
+    "changes.shelveSelected": "選択した変更をシェルブ...",
+    "changes.rollbackSelected": "選択した変更をロールバック...",
+    "changes.amendSelected": "選択した変更で修正",
+    "changes.amendLastCommit": "直前のコミットを修正",
+    "changes.patchExported": "選択したパッチをエクスポートしました",
+    "changes.selectionSaved": "選択した変更をシェルフに保存しました",
+    "changes.selectionShelved": "選択した変更をシェルブしました",
+    "changes.selectionRolledBack": "選択した変更をロールバックしました"
 }

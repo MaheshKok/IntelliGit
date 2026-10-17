@@ -1,4 +1,6 @@
 import { ChangelistStore } from "../changes/changelistStore";
+import { WorkingFileStatsLoader } from "./workingFileStatsLoader";
+import { mergeWorkingFileStats } from "../webviews/protocol/workingFileStats";
 import {
     attachAfterChangelistLoad,
     changelistDraftBridge,
@@ -249,6 +251,7 @@ export class UndockedViewProvider {
     private themeChangeDisposables: vscode.Disposable[] = [];
     // Commit-panel state
     private files: WorkingFile[] = [];
+    private readonly fileStats = new WorkingFileStatsLoader();
     private stashes: StashEntry[] = [];
     private selectedStashIndex: number | null = null;
     private stashFiles: WorkingFile[] = [];
@@ -526,6 +529,7 @@ export class UndockedViewProvider {
      * Starts a repository switch and returns a guard for async continuations spawned by it.
      */
     private beginRepositorySwitch(): () => boolean {
+        this.fileStats.dispose();
         const requestId = ++this.repositorySwitchSeq;
         return () => requestId === this.repositorySwitchSeq;
     }
@@ -782,6 +786,7 @@ export class UndockedViewProvider {
      * Invalidates commit-check demand and disposes the panel, theme resources, and host emitters.
      */
     dispose(): void {
+        this.fileStats.dispose();
         for (const workflow of this.changeWorkflows.values()) workflow.dispose();
         this.changeWorkflows.clear();
         this.commitCheckDemandSeq += 1;
@@ -1061,6 +1066,19 @@ export class UndockedViewProvider {
         };
         const publishBranch = () => publishBranchFromPanel(fileActionDeps);
         switch (msg.type) {
+            case "requestWorkingFileStats":
+                await this.fileStats.request(
+                    msg.revision,
+                    msg.paths,
+                    commitRepositoryRoot,
+                    rootGitOps,
+                    (reply) => {
+                        if (!canRefresh()) return;
+                        this.files = mergeWorkingFileStats(this.files, reply);
+                        this.postToWebview(reply);
+                    },
+                );
+                break;
             // Graph-side
             case "ready":
                 // A fresh webview context has received nothing, so any commit-detail post made
@@ -1543,6 +1561,7 @@ export class UndockedViewProvider {
                     .getConfiguration("intelligit")
                     .get<boolean>("clearLastCommit", true),
             gitOps,
+            shelfService: this.shelfServiceForRepository?.(root),
             files: () => (current() ? this.files : []),
             post: (message) => this.postToWebview(message),
             actions: {
@@ -1969,7 +1988,10 @@ export class UndockedViewProvider {
             if (!canUpdate()) return;
             // The post-await root guard prevents stale refresh data from being published.
             // react-doctor-disable-next-line react-doctor/async-defer-await
-            const status = await rootGitOps.getStatus({ includeIgnored: this.showIgnoredFiles });
+            const status = await rootGitOps.getStatus({
+                includeIgnored: this.showIgnoredFiles,
+                withStats: "lazy",
+            });
             if (!canUpdate()) return;
             // The post-await root guard prevents stale refresh data from being published.
             // react-doctor-disable-next-line react-doctor/async-defer-await
@@ -2020,7 +2042,7 @@ export class UndockedViewProvider {
                 this.operationSnapshotFor(rootGitOps, repositoryRoot),
             ]);
             if (!canUpdate()) return;
-            this.files = files;
+            this.files = this.fileStats.reset(files);
             void this.changeWorkflows
                 .get(this.repoRootUri.fsPath)
                 ?.reconcile(files)
@@ -2047,7 +2069,7 @@ export class UndockedViewProvider {
             this.postToWebview({
                 type: "update",
                 repositoryRoot,
-                files,
+                files: this.files,
                 stashes,
                 stashFiles,
                 selectedStashIndex,

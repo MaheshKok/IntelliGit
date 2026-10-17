@@ -206,6 +206,10 @@ export interface WorkingFile {
     staged: boolean;
     additions: number;
     deletions: number;
+    /** Large working trees resolve line counts only for rows requested by the viewport. */
+    statsState?: "pending" | "ready" | "unavailable";
+    /** Host-owned refresh identity; replies cannot decorate a later status snapshot. */
+    statsRevision?: string;
     icon?: ThemeTreeIcon;
 }
 

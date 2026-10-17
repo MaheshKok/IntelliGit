@@ -5,6 +5,7 @@ import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import type { ShelfService } from "../services/shelfService";
 import type { ShelfEntry } from "../webviews/protocol/commitPanelMessages";
 import type { StashEntry, ThemeFolderIconMap, WorkingFile } from "../types";
+import { WorkingFileStatsLoader } from "./workingFileStatsLoader";
 
 /**
  * Holds mutable commit-panel state for one discovered repository.
@@ -17,6 +18,7 @@ export class CommitPanelRepositoryRuntime {
     readonly repoRootUri: vscode.Uri;
     readonly gitOps: GitOps;
     files: WorkingFile[] = [];
+    readonly fileStats = new WorkingFileStatsLoader();
     stashes: StashEntry[] = [];
     selectedStashIndex: number | null = null;
     stashFiles: WorkingFile[] = [];

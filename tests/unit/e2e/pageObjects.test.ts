@@ -195,6 +195,66 @@ describe("Workbench", () => {
         expect(commandInput.fill).not.toHaveBeenCalled();
     });
 
+    it("rebuilds a stale visible picker before retrying an idempotent view command", async () => {
+        let visible = false;
+        let registered = false;
+        let included = false;
+        let executions = 0;
+        const keyboard = {
+            press: vi.fn(async (key: string) => {
+                if (key === "Escape") visible = false;
+                else if (!visible) {
+                    visible = true;
+                    included = registered;
+                }
+            }),
+        };
+        const commandInput = {
+            fill: vi.fn().mockResolvedValue(undefined),
+            isVisible: vi.fn(async () => visible),
+            waitFor: vi.fn(async ({ state }: { state: string }) => {
+                if (visible !== (state === "visible")) throw new Error("Unexpected picker state");
+            }),
+        };
+        const option = {
+            click: vi.fn(async () => {
+                if (!included) {
+                    registered = true;
+                    throw new Error("The open picker still has its startup command list.");
+                }
+                executions++;
+            }),
+            allTextContents: vi.fn(async () => ["View: Show Search"]),
+        };
+        const page = {
+            keyboard,
+            getByPlaceholder: () => commandInput,
+            getByRole: () => option,
+        } as unknown as Page;
+        await new Workbench(page).runCommand("IntelliGit: Focus on Commit View", {
+            reopenVisiblePalette: true,
+        });
+        expect(executions).toBe(1);
+        expect(keyboard.press.mock.calls.map(([key]) => key)).toEqual([
+            REAL_PLATFORM === "darwin" ? "Meta+Shift+P" : "Control+Shift+P",
+            "Escape",
+            REAL_PLATFORM === "darwin" ? "Meta+Shift+P" : "Control+Shift+P",
+        ]);
+    });
+
+    it("keeps the same attempt bound when refreshing a view command that never appears", async () => {
+        const { page, keyboard, commandInput } = closingPalette("click", Number.POSITIVE_INFINITY);
+        Object.assign(commandInput, { isVisible: vi.fn(async () => true) });
+        await expect(
+            new Workbench(page).runCommand("IntelliGit: Focus on Commit View", {
+                reopenVisiblePalette: true,
+            }),
+        ).rejects.toThrow('Failed to select "IntelliGit: Focus on Commit View"');
+        const keys = keyboard.press.mock.calls.map(([key]) => key);
+        expect(keys.filter((key) => key !== "Escape")).toHaveLength(5);
+        expect(keys.filter((key) => key === "Escape")).toHaveLength(4);
+    });
+
     describe("pickQuickPick", () => {
         /**
          * A palette whose named lookup always times out, and whose unnamed lookup reports the
@@ -460,7 +520,7 @@ describe("IntelliGitView", () => {
         };
     }
 
-    /** A workbench holding the given webviews, with the Show command as the native UI boundary. */
+    /** A workbench holding the given webviews, with the view command as the native UI boundary. */
     function workbenchPage(webviews: readonly { outer: unknown }[]): {
         page: Page;
         show: ReturnType<typeof vi.spyOn<Workbench, "runCommand">>;
@@ -496,7 +556,23 @@ describe("IntelliGitView", () => {
         return { page, show, emitConsole };
     }
 
-    it("waits for Show IntelliGit to finish before finding the sidebar", async () => {
+    it("opens the Commit view when the container Show command is unavailable", async () => {
+        const sidebar = webview([SIDEBAR_MARKER]);
+        const webviews: { outer: unknown }[] = [];
+        const { page, show } = workbenchPage(webviews);
+        show.mockImplementation(async (label) => {
+            if (label !== "IntelliGit: Focus on Commit View")
+                throw new Error("The container Show command is unavailable.");
+            webviews.push(sidebar);
+        });
+
+        await expect(new IntelliGitView(page).reveal()).resolves.toBe(sidebar.inner);
+        expect(show).toHaveBeenCalledExactlyOnceWith("IntelliGit: Focus on Commit View", {
+            reopenVisiblePalette: true,
+        });
+    });
+
+    it("waits for Commit focus to finish before finding the sidebar", async () => {
         const sidebar = webview([SIDEBAR_MARKER]);
         const webviews: { outer: unknown }[] = [];
         const { page, show } = workbenchPage(webviews);
@@ -507,10 +583,12 @@ describe("IntelliGitView", () => {
 
         await expect(new IntelliGitView(page).reveal()).resolves.toBe(sidebar.inner);
 
-        expect(show).toHaveBeenCalledExactlyOnceWith("View: Show IntelliGit");
+        expect(show).toHaveBeenCalledExactlyOnceWith("IntelliGit: Focus on Commit View", {
+            reopenVisiblePalette: true,
+        });
     });
 
-    it("uses the idempotent Show command again when the sidebar is already open", async () => {
+    it("uses the idempotent focus command again when the sidebar is already open", async () => {
         const sidebar = webview([SIDEBAR_MARKER]);
         const { page, show } = workbenchPage([sidebar]);
         const view = new IntelliGitView(page);
@@ -518,15 +596,20 @@ describe("IntelliGitView", () => {
         await expect(view.reveal()).resolves.toBe(sidebar.inner);
         await expect(view.reveal()).resolves.toBe(sidebar.inner);
 
-        expect(show.mock.calls).toEqual([["View: Show IntelliGit"], ["View: Show IntelliGit"]]);
+        expect(show.mock.calls).toEqual([
+            ["IntelliGit: Focus on Commit View", { reopenVisiblePalette: true }],
+            ["IntelliGit: Focus on Commit View", { reopenVisiblePalette: true }],
+        ]);
     });
 
-    it("reports a sidebar that still has no attached webview after the Show command", async () => {
+    it("reports a sidebar that still has no attached webview after the focus command", async () => {
         const { page, show } = workbenchPage([]);
 
         await expect(new IntelliGitView(page).reveal(50)).rejects.toThrow("(none attached)");
 
-        expect(show).toHaveBeenCalledExactlyOnceWith("View: Show IntelliGit");
+        expect(show).toHaveBeenCalledExactlyOnceWith("IntelliGit: Focus on Commit View", {
+            reopenVisiblePalette: true,
+        });
     });
 
     // The regression this exists for: `iframe.webview` elements are ordered by creation, so the
@@ -540,7 +623,9 @@ describe("IntelliGitView", () => {
 
         await expect(view.reveal()).resolves.toBe(sidebar.inner);
         await expect(view.revealPanel()).resolves.toBe(graphPanel.inner);
-        expect(show).toHaveBeenCalledExactlyOnceWith("View: Show IntelliGit");
+        expect(show).toHaveBeenCalledExactlyOnceWith("IntelliGit: Focus on Commit View", {
+            reopenVisiblePalette: true,
+        });
     });
 
     it("skips a webview whose document is unreachable instead of failing on it", async () => {

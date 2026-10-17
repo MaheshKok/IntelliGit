@@ -66,6 +66,7 @@ type CommitPanelInboundMessage = Extract<
     {
         type:
             | "update"
+            | "workingFileStats"
             | "restoreCommitDraft"
             | "lastCommitMessage"
             | "amendBranchCommits"
@@ -96,6 +97,7 @@ function isGraphMessage(data: UnifiedInbound): data is GraphInboundMessage {
 function isCommitPanelMessage(data: UnifiedInbound): data is CommitPanelInboundMessage {
     return [
         "update",
+        "workingFileStats",
         "restoreCommitDraft",
         "lastCommitMessage",
         "amendBranchCommits",
@@ -214,6 +216,10 @@ function handleGraphMessage(data: GraphInboundMessage, context: MessageContext):
 /** Applies messages that update the commit-panel state for the selected repository. */
 function handleCommitPanelMessage(data: CommitPanelInboundMessage, context: MessageContext): void {
     switch (data.type) {
+        case "workingFileStats":
+            if (data.repositoryRoot === context.selectedRepositoryRootRef.current)
+                context.cpDispatch({ type: "SET_WORKING_FILE_STATS", reply: data });
+            return;
         case "update":
             if (data.repositoryRoot !== context.selectedRepositoryRootRef.current) return;
             context.cpDispatch({

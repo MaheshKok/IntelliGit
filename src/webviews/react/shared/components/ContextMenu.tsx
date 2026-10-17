@@ -130,13 +130,16 @@ export interface MenuItem {
     submenu?: boolean;
 }
 
+/** Focus restoration depends on whether dismissal transfers control to another surface. */
+export type MenuCloseReason = "select" | "escape" | "outside" | "blur";
+
 interface Props {
     x: number;
     y: number;
     items: MenuItem[];
     minWidth?: number;
     onSelect: (action: string) => void;
-    onClose: () => void;
+    onClose: (reason?: MenuCloseReason) => void;
 }
 
 /**
@@ -190,13 +193,13 @@ export function ContextMenu({
     useEffect(() => {
         const handleClick = (e: MouseEvent) => {
             if (ref.current && !ref.current.contains(e.target as Node)) {
-                onClose();
+                onClose("outside");
             }
         };
         const handleKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") onClose();
+            if (e.key === "Escape") onClose("escape");
         };
-        const handleBlur = () => onClose();
+        const handleBlur = () => onClose("blur");
         document.addEventListener("mousedown", handleClick);
         document.addEventListener("keydown", handleKey);
         window.addEventListener("blur", handleBlur);
@@ -210,7 +213,7 @@ export function ContextMenu({
     const handleItemClick = useCallback(
         (action: string) => {
             onSelect(action);
-            onClose();
+            onClose("select");
         },
         [onSelect, onClose],
     );

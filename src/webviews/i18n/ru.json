@@ -501,5 +501,16 @@
     "changes.includeList": "Включить {name} в коммит",
     "changes.fileCount": "Количество файлов: {count}",
     "changes.listActions": "Действия для {name}",
-    "changes.emptyList": "В этом списке нет изменений"
+    "changes.emptyList": "В этом списке нет изменений",
+    "changes.statsUnavailable": "Статистика строк недоступна",
+    "changes.moreActions": "Действия с выбранными изменениями",
+    "changes.exportPatch": "Экспортировать выбранный патч...",
+    "changes.shelveSelected": "Отложить выбранные изменения...",
+    "changes.rollbackSelected": "Откатить выбранные изменения...",
+    "changes.amendSelected": "Дополнить выбранными изменениями",
+    "changes.amendLastCommit": "Изменить последний коммит",
+    "changes.patchExported": "Выбранный патч экспортирован",
+    "changes.selectionSaved": "Выбранные изменения сохранены в Shelf",
+    "changes.selectionShelved": "Выбранные изменения отложены",
+    "changes.selectionRolledBack": "Выбранные изменения отменены"
 }

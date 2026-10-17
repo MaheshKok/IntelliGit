@@ -481,5 +481,16 @@
     "changes.includeList": "Include {name} in commit",
     "changes.fileCount": "File count: {count}",
     "changes.listActions": "Actions for {name}",
-    "changes.emptyList": "No changes in this list"
+    "changes.emptyList": "No changes in this list",
+    "changes.statsUnavailable": "Line counts unavailable",
+    "changes.moreActions": "Selected-change actions",
+    "changes.exportPatch": "Export selected patch...",
+    "changes.shelveSelected": "Shelve selected changes...",
+    "changes.rollbackSelected": "Rollback selected changes...",
+    "changes.amendSelected": "Amend selected changes",
+    "changes.amendLastCommit": "Amend latest commit",
+    "changes.patchExported": "Selected patch exported",
+    "changes.selectionSaved": "Selected changes saved to Shelf",
+    "changes.selectionShelved": "Selected changes shelved",
+    "changes.selectionRolledBack": "Selected changes rolled back"
 }

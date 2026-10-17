@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Export selected text as a patch, save it to Shelf, shelve or roll back only selected changes, and explicitly amend the latest commit from the partial editor. Selected removal keeps a recovery shelf and preserves unrelated staging and working changes.
+
+### Changed
+
+- Large Changes views load the status list without full line-count scans and request bounded statistics batches for visible rows. Retired replies cannot update a newer refresh or another repository.
+
 ## [0.38.3] - 2026-10-16
 
 ### Added

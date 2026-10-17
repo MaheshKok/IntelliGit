@@ -186,6 +186,12 @@ export type ShelfHealthWarning = {
  * filesystem operations.
  */
 export type OutboundMessage =
+    | {
+          type: "requestWorkingFileStats";
+          repositoryRoot: string;
+          revision: string;
+          paths: string[];
+      }
     | ChangelistOutbound
     | {
           /** Lifecycle event requesting working-tree, stash, graph, and draft state. */
@@ -591,6 +597,7 @@ export type OutboundMessage =
  * data for the current view.
  */
 export type InboundMessage =
+    | import("./workingFileStats").WorkingFileStatsReply
     | ChangelistReply
     | {
           /** Opens the host-validated interactive-rebase dialog for this webview instance only. */

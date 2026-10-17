@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile, chmod, readdir, mkdir } from "node:fs/promises";
+import {
+    mkdtemp,
+    readFile,
+    writeFile,
+    chmod,
+    link,
+    symlink,
+    readdir,
+    mkdir,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -21,6 +30,18 @@ vi.mock("vscode", () => {
     });
     Object.defineProperty(double.window, "showQuickPick", {
         value: vi.fn().mockResolvedValue(undefined),
+        configurable: true,
+    });
+    Object.defineProperty(double.window, "showInputBox", {
+        value: vi.fn().mockResolvedValue(undefined),
+        configurable: true,
+    });
+    Object.defineProperty(double.window, "showSaveDialog", {
+        value: vi.fn().mockResolvedValue(undefined),
+        configurable: true,
+    });
+    Object.defineProperty(double.workspace, "fs", {
+        value: { writeFile: vi.fn(async () => undefined) },
         configurable: true,
     });
     Object.defineProperty(double.window, "showInformationMessage", {
@@ -51,6 +72,9 @@ import {
 } from "../../visual/recorder/webviewPanelDouble";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import type { PartialEditorReply } from "../../../src/webviews/protocol/changelists";
+import type { ShelfService } from "../../../src/services/shelfService";
+import { createSecondService } from "../../integration/shelf/shelfTestHarness";
+import { writeSelectedPatch } from "../../../src/views/selectedPatchExport";
 
 let root: string;
 let gitOps: GitOps;
@@ -58,6 +82,7 @@ let host: ChangeWorkflowHost;
 let hostDeps: ConstructorParameters<typeof ChangeWorkflowHost>[0];
 let store: ChangelistStore;
 let posted: unknown[];
+let shelfService: ShelfService | undefined;
 let baselineHead: string;
 let persistenceFailure: "none" | "before" | "after";
 let values: Map<string, unknown>;
@@ -73,6 +98,11 @@ function git(args: string[]) {
     return execFileSync("git", args, { cwd: root, encoding: "utf8" });
 }
 beforeEach(async () => {
+    shelfService = undefined;
+    vi.mocked(vscode.window.showInputBox).mockReset().mockResolvedValue(undefined);
+    vi.mocked(vscode.window.showSaveDialog).mockReset().mockResolvedValue(undefined);
+    vi.mocked(vscode.window.showWarningMessage).mockReset().mockResolvedValue(undefined);
+    vi.mocked(vscode.workspace.fs.writeFile).mockClear();
     root = await mkdtemp(path.join(tmpdir(), "intelligit-change-host-"));
     git(["init", "-q"]);
     git(["config", "user.name", "Host"]);
@@ -118,6 +148,9 @@ beforeEach(async () => {
         root,
         extensionUri: createFakeExtensionUri(),
         gitOps,
+        get shelfService() {
+            return shelfService;
+        },
         workspaceState: storage,
         files: () => files,
         post: (message) => posted.push(message),
@@ -190,6 +223,282 @@ async function readyNativePanel() {
 }
 
 describe("root-bound selected-change host", () => {
+    it("cancels native rollback before shelf, metadata or Git writes", async () => {
+        shelfService = (
+            await createSecondService(root, path.join(root, ".git/selected-shelf-storage"))
+        ).service;
+        const { panel, selection, messages } = await partialEditor();
+        const before = store.get(root);
+        await panel.receiveMessage({ type: "selectedOperation", operation: "rollback", selection });
+        expect(messages.some((message) => message.type === "partialCanceled")).toBe(true);
+        expect((await shelfService.listShelves()).shelfIds).toEqual([]);
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        expect(store.get(root).changes).toEqual(before.changes);
+    });
+
+    it.each(["save", "shelve", "rollback"] as const)(
+        "runs selected %s with a durable shelf and keeps the remaining content",
+        async (operation) => {
+            shelfService = (
+                await createSecondService(root, path.join(root, ".git/selected-shelf-storage"))
+            ).service;
+            vi.mocked(vscode.window.showInputBox).mockResolvedValue("Selected shelf");
+            vi.mocked(vscode.window.showWarningMessage).mockImplementation(
+                async (_text, _options, action) => action as string,
+            );
+            const { panel, selection, messages } = await partialEditor();
+            await panel.receiveMessage({ type: "selectedOperation", operation, selection });
+            expect(
+                messages.some(
+                    (message) =>
+                        message.type === "partialOperationCompleted" &&
+                        message.operation === operation,
+                ),
+            ).toBe(true);
+            expect((await shelfService.listShelves()).shelfIds).toHaveLength(1);
+            expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(
+                operation === "save" ? working : base.replace("line 80\n", "remaining\n"),
+            );
+            expect(git(["rev-parse", "HEAD"])).toBe(baselineHead);
+            expect(git(["show", ":file.txt"])).toBe(base);
+            expect(delivered).not.toHaveBeenCalled();
+        },
+    );
+
+    it("does not remove changes when durable shelf publication fails", async () => {
+        shelfService = (
+            await createSecondService(root, path.join(root, ".git/selected-shelf-storage"))
+        ).service;
+        vi.spyOn(shelfService, "saveSelectedChanges").mockRejectedValue(
+            new Error("shelf disk failure"),
+        );
+        vi.mocked(vscode.window.showWarningMessage).mockImplementation(
+            async (_text, _options, action) => action as string,
+        );
+        const { panel, selection, messages } = await partialEditor();
+        const metadata = store.get(root);
+        await panel.receiveMessage({ type: "selectedOperation", operation: "rollback", selection });
+        expect(messages.findLast((message) => message.type === "partialError")).toMatchObject({
+            message: expect.stringContaining("shelf disk failure"),
+        });
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        expect(store.get(root)).toEqual(metadata);
+    });
+
+    it("keeps durable ownership of the remainder when selected shelving uses tracked ranges", async () => {
+        shelfService = (
+            await createSecondService(root, path.join(root, ".git/selected-shelf-storage"))
+        ).service;
+        vi.mocked(vscode.window.showInputBox).mockResolvedValue("Tracked selection");
+        vi.mocked(vscode.window.showWarningMessage).mockImplementation(
+            async (_text, _options, action) => action as string,
+        );
+        const { panel, selection, messages } = await partialEditor();
+        const data = messages.find((message) => message.type === "partialFile");
+        if (!data || data.type !== "partialFile") throw new Error("Missing snapshot");
+        const created = await store.create(root, store.get(root).revision, "Remaining ownership");
+        const owner = created.lists.find((list) => list.name === "Remaining ownership")!.id;
+        const changed = data.file.blocks
+            .flatMap((block) => block.lines)
+            .filter((line) => line.kind !== "context");
+        const selected = new Set(selection.lineIds);
+        await store.assignChanges(
+            root,
+            created.revision,
+            "file.txt",
+            data.contentId,
+            owner,
+            changed.filter((line) => !selected.has(line.id)).map((line) => line.fingerprint),
+            new Set(changed.map((line) => line.fingerprint)),
+        );
+        await panel.receiveMessage({ type: "selectedOperation", operation: "shelve", selection });
+        expect(messages.some((message) => message.type === "partialOperationCompleted")).toBe(true);
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(
+            base.replace("line 80\n", "remaining\n"),
+        );
+        expect(git(["rev-parse", "HEAD"])).toBe(baselineHead);
+        expect(git(["show", ":file.txt"])).toBe(base);
+        const reopened = new ChangelistStore();
+        await reopened.connect(root, path.join(root, ".git"));
+        const remainder = reopened.get(root).changes["file.txt"];
+        expect(remainder.stale).toBe(false);
+        expect(remainder.tracking).toBeDefined();
+        expect(Object.values(remainder.lines)).toEqual([owner, owner]);
+        expect(remainder.selections?.all.lineIds).toEqual([]);
+    });
+
+    it("reports a completed operation separately from a post-operation view failure", async () => {
+        shelfService = (
+            await createSecondService(root, path.join(root, ".git/selected-shelf-storage"))
+        ).service;
+        vi.mocked(vscode.window.showInputBox).mockResolvedValue("Saved selection");
+        const { panel, selection, messages } = await partialEditor();
+        vi.spyOn(PartialChanges.prototype, "open").mockRejectedValueOnce(
+            new Error("reload read failed"),
+        );
+        vi.spyOn(console, "error").mockImplementation(() => undefined);
+        await panel.receiveMessage({ type: "selectedOperation", operation: "save", selection });
+        expect(messages.some((message) => message.type === "partialOperationCompleted")).toBe(true);
+        expect(messages.findLast((message) => message.type === "partialError")).toMatchObject({
+            reloadRequired: true,
+            message: expect.stringContaining("operation completed"),
+        });
+        expect(messages.at(-1)?.type).toBe("partialReady");
+        expect((await shelfService.listShelves()).shelfIds).toHaveLength(1);
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+    });
+
+    it("keeps the saved copy and prior inclusion when a foreign index lock refuses removal", async () => {
+        shelfService = (
+            await createSecondService(root, path.join(root, ".git/selected-shelf-storage"))
+        ).service;
+        const save = shelfService.saveSelectedChanges.bind(shelfService);
+        vi.spyOn(shelfService, "saveSelectedChanges").mockImplementation(async (...args) => {
+            const result = await save(...args);
+            await writeFile(path.join(root, ".git/index.lock"), "foreign owner");
+            return result;
+        });
+        vi.mocked(vscode.window.showWarningMessage).mockImplementation(
+            async (_text, _options, action) => action as string,
+        );
+        const { panel, selection, messages } = await partialEditor();
+        const previous = store.get(root).changes;
+        await panel.receiveMessage({ type: "selectedOperation", operation: "rollback", selection });
+        expect(messages.some((message) => message.type === "partialError")).toBe(true);
+        expect(store.get(root).changes).toEqual(previous);
+        expect(await readFile(path.join(root, ".git/index.lock"), "utf8")).toBe("foreign owner");
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        expect((await shelfService.listShelves()).shelfIds).toHaveLength(1);
+    });
+
+    it("exports only through the native Save destination and never accepts a browser path", async () => {
+        const { panel, selection, messages } = await partialEditor();
+        const output = {
+            ...vscode.Uri.file(path.join(root, "chosen.patch")),
+            scheme: "file",
+        } as vscode.Uri;
+        vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(output);
+        await panel.receiveMessage({
+            type: "selectedOperation",
+            operation: "export",
+            selection,
+            path: "/forged",
+        });
+        expect(messages.filter((message) => message.type === "partialError")).toEqual([]);
+        expect(messages.some((message) => message.type === "partialOperationCompleted")).toBe(true);
+        expect(await readFile(output.fsPath, "utf8")).toContain("+selected");
+        expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+    });
+
+    it("does not overwrite source bytes when a chosen patch file is a hardlink alias", async () => {
+        const { panel, selection, messages } = await partialEditor();
+        const alias = path.join(root, "alias.patch");
+        await link(path.join(root, "file.txt"), alias);
+        vi.mocked(vscode.window.showSaveDialog).mockResolvedValue({
+            ...vscode.Uri.file(alias),
+            scheme: "file",
+        } as vscode.Uri);
+        await panel.receiveMessage({ type: "selectedOperation", operation: "export", selection });
+        expect(messages.some((message) => message.type === "partialOperationCompleted")).toBe(true);
+        expect(await readFile(alias, "utf8")).toContain("+selected");
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+    });
+
+    it("protects a dirty native buffer even when its chosen export file does not exist yet", async () => {
+        const { panel, selection, messages } = await partialEditor();
+        const output = path.join(root, "new.patch");
+        const uri = { ...vscode.Uri.file(output), scheme: "file" } as vscode.Uri;
+        (vscode.workspace.textDocuments as unknown as { isDirty: boolean; uri: vscode.Uri }[]).push(
+            { isDirty: true, uri },
+        );
+        vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(uri);
+        await panel.receiveMessage({ type: "selectedOperation", operation: "export", selection });
+        expect(messages.findLast((message) => message.type === "partialError")).toMatchObject({
+            message: expect.stringContaining("Save the native editor"),
+        });
+        await expect(readFile(output)).rejects.toMatchObject({ code: "ENOENT" });
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+    });
+
+    it("refuses an untranslated remote export URI rather than writing its path on the wrong host", async () => {
+        const { panel, selection, messages } = await partialEditor();
+        vi.mocked(vscode.window.showSaveDialog).mockResolvedValue({
+            ...vscode.Uri.file(path.join(root, "file.txt")),
+            scheme: "vscode-remote",
+        } as vscode.Uri);
+        await panel.receiveMessage({ type: "selectedOperation", operation: "export", selection });
+        expect(messages.findLast((message) => message.type === "partialError")).toMatchObject({
+            message: expect.stringContaining("native filesystem"),
+        });
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
+    });
+
+    it("preserves a concurrently changed export destination instead of replacing it", async () => {
+        const partial = new PartialChanges(new GitExecutor(root), root);
+        const view = await partial.open("file.txt");
+        const snapshot = partial.snapshot(view.snapshotId);
+        const output = path.join(root, "existing.patch");
+        await writeFile(output, "previous");
+        let checks = 0;
+        await expect(
+            writeSelectedPatch(
+                { scheme: "file", fsPath: output },
+                snapshot,
+                Buffer.from("selected patch"),
+                async () => {
+                    if (++checks === 2) await writeFile(output, "newer external patch");
+                },
+            ),
+        ).rejects.toThrow("destination changed");
+        expect(await readFile(output, "utf8")).toBe("newer external patch");
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+    });
+
+    it("refuses a directory alias into Git metadata before exporting a patch", async () => {
+        const { panel, selection, messages } = await partialEditor();
+        const alias = path.join(root, "metadata-alias");
+        await symlink(
+            path.join(root, ".git"),
+            alias,
+            process.platform === "win32" ? "junction" : "dir",
+        );
+        const index = await readFile(path.join(root, ".git/index"));
+        vi.mocked(vscode.window.showSaveDialog).mockResolvedValue({
+            ...vscode.Uri.file(path.join(alias, "index")),
+            scheme: "file",
+        } as vscode.Uri);
+        await panel.receiveMessage({ type: "selectedOperation", operation: "export", selection });
+        expect(messages.findLast((message) => message.type === "partialError")).toMatchObject({
+            message: expect.stringContaining("Git metadata"),
+        });
+        expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+    });
+
+    it("requires native amend confirmation and leaves drafts on cancellation", async () => {
+        const { panel, selection, messages } = await partialEditor();
+        await panel.receiveMessage({
+            type: "commitSelection",
+            amend: true,
+            selection,
+            message: "changed",
+        });
+        expect(git(["rev-parse", "HEAD"])).toBe(baselineHead);
+        expect(messages.some((message) => message.type === "partialCanceled")).toBe(true);
+        vi.mocked(vscode.window.showWarningMessage).mockResolvedValue("Amend selected changes");
+        const parents = git(["show", "-s", "--format=%P", "HEAD"]);
+        await panel.receiveMessage({
+            type: "commitSelection",
+            amend: true,
+            selection,
+            message: "changed",
+        });
+        expect(messages.some((message) => message.type === "partialCommitted")).toBe(true);
+        expect(git(["show", "-s", "--format=%P", "HEAD"])).toBe(parents);
+        expect(git(["show", "HEAD:file.txt"])).toBe(first);
+    });
+
     it("reports each persistent poll failure once and reports it again after recovery", async () => {
         host.dispose();
         vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
@@ -259,6 +568,9 @@ describe("root-bound selected-change host", () => {
     });
 
     it("native entry opens a usable aggregate editor without changing scope or Git state", async () => {
+        shelfService = (
+            await createSecondService(root, path.join(root, ".git/selected-shelf-storage"))
+        ).service;
         const created = await store.create(root, store.get(root).revision, "Native list");
         const id = created.lists.find((list) => list.name === "Native list")!.id;
         await store.activate(root, store.get(root).revision, id);
@@ -269,7 +581,17 @@ describe("root-bound selected-change host", () => {
         const gitBefore = await nativeGitSnapshot();
         await host.openFromEditor("file.txt");
         const data = await readyNativePanel();
-        expect(data).toMatchObject({ listId: "all", file: { path: "file.txt" } });
+        expect(data).toMatchObject({
+            listId: "all",
+            file: { path: "file.txt" },
+            canShelf: true,
+            lastCommitMessage: "base",
+        });
+        expect(data.lists.changes["file.txt"].tracking).toBeUndefined();
+        expect(data.lists.changes["file.txt"].history).toBeUndefined();
+        expect(store.get(root).changes["file.txt"].tracking).toEqual(
+            before.changes["file.txt"].tracking,
+        );
         expect(JSON.stringify(data.file.blocks)).toContain("selected");
         expect(JSON.stringify(data.file.blocks)).toContain("remaining");
         expect(store.get(root).activeId).toBe(before.activeId);

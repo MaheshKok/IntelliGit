@@ -471,5 +471,16 @@
     "changes.includeList": "在提交中包含 {name}",
     "changes.fileCount": "檔案數：{count}",
     "changes.listActions": "{name} 的操作",
-    "changes.emptyList": "此清單中沒有變更"
+    "changes.emptyList": "此清單中沒有變更",
+    "changes.statsUnavailable": "行數統計無法使用",
+    "changes.moreActions": "所選變更的操作",
+    "changes.exportPatch": "將所選變更匯出為修補檔...",
+    "changes.shelveSelected": "擱置所選變更...",
+    "changes.rollbackSelected": "回復所選變更...",
+    "changes.amendSelected": "以所選變更修訂提交",
+    "changes.amendLastCommit": "修訂最近一次提交",
+    "changes.patchExported": "已匯出所選修補檔",
+    "changes.selectionSaved": "已將所選變更儲存至 Shelf",
+    "changes.selectionShelved": "已擱置所選變更",
+    "changes.selectionRolledBack": "已回復所選變更"
 }

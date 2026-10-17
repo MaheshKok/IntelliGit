@@ -5,15 +5,20 @@ import type { FileHandle } from "node:fs/promises";
 import type { GitExecutor } from "./executor";
 import { changeFingerprint } from "../changes/parseDiff";
 import { assertContainedParent } from "../shelf/recoveryPaths";
+import { assertRepoRelativePath } from "../utils/repoRelativePath";
+import { replaceMergeWorktreeFile } from "../shelf/safeWorktreeWrite";
 import {
     assertPartialOperationIdle,
     readPartialIndex,
     readPartialRef,
+    readPartialWorktree,
+    readPartialAttributes,
+    MAX_PARTIAL_TEXT_BYTES,
     type PartialFileSnapshot,
 } from "./partialSnapshot";
 
 interface IndexJournal {
-    schemaVersion: 1;
+    schemaVersion: 1 | 2;
     root: string;
     gitDir: string;
     indexPath: string;
@@ -25,6 +30,12 @@ interface IndexJournal {
     pid: number;
     lock?: { ino: string; dev: string };
     refusal?: string;
+    worktree?: {
+        path: string;
+        beforeHash: string;
+        afterHash: string;
+        attributesHash: string;
+    };
 }
 
 /** Refused transactions retain evidence, while live owners are never discarded. */
@@ -47,6 +58,14 @@ export interface PartialTransactionFaults {
     afterLock?: () => Promise<void>;
     afterPublish?: () => Promise<void>;
     beforeRecoveryPublish?: () => Promise<void>;
+    afterWorktreePublish?: () => Promise<void>;
+}
+
+interface PreparedWorktreeTransition {
+    path: string;
+    before: Buffer;
+    after: Buffer;
+    recheckAfter: () => Promise<void>;
 }
 
 /** Publishes a prepared index atomically, with a recoverable CAS ref update for commits. */
@@ -57,12 +76,14 @@ export async function publishPartialIndex(
     newHead: string | undefined,
     recheck: () => Promise<void>,
     faults: PartialTransactionFaults = {},
+    worktree?: PreparedWorktreeTransition,
 ): Promise<void> {
+    assertWorktreeTransition(snapshot, newHead, worktree);
     const directory = await createTransactionDirectory(snapshot.gitDir);
     const bytes = await readFile(preparedIndex);
     await durableFile(path.join(directory, "index"), bytes);
     const journal: IndexJournal = {
-        schemaVersion: 1,
+        schemaVersion: worktree ? 2 : 1,
         root: snapshot.root,
         gitDir: snapshot.gitDir,
         indexPath: snapshot.indexPath,
@@ -72,13 +93,28 @@ export async function publishPartialIndex(
         preparedHash: changeFingerprint(bytes),
         newHead,
         pid: process.pid,
+        ...(worktree
+            ? {
+                  worktree: {
+                      path: worktree.path,
+                      beforeHash: changeFingerprint(worktree.before),
+                      afterHash: changeFingerprint(worktree.after),
+                      attributesHash: changeFingerprint(snapshot.attributes),
+                  },
+              }
+            : {}),
     };
+    if (worktree) {
+        await durableFile(path.join(directory, "worktree-before"), worktree.before);
+        await durableFile(path.join(directory, "worktree-after"), worktree.after);
+    }
     await writeJournal(directory, journal);
     const lockPath = `${snapshot.indexPath}.lock`;
     let lock: FileHandle | undefined;
     let lockAcquired = false;
     let published = false;
     let refUpdateStarted = false;
+    let worktreeWriteStarted = false;
     let completed = false;
     let durable = false;
     try {
@@ -114,6 +150,21 @@ export async function publishPartialIndex(
                 throw new Error("The branch changed after publishing the selected commit.");
             }
         }
+        if (worktree) {
+            await replaceMergeWorktreeFile(
+                snapshot.root,
+                worktree.path,
+                worktree.after,
+                async () => {
+                    await recheck();
+                    await assertPreparedLock(lockPath, journal);
+                    worktreeWriteStarted = true;
+                },
+            );
+            await syncDirectory(path.dirname(path.join(snapshot.root, worktree.path)));
+            await faults.afterWorktreePublish?.();
+            await worktree.recheckAfter();
+        }
         await assertPreparedLock(lockPath, journal);
         await rename(lockPath, snapshot.indexPath);
         completed = true;
@@ -123,30 +174,17 @@ export async function publishPartialIndex(
         if (newHead) {
             published = published || (await refPointsToCommit(executor, snapshot.ref, newHead));
         }
-        if (published && !completed) {
-            throw new PartialIndexPublicationError(
-                "The commit succeeded, but its index reconciliation needs recovery. Do not retry the commit.",
-                { cause: error },
-            );
-        }
-        if (completed) {
-            throw new PartialIndexPublicationError(
-                newHead
-                    ? "The commit succeeded, but its index durability needs recovery. Do not retry the commit."
-                    : "The selected changes were staged, but index durability needs recovery.",
-                { cause: error },
-            );
-        }
-        if (refUpdateStarted) {
-            throw new PartialIndexPublicationError(
-                "The selected commit publication could not be confirmed. Review Git history and recovery records before retrying.",
-                { cause: error },
-            );
-        }
-        throw error;
+        throw classifyPublicationFailure(error, {
+            published,
+            completed,
+            refUpdateStarted,
+            worktreeWriteStarted,
+            commit: Boolean(newHead),
+            worktree: Boolean(worktree),
+        });
     } finally {
         await lock?.close();
-        if (durable || (!refUpdateStarted && !published && !completed)) {
+        if (durable || (!refUpdateStarted && !worktreeWriteStarted && !published && !completed)) {
             await cleanupPartialRecord(directory, lockPath, journal, {
                 durable,
                 completed,
@@ -154,6 +192,55 @@ export async function publishPartialIndex(
             });
         }
     }
+}
+
+/** A file transition cannot share ref publication or smuggle another snapshot's preimage. */
+function assertWorktreeTransition(
+    snapshot: PartialFileSnapshot,
+    newHead: string | undefined,
+    worktree: PreparedWorktreeTransition | undefined,
+): void {
+    if (
+        worktree &&
+        (newHead ||
+            worktree.path !== snapshot.view.path ||
+            worktree.before.length > MAX_PARTIAL_TEXT_BYTES ||
+            worktree.after.length > MAX_PARTIAL_TEXT_BYTES ||
+            changeFingerprint(worktree.before) !== snapshot.worktreeHash)
+    )
+        throw new Error("Invalid selected-worktree transaction.");
+}
+
+/** Uncertain writes stay non-retryable even if a later read happens to look like the old state. */
+function classifyPublicationFailure(
+    error: unknown,
+    state: {
+        published: boolean;
+        completed: boolean;
+        refUpdateStarted: boolean;
+        worktreeWriteStarted: boolean;
+        commit: boolean;
+        worktree: boolean;
+    },
+): unknown {
+    let message: string;
+    if (state.published && !state.completed)
+        message =
+            "The commit succeeded, but its index reconciliation needs recovery. Do not retry the commit.";
+    else if (state.completed)
+        message = state.worktree
+            ? "The selected rollback succeeded, but its durability needs recovery. Do not repeat the rollback."
+            : state.commit
+              ? "The commit succeeded, but its index durability needs recovery. Do not retry the commit."
+              : "The selected changes were staged, but index durability needs recovery.";
+    else if (state.worktreeWriteStarted)
+        message =
+            "The selected worktree transition needs recovery. Do not repeat the rollback before reviewing recovery.";
+    else if (state.refUpdateStarted)
+        message =
+            "The selected commit publication could not be confirmed. Review Git history and recovery records before retrying.";
+    else return error;
+    return new PartialIndexPublicationError(message, { cause: error });
 }
 
 async function cleanupPartialRecord(
@@ -196,7 +283,21 @@ export async function preparePartialCommit(
     directory: string,
     message: string,
     expectedTree: string,
+    commitOptions: { amend?: boolean } = {},
 ): Promise<string> {
+    const original = commitOptions.amend
+        ? await executor.runBinary(["cat-file", "-p", snapshot.head], {
+              maxOutputBytes: 1024 * 1024,
+          })
+        : undefined;
+    if (original?.truncated)
+        throw new Error("The amended commit exceeds the supported header budget.");
+    // Historical author metadata need not be UTF-8; verification must preserve its exact bytes.
+    const originalHeaders = original?.stdout.toString("latin1").split("\n\n")[0].split("\n") ?? [];
+    const expectedParents = commitOptions.amend
+        ? originalHeaders.filter((line) => line.startsWith("parent ")).map((line) => line.slice(7))
+        : [snapshot.head];
+    const expectedAuthor = originalHeaders.find((line) => line.startsWith("author "));
     const isolatedGitDir = path.join(directory, "git");
     await mkdir(path.join(isolatedGitDir, "objects", "info"), { recursive: true, mode: 0o700 });
     await mkdir(path.join(isolatedGitDir, "refs"), { mode: 0o700 });
@@ -251,17 +352,20 @@ export async function preparePartialCommit(
         GIT_WORK_TREE: snapshot.root,
         GIT_INDEX_FILE: selectedIndex,
     };
-    await executor.runBinary([...options, "commit", "-m", message], {
-        env,
-        maxOutputBytes: 1024 * 1024,
-    });
+    await executor.runBinary(
+        [...options, "commit", ...(commitOptions.amend ? ["--amend"] : []), "-m", message],
+        {
+            env,
+            maxOutputBytes: 1024 * 1024,
+        },
+    );
     const result = await executor.runBinary([...options, "rev-parse", "--verify", "HEAD"], { env });
     const commit = result.stdout.toString("utf8").trim();
     const identity = await executor.runBinary([...options, "cat-file", "-p", commit], {
         env,
         maxOutputBytes: 1024 * 1024,
     });
-    const headers = identity.stdout.toString("utf8").split("\n\n")[0].split("\n");
+    const headers = identity.stdout.toString("latin1").split("\n\n")[0].split("\n");
     const tree = headers.find((line) => line.startsWith("tree "))?.slice(5);
     const parents = headers
         .filter((line) => line.startsWith("parent "))
@@ -269,8 +373,10 @@ export async function preparePartialCommit(
     if (
         identity.truncated ||
         tree !== expectedTree ||
-        parents.length !== 1 ||
-        parents[0] !== snapshot.head
+        parents.length !== expectedParents.length ||
+        parents.some((parent, index) => parent !== expectedParents[index]) ||
+        (commitOptions.amend &&
+            headers.find((line) => line.startsWith("author ")) !== expectedAuthor)
     ) {
         throw new Error(
             "A Git hook changed the selected commit. No commit was published; review its changes.",
@@ -293,7 +399,7 @@ async function isolatedCommitOptions(
             "config",
             "--null",
             "--get-regexp",
-            "^(user\\.(name|email|signingkey)|commit\\.(gpgsign|cleanup)|gpg\\..*)$",
+            "^(user\\.(name|email|signingkey)|commit\\.(gpgsign|cleanup)|gpg\\..*|i18n\\.commitencoding)$",
         ],
         { expectedExitCodes: [0, 1], maxOutputBytes: 64 * 1024 },
     );
@@ -302,6 +408,13 @@ async function isolatedCommitOptions(
     for (const entry of captured.stdout.toString("utf8").split("\0").filter(Boolean)) {
         const separator = entry.indexOf("\n");
         if (separator < 0) throw new Error("Invalid commit configuration.");
+        if (
+            entry.slice(0, separator).toLowerCase() === "i18n.commitencoding" &&
+            !/^utf-?8$/i.test(entry.slice(separator + 1))
+        )
+            throw new Error(
+                "Non-UTF-8 commit-message encoding requires the native commit workflow.",
+            );
         options.push("-c", `${entry.slice(0, separator)}=${entry.slice(separator + 1)}`);
     }
     const hooks = await executor.runBinary(["config", "--path", "--get", "core.hooksPath"], {
@@ -440,6 +553,8 @@ async function recoverOne(
     const currentHash = changeFingerprint(await readPartialIndex(journal));
     if (ref !== journal.ref)
         throw new RecoveryRefusal("The branch changed; partial-index recovery requires review.");
+    if (journal.worktree)
+        return recoverWorktreeIndex(executor, directory, journal, faults, head, ref, currentHash);
     if (head === (journal.newHead ?? journal.oldHead) && currentHash === journal.preparedHash) {
         await removePreparedIndexLock(`${journal.indexPath}.lock`, journal);
         await syncDirectory(journal.gitDir);
@@ -456,6 +571,106 @@ async function recoverOne(
             "The index or HEAD changed; partial-index recovery will not overwrite it.",
         );
     }
+    return reconcileRecoveryIndex(executor, directory, journal, faults, head, ref, currentHash);
+}
+
+/** Worktree recovery never writes a file: only a proven completed file transition may finish its index. */
+async function recoverWorktreeIndex(
+    executor: GitExecutor,
+    directory: string,
+    journal: IndexJournal,
+    faults: PartialTransactionFaults,
+    head: string,
+    ref: string,
+    currentHash: string,
+): Promise<boolean> {
+    const worktree = journal.worktree!;
+    if (head !== journal.oldHead)
+        throw new RecoveryRefusal(
+            "The branch changed after selected rollback; its recovery needs review.",
+        );
+    const verify = async (): Promise<string> => {
+        try {
+            if (
+                changeFingerprint(await readPartialAttributes(executor, worktree.path)) !==
+                worktree.attributesHash
+            )
+                throw new Error("Attributes changed.");
+            return changeFingerprint(await readPartialWorktree(journal.root, worktree.path));
+        } catch (error) {
+            throw new RecoveryRefusal(
+                "The selected worktree or its conversion changed; recovery will not overwrite it.",
+                { cause: error },
+            );
+        }
+    };
+    for (const [name, expected] of [
+        ["worktree-before", worktree.beforeHash],
+        ["worktree-after", worktree.afterHash],
+    ]) {
+        const file = path.join(directory, name);
+        try {
+            const stats = await lstat(file);
+            if (
+                !stats.isFile() ||
+                stats.isSymbolicLink() ||
+                stats.size > MAX_PARTIAL_TEXT_BYTES ||
+                changeFingerprint(await readFile(file)) !== expected
+            )
+                throw new Error("Invalid backup.");
+        } catch (error) {
+            throw new RecoveryRefusal("The selected-worktree recovery backup is corrupt.", {
+                cause: error,
+            });
+        }
+    }
+    const hash = await verify();
+    if (hash === worktree.beforeHash && currentHash === journal.indexHash) {
+        await releaseUnpublishedLock(`${journal.indexPath}.lock`, journal);
+        await rm(directory, { recursive: true, force: true });
+        return false;
+    }
+    if (hash !== worktree.afterHash)
+        throw new RecoveryRefusal(
+            "The selected worktree changed; its original backup is retained for review.",
+        );
+    if (currentHash === journal.preparedHash) {
+        await removePreparedIndexLock(`${journal.indexPath}.lock`, journal);
+        await syncDirectory(journal.gitDir);
+        await rm(directory, { recursive: true, force: true });
+        return true;
+    }
+    if (currentHash !== journal.indexHash)
+        throw new RecoveryRefusal(
+            "The index changed after selected rollback; recovery requires review.",
+        );
+    return reconcileRecoveryIndex(
+        executor,
+        directory,
+        journal,
+        faults,
+        head,
+        ref,
+        currentHash,
+        async () => {
+            if ((await verify()) !== worktree.afterHash)
+                throw new RecoveryRefusal(
+                    "The selected worktree changed during recovery; its backup is retained.",
+                );
+        },
+    );
+}
+
+async function reconcileRecoveryIndex(
+    executor: GitExecutor,
+    directory: string,
+    journal: IndexJournal,
+    faults: PartialTransactionFaults,
+    head: string,
+    ref: string,
+    currentHash: string,
+    verifyWorktree?: () => Promise<void>,
+): Promise<boolean> {
     const bytes = await readPartialIndex({
         gitDir: directory,
         indexPath: path.join(directory, "index"),
@@ -478,6 +693,8 @@ async function recoverOne(
         }
         await lock?.close();
         lock = undefined;
+        await faults.beforeRecoveryPublish?.();
+        await verifyWorktree?.();
         if (
             (await executor.run(["rev-parse", "--verify", "HEAD"])).trim() !== head ||
             (await readPartialRef(executor)) !== ref ||
@@ -485,7 +702,6 @@ async function recoverOne(
         ) {
             throw new RecoveryRefusal("The repository changed during partial-index recovery.");
         }
-        await faults.beforeRecoveryPublish?.();
         await assertRecoveryLock(lockPath, journal);
         await rename(lockPath, journal.indexPath);
         await syncDirectory(journal.gitDir);
@@ -658,7 +874,7 @@ async function parseJournal(
     }
     const journal = JSON.parse(await readFile(file, "utf8")) as IndexJournal;
     if (
-        journal.schemaVersion !== 1 ||
+        (journal.schemaVersion !== 1 && journal.schemaVersion !== 2) ||
         journal.root !== root ||
         journal.gitDir !== gitDir ||
         journal.indexPath !== path.join(gitDir, "index") ||
@@ -674,7 +890,26 @@ async function parseJournal(
     ) {
         throw new Error("Invalid partial-index recovery identity.");
     }
+    assertWorktreeJournal(journal);
     return journal;
+}
+
+/** Schema two fences file transitions from older clients that only understand index journals. */
+function assertWorktreeJournal(journal: IndexJournal): void {
+    if (journal.schemaVersion === 2) {
+        const worktree = journal.worktree;
+        if (
+            journal.newHead !== undefined ||
+            !worktree ||
+            typeof worktree.path !== "string" ||
+            assertRepoRelativePath(worktree.path) !== worktree.path ||
+            ![worktree.beforeHash, worktree.afterHash, worktree.attributesHash].every((hash) =>
+                /^[a-f0-9]{64}$/.test(hash),
+            )
+        )
+            throw new Error("Invalid selected-worktree recovery identity.");
+    } else if (journal.worktree !== undefined)
+        throw new Error("Unexpected worktree recovery metadata.");
 }
 
 async function ownsIndexLock(file: string, journal: IndexJournal): Promise<boolean> {

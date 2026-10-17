@@ -73,6 +73,7 @@ import {
 } from "./workingTree";
 import { parseStashFiles } from "./stashFiles";
 import { normalizeGitNumstatPath } from "./numstat";
+import { LAZY_WORKING_FILE_THRESHOLD, readWorkingFileStats } from "./workingFileStats";
 import { applyPatchTextToRepo } from "./patchApplication";
 import { EMPTY_TREE_HASH } from "../utils/constants";
 import {
@@ -746,7 +747,7 @@ export class GitOps {
      * can return large ignored directories.
      */
     async getStatus(
-        options: { includeIgnored?: boolean; withStats?: boolean } = {},
+        options: { includeIgnored?: boolean; withStats?: boolean | "lazy" } = {},
     ): Promise<WorkingFile[]> {
         const statusArgs = ["status", "--porcelain=v1", "-z", "-uall"];
         if (options.includeIgnored) statusArgs.push("--ignored");
@@ -756,6 +757,13 @@ export class GitOps {
         // row counts) pass `withStats: false` to skip the two numstat subprocesses,
         // turning a three-process status into a single one per repository.
         if (options.withStats === false) return files;
+        if (options.withStats === "lazy" && files.length > LAZY_WORKING_FILE_THRESHOLD) {
+            return files.map((file) =>
+                file.status === "?" || file.status === "!"
+                    ? file
+                    : { ...file, statsState: "pending" },
+            );
+        }
         const applyNumstat = (
             output: string,
             staged: boolean,
@@ -786,6 +794,15 @@ export class GitOps {
         applyNumstat(unstagedStat, false, "unstaged", unstagedStatsUnavailableMessage());
         applyNumstat(stagedStat, true, "staged", stagedStatsUnavailableMessage());
         return files;
+    }
+
+    /** Decorates only requested viewport paths from an already captured status snapshot. */
+    getWorkingFileStats(
+        files: readonly WorkingFile[],
+        paths: readonly string[],
+        signal?: AbortSignal,
+    ): Promise<WorkingFile[]> {
+        return readWorkingFileStats(this.executor, files, paths, signal);
     }
 
     /** Returns whether porcelain status reports any working-tree entry without loading numstat. */

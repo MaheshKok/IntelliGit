@@ -520,6 +520,14 @@ const WEBVIEW_ENTRIES = [
     { kind: "webview", id: "useSelection", mutating: false },
     { kind: "webview", id: "assignSelection", mutating: false },
     { kind: "webview", id: "openNative", mutating: false },
+    // Runtime viewport scenario: tests/e2e/partialChanges.spec.ts; no mutation decision is needed.
+    { kind: "webview", id: "requestWorkingFileStats", mutating: false },
+    {
+        kind: "webview",
+        id: "selectedOperation",
+        mutating: true,
+        coveredBySpec: "tests/e2e/partialChanges.spec.ts",
+    },
     {
         kind: "webview",
         id: "stageSelection",

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import path from "node:path";
 import type { GitOps } from "../git/operations";
 import type { PartialChanges } from "../git/partialChanges";
 import { ChangelistRevisionError, ChangelistStore } from "../changes/changelistStore";
@@ -12,11 +13,13 @@ import { assertRepoPathArray, assertString } from "./messageValidation";
 import { commitSelectedFromPanel, runGitOperationFromPanel } from "./commitPanelActions";
 import { showDiffFromPanel } from "./panelFileActions";
 import { getErrorMessage } from "../utils/errors";
-import { assertRepoRelativePath } from "../utils/fileOps";
-import { showTimedWarningMessage } from "../utils/notifications";
+import { showTimedInformationMessage, showTimedWarningMessage } from "../utils/notifications";
+import type { ShelfService } from "../services/shelfService";
 import { PartialIndexPublicationError } from "../git/partialIndexTransaction";
 import type { ChangelistState } from "../webviews/protocol/changeSelection";
 import type { PartialFileSnapshot } from "../git/partialSnapshot";
+import { writeSelectedPatch } from "./selectedPatchExport";
+import { assertRepoRelativePath } from "../utils/fileOps";
 import { ChangeRangeTracker } from "../changes/changeRangeTracker";
 import { rangeSnapshot } from "../changes/rangeMapping";
 
@@ -34,6 +37,7 @@ interface ChangeWorkflowDeps {
     mirrorDraft?(scope: string, text: string): void;
     postScopedCommit?(): void;
     clearLastCommit?(): boolean;
+    shelfService?: ShelfService;
 }
 type CommitPanelActionDeps = Parameters<typeof commitSelectedFromPanel>[0];
 
@@ -549,7 +553,19 @@ export class ChangeWorkflowHost {
                     }
                 }
                 const lists = this.store.view(this.deps.root);
-                return { file: view, contentId: snapshot.contentId, lists, listId };
+                return {
+                    file: view,
+                    contentId: snapshot.contentId,
+                    lists,
+                    listId,
+                    canShelf: this.deps.shelfService?.repositoryRoot === this.deps.root,
+                    lastCommitMessage: await this.partial
+                        .readCommitMessage(view.snapshotId)
+                        .catch((error: unknown) => {
+                            console.warn("[IntelliGit] Amend message prefill unavailable:", error);
+                            return "";
+                        }),
+                };
             },
             /** Holds the metadata lease across staging and restores prepared inclusion when an unpublished operation fails. */
             stage: async (selection) => {
@@ -609,8 +625,21 @@ export class ChangeWorkflowHost {
                     changeIds(snapshot.view.blocks).length,
                 );
             },
-            commit: async (selection, message) => {
+            operate: (selection, operation) =>
+                this.selectedOperation(file, listId, selection, operation),
+            commit: async (selection, message, amend) => {
                 const original = this.assertFileSelection(file, selection);
+                if (amend) {
+                    const action = vscode.l10n.t("Amend selected changes");
+                    const confirm = await vscode.window.showWarningMessage(
+                        vscode.l10n.t(
+                            "Amend the latest commit with only the selected changes? This rewrites its commit ID. No force push will be performed.",
+                        ),
+                        { modal: true },
+                        action,
+                    );
+                    if (confirm !== action) return undefined;
+                }
                 const selected = new Set(selection.lineIds);
                 const fingerprints = new Set(
                     original.view.blocks
@@ -643,6 +672,7 @@ export class ChangeWorkflowHost {
                         listId,
                         [file],
                         original,
+                        amend === true,
                     );
                     await this.consumeSelection([{ path: file, fingerprints }], listId);
                     await this.afterCommit(listId, message);
@@ -697,6 +727,183 @@ export class ChangeWorkflowHost {
         return snapshot;
     }
 
+    /** Native pickers own export destinations; shelf capture must finish before any selected removal. */
+    private async selectedOperation(
+        file: string,
+        scope: string,
+        selection: SelectedFileChanges,
+        operation: "export" | "save" | "shelve" | "rollback",
+    ): Promise<boolean> {
+        const snapshot = this.assertFileSelection(file, selection);
+        const guard = (files: readonly string[]) => assertChangeBuffersSaved(this.deps.root, files);
+        if (operation === "export") return this.exportSelection(snapshot, selection);
+        if (snapshot.view.side !== "working" && operation !== "save")
+            throw new Error("Selected removal requires working-tree changes.");
+        const shelf = this.deps.shelfService;
+        if (!shelf || shelf.repositoryRoot !== this.deps.root)
+            throw new Error("A shelf service for this repository is unavailable.");
+        const name =
+            operation === "rollback"
+                ? vscode.l10n.t("Before selected rollback: {path}", {
+                      path: [...path.basename(file)].slice(0, 60).join(""),
+                  })
+                : await vscode.window.showInputBox({
+                      title: vscode.l10n.t("Shelf selected changes"),
+                      value: [...path.basename(file)].slice(0, 40).join(""),
+                      validateInput: (value) =>
+                          !value.trim() || value.length > 80
+                              ? vscode.l10n.t("Enter a shelf name of 1 to 80 characters.")
+                              : undefined,
+                  });
+        if (name === undefined) return false;
+        if (operation !== "save") {
+            const action =
+                operation === "rollback"
+                    ? vscode.l10n.t("Rollback selected changes")
+                    : vscode.l10n.t("Shelve selected changes");
+            const confirmed = await vscode.window.showWarningMessage(
+                operation === "rollback"
+                    ? vscode.l10n.t(
+                          "Roll back the selected changes in {path}? A recovery shelf will be kept; other changes are preserved.",
+                          { path: file },
+                      )
+                    : vscode.l10n.t(
+                          "Save and remove only the selected changes in {path}? Other changes are preserved.",
+                          { path: file },
+                      ),
+                { modal: true },
+                action,
+            );
+            if (confirmed !== action) return false;
+        }
+        let saved = false;
+        try {
+            await this.runCommit(async () => {
+                const patch = await this.partial.exportPatch(selection, guard);
+                const result = await shelf.saveSelectedChanges(
+                    {
+                        name,
+                        path: file,
+                        baseCommit: snapshot.head,
+                        base: Buffer.from(snapshot.view.base),
+                        patch,
+                    },
+                    () => this.partial.validate(selection, guard),
+                );
+                if (result.status !== "ok" || !result.shelfId)
+                    throw new Error("The selected shelf was not durably saved.");
+                saved = true;
+                if (operation === "save") return;
+                const previous = this.store.get(this.deps.root);
+                const prepared = await this.store.prepareCommitInclusion(
+                    this.deps.root,
+                    previous.revision,
+                    scope,
+                    [
+                        {
+                            path: file,
+                            contentId: snapshot.contentId,
+                            lineIds: selection.lineIds,
+                            total: changeIds(snapshot.view.blocks).length,
+                        },
+                    ],
+                );
+                try {
+                    await this.partial.rollback(selection, guard);
+                } catch (error) {
+                    await this.restoreFailedInclusion(
+                        error,
+                        previous,
+                        prepared,
+                        scope,
+                        [file],
+                        snapshot,
+                        vscode.l10n.t(
+                            "Selected removal was not published, but its selection metadata needs review.",
+                        ),
+                    );
+                    throw error;
+                }
+                const selected = new Set(selection.lineIds);
+                await this.consumeSelection(
+                    [
+                        {
+                            path: file,
+                            fingerprints: new Set(
+                                snapshot.view.blocks
+                                    .flatMap((block) => block.lines)
+                                    .filter((line) => selected.has(line.id))
+                                    .map((line) => line.fingerprint),
+                            ),
+                        },
+                    ],
+                    scope,
+                    vscode.l10n.t(
+                        "Selected changes were removed, but their list metadata needs review. Do not repeat the rollback.",
+                    ),
+                );
+            });
+        } catch (error) {
+            if (saved)
+                showTimedWarningMessage(
+                    vscode.l10n.t(
+                        "The selection is saved in shelf {name}, but its removal did not finish. Review the file and recovery before retrying.",
+                        { name },
+                    ),
+                );
+            throw error;
+        } finally {
+            if (saved) {
+                const results = await Promise.allSettled([
+                    this.deps.actions.refreshData(),
+                    this.deps.actions.refreshGraphData?.() ?? Promise.resolve(),
+                ]);
+                for (const result of results)
+                    if (result.status === "rejected")
+                        console.error(
+                            "[IntelliGit] Selected-operation refresh failed:",
+                            result.reason,
+                        );
+                try {
+                    this.deps.actions.fireWorkingTreeChanged();
+                } catch (error) {
+                    console.error("[IntelliGit] Selected-operation notification failed:", error);
+                }
+            }
+        }
+        try {
+            showTimedInformationMessage(
+                vscode.l10n.t("Selected changes saved in shelf {name}.", { name }),
+            );
+        } catch (error) {
+            console.error("[IntelliGit] Selected-operation success notification failed:", error);
+        }
+        return true;
+    }
+
+    /** The browser supplies no filename: only the native Save dialog grants an export destination. */
+    private async exportSelection(
+        snapshot: PartialFileSnapshot,
+        selection: SelectedFileChanges,
+    ): Promise<boolean> {
+        const target = await vscode.window.showSaveDialog({
+            defaultUri: vscode.Uri.file(
+                path.join(this.deps.root, `${path.basename(snapshot.view.path)}.selected.patch`),
+            ),
+            filters: { Patch: ["patch"] },
+        });
+        if (!target) return false;
+        const patch = await this.partial.exportPatch(selection, (files) =>
+            assertChangeBuffersSaved(this.deps.root, files),
+        );
+        await writeSelectedPatch(target, snapshot, patch, () =>
+            this.partial.validate(selection, (files) =>
+                assertChangeBuffersSaved(this.deps.root, files),
+            ),
+        );
+        return true;
+    }
+
     /** Keeps exact inclusion and ownership fences while obtaining review for stale structural files. */
     private async reviewCommitPaths(
         paths: readonly string[],
@@ -738,7 +945,10 @@ export class ChangeWorkflowHost {
                 vscode.l10n.t("Commit partial text and structural changes separately."),
             );
         if (hasPartial) {
-            if (amend) throw new Error("Partial amend requires the whole-file commit workflow.");
+            if (amend)
+                throw new Error(
+                    "Review and amend partial selections in the selected-change editor.",
+                );
             if (paths.length > 64) throw new Error("Select 1 to 64 text files.");
             return "partial";
         }
@@ -954,9 +1164,12 @@ export class ChangeWorkflowHost {
         scope: string,
         paths: readonly string[],
         snapshot: Pick<PartialFileSnapshot, "root" | "gitDir" | "head" | "ref">,
+        amend = false,
     ): Promise<string> {
         try {
-            return await this.partial.commit(selections, message, guard);
+            return amend
+                ? await this.partial.commit(selections, message, guard, {}, { amend: true })
+                : await this.partial.commit(selections, message, guard);
         } catch (error) {
             await this.restoreFailedInclusion(
                 error,
@@ -1020,6 +1233,9 @@ export class ChangeWorkflowHost {
     private async consumeSelection(
         files: readonly { path: string; fingerprints: ReadonlySet<string> }[],
         scope: string,
+        warning = vscode.l10n.t(
+            "Selected commit succeeded, but its selection metadata needs review. Do not retry the commit.",
+        ),
     ): Promise<void> {
         try {
             for (const file of files) {
@@ -1047,11 +1263,7 @@ export class ChangeWorkflowHost {
                 "[IntelliGit] Selected commit inclusion needs review after completion:",
                 error,
             );
-            this.warnCommitReview(
-                vscode.l10n.t(
-                    "Selected commit succeeded, but its selection metadata needs review. Do not retry the commit.",
-                ),
-            );
+            this.warnCommitReview(warning);
         }
     }
 

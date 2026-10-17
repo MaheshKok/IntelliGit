@@ -6302,7 +6302,10 @@ describe("view providers integration", () => {
             expandedWatcher!.trigger("change", "/repo-b/src/b.ts");
             await vi.advanceTimersByTimeAsync(300);
 
-            expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+            expect(repoBGitOps.getStatus).toHaveBeenCalledWith({
+                includeIgnored: false,
+                withStats: "lazy",
+            });
             expect(gitOps.getStatus).not.toHaveBeenCalled();
             expect(postMessageSpy).toHaveBeenCalledWith(
                 expect.objectContaining({ type: "update", repositoryRoot: "/repo-b" }),
@@ -6426,7 +6429,10 @@ describe("view providers integration", () => {
 
         expect(repoBGitOps.stageFiles).toHaveBeenCalledWith(["src/b.ts"]);
         expect(gitOps.stageFiles).not.toHaveBeenCalled();
-        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({
+            includeIgnored: false,
+            withStats: "lazy",
+        });
         expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "update",
@@ -6516,7 +6522,10 @@ describe("view providers integration", () => {
         }
 
         expect(repoBGitOps.fetch).toHaveBeenCalledTimes(1);
-        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({
+            includeIgnored: false,
+            withStats: "lazy",
+        });
         expect(repoBGitOps.listStashes).toHaveBeenCalledTimes(1);
         expect(repoBGitOps.getLog).not.toHaveBeenCalled();
         expect(gitOps.getLog).not.toHaveBeenCalled();
@@ -6567,7 +6576,10 @@ describe("view providers integration", () => {
         await webview.send({ type: "abortMerge", repositoryRoot: "/repo-b" });
 
         expect(repoBGitOps.abortMerge).toHaveBeenCalledTimes(1);
-        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({
+            includeIgnored: false,
+            withStats: "lazy",
+        });
         expect(repoBGitOps.listStashes).toHaveBeenCalledTimes(1);
         expect(repoBGitOps.getLog).not.toHaveBeenCalled();
         expect(gitOps.getLog).not.toHaveBeenCalled();

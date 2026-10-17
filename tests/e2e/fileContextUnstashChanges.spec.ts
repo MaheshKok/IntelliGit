@@ -220,6 +220,11 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         await writeFile(path.join(b, "selected.txt"), "branch worktree\n");
         git(b, env, ["stash", "push", "-m", "branch"]);
         const branchOid = git(b, env, ["rev-parse", "stash@{0}"]);
+        await dismissStashSuccessNotifications(page);
+        const branchNotice = page.locator(".notifications-toasts .notification-toast").filter({
+            hasText: "IntelliGit: Stash applied on branch feature/native-unstash and removed.",
+        });
+        await expect(branchNotice).toBeHidden();
         await chooseExplorerUnstash(page, file);
         await pick(page, "stash@{0}");
         await pick(page, "As New Branch…");
@@ -227,6 +232,8 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         await expect(branchInput).toBeVisible();
         await branchInput.fill("feature/native-unstash");
         await branchInput.press("Enter");
+        // The new ref is visible before Git finishes replacing files and restoring the index.
+        await expect(branchNotice).toBeVisible();
         await expect
             .poll(() => git(b, env, ["branch", "--show-current"]))
             .toBe("feature/native-unstash");
