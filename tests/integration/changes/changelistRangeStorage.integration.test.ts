@@ -19,7 +19,11 @@ import type { ChangelistState } from "../../../src/webviews/protocol/changeSelec
 import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { changeFingerprint as hash, parseChangeDiff } from "../../../src/changes/parseDiff";
 import { rangeSnapshot } from "../../../src/changes/rangeMapping";
-import { MAX_PARTIAL_TEXT_BYTES } from "../../../src/git/partialSnapshot";
+import {
+    MAX_PARTIAL_TEXT_BYTES,
+    PartialChangesUnsupportedError,
+} from "../../../src/git/partialSnapshot";
+import { validSnapshot } from "../../../src/changes/rangeMetadata";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 vi.mock("node:fs/promises", async (importOriginal) => ({
@@ -73,6 +77,33 @@ function snapshot(file: string, lineCount: number, version?: number) {
 }
 
 describe("durable range evidence", () => {
+    it("rejects fresh evidence over the byte budget as unsupported before publication", async () => {
+        const evidence = snapshot("large.txt", 1);
+        const lineHash = hash("line");
+        evidence.baseLines = Array.from({ length: 100_000 }, () => lineHash);
+        evidence.workingLines = [...evidence.baseLines];
+        evidence.anchors = Array.from({ length: 100_000 }, (_, index) => ({
+            id: `0:${index}`,
+            fingerprint: hash(String(index)),
+            kind: "remove" as const,
+            line: index,
+            hash: lineHash,
+            context: [lineHash, lineHash, lineHash, lineHash, lineHash],
+        }));
+        expect(validSnapshot(evidence)).toBe(true);
+        expect(Buffer.byteLength(JSON.stringify(evidence))).toBeGreaterThan(64 * 1024 * 1024);
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+
+        await expect(persistence.storeSnapshot("large.txt", evidence)).rejects.toBeInstanceOf(
+            PartialChangesUnsupportedError,
+        );
+
+        await expect(readFile(persistence.filename)).rejects.toMatchObject({ code: "ENOENT" });
+        await expect(readdir(persistence.evidenceDirectory)).rejects.toMatchObject({
+            code: "ENOENT",
+        });
+    });
+
     it("aggregate range evidence does not block drafts or assignments", async () => {
         const fixtures = Array.from({ length: 32 }, (_, file) => ({
             file: `file-${file}.txt`,
