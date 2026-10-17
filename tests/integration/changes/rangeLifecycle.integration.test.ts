@@ -171,6 +171,46 @@ describe("range ownership across real Git lifecycle operations", () => {
         expect(await readFile(path.join(root, "other.txt"), "utf8")).toBe("unobserved edit\n");
     });
 
+    it.each([false, true])(
+        "keeps an oversized rewrite reviewable without losing evidence (tracked=%s)",
+        async (tracked) => {
+            const filename = path.join(root, "large.txt");
+            const original = Array.from({ length: 50_001 }, (_, index) => `base ${index}\n`).join(
+                "",
+            );
+            const rewritten = Array.from({ length: 50_001 }, (_, index) => `new ${index}\n`).join(
+                "",
+            );
+            await writeFile(filename, original);
+            git("add", "large.txt");
+            git("commit", "-qm", "large base");
+            if (tracked) {
+                await writeFile(filename, original.replace("base 0\n", "first edit\n"));
+                await refresh();
+            }
+            const previous = store.get(root).changes["large.txt"];
+            if (tracked) expect(previous?.tracking).toBeDefined();
+            const indexBefore = git("write-tree");
+            await writeFile(filename, rewritten);
+
+            await expect(
+                refresh(),
+                "oversized fresh evidence must not abort refresh",
+            ).resolves.toBeUndefined();
+
+            expect(store.get(root).changes["large.txt"]).toEqual(
+                tracked ? { ...previous, stale: true } : undefined,
+            );
+            expect(await readFile(filename, "utf8")).toBe(rewritten);
+            expect(git("write-tree")).toBe(indexBefore);
+            await expect(
+                refresh(),
+                "unsupported content must remain refreshable",
+            ).resolves.toBeUndefined();
+        },
+        30_000,
+    );
+
     it("keeps known unsupported new binary content in the whole-file workflow", async () => {
         const bytes = Buffer.from([0, 1, 2, 255]);
         await writeFile(path.join(root, "other.txt"), bytes);

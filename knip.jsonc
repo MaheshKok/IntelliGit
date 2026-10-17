@@ -26,6 +26,7 @@
         // imports it, so without an entry knip reads a deliberately standalone
         // measurement tool as a dead file.
         "scripts/measure-diff-budgets.ts",
+        "scripts/benchmark-changelist-storage.ts",
     ],
     "project": ["src/**/*.{ts,tsx}", "scripts/**/*.{js,ts}", "tests/**/*.{ts,tsx}"],
     // Spawned by path from the shelf crash suite rather than imported, so knip
