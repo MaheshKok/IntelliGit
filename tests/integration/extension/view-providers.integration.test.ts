@@ -1057,7 +1057,7 @@ async function nativePartialProviderFixture() {
         }),
     );
     provider.setRepositories(
-        roots.map((root) => ({ root, name: path.basename(root), isWorktree: false })),
+        roots.map((root) => ({ root, label: path.basename(root), kind: "repository" as const })),
         roots[0],
     );
     await vi.waitFor(() => expect(attached).toEqual(expect.arrayContaining(roots)));
@@ -1166,6 +1166,25 @@ describe("view providers integration", () => {
             );
         } finally {
             calls.mockRestore();
+            await fixture.dispose();
+        }
+    });
+
+    it("native partial entry normalizes Git root spelling before runtime lookup", async () => {
+        const fixture = await nativePartialProviderFixture();
+        const gitRoot = `${fixture.roots[1].split(path.sep).join("/")}/.`;
+        try {
+            await expect(
+                fixture.provider.openPartialChanges(gitRoot, "file.txt"),
+                "Git root spelling must resolve the known repository",
+            ).resolves.toBeUndefined();
+            await createdWebviewPanels.at(-1)!.send({ type: "ready" });
+            expect(JSON.stringify(postMessageSpy.mock.calls)).toContain("repository b change");
+            expect(
+                (fixture.provider as unknown as { activeRepositoryRoot: string })
+                    .activeRepositoryRoot,
+            ).toBe(fixture.roots[0]);
+        } finally {
             await fixture.dispose();
         }
     });
