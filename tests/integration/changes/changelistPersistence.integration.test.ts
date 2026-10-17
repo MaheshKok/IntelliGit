@@ -361,7 +361,7 @@ describe("authoritative worktree changelist persistence", () => {
         state = await store.recordSelection(root, "file.txt", "content", "all", [], 4);
         const old = structuredClone(legacy.get("intelligit.changelists.v1"));
         await store.connect(root, gitDir);
-        expect(legacy.get("intelligit.changelists.v1")).toMatchObject({ schemaVersion: 3 });
+        expect(legacy.get("intelligit.changelists.v1")).toMatchObject({ schemaVersion: 4 });
         const backupPath = path.join(gitDir, "intelligit/changelists/migration.json");
         const backup = await readFile(backupPath, "utf8");
         expect(JSON.parse(backup).legacy).toEqual(old);

@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open aggregate partial changes from local editor and native working-diff context menus, the editor-title context menu, or the command palette. The selected file's repository is used without changing the active changelist, commit scope, or drafts; existing selected-line assignment and partial workflows remain available.
 - This first Phase 3 slice adds native entry points. Scoped chunk moves, drag/drop, ownership decoration, inclusion polish, and empty-list cleanup remain later Phase 3 work.
 
+### Fixed
+
+- Keep changelist drafts and assignments writable when aggregate range evidence exceeds the old metadata budget. Immutable per-file evidence preserves complete ownership mapping and recent undo/redo while keeping revision polling and metadata edits independent of unrelated line arrays.
+- Upgrade existing worktree metadata losslessly with retained recovery backups; reject missing, corrupt or cross-worktree evidence without overwriting it.
+
 ## [0.38.2] - 2026-10-15
 
 This release delivers the stable-ownership and persistence phase of changelists. Direct editor interactions and operation adapters remain separate follow-ups.

@@ -1,6 +1,21 @@
 import { changeFingerprint } from "./parseDiff";
 import type { PartialFileSnapshot } from "../git/partialSnapshot";
-import type { ChangeOwnership, RangeSnapshot } from "../webviews/protocol/changeSelection";
+import type {
+    ChangeOwnership,
+    ChangelistState,
+    RangeSnapshot,
+} from "../webviews/protocol/changeSelection";
+
+/** Complete evidence exists only inside a reconciliation transaction or legacy migration. */
+export type HydratedChangeOwnership = Omit<ChangeOwnership, "tracking" | "history"> & {
+    tracking?: RangeSnapshot;
+    history?: { snapshot: RangeSnapshot; lines: Record<string, string> }[];
+};
+
+/** Legacy inline metadata retained only for lossless migration and disconnected workspace saves. */
+export type HydratedChangelistState = Omit<ChangelistState, "changes"> & {
+    changes: Record<string, HydratedChangeOwnership>;
+};
 
 /** Captures coordinates plus cryptographic content/context evidence from a host-validated diff. */
 export function rangeSnapshot(snapshot: PartialFileSnapshot): RangeSnapshot {
@@ -88,11 +103,11 @@ function uniqueContexts(lines: readonly string[], radius: number): Map<string, n
  * evidence and fences the entire file; it can never become an implicit whole-file selection.
  */
 export function reconcileRanges(
-    previous: ChangeOwnership | undefined,
+    previous: HydratedChangeOwnership | undefined,
     next: RangeSnapshot,
     fallback: string,
     active: string,
-): ChangeOwnership {
+): HydratedChangeOwnership {
     if (previous?.tracking && previous.contentId === next.contentId && !previous.stale)
         return previous;
     const old = previous?.tracking;
@@ -172,9 +187,9 @@ function matchRanges(
 
 /** Bootstrap only an exact legacy content fence; mismatched migration records remain reviewable. */
 function initializeRanges(
-    previous: ChangeOwnership | undefined,
+    previous: HydratedChangeOwnership | undefined,
     next: RangeSnapshot,
-): ChangeOwnership {
+): HydratedChangeOwnership {
     if (previous && (previous.stale || previous.contentId !== next.contentId))
         return refused(previous, next);
     return {
@@ -231,10 +246,10 @@ function newOwner(
 
 /** An explicit empty selection remains empty; nonempty selections require an exact bijection. */
 function mapSelections(
-    previous: ChangeOwnership,
+    previous: HydratedChangeOwnership,
     next: RangeSnapshot,
     ids: ReadonlyMap<string, string>,
-): ChangeOwnership["selections"] {
+): HydratedChangeOwnership["selections"] {
     if (!previous.selections) return undefined;
     return Object.fromEntries(
         Object.entries(previous.selections).map(([scope, selection]) => {
@@ -263,7 +278,7 @@ function mapSelections(
 }
 
 /** Preserve original anchors and choices for inspection instead of guessing ownership. */
-function refused(previous: ChangeOwnership, next: RangeSnapshot): ChangeOwnership {
+function refused(previous: HydratedChangeOwnership, next: RangeSnapshot): HydratedChangeOwnership {
     if (previous.stale && previous.contentId === next.contentId && previous.tracking)
         return previous;
     return {

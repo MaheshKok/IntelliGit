@@ -1,13 +1,20 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import { changeFingerprint } from "./parseDiff";
 import { assertRepoRelativePath } from "../utils/repoRelativePath";
 import type {
     ChangelistState,
     ChangeOwnership,
     RangeSnapshot,
+    RangeSnapshotReference,
 } from "../webviews/protocol/changeSelection";
-import { ChangelistPersistence } from "./changelistPersistence";
-import { reconcileRanges } from "./rangeMapping";
-import { validRangeMetadata } from "./rangeMetadata";
+import { ChangelistPersistence, ChangelistEvidenceError } from "./changelistPersistence";
+import {
+    reconcileRanges,
+    type HydratedChangeOwnership,
+    type HydratedChangelistState,
+} from "./rangeMapping";
+import { validRangeMetadata, validSnapshot, snapshotReference } from "./rangeMetadata";
 
 interface MetadataStorage {
     get<T>(key: string): T | undefined;
@@ -61,9 +68,14 @@ function nameFor(value: string): string {
     return name;
 }
 
-/** A stable validator identity permits reuse of already-validated authoritative schema-3 state. */
+/** A stable validator identity permits reuse of already-validated authoritative schema-4 state. */
 function parseDurableState(value: unknown): ChangelistState | undefined {
-    return parseState(value, 2);
+    return parseState(value, 2, false);
+}
+
+/** Legacy validation is isolated from compact schema-4 parsing. */
+function parseLegacyState(value: unknown): HydratedChangelistState | undefined {
+    return parseState(value, 2, true);
 }
 
 /** Serialized, revisioned worktree metadata shared by docked and undocked providers. */
@@ -77,6 +89,9 @@ export class ChangelistStore {
     private readonly mirrorScopes = new Map<string, string>();
     private readonly durable = new Map<string, ChangelistPersistence>();
     private requiresConnection = false;
+    private readonly seeds = new Map<string, HydratedChangelistState>();
+    private readonly hydratedReferences = new WeakMap<RangeSnapshot, RangeSnapshotReference>();
+    private readonly evidence = new Map<string, Map<string, RangeSnapshot>>();
 
     /** Reuses the workspace store so independent panels cannot overwrite each other's lists. */
     static forStorage(storage?: MetadataStorage): ChangelistStore {
@@ -97,13 +112,13 @@ export class ChangelistStore {
             typeof saved !== "object" ||
             !("entries" in saved) ||
             !("schemaVersion" in saved) ||
-            ![1, 2, 3].includes(saved.schemaVersion as number)
+            ![1, 2, 3, 4].includes(saved.schemaVersion as number)
         ) {
             this.loadError = "Changelist metadata is invalid and will not be overwritten.";
             return;
         }
         const entries = (saved as { entries?: unknown }).entries;
-        this.requiresConnection = saved.schemaVersion === 3;
+        this.requiresConnection = saved.schemaVersion === 3 || saved.schemaVersion === 4;
         if (!Array.isArray(entries) || entries.length > 128) {
             this.loadError = "Changelist metadata is invalid and will not be overwritten.";
             return;
@@ -119,7 +134,7 @@ export class ChangelistStore {
                 this.loadError = "Changelist metadata is invalid and will not be overwritten.";
                 return;
             }
-            const state = parseState(entry.state, saved.schemaVersion === 1 ? 1 : 2);
+            const state = parseState(entry.state, saved.schemaVersion === 1 ? 1 : 2, true);
             if (!state) {
                 this.loadError = "Changelist metadata is invalid and will not be overwritten.";
                 return;
@@ -135,7 +150,8 @@ export class ChangelistStore {
                 }
                 state.allDraft = typeof legacyDraft === "string" ? legacyDraft : "";
             }
-            this.roots.set(entry.root, state);
+            this.seeds.set(entry.root, state);
+            this.roots.set(entry.root, this.compactMemoryState(entry.root, state));
         }
         if (saved.schemaVersion === 1) this.migrationSource = structuredClone(saved);
     }
@@ -147,6 +163,16 @@ export class ChangelistStore {
 
     /** Returns an independent snapshot without exposing mutable host-owned maps. */
     get(root: string): ChangelistState {
+        return structuredClone(this.authoritative(root));
+    }
+
+    /** Revision polling validates authoritative metadata without cloning any ownership or evidence. */
+    revision(root: string): number {
+        return this.authoritative(root).revision;
+    }
+
+    /** Borrowed compact state remains private; callers receive independent snapshots through get. */
+    private authoritative(root: string): ChangelistState {
         if (this.loadError) throw new Error(this.loadError);
         const persistence = this.durable.get(root);
         if (persistence) {
@@ -155,7 +181,7 @@ export class ChangelistStore {
             this.roots.set(root, saved);
         }
         const existing = this.roots.get(root);
-        if (existing) return structuredClone(existing);
+        if (existing) return existing;
         const state = emptyState();
         const legacy = this.storage?.get<unknown>(`commitDraft:${root}`);
         if (legacy !== undefined && (typeof legacy !== "string" || legacy.length > MAX_DRAFT))
@@ -171,17 +197,21 @@ export class ChangelistStore {
     async connect(root: string, gitDir: string): Promise<void> {
         const operation = this.writes.then(async () => {
             if (this.durable.has(root)) return;
-            const seed = this.get(root);
+            const seed = this.seeds.get(root) ?? (await this.hydrateState(root, this.get(root)));
             const persistence = await ChangelistPersistence.open(root, gitDir);
             const release = await persistence.acquire();
             try {
-                const existing = persistence.read(parseDurableState);
-                if (
-                    existing &&
-                    this.roots.has(root) &&
-                    JSON.stringify(existing) !== JSON.stringify(seed) &&
-                    !persistence.migratedFrom(root, seed)
-                ) {
+                const legacy = await persistence.readLegacy(parseLegacyState);
+                const existing = legacy ? undefined : persistence.read(parseDurableState);
+                const existingMatches =
+                    !this.roots.has(root) ||
+                    persistence.migratedFrom(root, seed) ||
+                    (legacy
+                        ? isDeepStrictEqual(legacy.state, seed)
+                        : existing
+                          ? await this.matchesSeed(root, existing, seed, persistence)
+                          : true);
+                if (!existingMatches) {
                     await persistence.preserveConflict({
                         legacy: this.storage?.get(STORAGE_KEY),
                         root,
@@ -189,23 +219,26 @@ export class ChangelistStore {
                     });
                     throw new Error("Conflicting changelist migration metadata requires review.");
                 }
-                const entries = [...this.roots].map(([key, state]) => ({ root: key, state }));
-                if (!existing && !entries.some((entry) => entry.root === root))
-                    entries.push({ root, state: seed });
-                if (!existing)
+                if (!existing && !legacy)
                     await persistence.backup({
                         legacy: this.storage?.get(STORAGE_KEY),
                         root,
                         state: seed,
                     });
+                if (legacy) await persistence.backupLegacy(legacy.bytes);
+                const state =
+                    existing ?? (await this.compactState(root, legacy?.state ?? seed, persistence));
+                await persistence.validateEvidence(state);
                 if (this.migrationSource !== undefined) await this.backupMigration();
-                // Old parsers refuse schema 3 even if publication is interrupted after this point.
-                if (!this.requiresConnection)
-                    await this.storage?.update(STORAGE_KEY, { schemaVersion: 3, entries });
+                const hasSeed = this.roots.has(root) || (!existing && !legacy);
+                await this.publishConnectionSentinel(root, seed, hasSeed);
                 this.requiresConnection = true;
-                if (!existing) await persistence.write(seed);
+                if (!existing) await persistence.write(state);
+                await persistence.collect(undefined, state);
+                if (hasSeed) this.seeds.set(root, seed);
                 this.durable.set(root, persistence);
-                this.roots.set(root, existing ?? seed);
+                this.roots.set(root, state);
+                this.evidence.delete(root);
                 this.migrationSource = undefined;
             } finally {
                 await release();
@@ -216,6 +249,23 @@ export class ChangelistStore {
             () => undefined,
         );
         return operation;
+    }
+
+    /** Preserves real workspace seeds, omits invented adoption intent, and avoids unchanged sentinel writes. */
+    private async publishConnectionSentinel(
+        root: string,
+        seed: HydratedChangelistState,
+        hasSeed: boolean,
+    ): Promise<void> {
+        const seeds = new Map(this.seeds);
+        if (hasSeed && !seeds.has(root)) seeds.set(root, seed);
+        // Detached references never enter workspace storage; old clients refuse the new sentinel.
+        const sentinel = {
+            schemaVersion: 4,
+            entries: [...seeds].map(([key, value]) => ({ root: key, state: value })),
+        };
+        if (JSON.stringify(this.storage?.get(STORAGE_KEY)) !== JSON.stringify(sentinel))
+            await this.storage?.update(STORAGE_KEY, sentinel);
     }
 
     /** Browser snapshots omit potentially large host-only range evidence and undo history. */
@@ -236,14 +286,14 @@ export class ChangelistStore {
         revision?: number,
     ): Promise<ChangelistState> {
         const safe = assertRepoRelativePath(file);
-        return this.write(root, revision, (state) => {
+        return this.write(root, revision, async (state) => {
             const fallback = state.files[safe] ?? state.activeId;
             state.files[safe] = fallback;
-            state.changes[safe] = reconcileRanges(
-                state.changes[safe],
-                snapshot,
-                fallback,
-                state.activeId,
+            const previous = await this.hydrate(root, safe, state.changes[safe]);
+            state.changes[safe] = await this.compact(
+                root,
+                safe,
+                reconcileRanges(previous, snapshot, fallback, state.activeId),
             );
         });
     }
@@ -323,7 +373,7 @@ export class ChangelistStore {
                         !change.history?.some(
                             ({ snapshot }) =>
                                 snapshot.baseHash === change.tracking?.baseHash &&
-                                snapshot.anchors.length > 0,
+                                snapshot.anchorCount > 0,
                         );
                     if (!current.has(file) && (!change || consumed)) {
                         delete state.files[file];
@@ -765,7 +815,7 @@ export class ChangelistStore {
     private async write(
         root: string,
         revision: number | undefined,
-        mutate: (state: ChangelistState) => void,
+        mutate: (state: ChangelistState) => void | Promise<void>,
         userMutation = true,
     ): Promise<ChangelistState> {
         const operation = this.writes
@@ -796,7 +846,7 @@ export class ChangelistStore {
                         string,
                         ChangeOwnership
                     >;
-                    mutate(next);
+                    await mutate(next);
                     if (
                         JSON.stringify(before) === JSON.stringify(next) &&
                         this.migrationSource === undefined &&
@@ -806,25 +856,40 @@ export class ChangelistStore {
                     next.revision++;
                     if (persistence) {
                         await persistence.write(next);
+                        await persistence.collect(before, next);
                         this.roots.set(root, next);
                         this.notify(root, next);
                         return structuredClone(next);
                     }
-                    const entries = [...this.roots]
-                        .filter(([key]) => key !== root)
-                        .map(([key, state]) => ({ root: key, state }));
-                    entries.push({ root, state: next });
-                    if (entries.length > 128) throw new Error("Too many changelist repositories.");
-                    if (Buffer.byteLength(JSON.stringify(entries)) > 4 * 1024 * 1024) {
-                        throw new Error("Changelist metadata exceeds its storage budget.");
+                    if (this.storage) {
+                        const entries = [];
+                        for (const [key, value] of this.roots) {
+                            if (key !== root)
+                                entries.push({
+                                    root: key,
+                                    state: await this.hydrateState(key, value),
+                                });
+                        }
+                        const seed = await this.hydrateState(root, next);
+                        entries.push({ root, state: seed });
+                        if (entries.length > 128)
+                            throw new Error("Too many changelist repositories.");
+                        if (Buffer.byteLength(JSON.stringify(entries)) > 4 * 1024 * 1024)
+                            throw new Error("Changelist metadata exceeds its storage budget.");
+                        if (this.migrationSource !== undefined) await this.backupMigration();
+                        await this.storage.update(STORAGE_KEY, { schemaVersion: 2, entries });
+                        this.seeds.set(root, seed);
                     }
-                    if (this.migrationSource !== undefined) await this.backupMigration();
-                    await this.storage?.update(STORAGE_KEY, {
-                        schemaVersion: this.durable.size ? 3 : 2,
-                        entries,
-                    });
                     this.migrationSource = undefined;
                     this.roots.set(root, next);
+                    const live = new Set(
+                        Object.values(next.changes).flatMap((ownership) => [
+                            ...(ownership.tracking ? [ownership.tracking.blob] : []),
+                            ...(ownership.history ?? []).map((entry) => entry.snapshot.blob),
+                        ]),
+                    );
+                    for (const blob of this.evidence.get(root)?.keys() ?? [])
+                        if (!live.has(blob)) this.evidence.get(root)!.delete(blob);
                     this.notify(root, next);
                     return structuredClone(next);
                 } finally {
@@ -861,13 +926,17 @@ export class ChangelistStore {
         return this.write(
             root,
             undefined,
-            (state) => {
+            async (state) => {
                 const previous = snapshot
-                    ? reconcileRanges(
-                          state.changes[safe],
-                          snapshot,
-                          state.files[safe] ?? state.activeId,
-                          state.activeId,
+                    ? await this.compact(
+                          root,
+                          safe,
+                          reconcileRanges(
+                              await this.hydrate(root, safe, state.changes[safe]),
+                              snapshot,
+                              state.files[safe] ?? state.activeId,
+                              state.activeId,
+                          ),
                       )
                     : (state.changes[safe] ?? { contentId, lines: {} });
                 const lines = Object.fromEntries(
@@ -890,6 +959,182 @@ export class ChangelistStore {
             },
             false,
         );
+    }
+
+    /** Keeps detached evidence private and independently owned until a canonical worktree is connected. */
+    private remember(root: string, file: string, snapshot: RangeSnapshot): RangeSnapshotReference {
+        if (!validSnapshot(snapshot)) throw new ChangelistEvidenceError();
+        const blob = changeFingerprint(JSON.stringify([root, file, snapshot]));
+        let snapshots = this.evidence.get(root);
+        if (!snapshots) this.evidence.set(root, (snapshots = new Map<string, RangeSnapshot>()));
+        if (!snapshots.has(blob)) snapshots.set(blob, structuredClone(snapshot));
+        return snapshotReference(snapshot, blob);
+    }
+
+    /** Constructor conversion is synchronous; only validated legacy snapshots reach this path. */
+    private compactMemoryState(root: string, state: HydratedChangelistState): ChangelistState {
+        return {
+            ...state,
+            changes: Object.fromEntries(
+                Object.entries(state.changes).map(([file, ownership]) => {
+                    const { tracking, history, ...metadata } = ownership;
+                    return [
+                        file,
+                        {
+                            ...metadata,
+                            ...(tracking ? { tracking: this.remember(root, file, tracking) } : {}),
+                            ...(history
+                                ? {
+                                      history: history.map((entry) => ({
+                                          snapshot: this.remember(root, file, entry.snapshot),
+                                          lines: entry.lines,
+                                      })),
+                                  }
+                                : {}),
+                        },
+                    ];
+                }),
+            ),
+        };
+    }
+
+    /** Hydrates just one file and each distinct snapshot once while the caller holds its metadata lease. */
+    private async hydrate(
+        root: string,
+        file: string,
+        ownership: ChangeOwnership | undefined,
+        persistence = this.durable.get(root),
+    ): Promise<HydratedChangeOwnership | undefined> {
+        if (!ownership) return undefined;
+        const cache = new Map<string, Promise<RangeSnapshot>>();
+        const load = async (reference: RangeSnapshotReference): Promise<RangeSnapshot> => {
+            let pending = cache.get(reference.blob);
+            if (!pending) {
+                pending = (async () => {
+                    const snapshot = persistence
+                        ? await persistence.loadSnapshot(file, reference)
+                        : this.evidence.get(root)?.get(reference.blob);
+                    if (!snapshot) throw new ChangelistEvidenceError();
+                    const value = persistence ? snapshot : structuredClone(snapshot);
+                    if (persistence) this.hydratedReferences.set(value, reference);
+                    return value;
+                })();
+                cache.set(reference.blob, pending);
+            }
+            const value = await pending;
+            const expected = snapshotReference(value, reference.blob);
+            if (
+                Object.keys(expected).some(
+                    (key) =>
+                        expected[key as keyof RangeSnapshotReference] !==
+                        reference[key as keyof RangeSnapshotReference],
+                )
+            )
+                throw new ChangelistEvidenceError();
+            return value;
+        };
+        const { tracking, history, ...metadata } = ownership;
+        return {
+            ...metadata,
+            ...(tracking ? { tracking: await load(tracking) } : {}),
+            ...(history
+                ? {
+                      history: await Promise.all(
+                          history.map(async (entry) => ({
+                              snapshot: await load(entry.snapshot),
+                              lines: entry.lines,
+                          })),
+                      ),
+                  }
+                : {}),
+        };
+    }
+
+    /** Replaces complete immutable snapshots with descriptors before any global clone or publication. */
+    private async compact(
+        root: string,
+        file: string,
+        ownership: HydratedChangeOwnership,
+        persistence = this.durable.get(root),
+    ): Promise<ChangeOwnership> {
+        const { tracking, history, ...metadata } = ownership;
+        const save = (snapshot: RangeSnapshot) => {
+            const known = this.hydratedReferences.get(snapshot);
+            return (
+                known ??
+                (persistence
+                    ? persistence.storeSnapshot(file, snapshot)
+                    : this.remember(root, file, snapshot))
+            );
+        };
+        return {
+            ...metadata,
+            ...(tracking ? { tracking: await save(tracking) } : {}),
+            ...(history
+                ? {
+                      history: await Promise.all(
+                          history.map(async (entry) => ({
+                              snapshot: await save(entry.snapshot),
+                              lines: entry.lines,
+                          })),
+                      ),
+                  }
+                : {}),
+        };
+    }
+
+    /** Compares an unproved migration seed one file at a time without retaining all durable payloads. */
+    private async matchesSeed(
+        root: string,
+        state: ChangelistState,
+        seed: HydratedChangelistState,
+        persistence: ChangelistPersistence,
+    ): Promise<boolean> {
+        const { changes, ...metadata } = state;
+        const { changes: original, ...legacy } = seed;
+        if (
+            !isDeepStrictEqual(
+                { ...metadata, files: { ...metadata.files } },
+                { ...legacy, files: { ...legacy.files } },
+            ) ||
+            Object.keys(changes).length !== Object.keys(original).length
+        )
+            return false;
+        for (const [file, ownership] of Object.entries(changes)) {
+            if (
+                !Object.hasOwn(original, file) ||
+                !isDeepStrictEqual(
+                    await this.hydrate(root, file, ownership, persistence),
+                    original[file],
+                )
+            )
+                return false;
+        }
+        return true;
+    }
+
+    /** Whole-state hydration is restricted to connection and legacy workspace serialization. */
+    private async hydrateState(
+        root: string,
+        state: ChangelistState,
+        persistence = this.durable.get(root),
+    ): Promise<HydratedChangelistState> {
+        const changes = Object.create(null) as Record<string, HydratedChangeOwnership>;
+        for (const [file, ownership] of Object.entries(state.changes))
+            changes[file] = (await this.hydrate(root, file, ownership, persistence))!;
+        return { ...state, changes };
+    }
+
+    /** Migration converts each file once without changing logical revisions, history order or owners. */
+    private async compactState(
+        root: string,
+        state: HydratedChangelistState,
+        persistence: ChangelistPersistence,
+    ): Promise<ChangelistState> {
+        const changes = Object.create(null) as Record<string, ChangeOwnership>;
+        for (const [file, ownership] of Object.entries(state.changes))
+            changes[file] = await this.compact(root, file, ownership, persistence);
+        return { ...state, changes };
     }
 
     private notify(root: string, state: ChangelistState): void {
@@ -922,9 +1167,19 @@ function remapOwners(ownership: ChangeOwnership, from: string, to: string): void
 }
 
 /** Validates persisted ownership and scope identities before cloning them; v1 gains empty draft fields without changing inclusion or IDs. */
-function parseState(value: unknown, version: 1 | 2): ChangelistState | undefined {
+function parseState(
+    value: unknown,
+    version: 1 | 2,
+    inline: true,
+): HydratedChangelistState | undefined;
+function parseState(value: unknown, version: 1 | 2, inline: false): ChangelistState | undefined;
+function parseState(
+    value: unknown,
+    version: 1 | 2,
+    inline: boolean,
+): ChangelistState | HydratedChangelistState | undefined {
     if (!metadataRecord(value)) return undefined;
-    const state = value as ChangelistState;
+    const state = value as ChangelistState | HydratedChangelistState;
     if (!validStateHeader(state)) return undefined;
     try {
         const ids = new Set<string>();
@@ -953,9 +1208,10 @@ function parseState(value: unknown, version: 1 | 2): ChangelistState | undefined
             assertRepoRelativePath(file);
             if (!ids.has(id)) return undefined;
         }
-        for (const [file, ownership] of Object.entries(state.changes)) {
+        const changes: Record<string, ChangeOwnership | HydratedChangeOwnership> = state.changes;
+        for (const [file, ownership] of Object.entries(changes)) {
             assertRepoRelativePath(file);
-            if (!validOwnership(ownership, ids)) return undefined;
+            if (!validOwnership(ownership, ids, inline)) return undefined;
         }
         const parsed = structuredClone(state);
         if (version === 1) {
@@ -975,7 +1231,7 @@ function metadataRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 /** Rejects unbounded lists, invalid revisions, and non-record ownership maps before reading nested persisted values. */
-function validStateHeader(state: ChangelistState): boolean {
+function validStateHeader(state: ChangelistState | HydratedChangelistState): boolean {
     return (
         Number.isSafeInteger(state.revision) &&
         state.revision >= 0 &&
@@ -988,7 +1244,11 @@ function validStateHeader(state: ChangelistState): boolean {
 }
 
 /** Rejects malformed persisted ownership, unknown list references, and invalid inclusion or range metadata. */
-function validOwnership(ownership: ChangeOwnership, ids: ReadonlySet<string>): boolean {
+function validOwnership(
+    ownership: ChangeOwnership | HydratedChangeOwnership,
+    ids: ReadonlySet<string>,
+    inline: boolean,
+): boolean {
     if (
         !metadataRecord(ownership) ||
         typeof ownership.contentId !== "string" ||
@@ -1006,11 +1266,14 @@ function validOwnership(ownership: ChangeOwnership, ids: ReadonlySet<string>): b
     for (const [fingerprint, id] of Object.entries(ownership.lines)) {
         if (!/^[a-f0-9]{64}$/.test(fingerprint) || !ids.has(id)) return false;
     }
-    return validCommitSelections(ownership, ids) && validRangeMetadata(ownership, ids);
+    return validCommitSelections(ownership, ids) && validRangeMetadata(ownership, ids, inline);
 }
 
 /** Accepts bounded, exact-scope inclusion records, including explicit empty selections and stale-review fences. */
-function validCommitSelections(ownership: ChangeOwnership, ids: ReadonlySet<string>): boolean {
+function validCommitSelections(
+    ownership: ChangeOwnership | HydratedChangeOwnership,
+    ids: ReadonlySet<string>,
+): boolean {
     if (ownership.selections === undefined) return true;
     if (!metadataRecord(ownership.selections)) return false;
     for (const [scope, selection] of Object.entries(ownership.selections)) {

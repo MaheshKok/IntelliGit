@@ -7,6 +7,7 @@ import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 import { PartialChanges } from "../../../src/git/partialChanges";
 import { RepositoryLockBusyError } from "../../../src/git/repositoryLock";
+import { ChangelistEvidenceError } from "../../../src/changes/changelistPersistence";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { ChangeRangeTracker } from "../../../src/changes/changeRangeTracker";
 import { rangeSnapshot } from "../../../src/changes/rangeMapping";
@@ -75,6 +76,31 @@ afterEach(async () => {
 });
 
 describe("range ownership across real Git lifecycle operations", () => {
+    it("surfaces damaged range evidence without reporting a successful observation", async () => {
+        const before = store.get(root);
+        const filename = path.join(
+            root,
+            ".git",
+            "intelligit",
+            "changelists",
+            "evidence",
+            `${before.changes["text.txt"].tracking!.blob}.json`,
+        );
+        const original = await readFile(filename);
+        await writeFile(filename, "{broken payload");
+        await writeFile(path.join(root, "text.txt"), `new header\n${both}`);
+        await expect(refresh()).rejects.toBeInstanceOf(ChangelistEvidenceError);
+        expect(store.get(root)).toEqual(before);
+        expect(await readFile(filename, "utf8")).toBe("{broken payload");
+        await writeFile(filename, original);
+        await refresh();
+        expect(await fingerprintOwners()).toEqual({
+            "new header": listB,
+            calculation: "default",
+            color: listB,
+        });
+    });
+
     it("surfaces an exhausted metadata lease without making ownership stale and retries the observation", async () => {
         const before = store.get(root);
         await writeFile(path.join(root, "text.txt"), `new header\n${both}`);

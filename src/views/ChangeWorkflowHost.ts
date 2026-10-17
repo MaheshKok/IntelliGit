@@ -84,7 +84,7 @@ export class ChangeWorkflowHost {
         this.poll = setInterval(() => {
             if (!this.connected) return;
             try {
-                const revision = this.store.get(deps.root).revision;
+                const revision = this.store.revision(deps.root);
                 this.lastPollError = undefined;
                 if (revision !== this.lastRevision) {
                     this.lastRevision = revision;

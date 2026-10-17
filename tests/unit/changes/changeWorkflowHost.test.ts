@@ -199,8 +199,8 @@ describe("root-bound selected-change host", () => {
             vi.advanceTimersByTime(1000);
             posted.length = 0;
             let failure: string | undefined;
-            const get = store.get.bind(store);
-            const reads = vi.spyOn(store, "get").mockImplementation((repositoryRoot) => {
+            const get = store.revision.bind(store);
+            const reads = vi.spyOn(store, "revision").mockImplementation((repositoryRoot) => {
                 if (failure) throw new Error(failure);
                 return get(repositoryRoot);
             });
@@ -434,7 +434,12 @@ describe("root-bound selected-change host", () => {
             const created = await store.create(root, store.get(root).revision, "Other");
             const otherId = created.lists.find((list) => list.name === "Other")!.id;
             const ownership = created.changes["file.txt"];
-            const fingerprints = ownership.tracking!.anchors.map((anchor) => anchor.fingerprint);
+            const view = await new PartialChanges(new GitExecutor(root), root).open("file.txt");
+            const fingerprints = view.blocks.flatMap((block) =>
+                block.lines
+                    .filter((line) => line.kind !== "context")
+                    .map((line) => line.fingerprint),
+            );
             await store.assignChanges(
                 root,
                 created.revision,

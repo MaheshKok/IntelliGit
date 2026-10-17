@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { changeFingerprint as hash } from "../../../src/changes/parseDiff";
-import { mapLines, reconcileRanges } from "../../../src/changes/rangeMapping";
-import type {
-    ChangeOwnership,
-    RangeSnapshot,
-} from "../../../src/webviews/protocol/changeSelection";
+import {
+    mapLines,
+    reconcileRanges,
+    type HydratedChangeOwnership,
+} from "../../../src/changes/rangeMapping";
+import type { RangeSnapshot } from "../../../src/webviews/protocol/changeSelection";
 
 function snapshot(
     base: string[],
@@ -39,7 +40,11 @@ function snapshot(
     };
 }
 
-function owner(state: ChangeOwnership, current: RangeSnapshot, line: number): string | undefined {
+function owner(
+    state: HydratedChangeOwnership,
+    current: RangeSnapshot,
+    line: number,
+): string | undefined {
     const anchor = current.anchors.find((entry) => entry.kind === "add" && entry.line === line);
     return anchor ? (state.lines[anchor.fingerprint] ?? "A") : undefined;
 }

@@ -1,28 +1,32 @@
-import type { ChangeOwnership, RangeSnapshot } from "../webviews/protocol/changeSelection";
+import type { RangeSnapshot, RangeSnapshotReference } from "../webviews/protocol/changeSelection";
 
 const HASH = /^[a-f0-9]{64}$/;
 
 /** Reject malformed, unbounded or internally inconsistent persisted range evidence. */
 export function validRangeMetadata(
-    ownership: ChangeOwnership,
+    ownership: { tracking?: unknown; history?: unknown },
     owners: ReadonlySet<string>,
+    inline = false,
 ): boolean {
-    if (ownership.tracking !== undefined && !validSnapshot(ownership.tracking)) return false;
+    const validate = inline ? validSnapshot : validSnapshotReference;
+    if (ownership.tracking !== undefined && !validate(ownership.tracking)) return false;
     if (ownership.history === undefined) return true;
     if (!Array.isArray(ownership.history) || ownership.history.length > 2) return false;
-    return ownership.history.every(
+    return (ownership.history as unknown[]).every(
         (entry) =>
             record(entry) &&
-            validSnapshot(entry.snapshot) &&
+            validate(entry.snapshot) &&
             record(entry.lines) &&
             Object.entries(entry.lines).every(
-                ([hash, owner]) => HASH.test(hash) && owners.has(owner),
+                ([hash, owner]) =>
+                    HASH.test(hash) && typeof owner === "string" && owners.has(owner),
             ),
     );
 }
 
 /** Both coordinate systems must resolve to the captured hash; context is bounded evidence only. */
-function validSnapshot(value: RangeSnapshot): boolean {
+export function validSnapshot(input: unknown): input is RangeSnapshot {
+    const value = input as RangeSnapshot;
     if (
         !record(value) ||
         !HASH.test(value.contentId) ||
@@ -76,6 +80,38 @@ function hashes(value: unknown): value is string[] {
 }
 
 /** Persisted arrays and null are never accepted as records. */
-function record(value: unknown): boolean {
+function record(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** References contain no inline evidence and accept only controlled digest filenames. */
+export function validSnapshotReference(input: unknown): input is RangeSnapshotReference {
+    const value = input as RangeSnapshotReference;
+    return (
+        record(value) &&
+        Object.keys(value).length === 7 &&
+        HASH.test(value.blob) &&
+        HASH.test(value.contentId) &&
+        HASH.test(value.baseHash) &&
+        HASH.test(value.workingHash) &&
+        HASH.test(value.indexHash) &&
+        typeof value.head === "string" &&
+        /^[a-f0-9]{40,64}$/.test(value.head) &&
+        Number.isSafeInteger(value.anchorCount) &&
+        value.anchorCount >= 0 &&
+        value.anchorCount <= 100_000
+    );
+}
+
+/** Copies only bounded headers; the full snapshot never enters mutable ownership metadata. */
+export function snapshotReference(snapshot: RangeSnapshot, blob: string): RangeSnapshotReference {
+    return {
+        blob,
+        contentId: snapshot.contentId,
+        baseHash: snapshot.baseHash,
+        workingHash: snapshot.workingHash,
+        head: snapshot.head,
+        indexHash: snapshot.indexHash,
+        anchorCount: snapshot.anchors.length,
+    };
 }

@@ -7,6 +7,7 @@ import type { WorkingFile } from "../types";
 import { assertContainedParent } from "../shelf/recoveryPaths";
 import { assertRepoRelativePath } from "../utils/repoRelativePath";
 import { mapWithConcurrency } from "../utils/concurrency";
+import { ChangelistEvidenceError } from "./changelistPersistence";
 import { changeFingerprint } from "./parseDiff";
 import { rangeSnapshot } from "./rangeMapping";
 import { rangeObservation } from "./rangeObservation";
@@ -67,7 +68,13 @@ export class ChangeRangeTracker {
                     this.observed.get(file) === `${hash}:${observation}`
                 )
                     return;
-                const before = this.store.get(this.root);
+                const currentState = this.store.get(this.root);
+                const before = {
+                    revision: currentState.revision,
+                    activeId: currentState.activeId,
+                    fileOwner: currentState.files[file],
+                    ownership: currentState.changes[file],
+                };
                 const view = await this.partial.open(file);
                 const snapshot = this.partial.snapshot(view.snapshotId);
                 capturedContentId = snapshot.contentId;
@@ -77,7 +84,11 @@ export class ChangeRangeTracker {
                 this.observed.set(file, `${hash}:${observation}`);
             } catch (error) {
                 this.observed.delete(file);
-                if (error instanceof RepositoryLockBusyError) throw error;
+                if (
+                    error instanceof RepositoryLockBusyError ||
+                    error instanceof ChangelistEvidenceError
+                )
+                    throw error;
                 if (error instanceof ChangelistRevisionError) {
                     if (this.store.get(this.root).changes[file]?.contentId !== capturedContentId)
                         await this.store.requireReview(this.root, file, true);
@@ -102,7 +113,12 @@ export class ChangeRangeTracker {
     private async track(
         file: string,
         snapshot: RangeSnapshot,
-        before: ChangelistState,
+        before: {
+            revision: number;
+            activeId: string;
+            fileOwner?: string;
+            ownership?: ChangelistState["changes"][string];
+        },
     ): Promise<void> {
         try {
             await this.store.track(this.root, file, snapshot, before.revision);
@@ -111,8 +127,8 @@ export class ChangeRangeTracker {
             if (
                 !(error instanceof ChangelistRevisionError) ||
                 latest.activeId !== before.activeId ||
-                latest.files[file] !== before.files[file] ||
-                JSON.stringify(latest.changes[file]) !== JSON.stringify(before.changes[file])
+                latest.files[file] !== before.fileOwner ||
+                JSON.stringify(latest.changes[file]) !== JSON.stringify(before.ownership)
             )
                 throw error;
             await this.store.track(this.root, file, snapshot, latest.revision);

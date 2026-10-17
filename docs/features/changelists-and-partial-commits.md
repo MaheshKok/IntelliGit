@@ -95,7 +95,7 @@ regular record directories even when the journal cannot be parsed. Pending recor
 that have become valid are not discarded through this unreadable-record path.
 Unknown index locks are never removed with their metadata.
 
-List writes use an authoritative schema-3 record in the worktree's own Git directory,
+List writes use an authoritative schema-4 record in the worktree's own Git directory,
 `intelligit/changelists/state.json`. Canonical root and Git-directory identities separate
 linked worktrees and clones. Atomic replacement, file fsync, POSIX directory fsync and a
 separate metadata lease protect updates; Windows lacks directory fsync through this Node
@@ -107,10 +107,35 @@ records are refused, never replaced by cached workspace metadata.
 On first connection, version-1 or version-2 workspace metadata is validated and preserved
 in `intelligit/changelists/migration.json`. Version-1 IDs, labels, ownership, explicit empty
 selections and legacy All drafts survive. The original v1 backup key remains available.
-A schema-3 sentinel stays at `intelligit.changelists.v1` so older clients refuse the record.
+A schema-4 sentinel stays at `intelligit.changelists.v1` so older clients refuse the record.
 Conflicting pre-existing workspace state is saved separately as `migration-conflict-*.json`
 and requires review. Restore/recovery should inspect these copies; deleting the authoritative
 record is not a reset procedure. Metadata recovery never changes Git refs, index or worktree.
+
+Full range snapshots live in immutable `intelligit/changelists/evidence/<sha256>.json`
+files. The manifest keeps compact references plus mutable owner and inclusion maps. Each
+snapshot is bound to its canonical worktree, Git directory and repository-relative file;
+its digest and repeated headers are checked before reconciliation. Warm metadata reads,
+revision polls and draft edits do not load these payloads. Publication checks the directory
+name set once for missing references; changing one file hydrates only that file's current
+and two historical snapshots. The complete mapping evidence and ambiguity rules are retained.
+
+Schema-3 upgrades run under the metadata lease and preserve exact original bytes in immutable
+`state-v3.<sha256>.backup.json` generations before publishing schema 4. Interrupted upgrades
+can retain several generations when an old live writer publishes between attempts. Those
+backups and workspace migration evidence are never collected. Older clients refuse the new
+schema. Payloads become durable before the manifest references them; collection removes only
+unreferenced controlled payload names while holding the same lease as readers. Cleanup failure
+after publication leaves harmless orphan files and reports a diagnostic; connection retries
+collection and leaves unknown filenames untouched.
+
+The 64 MiB limit remains for each individual snapshot and for the compact manifest. Aggregate
+unchanged-line evidence no longer consumes the manifest budget, but sufficiently large mutable
+owner/selection maps can still reach it. Cold connection validates all referenced evidence
+sequentially and therefore scales with its total bytes. A missing referenced filename prevents
+publication; corruption of an unaccessed payload after connection is discovered when that file
+is reconciled or on the next connection. Metadata-only edits preserve such evidence rather than
+replacing it or silently changing inclusion.
 
 ## Ownership Through Later Edits
 
@@ -130,8 +155,8 @@ file preserves its old metadata and fences the destination instead of guessing a
 Two recent exact-content snapshots support undo/redo ownership restoration. History never
 restores a previously included selection. Explicit emptiness stays empty; a nonempty selection
 is carried forward only when every selected line maps exactly. Changed selected content needs
-review. The persisted metadata budget is 64 MiB per worktree; failed or oversized writes do not
-replace the last good record. Range hashes and history stay in the host and are omitted from
+review. Each compact manifest and individual evidence payload has a 64 MiB budget; failed or
+oversized writes do not replace the last good record. Range hashes and history stay in the host and are omitted from
 webview state.
 
 Selected inclusion is persisted for its scope and the All view before Git
@@ -185,8 +210,8 @@ range hashes, at 1,000/10,000 files and 20/100 lists:
 The largest record was 45.9 MB and its browser projection was 4.1 MB. The benchmark
 process peaked around 863 MiB RSS while retaining fixture objects; this is not an isolated
 extension-host memory measurement. These single-sample results exclude Git capture,
-Electron rendering, undo history, remote storage and competing processes. The current
-whole-record persistence and synchronous reads have a measurable cost at 10,000 split
+Electron rendering, undo history, remote storage and competing processes. That schema-3 implementation used
+whole-record persistence and synchronous reads with a measurable cost at 10,000 split
 files; the phase-five end-to-end checks must include that cost rather than reuse the older
 renderer-only result.
 
@@ -200,3 +225,20 @@ bun x playwright test --config playwright.e2e.config.ts --project=e2e tests/e2e/
 
 Pixel baselines must come from the repository's pinned Linux renderer. macOS
 screenshots are diagnostic evidence, not replacement Linux baselines.
+
+The reproducible storage benchmark separates one-time schema-3 migration from normal
+reconnection, polling, projection, draft updates and single-file reconciliation. It uses
+real parsed change anchors and preserves two historical snapshots during rotation:
+
+```sh
+bun x esbuild scripts/benchmark-changelist-storage.ts --bundle --platform=node --outfile=/tmp/intelligit-storage-benchmark.cjs
+node --expose-gc /tmp/intelligit-storage-benchmark.cjs 10 20 # fixture self-check
+node --expose-gc /tmp/intelligit-storage-benchmark.cjs 1000 20
+```
+
+Use 1,000 or 10,000 files with 20 or 100 lists. Fixture creation is outside operation
+timings. These are Node host measurements, not UI latency or initial tracking throughput.
+Migration writes and fsyncs each evidence payload, so large first connections can be slow;
+normal reconnection validates existing payloads without rewriting them. Original workspace
+migration seeds remain retained for compatibility and are not covered by the disk-fixture
+heap measurements.
