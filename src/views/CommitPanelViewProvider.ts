@@ -10,6 +10,7 @@ import {
 // commit/push buttons, amend toggle, and stash management.
 // Frontend is a React + Chakra UI app loaded from dist/webview-commitpanel.js.
 import * as vscode from "vscode";
+import * as path from "node:path";
 import { GitOps } from "../git/operations";
 import {
     CommitMessageGenerationCoordinator,
@@ -536,11 +537,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Opens a local file in its registered repository's aggregate partial editor.
+     * Normalizes Git root spelling before opening its registered aggregate partial editor.
      * Unknown roots and workflow failures reject without changing the selected repository.
      */
     async openPartialChanges(repositoryRoot: string, filePath: string): Promise<void> {
-        const runtime = this.runtimes.get(repositoryRoot);
+        const runtime = this.runtimes.get(path.normalize(repositoryRoot));
         if (!runtime) {
             throw new Error(
                 vscode.l10n.t("Selected file is not in a known IntelliGit repository."),
