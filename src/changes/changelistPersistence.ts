@@ -3,6 +3,7 @@ import { constants, lstatSync, readFileSync, type BigIntStats } from "node:fs";
 import { link, lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { RepositoryLock } from "../git/repositoryLock";
+import { PartialChangesUnsupportedError } from "../git/partialSnapshot";
 import { acquireWithBoundedWait } from "../git/boundedLockRetry";
 import type {
     ChangelistState,
@@ -165,11 +166,12 @@ export class ChangelistPersistence {
         await this.publishImmutable(filename, bytes);
     }
 
-    /** Publishes fully validated, file/worktree-bound immutable evidence before manifest publication. */
+    /** Publishes bound evidence before the manifest; unsupported fresh content stays in the whole-file workflow. */
     async storeSnapshot(file: string, snapshot: RangeSnapshot): Promise<RangeSnapshotReference> {
         try {
             const safe = assertRepoRelativePath(file);
-            if (!validSnapshot(snapshot)) throw new ChangelistEvidenceError();
+            if (!validSnapshot(snapshot))
+                throw new PartialChangesUnsupportedError("Unsupported tracked range content.");
             const bytes = JSON.stringify({
                 schemaVersion: 1,
                 root: this.root,
@@ -179,7 +181,7 @@ export class ChangelistPersistence {
             });
             const reference = snapshotReference(snapshot, changeFingerprint(bytes));
             if (Buffer.byteLength(bytes) > MAX_BYTES)
-                throw new Error("Changelist metadata exceeds its storage budget.");
+                throw new PartialChangesUnsupportedError("Unsupported tracked range content.");
             await this.evidenceDirectoryReady(true);
             await this.publishImmutable(
                 path.join(this.evidenceDirectory, `${reference.blob}.json`),
@@ -187,6 +189,7 @@ export class ChangelistPersistence {
             );
             return reference;
         } catch (error) {
+            if (error instanceof PartialChangesUnsupportedError) throw error;
             throw new ChangelistEvidenceError(error);
         }
     }
