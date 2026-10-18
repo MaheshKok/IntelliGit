@@ -18,11 +18,17 @@ export interface PartialPanelActions {
         contentId: string;
         lists: ChangelistState;
         listId: string;
+        selectedOperations?: boolean;
     }>;
     stage(selection: SelectedFileChanges): Promise<void>;
     use(selection: SelectedFileChanges): Promise<void>;
     commit(selection: SelectedFileChanges, message: string): Promise<string>;
     assign(selection: SelectedFileChanges, listId: string, revision: number): Promise<void>;
+    /** Optional host-owned save/export/removal operations; completion fences successful removals. */
+    selected?(
+        selection: SelectedFileChanges,
+        operation: "save" | "shelve" | "rollback" | "export",
+    ): Promise<{ message: string; removed: boolean }>;
     openNative(): Promise<void>;
 }
 
@@ -89,14 +95,45 @@ export class PartialChangesPanel {
             return this.load();
         }
         if (
-            !["stageSelection", "commitSelection", "assignSelection", "useSelection"].includes(
-                message.type,
-            )
+            ![
+                "stageSelection",
+                "commitSelection",
+                "assignSelection",
+                "useSelection",
+                "saveSelection",
+                "shelveSelection",
+                "rollbackSelection",
+                "exportSelection",
+            ].includes(message.type)
         )
             return;
         this.busy = true;
         try {
-            if (message.type === "useSelection") {
+            if (
+                message.type === "saveSelection" ||
+                message.type === "shelveSelection" ||
+                message.type === "rollbackSelection" ||
+                message.type === "exportSelection"
+            ) {
+                if (!this.actions.selected)
+                    throw new Error("Selected shelf operations are unavailable.");
+                const operation =
+                    message.type === "saveSelection"
+                        ? "save"
+                        : message.type === "shelveSelection"
+                          ? "shelve"
+                          : message.type === "rollbackSelection"
+                            ? "rollback"
+                            : "export";
+                let result: { message: string; removed: boolean };
+                try {
+                    result = await this.actions.selected(message.selection, operation);
+                } catch (error) {
+                    await this.reportSelectedError(error);
+                    return;
+                }
+                await this.completeSelected(result);
+            } else if (message.type === "useSelection") {
                 await this.actions.use(message.selection);
                 await this.load();
             } else if (message.type === "assignSelection") {
@@ -119,6 +156,44 @@ export class PartialChangesPanel {
     private async load(): Promise<void> {
         const data = await this.actions.load(this.side);
         await this.post({ type: "partialFile", ...data });
+    }
+
+    /** Failed selected completion delivery is terminal and falls back to a native recovery notice. */
+    private async completeSelected(result: { message: string; removed: boolean }): Promise<void> {
+        this.committed = result.removed;
+        try {
+            if (
+                !this.alive ||
+                !(await this.panel.webview.postMessage({
+                    type: "partialOperationCompleted",
+                    ...result,
+                }))
+            )
+                throw new Error("Selected completion could not be posted.");
+        } catch (error) {
+            this.committed = true;
+            const warning = `${result.message} Completion delivery failed; do not repeat the operation.`;
+            await vscode.window.showWarningMessage(warning);
+            throw new Error(warning, { cause: error });
+        }
+    }
+
+    /** Preserves selected-operation recovery errors when the webview cannot receive them, without inferring completion from text. */
+    private async reportSelectedError(error: unknown): Promise<void> {
+        const message = vscode.l10n.t("Selected changes failed: {message}", {
+            message: getErrorMessage(error),
+        });
+        try {
+            if (
+                this.alive &&
+                (await this.panel.webview.postMessage({ type: "partialError", message }))
+            )
+                return;
+        } catch {
+            // Native delivery retains the original host error rather than a transport failure.
+        }
+        this.committed = true;
+        await vscode.window.showWarningMessage(message);
     }
 
     private async post(message: PartialEditorReply): Promise<void> {

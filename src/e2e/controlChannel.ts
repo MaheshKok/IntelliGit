@@ -12,7 +12,7 @@ import { evaluateE2eGate } from "./gate";
 import { handleMementoRequest } from "./handlers/mementoHandler";
 import { handleSecretRequest } from "./handlers/secretHandler";
 import type { E2eRequest, E2eResponse } from "./protocol";
-import { errorResponse, parseE2eRequest } from "./protocol";
+import { errorResponse, okValueResponse, parseE2eRequest } from "./protocol";
 import { generateSecretDigestSalt } from "./secretDigest";
 import {
     listRequestNonces,
@@ -24,6 +24,7 @@ import {
     writeResponseFileAtomic,
 } from "./transportFs";
 import { E2eWebviewRegistry } from "./webviewBridge";
+import { getE2eBenchmarkMetrics, getE2eWebviewCaptureSink } from "./webviewCapture";
 
 /**
  * Handle returned by {@link activateE2eControlChannel}, always non-null even when the gate
@@ -191,6 +192,18 @@ async function dispatchRequest(
     }
 
     try {
+        if (request.store === "metrics") {
+            if (process.env.INTELLIGIT_E2E_BENCHMARK !== "1")
+                return errorResponse(request.nonce, "Benchmark metrics are not enabled.");
+            return okValueResponse(request.nonce, {
+                ipc: getE2eBenchmarkMetrics() ?? {
+                    in: { count: 0, serializedBytes: 0, serializationFailures: 0 },
+                    out: { count: 0, serializedBytes: 0, serializationFailures: 0 },
+                },
+                heap: process.memoryUsage(),
+                retainedCaptureMessages: getE2eWebviewCaptureSink()?.getMessages().length ?? 0,
+            });
+        }
         if (request.store === "memento") {
             return await handleMementoRequest(context, request);
         }

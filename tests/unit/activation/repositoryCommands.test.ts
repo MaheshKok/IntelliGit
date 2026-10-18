@@ -253,6 +253,22 @@ const makeDeps = (gitOps: GitOps) => {
 };
 
 describe("registerRepositoryCommands", () => {
+    it("native whole-file Save captures the explicit repository and preserves stash semantics", async () => {
+        const deps = makeDeps(makeGitOps());
+        const saveWholeFileToShelf = vi.fn().mockResolvedValue(undefined);
+        Object.assign(deps, { saveWholeFileToShelf });
+        mocks.resolveFileCommandContext.mockResolvedValue({
+            repoRoot: "/repo-b",
+            repoRelativePath: "selected.ts",
+        });
+        registerRepositoryCommands(deps);
+        const command = mocks.commands.get("intelligit.fileSaveToShelf");
+        expect(command, "native whole-file Save must be registered").toBeTypeOf("function");
+        await command?.({ filePath: "selected.ts", repositoryRoot: "/repo-b" });
+        expect(saveWholeFileToShelf).toHaveBeenCalledExactlyOnceWith("/repo-b", "selected.ts");
+        expect(deps.setActiveRepository).not.toHaveBeenCalled();
+        expect(mocks.commands.has("intelligit.fileShelve")).toBe(true);
+    });
     describe("native partial command", () => {
         beforeEach(() => {
             mocks.l10nT.mockImplementation((message: string, values: Record<string, string> = {}) =>

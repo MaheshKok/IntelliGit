@@ -39,10 +39,12 @@ function renderCommitTab({
     commitMessage = "draft shelf",
     activeOperation = "none",
     rebaseControl = undefined,
+    checkedPaths = new Set(["src/a.ts"]),
 }: {
     commitMessage?: string;
     activeOperation?: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
     rebaseControl?: "owned" | "unowned" | "foreign";
+    checkedPaths?: Set<string>;
 } = {}) {
     return mount(
         <ChakraProvider theme={theme}>
@@ -54,7 +56,7 @@ function renderCommitTab({
                 amendBranchCommits={[]}
                 amendBranchHistoryLoaded
                 isRefreshing={false}
-                checkedPaths={new Set(["src/a.ts"])}
+                checkedPaths={checkedPaths}
                 onToggleFile={vi.fn()}
                 onToggleFolder={vi.fn()}
                 onToggleSection={vi.fn()}
@@ -82,6 +84,145 @@ function renderCommitTab({
 }
 
 describe("CommitTab shelving", () => {
+    it("explicit whole-file Save stays disabled with zero selected files", () => {
+        vscode.postMessage.mockReset();
+        const { root, container } = renderCommitTab({ checkedPaths: new Set() });
+        act(() =>
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "setChangelists",
+                        repositoryRoot: "/repo",
+                        state: {
+                            revision: 1,
+                            activeId: "default",
+                            lists: [{ id: "default", name: "Default" }],
+                            files: {},
+                            changes: {},
+                        },
+                    },
+                }),
+            ),
+        );
+        const button = Array.from(container.querySelectorAll("button")).find(
+            (item) => item.textContent === "Save Selected Whole Files to Shelf",
+        );
+        expect(button?.disabled).toBe(true);
+        click(button!);
+        expect(
+            vscode.postMessage.mock.calls.some(
+                ([message]) => message.type === "saveChangelistShelf",
+            ),
+        ).toBe(false);
+        unmount(root, container);
+    });
+    it("scoped Save sends captured list or explicit whole-file identity and ignores stale replies", () => {
+        vscode.postMessage.mockReset();
+        const { root, container } = renderCommitTab();
+        act(() =>
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "setChangelists",
+                        repositoryRoot: "/repo",
+                        state: {
+                            revision: 7,
+                            activeId: "default",
+                            lists: [{ id: "default", name: "Default" }],
+                            files: { "src/a.ts": "default", "src/b.ts": "default" },
+                            changes: {},
+                        },
+                    },
+                }),
+            ),
+        );
+        const save = Array.from(container.querySelectorAll("button")).find(
+            (button) => button.textContent === "Save Selected Whole Files to Shelf",
+        );
+        expect(save, "explicit whole-file Save is available").toBeDefined();
+        click(save!);
+        const request = vscode.postMessage.mock.calls
+            .map(([value]) => value)
+            .find((value) => value.type === "saveChangelistShelf");
+        expect(request).toMatchObject({
+            repositoryRoot: "/repo",
+            revision: 7,
+            scope: "files",
+            listId: "all",
+            paths: ["src/a.ts"],
+            requestId: expect.any(String),
+        });
+        act(() =>
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "changelistShelfResult",
+                        repositoryRoot: "/repo",
+                        requestId: "stale",
+                        message: "wrong result",
+                    },
+                }),
+            ),
+        );
+        expect(container.textContent).not.toContain("wrong result");
+        act(() =>
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "changelistShelfResult",
+                        repositoryRoot: "/repo",
+                        requestId: request.requestId,
+                        message: "Shelf saved",
+                    },
+                }),
+            ),
+        );
+        expect(container.textContent).toContain("Shelf saved");
+        act(() =>
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "setChangelists",
+                        repositoryRoot: "/repo",
+                        state: {
+                            revision: 7,
+                            activeId: "default",
+                            lists: [{ id: "default", name: "Default" }],
+                            files: { "src/a.ts": "default", "src/b.ts": "default" },
+                            changes: {},
+                        },
+                    },
+                }),
+            ),
+        );
+        expect(
+            container.textContent,
+            "terminal Save notice survives the host metadata refresh",
+        ).toContain("Shelf saved");
+        const actions =
+            container.querySelector('[aria-label="Changelist actions: Default"]') ??
+            Array.from(container.querySelectorAll("button")).find(
+                (button) =>
+                    button.getAttribute("aria-label")?.includes("Default") &&
+                    button.getAttribute("aria-expanded") === null &&
+                    button.getAttribute("aria-pressed") === null,
+            );
+        expect(actions).toBeDefined();
+        click(actions!);
+        click(menuItem("Save to Shelf"));
+        expect(vscode.postMessage).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                type: "saveChangelistShelf",
+                scope: "list",
+                listId: "default",
+                revision: 7,
+                repositoryRoot: "/repo",
+                requestId: expect.any(String),
+            }),
+        );
+        unmount(root, container);
+    });
+
     it("posts repository-scoped Continue Rebase and Abort Rebase commands", () => {
         vscode.postMessage.mockReset();
         const { root, container } = renderCommitTab({

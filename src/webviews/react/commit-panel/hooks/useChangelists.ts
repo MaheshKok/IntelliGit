@@ -1,5 +1,5 @@
 import { useChangelistDraft } from "./useChangelistDraft";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangelistState } from "../../../protocol/changeSelection";
 import type { ChangelistOutbound, ChangelistReply } from "../../../protocol/changelists";
 import type { WorkingFile } from "../../../../types";
@@ -14,6 +14,7 @@ interface ClientState {
     busy: boolean;
     hasRecoveryIssues?: boolean;
     error?: string;
+    notice?: string;
 }
 
 /** Restores bounded per-worktree filters and checkbox choices; callers reconcile saved paths against current files. */
@@ -70,10 +71,33 @@ export function useChangelists(props: CommitTabProps) {
     const root = props.repositoryRoot;
     const api = getVsCodeApi<ChangelistOutbound, Record<string, unknown>>();
     const [state, setState] = useState<ClientState>({ filter: "all", checked: {}, busy: false });
+    const pendingSave = useRef<{ root: string; requestId: string } | undefined>(undefined);
+    // The control that sent a host request; it is disabled while busy and so loses focus.
+    const opener = useRef<HTMLElement | null>(null);
+    const remember = () => {
+        opener.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    };
+    const busy = state.root === root && state.busy;
+    useEffect(() => {
+        if (busy) return;
+        // Waits for the host to give the webview focus back, so a still-open native prompt keeps
+        // it; then reclaims only focus the busy state took away, never focus the user moved.
+        const restore = () => {
+            const element = opener.current;
+            if (!element || !document.hasFocus()) return;
+            opener.current = null;
+            if (element.isConnected && document.activeElement === document.body) element.focus();
+        };
+        restore();
+        window.addEventListener("focus", restore);
+        return () => window.removeEventListener("focus", restore);
+    }, [busy]);
     const metadata = state.root === root ? state.metadata : undefined;
     const filter = state.root === root ? state.filter : "all";
     useEffect(() => {
         if (!root) return;
+        pendingSave.current = undefined;
         let received = false;
         const receive = (
             event: MessageEvent<
@@ -108,11 +132,22 @@ export function useChangelists(props: CommitTabProps) {
                                   previous.root === root ? previous.filter : saved.filter,
                               ),
                               checked: previous.root === root ? previous.checked : saved.checked,
-                              busy: message.busy === true,
+                              busy: message.busy === true || pendingSave.current?.root === root,
                               hasRecoveryIssues: message.hasRecoveryIssues === true,
                               error: previous.root === root ? previous.error : undefined,
+                              notice: previous.root === root ? previous.notice : undefined,
                           },
                 );
+            } else if (message.type === "changelistShelfResult") {
+                if (pendingSave.current?.requestId !== message.requestId) return;
+                pendingSave.current = undefined;
+                setState((previous) => ({
+                    ...previous,
+                    root,
+                    busy: false,
+                    error: message.error,
+                    notice: message.error ? undefined : message.message,
+                }));
             } else if (message.type === "error") {
                 received = true;
                 setState((previous) => ({
@@ -219,6 +254,7 @@ export function useChangelists(props: CommitTabProps) {
             listId = filter,
         ) => {
             if (!root || !metadata) return;
+            remember();
             setState((previous) => ({ ...previous, busy: true, error: undefined }));
             api.postMessage({
                 type: "changelistAction",
@@ -243,6 +279,41 @@ export function useChangelists(props: CommitTabProps) {
             ...(filter !== "all" ? { listId: filter } : {}),
         });
     }, [api, checkedPaths, filter, root]);
+    const saveShelf = useCallback(
+        (
+            scope: "list" | "files",
+            listId = filter,
+            operation: "save" | "saveAndRemove" | "rollback" = "save",
+        ) => {
+            if (
+                !root ||
+                !metadata ||
+                pendingSave.current ||
+                (scope === "files" && checkedPaths.size === 0)
+            )
+                return;
+            const requestId = crypto.randomUUID();
+            pendingSave.current = { root, requestId };
+            remember();
+            setState((previous) => ({
+                ...previous,
+                busy: true,
+                error: undefined,
+                notice: undefined,
+            }));
+            api.postMessage({
+                type: "saveChangelistShelf",
+                repositoryRoot: root,
+                requestId,
+                revision: metadata.revision,
+                scope,
+                listId,
+                ...(scope === "files" ? { paths: [...checkedPaths] } : {}),
+                ...(operation !== "save" ? { operation } : {}),
+            });
+        },
+        [api, checkedPaths, filter, metadata, root],
+    );
     const commit = useCallback(
         (push = false) => {
             if (!root || !metadata) {
@@ -276,13 +347,15 @@ export function useChangelists(props: CommitTabProps) {
         hasEligibleSelection,
         choose,
         command,
+        saveShelf,
+        notice: state.root === root ? state.notice : undefined,
         openPartial,
         openFile: (path: string, listId: string) => {
             if (root)
                 api.postMessage({ type: "openPartialChanges", repositoryRoot: root, path, listId });
         },
         commit,
-        busy: state.root === root && state.busy,
+        busy,
         hasRecoveryIssues: state.root === root && state.hasRecoveryIssues === true,
         error: state.root === root ? state.error : undefined,
         toggleFile:

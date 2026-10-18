@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     handlers: {
         checkoutRevision: vi.fn(),
         cherryPick: vi.fn(),
+        cherryPickToChangelist: vi.fn(),
         copyRevision: vi.fn(),
         createPatch: vi.fn(),
         dropCommit: vi.fn(),
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
         pushAllUpToHere: vi.fn(),
         resetCurrentToHere: vi.fn(),
         revertCommit: vi.fn(),
+        revertToChangelist: vi.fn(),
         squashCommits: vi.fn(),
         undoCommit: vi.fn(),
     },
@@ -50,6 +52,10 @@ vi.mock("../../../src/commands/commitHistoryActions", () => ({
     squashCommits: mocks.handlers.squashCommits,
     undoCommit: mocks.handlers.undoCommit,
 }));
+vi.mock("../../../src/commands/targetHistoryActions", () => ({
+    cherryPickToChangelist: mocks.handlers.cherryPickToChangelist,
+    revertToChangelist: mocks.handlers.revertToChangelist,
+}));
 
 import { handleCommitContextAction } from "../../../src/commands/commitCommands";
 
@@ -74,6 +80,7 @@ function paramsFor(action: CommitAction) {
         executor: {},
         gitOps: { getActiveOperation: mocks.getActiveOperation },
         repoRoot: "/repo",
+        changelists: {},
         currentBranches: [],
         refreshAll: vi.fn(),
         originProvider: {},

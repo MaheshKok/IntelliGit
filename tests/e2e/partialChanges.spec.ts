@@ -1,3 +1,5 @@
+import { ShelfStore } from "../../src/shelf/store";
+import { resolveShelfPaths } from "../../src/shelf/paths";
 import { readFile, readdir, writeFile, mkdir, realpath } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -589,6 +591,98 @@ test.describe("Selected changes and changelists", () => {
             expect(await runGit(workspace.root, ["show", `HEAD:${OTHER}`], workspace.env)).toBe(
                 "base\n",
             );
+        } finally {
+            await app.close();
+        }
+    });
+
+    test("saves selected lines to a shelf without removal and keeps cancellation harmless", async ({
+        fixtureWorkspace,
+    }, testInfo) => {
+        const { workspace } = fixtureWorkspace;
+        await createFiles(workspace.root, workspace.env);
+        const shelfStorageRoot = path.join(workspace.profileDir, "partial-shelf-storage");
+        const shelfPath = path.join(shelfStorageRoot, "shelves");
+        const app = await launchFixtureWorkspace({
+            executablePath: await resolveVSCodeExecutable(REPO_ROOT),
+            repoRoot: REPO_ROOT,
+            workspace: { ...workspace, shelfStorageRoot },
+            channelDir: fixtureWorkspace.channelDir,
+            timeout: 60_000,
+        });
+        try {
+            const page = await app.firstWindow();
+            await dismissFirstRunDialogs(page);
+            await waitForE2eChannelReady(fixtureWorkspace.channelDir);
+            const view = new IntelliGitView(page);
+            const sidebar = await view.reveal();
+            await expect(
+                sidebar.getByRole("combobox", { name: "Changelists", exact: true }),
+            ).toBeVisible();
+            await chooseFile(sidebar);
+            await sidebar.getByRole("button", { name: "Partial changes", exact: true }).click();
+            const editor = await view.revealPartialChanges(FILE);
+            await expect(editor.locator(".partial-block")).toHaveCount(2);
+            await editor.getByRole("checkbox", { name: "Select block 1", exact: true }).uncheck();
+            for (const name of [
+                "Save to Shelf",
+                "Save and Remove",
+                "Rollback Selected Changes",
+                "Export Patch",
+            ])
+                await expect(editor.getByRole("button", { name, exact: true })).toBeEnabled();
+            const indexBefore = await readFile(path.join(workspace.root, ".git/index"));
+            const headBefore = await runGit(workspace.root, ["rev-parse", "HEAD"], workspace.env);
+            const statePath = path.join(workspace.root, ".git/intelligit/changelists/state.json");
+            const metadataBefore = JSON.parse(await readFile(statePath, "utf8")).state;
+            const store = new ShelfStore(
+                await resolveShelfPaths({
+                    repositoryRoot: workspace.root,
+                    globalStoragePath: shelfPath,
+                    overridePath: shelfPath,
+                }),
+            );
+            const save = editor.getByRole("button", { name: "Save to Shelf", exact: true });
+            const input = page.locator(".quick-input-widget .quick-input-box input");
+            await save.focus();
+            await page.keyboard.press("Enter");
+            await expect(input).toBeVisible();
+            await input.press("Escape");
+            await expect(
+                editor.getByRole("status").filter({ hasText: "Save cancelled." }),
+            ).toBeVisible();
+            expect((await store.listShelves()).shelfIds).toHaveLength(0);
+            expect(await readFile(path.join(workspace.root, FILE), "utf8")).toBe(working);
+            await save.focus();
+            await page.keyboard.press("Enter");
+            await expect(input).toBeVisible();
+            await input.fill("Selected first edit");
+            await input.press("Enter");
+            await expect(
+                editor.getByRole("status").filter({ hasText: "Selected changes saved in shelf" }),
+            ).toBeVisible();
+            const ids = (await store.listShelves()).shelfIds;
+            expect(ids).toHaveLength(1);
+            const manifest = await store.readCurrentShelfManifest(ids[0]);
+            expect(manifest.metadata.name).toBe("Selected first edit");
+            expect(manifest.files).toHaveLength(1);
+            const patch = await store.readObject(
+                ids[0],
+                manifest.files[0].worktreeBlock!.patchObjectHash!,
+            );
+            expect(patch.toString()).toContain("+export const first = 3;");
+            expect(patch.toString()).not.toContain("+export const second = 4;");
+            expect(await readFile(path.join(workspace.root, ".git/index"))).toEqual(indexBefore);
+            expect(await runGit(workspace.root, ["rev-parse", "HEAD"], workspace.env)).toBe(
+                headBefore,
+            );
+            expect(await readFile(path.join(workspace.root, FILE), "utf8")).toBe(working);
+            expect(await readFile(path.join(workspace.root, OTHER), "utf8")).toBe("user staged\n");
+            const metadataAfter = JSON.parse(await readFile(statePath, "utf8")).state;
+            expect(metadataAfter.lists).toEqual(metadataBefore.lists);
+            expect(metadataAfter.activeId).toBe(metadataBefore.activeId);
+            expect(metadataAfter.changes).toEqual(metadataBefore.changes);
+            await page.screenshot({ path: testInfo.outputPath("selected-shelf-saved.png") });
         } finally {
             await app.close();
         }

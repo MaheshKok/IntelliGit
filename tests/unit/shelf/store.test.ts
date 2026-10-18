@@ -31,7 +31,9 @@ async function makeStore() {
         globalStoragePath: path.join(temporary, "storage"),
     });
     await ensureShelfRoot(paths);
-    return { paths, store: new ShelfStore(paths) };
+    const store = new ShelfStore(paths);
+    await store.withLock(() => store.migrateWithHeldLocks());
+    return { paths, store };
 }
 
 function persistedShelfInput() {
@@ -143,6 +145,7 @@ describe("ShelfStore", () => {
         const catalog = await makeStore();
         const catalogOutside = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-outside-"));
         directories.push(catalogOutside);
+        await removeScratchDirectories(path.join(catalog.paths.root, "catalog.json"));
         await symlink(
             path.join(catalogOutside, "catalog.json"),
             path.join(catalog.paths.root, "catalog.json"),
@@ -324,6 +327,9 @@ describe("ShelfStore", () => {
         await writeFile(path.join(broken, "gen-1", "manifest.json"), "{not json");
 
         const listed = await store.listShelves();
+        await expect(store.collectGarbage("shelf-one")).rejects.toThrow();
+        expect(await store.readObject("shelf-one", dead.hash)).toEqual(Buffer.from("dead"));
+        await removeScratchDirectories(broken);
         const removed = await store.collectGarbage("shelf-one");
 
         expect(listed.corruptShelfIds).toContain("broken");
@@ -495,6 +501,7 @@ describe("ShelfStore", () => {
             ["shelf-three", "tracked.txt:stream"],
             ["shelf-four", "aux.txt"],
         ]) {
+            const { paths, store } = await makeStore();
             await store.writeShelfGeneration(shelfId, input);
             const shelfPath = path.join(paths.root, "shelves", shelfId, "gen-1", "manifest.json");
             const shelfManifest = JSON.parse(await readFile(shelfPath, "utf8")) as {
@@ -612,7 +619,7 @@ describe("ShelfStore", () => {
         await expect(store.listShelves()).resolves.toEqual({
             shelfIds: [],
             corruptShelfIds: [],
-            catalogGeneration: 2,
+            catalogGeneration: 3,
         });
         await expect(store.readCurrentShelfManifest("shelf-one")).rejects.toMatchObject({
             code: "ENOENT",

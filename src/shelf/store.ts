@@ -14,13 +14,16 @@ import {
 } from "./paths";
 import {
     parseShelfPersistenceContract,
+    parseShelfTargetOperationReceipt,
     ShelfPersistenceContractError,
     type ShelfFileEntry,
     type ShelfMetadata,
     type ShelfPersistenceContract,
+    type ShelfTargetOperationReceipt,
 } from "./model";
 import { assertPersistedObjectReferences, isShelfObjectHash } from "./persistence";
 const SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 const STORE_LOCK_FILE = "store.lock";
 /** Reference to one content-addressed immutable shelf object. */
 export interface ShelfObjectRef {
@@ -85,6 +88,17 @@ export interface ShelfJournal {
     readonly expectedIndexFingerprint?: string;
     readonly recoveryObjectHashes?: readonly string[];
     readonly shelf?: ShelfJournalShelfLink;
+    readonly targetPublication?: ShelfTargetPublication;
+}
+/** Host-frozen successful entries bound to an exact source shelf under the outer metadata lease. */
+export interface ShelfTargetPublicationRequest extends ShelfTargetOperationReceipt {
+    readonly shelfId: string;
+}
+/** Checksummed journal intent retains the exact next manifest across every crash boundary. */
+interface ShelfTargetPublication {
+    readonly request: ShelfTargetPublicationRequest;
+    readonly manifest: ShelfPersistenceManifest;
+    readonly checksum: string;
 }
 /** Link from a recovery journal to the immutable shelf generation it protects. */
 export interface ShelfJournalShelfLink {
@@ -93,6 +107,15 @@ export interface ShelfJournalShelfLink {
 }
 /** Test seams for atomic current-pointer replacement, and store-lock wait tuning. */
 export interface ShelfStoreOptions {
+    /** Fault injection after each durable target-publication boundary. */
+    readonly publicationCheckpoint?: (
+        phase: "journal" | "manifest" | "pointer" | "terminal",
+    ) => Promise<void>;
+    /** Fault-injection seam after durable migration publications. */
+    readonly migrationCheckpoint?: (checkpoint: {
+        readonly phase: "pointer" | "catalog";
+        readonly shelfId?: string;
+    }) => Promise<void>;
     readonly beforeCurrentPointerRename?: () => Promise<void>;
     /** How long a busy store lock is retried before the caller sees busy. Defaults to 1s. */
     readonly acquireTimeoutMs?: number;
@@ -105,6 +128,14 @@ export class ShelfStoreCorruptionError extends Error {
     constructor(message: string) {
         super(message);
         this.name = "ShelfStoreCorruptionError";
+    }
+}
+/** A known write-admission refusal that still permits validated persisted reads. */
+export class ShelfMutationAdmissionError extends ShelfStoreCorruptionError {
+    /** Identifies recovery or migration review without disguising malformed or unreadable bytes. */
+    constructor(message: string) {
+        super(message);
+        this.name = "ShelfMutationAdmissionError";
     }
 }
 /** Raised when a caller's expected immutable shelf generation is no longer current. */
@@ -142,13 +173,43 @@ interface Catalog {
     readonly shelves: readonly string[];
     readonly ledger: Readonly<Record<string, IdempotencyRecord>>;
 }
+
+interface MigrationSnapshot {
+    readonly catalog: string | null;
+    readonly pointers: readonly {
+        readonly id: string;
+        readonly pointer: string;
+        readonly checksum: string;
+    }[];
+}
+interface MigrationRecord {
+    readonly version: 1;
+    readonly repoId: string;
+    readonly state: "pending" | "complete";
+    readonly backupChecksum: string;
+    readonly observations: readonly MigrationSnapshot[];
+    readonly checksum: string;
+}
 /**
  * Immutable shelf storage primitive. Callers compose repository-gate ownership
  * before this store lock; storage never replaces the repository mutation gate.
  */
 export class ShelfStore {
     private readonly lock: RepositoryLock;
-    private readonly lockContext = new AsyncLocalStorage<boolean>();
+    private readonly lockContext = new AsyncLocalStorage<{
+        active: boolean;
+        admitted: boolean;
+        publicationChecked: boolean;
+    }>();
+    private readonly recoveryContext = new AsyncLocalStorage<{
+        readonly id: string;
+        readonly checksum: string;
+        readonly shelf?: {
+            readonly id: string;
+            readonly generation: number;
+            readonly checksum: string;
+        };
+    }>();
 
     /** Creates a store rooted at one repository-scoped shelf path. */
     constructor(
@@ -161,9 +222,14 @@ export class ShelfStore {
         });
     }
 
+    /** Canonical repository identity derived by resolveShelfPaths; completion must reject a foreign store. */
+    get repositoryId(): string {
+        return this.paths.repoId;
+    }
+
     /** Runs one storage mutation with the reusable nonce/heartbeat store lock. */
     async withLock<T>(operation: () => Promise<T>): Promise<T> {
-        if (this.lockContext.getStore()) return operation();
+        if (this.lockContext.getStore()?.active) return operation();
         // Ordered, not independent: the internal parent is created inside the root, and the
         // lock file is created inside that parent. Running them together races directory
         // creation against the very directories the next step needs to already exist.
@@ -171,9 +237,11 @@ export class ShelfStore {
         await ensureShelfRoot(this.paths);
         await ensureShelfInternalParent(this.paths, path.join(".store-lock", STORE_LOCK_FILE));
         const release = await this.acquireWithBriefWait();
+        const scope = { active: true, admitted: false, publicationChecked: false };
         try {
-            return await this.lockContext.run(true, operation);
+            return await this.lockContext.run(scope, operation);
         } finally {
+            scope.active = false;
             await release();
         }
     }
@@ -203,9 +271,326 @@ export class ShelfStore {
         });
     }
 
+    /**
+     * Promotes every live pointer while the caller holds metadata lease, repository gate,
+     * then this store lock. The host must refuse native/pending target operations first.
+     * Restart inventories actual disk state; immutable backups never resurrect deleted shelves.
+     */
+    async migrateWithHeldLocks(): Promise<void> {
+        if (!this.lockContext.getStore()?.active)
+            throw new Error("Shelf migration requires the store lock.");
+        const journals = await this.readJournals();
+        if (
+            journals.some(
+                (journal) =>
+                    journal.state === "shelvePendingRevert" || journal.state === "unshelvePending",
+            )
+        ) {
+            throw new ShelfMutationAdmissionError("Shelf recovery must finish before migration.");
+        }
+        const catalog = await this.readCatalog();
+        const previous = await this.readMigrationRecord();
+        if (previous?.state === "complete") {
+            await this.assertMutationReady();
+            return;
+        }
+        if (!previous && catalog.schemaVersion !== SCHEMA_VERSION) {
+            throw new ShelfStoreCorruptionError("Shelf migration evidence is missing.");
+        }
+        const inventory = await this.migrationInventory(catalog, true);
+        if (
+            catalog.schemaVersion === CURRENT_SCHEMA_VERSION &&
+            [...inventory.values()].some(
+                (manifest) => manifest.schemaVersion !== CURRENT_SCHEMA_VERSION,
+            )
+        ) {
+            throw new ShelfStoreCorruptionError("Foreign shelf data requires migration review.");
+        }
+        const snapshot = await this.migrationSnapshot(inventory);
+        const backupPath = this.migrationPath("backup");
+        let backup: string;
+        if (previous) {
+            backup = await this.readMigrationBackup(previous.backupChecksum);
+        } else {
+            const sealed = sealMigration({
+                version: 1,
+                repoId: this.paths.repoId,
+                snapshot,
+                checksum: "",
+            });
+            try {
+                await writeAtomicExclusive(
+                    await this.writableTarget(backupPath),
+                    encodeJson(sealed),
+                );
+                await fsyncDirectory(path.dirname(backupPath));
+            } catch (error) {
+                if (!isAlreadyExists(error)) throw error;
+            }
+            backup = await this.readMigrationBackup();
+        }
+        const pending = sealMigration({
+            version: 1 as const,
+            repoId: this.paths.repoId,
+            state: "pending" as const,
+            backupChecksum: hashBytes(Buffer.from(backup)),
+            observations: [...(previous?.observations ?? []), snapshot],
+            checksum: "",
+        });
+        await this.writeAtomic(this.migrationPath("journal"), encodeJson(pending));
+        for (const [id, manifest] of inventory) {
+            if (manifest.schemaVersion === CURRENT_SCHEMA_VERSION) continue;
+            await this.promoteCurrent(id, manifest);
+            await this.options.migrationCheckpoint?.({ phase: "pointer", shelfId: id });
+        }
+        const verified = await this.migrationInventory(await this.readCatalog(), true);
+        if (
+            [...verified.values()].some(
+                (manifest) => manifest.schemaVersion !== CURRENT_SCHEMA_VERSION,
+            )
+        ) {
+            throw new ShelfStoreCorruptionError(
+                "Shelf migration left an unsupported current pointer.",
+            );
+        }
+        if (catalog.schemaVersion !== CURRENT_SCHEMA_VERSION) {
+            const currentCatalog = await this.readCatalog();
+            await this.writeCatalog({
+                ...currentCatalog,
+                schemaVersion: CURRENT_SCHEMA_VERSION,
+                catalogGeneration: currentCatalog.catalogGeneration + 1,
+                shelves: [...verified.keys()],
+            });
+            await this.options.migrationCheckpoint?.({ phase: "catalog" });
+        }
+        await this.writeAtomic(
+            this.migrationPath("journal"),
+            encodeJson(sealMigration({ ...pending, state: "complete" as const })),
+        );
+        await this.assertMutationReady();
+    }
+
+    /** Validates all live schemas once per uninterrupted lock hold, after durable completion. */
+    async assertMutationReady(): Promise<void> {
+        await this.assertMigrationReady();
+        const scope = this.lockContext.getStore()!;
+        if (scope.publicationChecked) return;
+        if (
+            (await this.readJournals()).some(
+                (journal) => journal.targetPublication && journal.state === "unshelvePending",
+            )
+        ) {
+            throw new ShelfMutationAdmissionError("Shelf publication must finish before mutation.");
+        }
+        scope.publicationChecked = true;
+    }
+
+    /** The publication adapter may resume its own intent, but never bypasses migration admission. */
+    private async assertMigrationReady(): Promise<void> {
+        const scope = this.lockContext.getStore();
+        if (!scope?.active) throw new Error("Shelf admission requires the store lock.");
+        if (scope.admitted) return;
+        const record = await this.readMigrationRecord();
+        const catalog = await this.readCatalog();
+        if (record?.state !== "complete" || catalog.schemaVersion !== CURRENT_SCHEMA_VERSION) {
+            throw new ShelfMutationAdmissionError("Shelf migration must finish before mutation.");
+        }
+        await this.readMigrationBackup(record.backupChecksum);
+        const inventory = await this.migrationInventory(catalog, false);
+        if (
+            [...inventory.values()].some(
+                (manifest) => manifest.schemaVersion !== CURRENT_SCHEMA_VERSION,
+            )
+        ) {
+            throw new ShelfMutationAdmissionError("Foreign shelf data requires migration review.");
+        }
+        scope.admitted = true;
+    }
+
+    /**
+     * Admits rollback of one existing pending capture, never new legacy writes. The caller
+     * holds metadata, repository and store locks; uncertain rollback retains its evidence.
+     */
+    async withPendingRecovery<T>(
+        id: string,
+        operation: (journal: ShelfJournal) => Promise<T>,
+    ): Promise<T> {
+        if (!this.lockContext.getStore()?.active)
+            throw new Error("Shelf recovery requires the store lock.");
+        const migration = await this.readMigrationRecord();
+        const catalog = await this.readCatalog();
+        if (migration?.state === "complete") await this.assertMutationReady();
+        else if (migration) await this.readMigrationBackup(migration.backupChecksum);
+        else if (catalog.schemaVersion !== SCHEMA_VERSION)
+            throw new ShelfStoreCorruptionError("Shelf migration evidence is missing.");
+        const bytes = await this.readJournalBytes(id);
+        const journal = parseJournal(bytes);
+        if (journal.id !== id || journal.state !== "shelvePendingRevert")
+            throw new ShelfStoreCorruptionError("Shelf journal is not pending capture recovery.");
+        let shelf: { id: string; generation: number; checksum: string } | undefined;
+        if (journal.shelf) {
+            const current = await this.readCurrentManifest(journal.shelf.id);
+            if (current.generation !== journal.shelf.generation)
+                throw new ShelfStoreCorruptionError("Shelf recovery generation changed.");
+            shelf = { ...journal.shelf, checksum: current.checksum };
+        }
+        return this.recoveryContext.run(
+            { id, checksum: hashBytes(Buffer.from(bytes)), shelf },
+            () => operation(journal),
+        );
+    }
+
+    /** Terminalizes only the unchanged pending journal admitted in this rollback callback. */
+    async finishPendingRecovery(id: string, outcome: "retained" | "rolledBack"): Promise<void> {
+        const admission = this.recoveryContext.getStore();
+        if (!this.lockContext.getStore()?.active || admission?.id !== id)
+            throw new ShelfStoreCorruptionError("Shelf recovery admission is missing.");
+        const bytes = await this.readJournalBytes(id);
+        const journal = parseJournal(bytes);
+        if (
+            journal.state !== "shelvePendingRevert" ||
+            hashBytes(Buffer.from(bytes)) !== admission.checksum
+        )
+            throw new ShelfStoreCorruptionError("Shelf recovery journal changed.");
+        if (admission.shelf) {
+            const current = await this.readCurrentManifest(admission.shelf.id);
+            if (
+                current.generation !== admission.shelf.generation ||
+                current.checksum !== admission.shelf.checksum
+            )
+                throw new ShelfStoreCorruptionError("Shelf recovery source changed.");
+        }
+        if (outcome === "retained")
+            await this.writeAtomic(
+                this.journalPath(id),
+                encodeJson({ ...journal, state: "ghost" }),
+            );
+        else {
+            await rm(await this.readableTarget(this.journalPath(id)), { force: false });
+            await fsyncDirectory(path.dirname(this.journalPath(id)));
+        }
+    }
+
+    /** Inventories valid IDs from both catalog and disk, preserving object-only orphan directories. */
+    private async migrationInventory(
+        catalog: Catalog,
+        verifyObjects: boolean,
+    ): Promise<Map<string, ShelfManifest>> {
+        const ids = new Set(catalog.shelves);
+        try {
+            for (const id of await readdir(
+                await this.readableDirectory(resolveShelfInternalPath(this.paths, "shelves")),
+            )) {
+                if (isShelfIdentifier(id)) ids.add(id);
+            }
+        } catch (error) {
+            if (!isNotFound(error)) throw error;
+        }
+        const result = new Map<string, ShelfManifest>();
+        for (const id of [...ids].sort()) {
+            const generation = await this.currentGenerationOrUndefined(id);
+            if (generation === undefined) continue;
+            const manifest = await this.readManifest(id, generation);
+            if (verifyObjects)
+                for (const hash of manifest.objectHashes) await this.readObject(id, hash);
+            result.set(id, manifest);
+        }
+        return result;
+    }
+
+    /** Captures exact catalog/pointer bytes alongside the manifest checksum observed under the lock. */
+    private async migrationSnapshot(
+        inventory: ReadonlyMap<string, ShelfManifest>,
+    ): Promise<MigrationSnapshot> {
+        let catalog: string | null = null;
+        try {
+            catalog = await readFile(await this.readableTarget(this.catalogPath()), "utf8");
+        } catch (error) {
+            if (!isNotFound(error)) throw error;
+        }
+        const pointers: MigrationSnapshot["pointers"][number][] = [];
+        for (const [id, manifest] of inventory) {
+            pointers.push({
+                id,
+                pointer: await readFile(await this.readableTarget(this.currentPath(id)), "utf8"),
+                checksum: manifest.checksum,
+            });
+        }
+        return { catalog, pointers };
+    }
+
+    /** Writes a fresh immutable generation and CASes its pointer without publishing the v2 catalog. */
+    private async promoteCurrent(shelfId: string, source: ShelfManifest): Promise<void> {
+        const current = await this.readCurrentManifest(shelfId);
+        if (
+            current.generation !== source.generation ||
+            current.checksum !== source.checksum ||
+            current.schemaVersion !== 1
+        ) {
+            throw new ShelfStoreCorruptionError("Shelf changed during migration.");
+        }
+        const generation = await this.nextGeneration(shelfId);
+        await this.writableTarget(this.generationDirectory(shelfId, generation));
+        await mkdir(this.generationDirectory(shelfId, generation), { mode: 0o700 });
+        const promoted = {
+            ...source,
+            schemaVersion: CURRENT_SCHEMA_VERSION,
+            generation,
+            checksum: "",
+        };
+        promoted.checksum = checksumManifest(promoted);
+        await this.writeAtomic(this.manifestPath(shelfId, generation), encodeJson(promoted));
+        const latest = await this.readCurrentManifest(shelfId);
+        if (latest.generation !== source.generation || latest.checksum !== source.checksum)
+            throw new ShelfStoreCorruptionError("Shelf changed during migration.");
+        await this.writeAtomic(this.currentPath(shelfId), Buffer.from(`${generation}\n`));
+    }
+
+    private migrationPath(kind: "backup" | "journal"): string {
+        return resolveShelfInternalPath(this.paths, `migration-v2-${kind}.json`);
+    }
+
+    private async readMigrationBackup(expected?: string): Promise<string> {
+        const target = await this.readableTarget(this.migrationPath("backup"));
+        await assertNotSymlink(target);
+        const bytes = await readFile(target, "utf8");
+        const backup = parseMigrationArtifact(bytes);
+        if (
+            backup.repoId !== this.paths.repoId ||
+            !validMigrationSnapshot(backup.snapshot) ||
+            (expected !== undefined && hashBytes(Buffer.from(bytes)) !== expected)
+        ) {
+            throw new ShelfStoreCorruptionError("Invalid shelf migration backup.");
+        }
+        return bytes;
+    }
+
+    private async readMigrationRecord(): Promise<MigrationRecord | undefined> {
+        try {
+            const target = await this.readableTarget(this.migrationPath("journal"));
+            await assertNotSymlink(target);
+            const value = parseMigrationArtifact(await readFile(target, "utf8"));
+            if (
+                value.repoId !== this.paths.repoId ||
+                (value.state !== "pending" && value.state !== "complete") ||
+                !isShelfObjectHash(value.backupChecksum) ||
+                !Array.isArray(value.observations) ||
+                value.observations.length === 0 ||
+                !value.observations.every(validMigrationSnapshot)
+            ) {
+                throw new ShelfStoreCorruptionError("Invalid shelf migration journal.");
+            }
+            return value as unknown as MigrationRecord;
+        } catch (error) {
+            if (isNotFound(error)) return undefined;
+            throw error;
+        }
+    }
+
     /** Stores a byte object once beneath its shelf and verifies pre-existing content. */
     async putObject(shelfId: string, contents: Uint8Array): Promise<ShelfObjectRef> {
         return this.withLock(async () => {
+            await this.assertMutationReady();
             const hash = hashBytes(contents);
             const target = await this.writableTarget(this.objectPath(shelfId, hash));
             try {
@@ -236,37 +621,225 @@ export class ShelfStore {
     /** Adds a manifest generation, then atomically advances the small current pointer. */
     async writeGeneration(shelfId: string, input: ShelfManifestInput): Promise<ShelfManifest> {
         return this.withLock(async () => {
+            await this.assertMutationReady();
             const persistence = validatePersistenceInput(input);
             if (persistence) assertPersistedObjectReferences(persistence, input.objectHashes);
-            const generation = await this.nextGeneration(shelfId);
-            await this.writableTarget(this.generationDirectory(shelfId, generation));
-            // Reserve a fresh immutable generation directory before its manifest is written.
-            // A crash before the current-pointer swap can leave an orphaned generation behind.
-            await mkdir(this.generationDirectory(shelfId, generation), { mode: 0o700 });
-            const manifest: ShelfManifest = {
-                schemaVersion: SCHEMA_VERSION,
-                generation,
-                objectHashes: [...input.objectHashes],
-                files: persistence ? persistence.files : [...input.files],
-                metadata: persistence?.metadata,
-                checksum: "",
-            };
-            const complete: ShelfManifest = {
-                ...manifest,
-                checksum: checksumManifest(manifest),
-            };
-            const manifestPath = this.manifestPath(shelfId, generation);
-            // The immutable manifest must be durable before the current-pointer crash boundary.
-            // react-doctor-disable-next-line react-doctor/async-parallel
-            await this.writeAtomic(manifestPath, encodeJson(complete));
-            await this.options.beforeCurrentPointerRename?.();
-            await this.writeAtomic(
-                this.currentPath(shelfId),
-                Buffer.from(String(generation) + "\n"),
-            );
-            await this.addShelfToCatalog(shelfId);
+            const sourceGeneration = await this.currentGenerationOrUndefined(shelfId);
+            const source =
+                sourceGeneration === undefined
+                    ? undefined
+                    : await this.readManifest(shelfId, sourceGeneration);
+            if (source && source.schemaVersion !== CURRENT_SCHEMA_VERSION)
+                throw new ShelfMutationAdmissionError(
+                    "Foreign shelf data requires migration review.",
+                );
+            const complete = makeManifest(input, await this.nextGeneration(shelfId));
+            await this.writeImmutableManifest(shelfId, complete);
+            await this.publishManifest(shelfId, complete, source);
             return complete;
         });
+    }
+
+    /** Writes or verifies exactly one immutable manifest; a conflicting orphan is never overwritten. */
+    private async writeImmutableManifest(shelfId: string, manifest: ShelfManifest): Promise<void> {
+        const directory = this.generationDirectory(shelfId, manifest.generation);
+        await this.writableTarget(directory);
+        try {
+            await mkdir(directory, { mode: 0o700 });
+        } catch (error) {
+            if (!isAlreadyExists(error)) throw error;
+            await this.readableDirectory(directory);
+        }
+        const target = this.manifestPath(shelfId, manifest.generation);
+        try {
+            await assertNotSymlink(target);
+            const existing = await readFile(await this.readableTarget(target));
+            if (!existing.equals(encodeJson(manifest))) throw publicationError();
+            return;
+        } catch (error) {
+            if (!isNotFound(error)) throw error;
+        }
+        await this.writeAtomic(target, encodeJson(manifest));
+    }
+
+    /** Advances the pointer only from the captured generation AND checksum after durable preparation. */
+    private async publishManifest(
+        shelfId: string,
+        manifest: ShelfManifest,
+        source?: ShelfManifest,
+        journal?: ShelfJournal,
+    ): Promise<void> {
+        await this.options.beforeCurrentPointerRename?.();
+        if (journal) await this.assertUnchangedPublicationJournal(journal);
+        await this.assertExactManifest(shelfId, manifest);
+        const actualGeneration = await this.currentGenerationOrUndefined(shelfId);
+        if (
+            actualGeneration !== source?.generation ||
+            (source &&
+                (await this.readManifest(shelfId, source.generation)).checksum !== source.checksum)
+        ) {
+            throw new ShelfStoreCorruptionError("Shelf changed before pointer publication.");
+        }
+        await this.writeAtomic(
+            this.currentPath(shelfId),
+            Buffer.from(String(manifest.generation) + "\n"),
+        );
+        await this.addShelfToCatalog(shelfId);
+    }
+
+    /**
+     * Publishes or resumes the frozen lifecycle update without Git. The caller holds metadata
+     * then repository locks; this method takes the shelf lock. Empty success returns the exact
+     * source and creates no receipt. Any conflicting durable identity requires explicit review.
+     */
+    async publishTargetOperation(
+        input: ShelfTargetPublicationRequest,
+    ): Promise<ShelfPersistenceManifest> {
+        return this.withLock(async () => {
+            const request = parsePublicationRequest(input, true);
+            await this.assertMigrationReady();
+            const id = publicationJournalId(request);
+            const journals = await this.readJournals();
+            if (
+                journals.some(
+                    (journal) =>
+                        journal.state === "unshelvePending" &&
+                        journal.targetPublication &&
+                        journal.id !== id,
+                )
+            )
+                throw publicationError();
+            let journal = journals.find((candidate) => candidate.id === id);
+            if (request.appliedChangeIds.length === 0) {
+                if (journal) throw publicationError();
+                return this.readPublicationSource(request, true);
+            }
+            if (!journal) {
+                const source = await this.readPublicationSource(request, true);
+                if (
+                    source.metadata.targetOperationReceipt?.targetOperationId ===
+                    request.targetOperationId
+                )
+                    throw publicationError();
+                const manifest = targetManifest(
+                    source,
+                    request,
+                    await this.nextGeneration(request.shelfId),
+                    Date.now(),
+                );
+                const intent = { request, manifest, checksum: "" };
+                const targetPublication = { ...intent, checksum: hashBytes(encodeJson(intent)) };
+                journal = {
+                    id,
+                    state: "unshelvePending",
+                    pathProgress: Object.fromEntries(
+                        request.appliedChangeIds.map((changeId) => [changeId, "applied"]),
+                    ),
+                    shelf: { id: request.shelfId, generation: request.sourceGeneration },
+                    targetPublication,
+                };
+                // Invalidate ordinary admission even when this operation shares an already admitted hold.
+                this.lockContext.getStore()!.publicationChecked = false;
+                await this.writeAtomic(this.journalPath(id), encodeJson(journal));
+                await this.options.publicationCheckpoint?.("journal");
+            }
+            await this.assertUnchangedPublicationJournal(journal);
+            const intent = await this.verifyPublicationIntent(journal, request);
+            let current = await this.readCurrentShelfManifest(request.shelfId);
+            if (
+                current.generation === request.sourceGeneration &&
+                current.checksum === request.sourceChecksum
+            ) {
+                if (journal.state !== "unshelvePending") throw publicationError();
+                await this.writeImmutableManifest(request.shelfId, intent);
+                await this.options.publicationCheckpoint?.("manifest");
+                await this.assertUnchangedPublicationJournal(journal);
+                await this.publishManifest(request.shelfId, intent, current, journal);
+                await this.options.publicationCheckpoint?.("pointer");
+                current = await this.readCurrentShelfManifest(request.shelfId);
+            }
+            assertPublishedManifest(current, intent);
+            await this.assertExactManifest(request.shelfId, intent);
+            await this.assertUnchangedPublicationJournal(journal);
+            if (journal.state === "unshelvePending") {
+                await this.writeAtomic(
+                    this.journalPath(id),
+                    encodeJson({
+                        ...journal,
+                        state: intent.metadata.lifecycle === "applied" ? "ghost" : "applied",
+                    }),
+                );
+                await this.options.publicationCheckpoint?.("terminal");
+            }
+            return current;
+        });
+    }
+
+    /** Returns a verified durable publication, never an empty-success or caller-asserted receipt. */
+    async readTargetOperationReceipt(
+        input: ShelfTargetPublicationRequest,
+    ): Promise<ShelfPersistenceManifest> {
+        return this.withLock(async () => {
+            const request = parsePublicationRequest(input);
+            const journal = await this.readJournal(publicationJournalId(request));
+            if (journal.state === "unshelvePending") throw publicationError();
+            await this.assertUnchangedPublicationJournal(journal);
+            const intended = await this.verifyPublicationIntent(journal, request);
+            const current = await this.readCurrentShelfManifest(request.shelfId);
+            assertPublishedManifest(current, intended);
+            await this.assertExactManifest(request.shelfId, intended);
+            return current;
+        });
+    }
+
+    /** Parsed checksum equality alone does not prove that retained immutable bytes are unchanged. */
+    private async assertExactManifest(shelfId: string, intended: ShelfManifest): Promise<void> {
+        const target = await this.readableTarget(this.manifestPath(shelfId, intended.generation));
+        await assertNotSymlink(target);
+        if (!(await readFile(target)).equals(encodeJson(intended))) throw publicationError();
+    }
+
+    /** Source bytes remain authoritative even after pointer publication; deletion never creates a source. */
+    private async readPublicationSource(
+        request: ShelfTargetPublicationRequest,
+        current: boolean,
+    ): Promise<ShelfPersistenceManifest> {
+        const manifest = current
+            ? await this.readCurrentShelfManifest(request.shelfId)
+            : await this.readManifest(request.shelfId, request.sourceGeneration);
+        if (
+            manifest.schemaVersion !== CURRENT_SCHEMA_VERSION ||
+            manifest.generation !== request.sourceGeneration ||
+            manifest.checksum !== request.sourceChecksum
+        )
+            throw publicationError();
+        return { ...manifest, ...parseShelfPersistenceContract(manifest) };
+    }
+
+    /** Re-derives only validation from the immutable source, retaining the journal's original timestamp. */
+    private async verifyPublicationIntent(
+        journal: ShelfJournal,
+        request: ShelfTargetPublicationRequest,
+    ): Promise<ShelfPersistenceManifest> {
+        const validated = parseJournal(encodeJson(journal).toString("utf8"));
+        const intent = validated.targetPublication;
+        if (!intent || JSON.stringify(intent.request) !== JSON.stringify(request))
+            throw publicationError();
+        const source = await this.readPublicationSource(request, false);
+        const expected = targetManifest(
+            source,
+            request,
+            intent.manifest.generation,
+            intent.manifest.metadata.appliedAt,
+        );
+        if (JSON.stringify(expected) !== JSON.stringify(intent.manifest)) throw publicationError();
+        return intent.manifest;
+    }
+
+    /** Refuses an externally altered intent rather than terminalizing replacement evidence. */
+    private async assertUnchangedPublicationJournal(journal: ShelfJournal): Promise<void> {
+        if ((await this.readJournalBytes(journal.id)) !== encodeJson(journal).toString("utf8"))
+            throw publicationError();
     }
 
     /** Persists a typed shelf generation and advances its immutable current pointer. */
@@ -301,6 +874,7 @@ export class ShelfStore {
         operation: () => Promise<T>,
     ): Promise<T> {
         return this.withLock(async () => {
+            await this.assertMutationReady();
             if (
                 expected.expectedShelfGeneration !== undefined &&
                 (!expected.shelfId || !isGeneration(expected.expectedShelfGeneration))
@@ -359,7 +933,14 @@ export class ShelfStore {
                 try {
                     // Stable traversal preserves the first corrupt manifest observed by callers.
                     // react-doctor-disable-next-line react-doctor/async-await-in-loop
-                    await this.readCurrentManifest(shelfId);
+                    const manifest = await this.readCurrentManifest(shelfId);
+                    if (
+                        catalog.schemaVersion === CURRENT_SCHEMA_VERSION &&
+                        manifest.schemaVersion !== CURRENT_SCHEMA_VERSION
+                    )
+                        throw new ShelfStoreCorruptionError(
+                            "Foreign shelf data requires migration review.",
+                        );
                     shelfIds.push(shelfId);
                 } catch {
                     corruptShelfIds.push(shelfId);
@@ -372,9 +953,14 @@ export class ShelfStore {
     /** Deletes one complete shelf generation tree while preserving separate recovery snapshots. */
     async deleteShelf(shelfId: string): Promise<void> {
         return this.withLock(async () => {
+            await this.assertMutationReady();
             const target = await this.writableTarget(this.shelfDirectory(shelfId));
             await assertNotSymlink(target);
-            await this.readCurrentManifest(shelfId);
+            const current = await this.readCurrentManifest(shelfId);
+            if (current.schemaVersion !== CURRENT_SCHEMA_VERSION)
+                throw new ShelfMutationAdmissionError(
+                    "Foreign shelf data requires migration review.",
+                );
             const catalog = await this.readCatalog();
             await rm(target, { recursive: true, force: false });
             if (!catalog.shelves.includes(shelfId)) return;
@@ -386,9 +972,35 @@ export class ShelfStore {
         });
     }
 
+    /** Deletes only the unchanged cancelled capture, allowing its own schema promotion. */
+    async deleteRecoveredShelf(shelfId: string, captured: ShelfManifest): Promise<void> {
+        if (!this.lockContext.getStore()?.active)
+            throw new Error("Shelf recovery deletion requires the store lock.");
+        await this.assertMutationReady();
+        const current = await this.readCurrentManifest(shelfId);
+        const expected =
+            captured.schemaVersion === CURRENT_SCHEMA_VERSION
+                ? captured.checksum
+                : checksumManifest({
+                      ...captured,
+                      schemaVersion: CURRENT_SCHEMA_VERSION,
+                      generation: current.generation,
+                      checksum: "",
+                  });
+        if (
+            current.checksum !== expected ||
+            (captured.schemaVersion === SCHEMA_VERSION && current.generation <= captured.generation)
+        )
+            throw new ShelfStoreCorruptionError(
+                "Cancelled shelf changed; recovery review is required.",
+            );
+        await this.deleteShelf(shelfId);
+    }
+
     /** Records a durable result before returning so retried requests replay safely. */
     async runIdempotent<T>(request: IdempotencyRequest, operation: () => Promise<T>): Promise<T> {
         return this.withLock(async () => {
+            await this.assertMutationReady();
             const catalog = await this.readCatalog();
             const payloadHash = hashBytes(request.payload);
             const existing = catalog.ledger[request.token];
@@ -426,7 +1038,17 @@ export class ShelfStore {
     /** Removes only unreferenced immutable objects, never a current or journal reference. */
     async collectGarbage(shelfId: string): Promise<readonly string[]> {
         return this.withLock(async () => {
+            await this.assertMutationReady();
             const reachable = new Set((await this.readCurrentManifest(shelfId)).objectHashes);
+            for (const entry of await readdir(
+                await this.readableDirectory(this.shelfDirectory(shelfId)),
+            )) {
+                const match = /^gen-([1-9]\d*)$/.exec(entry);
+                if (match)
+                    for (const hash of (await this.readManifest(shelfId, Number(match[1])))
+                        .objectHashes)
+                        reachable.add(hash);
+            }
             for (const journal of await this.readJournals()) {
                 for (const hash of journal.recoveryObjectHashes ?? []) reachable.add(hash);
             }
@@ -458,6 +1080,14 @@ export class ShelfStore {
     /** Stores a full journal snapshot for resume/rollback rather than mutating it in place. */
     async writeJournal(journal: ShelfJournal): Promise<void> {
         await this.withLock(async () => {
+            await this.assertMutationReady();
+            if (
+                journal.targetPublication ||
+                (await this.readJournals()).some(
+                    (existing) => existing.id === journal.id && existing.targetPublication,
+                )
+            )
+                throw publicationError();
             await this.writeAtomic(this.journalPath(journal.id), encodeJson(journal));
         });
     }
@@ -465,7 +1095,9 @@ export class ShelfStore {
     /** Transitions an existing journal to its next durable state. */
     async transitionJournal(id: string, state: ShelfJournal["state"]): Promise<void> {
         await this.withLock(async () => {
+            await this.assertMutationReady();
             const journal = await this.readJournal(id);
+            if (journal.targetPublication) throw publicationError();
             await this.writeAtomic(this.journalPath(id), encodeJson({ ...journal, state }));
         });
     }
@@ -473,6 +1105,13 @@ export class ShelfStore {
     /** Deletes a completed pending journal only after recovery has reached a terminal outcome. */
     async deleteJournal(id: string): Promise<void> {
         await this.withLock(async () => {
+            await this.assertMutationReady();
+            if (
+                (await this.readJournals()).some(
+                    (journal) => journal.id === id && journal.targetPublication,
+                )
+            )
+                throw publicationError();
             await rm(await this.readableTarget(this.journalPath(id)), { force: true });
         });
     }
@@ -496,9 +1135,14 @@ export class ShelfStore {
     }
 
     private async readJournal(id: string): Promise<ShelfJournal> {
+        return parseJournal(await this.readJournalBytes(id));
+    }
+
+    /** Reads the exact admitted evidence so unknown fields and byte changes remain protected. */
+    private async readJournalBytes(id: string): Promise<string> {
         const target = await this.readableTarget(this.journalPath(id));
         await assertNotSymlink(target);
-        return parseJournal(await readFile(target, "utf8"));
+        return readFile(target, "utf8");
     }
 
     private async readManifest(shelfId: string, generation: number): Promise<ShelfManifest> {
@@ -701,19 +1345,24 @@ function parseCatalog(value: string): Catalog {
         throw new ShelfStoreCorruptionError("Invalid shelf catalog.");
     const catalog = parsed as Partial<Catalog>;
     if (
-        catalog.schemaVersion !== SCHEMA_VERSION ||
+        (catalog.schemaVersion !== SCHEMA_VERSION &&
+            catalog.schemaVersion !== CURRENT_SCHEMA_VERSION) ||
         typeof catalog.catalogGeneration !== "number" ||
         !Number.isSafeInteger(catalog.catalogGeneration) ||
+        catalog.catalogGeneration < 0 ||
         !Array.isArray(catalog.shelves) ||
+        !catalog.shelves.every(isShelfIdentifier) ||
+        new Set(catalog.shelves).size !== catalog.shelves.length ||
         !catalog.ledger ||
-        typeof catalog.ledger !== "object"
+        typeof catalog.ledger !== "object" ||
+        Array.isArray(catalog.ledger)
     ) {
         throw new ShelfStoreCorruptionError("Invalid shelf catalog.");
     }
     return {
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: catalog.schemaVersion,
         catalogGeneration: catalog.catalogGeneration,
-        shelves: catalog.shelves.filter((item): item is string => typeof item === "string"),
+        shelves: catalog.shelves,
         ledger: catalog.ledger,
     };
 }
@@ -724,7 +1373,8 @@ function parseManifest(value: string): ShelfManifest {
         throw new ShelfStoreCorruptionError("Invalid shelf manifest.");
     const manifest = parsed as Partial<ShelfManifest>;
     if (
-        manifest.schemaVersion !== SCHEMA_VERSION ||
+        (manifest.schemaVersion !== SCHEMA_VERSION &&
+            manifest.schemaVersion !== CURRENT_SCHEMA_VERSION) ||
         typeof manifest.generation !== "number" ||
         !Number.isSafeInteger(manifest.generation) ||
         !Array.isArray(manifest.objectHashes) ||
@@ -739,7 +1389,7 @@ function parseManifest(value: string): ShelfManifest {
     const persistence = parseManifestPersistence(manifest.metadata, manifest.files);
     if (persistence) assertPersistedObjectReferences(persistence, manifest.objectHashes);
     return {
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: manifest.schemaVersion,
         generation: manifest.generation,
         objectHashes: manifest.objectHashes,
         files: persistence ? persistence.files : manifest.files,
@@ -762,6 +1412,28 @@ function parseJournal(value: string): ShelfJournal {
         throw new ShelfStoreCorruptionError("Invalid shelf journal.");
     }
     const shelf = parseJournalShelfLink(journal.shelf);
+    const targetPublication =
+        journal.targetPublication === undefined
+            ? undefined
+            : parseTargetPublication(journal.targetPublication);
+    if (targetPublication) {
+        const { request, manifest } = targetPublication;
+        if (
+            journal.id !== publicationJournalId(request) ||
+            shelf?.id !== request.shelfId ||
+            shelf.generation !== request.sourceGeneration ||
+            (journal.state !== "unshelvePending" &&
+                journal.state !==
+                    (manifest.metadata.lifecycle === "applied" ? "ghost" : "applied")) ||
+            JSON.stringify(journal.pathProgress) !==
+                JSON.stringify(
+                    Object.fromEntries(request.appliedChangeIds.map((id) => [id, "applied"])),
+                ) ||
+            journal.expectedIndexFingerprint !== undefined ||
+            journal.recoveryObjectHashes !== undefined
+        )
+            throw publicationError();
+    }
     return {
         id: journal.id,
         state: journal.state,
@@ -776,6 +1448,7 @@ function parseJournal(value: string): ShelfJournal {
               )
             : undefined,
         shelf,
+        targetPublication,
     };
 }
 
@@ -806,9 +1479,55 @@ function parseJournalShelfLink(value: unknown): ShelfJournalShelfLink | undefine
     return { id: link.id, generation: link.generation };
 }
 function validatePersistenceInput(input: ShelfManifestInput): ShelfPersistenceContract | undefined {
+    if (input.schemaVersion !== SCHEMA_VERSION && input.schemaVersion !== CURRENT_SCHEMA_VERSION)
+        throw new ShelfPersistenceContractError();
     if (input.metadata === undefined) return undefined;
-    if (input.schemaVersion !== SCHEMA_VERSION) throw new ShelfPersistenceContractError();
     return parseShelfPersistenceContract({ metadata: input.metadata, files: input.files });
+}
+
+/** Checksums the complete migration evidence, including its schema and publication state. */
+function sealMigration<T extends { readonly checksum: string }>(value: T): T {
+    return { ...value, checksum: hashBytes(encodeJson({ ...value, checksum: "" })) };
+}
+
+/** Fails closed on unknown versions and malformed/tampered private migration artifacts. */
+function parseMigrationArtifact(bytes: string): Record<string, unknown> {
+    const value: unknown = JSON.parse(bytes);
+    if (!value || typeof value !== "object" || Array.isArray(value))
+        throw new ShelfStoreCorruptionError("Invalid shelf migration evidence.");
+    const record = value as Record<string, unknown>;
+    if (
+        record.version !== 1 ||
+        !isShelfObjectHash(record.checksum) ||
+        record.checksum !== hashBytes(encodeJson({ ...record, checksum: "" }))
+    )
+        throw new ShelfStoreCorruptionError("Invalid shelf migration evidence.");
+    return record;
+}
+
+/** Validates retained exact pointer/catalog observations without interpreting them as restoration commands. */
+function validMigrationSnapshot(value: unknown): value is MigrationSnapshot {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const snapshot = value as Partial<MigrationSnapshot>;
+    if (snapshot.catalog !== null && typeof snapshot.catalog !== "string") return false;
+    if (snapshot.catalog !== null) parseCatalog(snapshot.catalog);
+    if (!Array.isArray(snapshot.pointers)) return false;
+    const ids = new Set<string>();
+    for (const pointer of snapshot.pointers as MigrationSnapshot["pointers"]) {
+        if (
+            !pointer ||
+            typeof pointer !== "object" ||
+            !isShelfIdentifier(pointer.id) ||
+            ids.has(pointer.id) ||
+            typeof pointer.pointer !== "string" ||
+            !isGeneration(Number(pointer.pointer.trim())) ||
+            Number(pointer.pointer.trim()) < 1 ||
+            !isShelfObjectHash(pointer.checksum)
+        )
+            return false;
+        ids.add(pointer.id);
+    }
+    return true;
 }
 function isJournalState(value: unknown): value is ShelfJournal["state"] {
     return (
@@ -822,6 +1541,136 @@ function isJournalState(value: unknown): value is ShelfJournal["state"] {
 function checksumManifest(manifest: Omit<ShelfManifest, "checksum"> | ShelfManifest): string {
     const normalized = "checksum" in manifest ? { ...manifest, checksum: "" } : manifest;
     return hashBytes(Buffer.from(JSON.stringify(normalized)));
+}
+
+/** Constructs the same canonical immutable bytes for ordinary and target-operation publications. */
+function makeManifest(input: ShelfManifestInput, generation: number): ShelfManifest {
+    const persistence = validatePersistenceInput(input);
+    if (persistence) assertPersistedObjectReferences(persistence, input.objectHashes);
+    const manifest: ShelfManifest = {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        generation,
+        objectHashes: [...input.objectHashes],
+        files: persistence ? persistence.files : [...input.files],
+        metadata: persistence?.metadata,
+        checksum: "",
+    };
+    return { ...manifest, checksum: checksumManifest(manifest) };
+}
+
+/** Canonicalizes a host-frozen set, rejecting duplicates and unsafe identifiers before durable writes. */
+function parsePublicationRequest(
+    value: ShelfTargetPublicationRequest,
+    allowEmpty = false,
+): ShelfTargetPublicationRequest {
+    if (
+        !value ||
+        !isShelfIdentifier(value.shelfId) ||
+        !Array.isArray(value.appliedChangeIds) ||
+        new Set(value.appliedChangeIds).size !== value.appliedChangeIds.length
+    )
+        throw publicationError();
+    const appliedChangeIds = Array.from(value.appliedChangeIds as readonly string[]).sort();
+    // Empty successes require identity validation too, but deliberately cannot form a durable receipt.
+    if (allowEmpty && appliedChangeIds.length === 0) {
+        if (
+            typeof value.targetOperationId !== "string" ||
+            !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value.targetOperationId) ||
+            !isGeneration(value.sourceGeneration) ||
+            value.sourceGeneration < 1 ||
+            !isShelfObjectHash(value.sourceChecksum)
+        )
+            throw publicationError();
+        return {
+            targetOperationId: value.targetOperationId,
+            sourceGeneration: value.sourceGeneration,
+            sourceChecksum: value.sourceChecksum,
+            appliedChangeIds,
+            shelfId: value.shelfId,
+        };
+    }
+    const receipt = parseShelfTargetOperationReceipt({ ...value, appliedChangeIds });
+    return { ...receipt, appliedChangeIds, shelfId: value.shelfId };
+}
+
+/** Derives lifecycle only for the frozen successes while retaining every source object and draft. */
+function targetManifest(
+    source: ShelfPersistenceManifest,
+    request: ShelfTargetPublicationRequest,
+    generation: number,
+    appliedAt?: number,
+): ShelfPersistenceManifest {
+    const successful = new Set(request.appliedChangeIds);
+    const available = new Set(source.files.map((entry) => entry.changeId));
+    if (successful.size === 0 || request.appliedChangeIds.some((id) => !available.has(id)))
+        throw publicationError();
+    const files = source.files.map((entry) =>
+        successful.has(entry.changeId) ? { ...entry, lifecycle: "applied" as const } : entry,
+    );
+    const allApplied = files.every((entry) => entry.lifecycle === "applied");
+    if (allApplied && appliedAt === undefined) throw publicationError();
+    const targetOperationReceipt = parseShelfTargetOperationReceipt(request);
+    const manifest = makeManifest(
+        {
+            ...source,
+            files,
+            metadata: {
+                ...source.metadata,
+                lifecycle: allApplied ? "applied" : "shelved",
+                appliedAt: allApplied ? appliedAt : undefined,
+                targetOperationReceipt,
+            },
+        },
+        generation,
+    );
+    return { ...manifest, ...parseShelfPersistenceContract(manifest) };
+}
+
+/** Validates journal checksum, exact immutable manifest, source identity and nonempty receipt together. */
+function parseTargetPublication(value: ShelfTargetPublication): ShelfTargetPublication {
+    if (
+        !value ||
+        typeof value !== "object" ||
+        Array.isArray(value) ||
+        !isShelfObjectHash(value.checksum) ||
+        value.checksum !== hashBytes(encodeJson({ ...value, checksum: "" }))
+    )
+        throw publicationError();
+    const request = parsePublicationRequest(value.request);
+    const manifest = parseManifest(encodeJson(value.manifest).toString("utf8"));
+    if (
+        manifest.schemaVersion !== CURRENT_SCHEMA_VERSION ||
+        manifest.generation <= request.sourceGeneration ||
+        manifest.checksum !== checksumManifest(manifest) ||
+        !manifest.metadata
+    )
+        throw publicationError();
+    const receipt = parseShelfTargetOperationReceipt(request);
+    if (JSON.stringify(manifest.metadata.targetOperationReceipt) !== JSON.stringify(receipt))
+        throw publicationError();
+    return {
+        request,
+        manifest: { ...manifest, ...parseShelfPersistenceContract(manifest) },
+        checksum: value.checksum,
+    };
+}
+
+/** Names the one existing journal owned by a host operation without accepting filesystem paths. */
+function publicationJournalId(request: ShelfTargetPublicationRequest): string {
+    return `target-${hashBytes(Buffer.from(request.targetOperationId))}`;
+}
+
+/** Publication acknowledgement requires the exact intended generation, checksum, and parsed bytes. */
+function assertPublishedManifest(
+    current: ShelfPersistenceManifest,
+    intended: ShelfPersistenceManifest,
+): void {
+    if (JSON.stringify(current) !== JSON.stringify(intended)) throw publicationError();
+}
+
+/** Stable refusal leaves Git, foreign shelf bytes, and the durable intent available for explicit review. */
+function publicationError(): ShelfStoreCorruptionError {
+    return new ShelfStoreCorruptionError("Shelf target publication requires review.");
 }
 function encodeJson(value: unknown): Buffer {
     return Buffer.from(JSON.stringify(value));

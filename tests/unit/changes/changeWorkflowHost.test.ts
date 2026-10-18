@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile, chmod, readdir, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, chmod, readdir, mkdir, link } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -41,6 +41,12 @@ import { ChangelistPersistence } from "../../../src/changes/changelistPersistenc
 import { ChangeRangeTracker } from "../../../src/changes/changeRangeTracker";
 import { PartialChanges } from "../../../src/git/partialChanges";
 import { PartialIndexPublicationError } from "../../../src/git/partialIndexTransaction";
+import { ShelfService } from "../../../src/services/shelfService";
+import { ShelfStore } from "../../../src/shelf/store";
+import { resolveShelfPaths } from "../../../src/shelf/paths";
+import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
+import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
+import { RepositoryLock } from "../../../src/git/repositoryLock";
 import * as vscode from "vscode";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
@@ -162,6 +168,943 @@ async function partialEditor() {
         },
     };
 }
+
+async function selectedShelfEditor() {
+    const shelves = new ShelfStore(
+        await resolveShelfPaths({
+            repositoryRoot: root,
+            globalStoragePath: path.join(root, "shelf-storage"),
+        }),
+    );
+    const service = new ShelfService({
+        repositoryRoot: root,
+        executor: new GitExecutor(root),
+        gitOps,
+        changelists: store,
+        store: shelves,
+        gate: new RepositoryMutationGate(new RepositoryMutationCoordinator(), new RepositoryLock()),
+    });
+    host.dispose();
+    host = new ChangeWorkflowHost({ ...hostDeps, shelfService: service });
+    Object.defineProperty(vscode.window, "showInputBox", {
+        configurable: true,
+        value: vi.fn().mockResolvedValue("selected shelf"),
+    });
+    const editor = await partialEditor();
+    return { ...editor, service, shelves };
+}
+
+describe("scoped list and file save", () => {
+    it.each(["success", "error"] as const)(
+        "scoped %s reply completes before native notification dismissal",
+        async (kind) => {
+            const f = await selectedShelfEditor();
+            let dismiss!: () => void;
+            const notification = new Promise<undefined>((resolve) => {
+                dismiss = () => resolve(undefined);
+            });
+            const show = vi.mocked(
+                kind === "success"
+                    ? vscode.window.showInformationMessage
+                    : vscode.window.showWarningMessage,
+            );
+            show.mockClear();
+            show.mockReturnValueOnce(notification);
+            let completed = false;
+            const operation = host
+                .handle({
+                    type: "saveChangelistShelf",
+                    repositoryRoot: root,
+                    requestId: "undismissed-notice",
+                    revision: store.revision(root) + (kind === "error" ? 1 : 0),
+                    scope: "files",
+                    listId: "all",
+                    paths: ["file.txt"],
+                })
+                .then(() => {
+                    completed = true;
+                });
+            try {
+                await vi.waitFor(() => expect(show).toHaveBeenCalled(), { timeout: 15000 });
+                expect(
+                    posted,
+                    "terminal result must not wait for native notification dismissal",
+                ).toContainEqual(
+                    expect.objectContaining({
+                        type: "changelistShelfResult",
+                        requestId: "undismissed-notice",
+                        ...(kind === "success"
+                            ? { shelfId: expect.any(String) }
+                            : { error: expect.any(String) }),
+                    }),
+                );
+                expect(completed, "host releases the request before notification dismissal").toBe(
+                    true,
+                );
+                expect((await f.shelves.listShelves()).shelfIds).toHaveLength(
+                    kind === "success" ? 1 : 0,
+                );
+            } finally {
+                dismiss();
+                await operation;
+            }
+        },
+    );
+
+    it("saved scoped identity survives a failed native success notice", async () => {
+        const f = await selectedShelfEditor();
+        vi.mocked(vscode.window.showInformationMessage).mockRejectedValueOnce(
+            new Error("notice delivery failed"),
+        );
+        await host.handle({
+            type: "saveChangelistShelf",
+            repositoryRoot: root,
+            requestId: "notice",
+            revision: store.revision(root),
+            scope: "files",
+            listId: "all",
+            paths: ["file.txt"],
+        });
+        const ids = (await f.shelves.listShelves()).shelfIds;
+        expect(ids).toHaveLength(1);
+        expect(posted, "failed success notice retains durable identity").toContainEqual(
+            expect.objectContaining({
+                type: "changelistShelfResult",
+                message: expect.stringContaining(ids[0]),
+            }),
+        );
+    });
+
+    it("single-owner whole-file save rejects source edits after host plan capture", async () => {
+        const f = await selectedShelfEditor();
+        const save = f.service.saveSelectedChanges.bind(f.service);
+        vi.spyOn(f.service, "saveSelectedChanges").mockImplementationOnce(async (...args) => {
+            await writeFile(path.join(root, "file.txt"), `${working}later edit\n`);
+            return save(...args);
+        });
+        await host.handle({
+            type: "saveChangelistShelf",
+            repositoryRoot: root,
+            requestId: "single-source",
+            revision: store.revision(root),
+            scope: "files",
+            listId: "all",
+            paths: ["file.txt"],
+        });
+        expect(
+            (await f.shelves.listShelves()).shelfIds,
+            "single-owner capture does not regenerate changed source",
+        ).toEqual([]);
+    });
+
+    async function fixture() {
+        const editor = await selectedShelfEditor();
+        const data = editor.messages.find((message) => message.type === "partialFile")! as Extract<
+            PartialEditorReply,
+            { type: "partialFile" }
+        >;
+        const created = await store.create(root, store.revision(root), "Other 名前");
+        const other = created.lists.find((list) => list.id !== "default")!.id;
+        const lines = data.file.blocks
+            .flatMap((block) => block.lines)
+            .filter((line) => line.kind !== "context");
+        await store.assignChanges(
+            root,
+            store.revision(root),
+            "file.txt",
+            data.contentId,
+            other,
+            data.file.blocks[1].lines
+                .filter((line) => line.kind !== "context")
+                .map((line) => line.fingerprint),
+            new Set(lines.map((line) => line.fingerprint)),
+        );
+        await store.saveDraft(root, "default", "", "default draft\n");
+        await store.saveDraft(root, other, "", "other draft 名前\n");
+        await store.saveDraft(root, "all", "", "aggregate draft");
+        await store.recordSelection(root, "file.txt", data.contentId, "default", [], lines.length);
+        const request = {
+            type: "saveChangelistShelf",
+            repositoryRoot: root,
+            requestId: "scoped-save-1",
+            revision: store.revision(root),
+            scope: "list",
+            listId: "default",
+        };
+        return { ...editor, other, request };
+    }
+
+    it("list save captures only its owned ranges and preserves every source state", async () => {
+        const f = await fixture();
+        const before = store.get(root);
+        const index = await readFile(path.join(root, ".git/index"));
+        await host.handle(f.request);
+        const ids = (await f.shelves.listShelves()).shelfIds;
+        expect(ids, "list save publishes one shelf").toHaveLength(1);
+        const manifest = await f.service.getShelfManifest(ids[0]);
+        const patch = await f.service.exportPatch({ id: ids[0] });
+        expect(patch.toString(), "list save excludes other owners").not.toContain("+remaining");
+        expect(patch.toString()).toContain("+selected");
+        expect(manifest.metadata.selection?.scope).toBe("list");
+        expect(manifest.metadata.selection?.sourceLists.map((list) => list.id)).toEqual([
+            "default",
+        ]);
+        expect(store.get(root)).toEqual(before);
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+        expect(git(["rev-parse", "HEAD"])).toBe(baselineHead);
+    });
+
+    it("whole-file save records all source owners and staged plus working layers", async () => {
+        await writeFile(path.join(root, "file.txt"), first);
+        git(["add", "file.txt"]);
+        await writeFile(path.join(root, "file.txt"), working);
+        const f = await fixture();
+        const before = store.get(root);
+        const index = await readFile(path.join(root, ".git/index"));
+        await host.handle({ ...f.request, scope: "files", listId: "all", paths: ["file.txt"] });
+        const ids = (await f.shelves.listShelves()).shelfIds;
+        expect(ids, "whole-file save publishes one shelf").toHaveLength(1);
+        const manifest = await f.service.getShelfManifest(ids[0]);
+        expect(
+            manifest.metadata.selection?.sourceLists.map((list) => list.id).sort(),
+            "whole-file save keeps all owners",
+        ).toEqual(["default", f.other].sort());
+        expect(manifest.metadata.selection?.sourceLists.map((list) => list.draft).sort()).toEqual(
+            ["default draft\n", "other draft 名前\n"].sort(),
+        );
+        expect(manifest.metadata.selection?.scopeDraft).toBe("aggregate draft");
+        expect((await f.service.exportPatch({ id: ids[0] })).toString()).toContain("+remaining");
+        expect(manifest.files[0].indexBlock).toBeDefined();
+        expect(manifest.files[0].worktreeBlock).toBeDefined();
+        expect(store.get(root)).toEqual(before);
+        expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        expect(git(["rev-parse", "HEAD"])).toBe(baselineHead);
+    });
+
+    it("cancelled names and zero explicit paths never publish or select all files", async () => {
+        const f = await fixture();
+        vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce(undefined);
+        await host.handle(f.request);
+        await host.handle({
+            ...f.request,
+            requestId: "empty",
+            scope: "files",
+            listId: "all",
+            paths: [],
+        });
+        expect((await f.shelves.listShelves()).shelfIds).toEqual([]);
+        expect(posted).toContainEqual(
+            expect.objectContaining({
+                type: "changelistShelfResult",
+                requestId: "empty",
+                error: expect.stringMatching(/select/i),
+            }),
+        );
+    });
+
+    it("duplicate scoped requests cannot publish twice", async () => {
+        const f = await fixture();
+        await host.handle(f.request);
+        await host.handle(f.request);
+        expect(
+            (await f.shelves.listShelves()).shelfIds,
+            "duplicate save publishes only once",
+        ).toHaveLength(1);
+        expect(vscode.window.showInputBox).toHaveBeenCalledTimes(1);
+    });
+
+    it("revision changed during name prompt refuses save without changing origin", async () => {
+        const f = await fixture();
+        vi.mocked(vscode.window.showInputBox).mockImplementationOnce(async () => {
+            await store.saveDraft(root, "default", "default draft\n", "edited during prompt");
+            return "stale save";
+        });
+        await host.handle(f.request);
+        expect((await f.shelves.listShelves()).shelfIds).toEqual([]);
+        expect(posted).toContainEqual(
+            expect.objectContaining({
+                type: "changelistShelfResult",
+                error: expect.stringMatching(/changed|stale/i),
+            }),
+        );
+    });
+
+    it("concurrent duplicate intent is refused while one captured prompt is outstanding", async () => {
+        const f = await fixture();
+        let finish!: (name: string) => void;
+        let opened!: () => void;
+        const opening = new Promise<void>((resolve) => {
+            opened = resolve;
+        });
+        vi.mocked(vscode.window.showInputBox).mockImplementationOnce(
+            () =>
+                new Promise<string>((resolve) => {
+                    finish = resolve;
+                    opened();
+                }),
+        );
+        const firstSave = host.handle(f.request);
+        await opening;
+        await host.handle(f.request);
+        finish("one shelf");
+        await firstSave;
+        expect(
+            (await f.shelves.listShelves()).shelfIds,
+            "concurrent duplicate never publishes twice",
+        ).toHaveLength(1);
+        expect(vscode.window.showInputBox).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(["source", "draft", "dirty whole path"])(
+        "captured whole-file %s changes refuse publication",
+        async (changed) => {
+            const f = await fixture();
+            const save = f.service.saveSelectedChanges.bind(f.service);
+            vi.spyOn(f.service, "saveSelectedChanges").mockImplementationOnce(async (...args) => {
+                if (changed === "source")
+                    await writeFile(path.join(root, "file.txt"), `${working}later\n`);
+                if (changed === "draft") {
+                    const [plan, lease, revision, scope, guard] = args;
+                    return save(
+                        {
+                            ...plan,
+                            sourceLists: plan.sourceLists.map((source) => ({
+                                ...source,
+                                draft: "forged draft",
+                            })),
+                        },
+                        lease,
+                        revision,
+                        scope,
+                        guard,
+                    );
+                }
+                if (changed === "dirty whole path")
+                    (vscode.workspace.textDocuments as unknown[]).push({
+                        uri: { scheme: "file", fsPath: path.join(root, "file.txt") },
+                        isDirty: true,
+                        isClosed: false,
+                    });
+                return save(...args);
+            });
+            await host.handle({ ...f.request, scope: "files", listId: "all", paths: ["file.txt"] });
+            expect(
+                (await f.shelves.listShelves()).shelfIds,
+                "stale whole-file input never publishes",
+            ).toEqual([]);
+            expect(posted).toContainEqual(
+                expect.objectContaining({
+                    type: "changelistShelfResult",
+                    error: expect.any(String),
+                }),
+            );
+        },
+    );
+
+    it("foreign origin cannot redirect a scoped save", async () => {
+        const f = await fixture();
+        await expect(
+            host.handle({ ...f.request, repositoryRoot: `${root}-other` }),
+        ).rejects.toThrow(/repository/);
+        expect((await f.shelves.listShelves()).shelfIds).toEqual([]);
+        expect(vscode.window.showInputBox).not.toHaveBeenCalled();
+    });
+
+    it("scoped save cleanup retains durable identity and prevents duplicate replay", async () => {
+        const f = await fixture();
+        const lock = f.shelves.withLock.bind(f.shelves);
+        vi.spyOn(f.shelves, "withLock").mockImplementationOnce(async (operation) => {
+            await lock(operation);
+            throw new Error("cleanup failed");
+        });
+        await host.handle(f.request);
+        const ids = (await f.shelves.listShelves()).shelfIds;
+        expect(ids).toHaveLength(1);
+        expect(posted, "scoped cleanup reports saved identity").toContainEqual(
+            expect.objectContaining({
+                type: "changelistShelfResult",
+                error: expect.stringContaining(ids[0]),
+            }),
+        );
+        await host.handle(f.request);
+        expect((await f.shelves.listShelves()).shelfIds).toEqual(ids);
+    });
+});
+
+describe("selected shelf host operations", () => {
+    it("rollback retains independent recovery shelf and confirms before capture", async () => {
+        const editor = await selectedShelfEditor();
+        vi.mocked(vscode.window.showWarningMessage).mockImplementationOnce(async () => {
+            expect(
+                (await editor.shelves.listShelves()).shelfIds,
+                "rollback confirmation precedes independent recovery capture",
+            ).toHaveLength(0);
+            return "Rollback Selected Changes" as never;
+        });
+        await editor.panel.receiveMessage({
+            type: "rollbackSelection",
+            selection: editor.selection,
+        });
+        const ids = (await editor.shelves.listShelves()).shelfIds;
+        expect(ids, "rollback retains independent recovery shelf").toHaveLength(1);
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(
+            base.replace("line 80\n", "remaining\n"),
+        );
+        expect(editor.messages).toContainEqual(
+            expect.objectContaining({
+                type: "partialOperationCompleted",
+                removed: true,
+                message: expect.stringContaining(ids[0]),
+            }),
+        );
+    });
+
+    it("consumes metadata with the actual held lease and refuses forged released and foreign handles", async () => {
+        const editor = await selectedShelfEditor();
+        const snapshot = editor.messages.find(
+            (message) => message.type === "partialFile",
+        )! as Extract<PartialEditorReply, { type: "partialFile" }>;
+        const foreign = new ChangelistStore();
+        await foreign.connect(root, path.join(root, ".git"));
+        const lease = await store.acquireTargetOperationLease(root);
+        const consume = async (handle: typeof lease) =>
+            store.consumeCommitted(
+                root,
+                "file.txt",
+                snapshot.contentId,
+                "all",
+                new Set(),
+                new Set(),
+                4,
+                undefined,
+                handle,
+            );
+        try {
+            await expect(consume({ ...lease })).rejects.toThrow(/lease/);
+            await expect(async () =>
+                foreign.consumeCommitted(
+                    root,
+                    "file.txt",
+                    snapshot.contentId,
+                    "all",
+                    new Set(),
+                    new Set(),
+                    4,
+                    undefined,
+                    lease,
+                ),
+            ).rejects.toThrow(/lease/);
+            await expect(
+                consume(lease),
+                "real held lease permits completed consumption without reentrant acquire",
+            ).resolves.toMatchObject({ revision: expect.any(Number) });
+        } finally {
+            await lease.release();
+        }
+        await expect(consume(lease)).rejects.toThrow(/lease/);
+    });
+    it("partial removal preserves other-list lines and index bytes after durable save", async () => {
+        const editor = await selectedShelfEditor();
+        const removalShelfCounts: number[] = [];
+        const remove = editor.service.removeSelectedChanges.bind(editor.service);
+        vi.spyOn(editor.service, "removeSelectedChanges").mockImplementation(async (...args) => {
+            removalShelfCounts.push((await editor.shelves.listShelves()).shelfIds.length);
+            return remove(...args);
+        });
+        const data = editor.messages.find((message) => message.type === "partialFile")! as Extract<
+            PartialEditorReply,
+            { type: "partialFile" }
+        >;
+        const created = await store.create(root, store.revision(root), "Other owner");
+        const other = created.lists.find((list) => list.id !== "default")!.id;
+        const otherFingerprints = data.file.blocks[1].lines
+            .filter((line) => line.kind !== "context")
+            .map((line) => line.fingerprint);
+        await store.assignChanges(
+            root,
+            store.revision(root),
+            "file.txt",
+            data.contentId,
+            other,
+            otherFingerprints,
+            new Set(
+                data.file.blocks
+                    .flatMap((block) => block.lines)
+                    .filter((line) => line.kind !== "context")
+                    .map((line) => line.fingerprint),
+            ),
+        );
+        const before = store.get(root);
+        const index = await readFile(path.join(root, ".git/index"));
+        vi.mocked(vscode.window.showWarningMessage).mockImplementationOnce(async () => {
+            expect(
+                (await editor.shelves.listShelves()).shelfIds,
+                "durable save precedes removal",
+            ).toHaveLength(1);
+            const lease = await store.acquireTargetOperationLease(root);
+            await lease.release();
+            return "Remove Selected Changes" as never;
+        });
+        await editor.panel.receiveMessage({ type: "shelveSelection", selection: editor.selection });
+        expect(removalShelfCounts, "removal begins only after durable shelf publication").toEqual([
+            1,
+        ]);
+        expect(
+            await readFile(path.join(root, "file.txt"), "utf8"),
+            "selected removal preserves the remainder",
+        ).toBe(base.replace("line 80\n", "remaining\n"));
+        expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+        expect(store.get(root).lists).toEqual(before.lists);
+        expect(
+            Object.values(store.get(root).changes["file.txt"].lines),
+            "non-selected ownership survives removal",
+        ).toEqual([other, other]);
+        expect(editor.messages).toContainEqual(
+            expect.objectContaining({ type: "partialOperationCompleted", removed: true }),
+        );
+    });
+
+    it("removal metadata failure reports saved recovery and completed Git without retry", async () => {
+        const editor = await selectedShelfEditor();
+        vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+            "Remove Selected Changes" as never,
+        );
+        vi.spyOn(store, "consumeCommitted").mockRejectedValueOnce(
+            new Error("metadata unavailable"),
+        );
+        const remove = vi.spyOn(PartialChanges.prototype, "rollback");
+        await editor.panel.receiveMessage({ type: "shelveSelection", selection: editor.selection });
+        const ids = (await editor.shelves.listShelves()).shelfIds;
+        expect(ids).toHaveLength(1);
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(
+            base.replace("line 80\n", "remaining\n"),
+        );
+        expect(editor.messages).toContainEqual(
+            expect.objectContaining({
+                type: "partialOperationCompleted",
+                removed: true,
+                message: expect.stringContaining("do not repeat"),
+            }),
+        );
+        expect(editor.messages).toContainEqual(
+            expect.objectContaining({ message: expect.stringContaining(ids[0]) }),
+        );
+        await editor.panel.receiveMessage({ type: "shelveSelection", selection: editor.selection });
+        expect(remove, "completed operation cannot replay in this editor").toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects malformed partial shelf requests before capture", async () => {
+        const editor = await selectedShelfEditor();
+        const save = vi.spyOn(editor.service, "saveSelectedChanges");
+        for (const selection of [
+            null,
+            { snapshotId: editor.selection.snapshotId, lineIds: [42] },
+            { snapshotId: "foreign", lineIds: [] },
+        ])
+            await editor.panel.receiveMessage({ type: "saveSelection", selection });
+        expect(save).not.toHaveBeenCalled();
+        expect((await editor.shelves.listShelves()).shelfIds).toEqual([]);
+        expect(editor.messages.filter((message) => message.type === "partialError")).toHaveLength(
+            3,
+        );
+    });
+
+    it.each(["metadata release", "completion delivery"])(
+        "%s failure after removal reports completion and retained recovery without retry",
+        async (failure) => {
+            const editor = await selectedShelfEditor();
+            vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+                "Remove Selected Changes" as never,
+            );
+            if (failure === "metadata release") {
+                const acquire = ChangelistPersistence.prototype.acquire;
+                let acquisitions = 0;
+                vi.spyOn(ChangelistPersistence.prototype, "acquire").mockImplementation(
+                    async function (this: ChangelistPersistence) {
+                        const release = await acquire.call(this);
+                        const removalLease = ++acquisitions === 2;
+                        return async () => {
+                            await release();
+                            if (removalLease) throw new Error("injected metadata release failure");
+                        };
+                    },
+                );
+            } else {
+                const post = editor.panel.webview.postMessage.bind(editor.panel.webview);
+                vi.spyOn(editor.panel.webview, "postMessage").mockImplementation(
+                    async (message) => {
+                        if ((message as PartialEditorReply).type === "partialOperationCompleted")
+                            throw new Error("injected completion delivery failure");
+                        return post(message);
+                    },
+                );
+            }
+            const remove = vi.spyOn(PartialChanges.prototype, "rollback");
+            await editor.panel.receiveMessage({
+                type: "shelveSelection",
+                selection: editor.selection,
+            });
+            const ids = (await editor.shelves.listShelves()).shelfIds;
+            expect(ids).toHaveLength(1);
+            expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(
+                base.replace("line 80\n", "remaining\n"),
+            );
+            expect(
+                editor.messages,
+                "completed removal retains a visible recovery identity",
+            ).toContainEqual(expect.objectContaining({ message: expect.stringContaining(ids[0]) }));
+            expect(editor.messages, "post-removal failure must prohibit retry").toContainEqual(
+                expect.objectContaining({ message: expect.stringContaining("do not repeat") }),
+            );
+            await editor.panel.receiveMessage({
+                type: "shelveSelection",
+                selection: editor.selection,
+            });
+            expect(
+                remove,
+                "completed operation cannot replay after cleanup or delivery failure",
+            ).toHaveBeenCalledTimes(1);
+        },
+    );
+
+    it("selected export refuses the source file and Git index as native destinations", async () => {
+        const editor = await selectedShelfEditor();
+        const index = await readFile(path.join(root, ".git/index"));
+        for (const file of ["file.txt", ".git/index"]) {
+            Object.defineProperty(vscode.window, "showSaveDialog", {
+                configurable: true,
+                value: vi.fn().mockResolvedValue({ scheme: "file", fsPath: path.join(root, file) }),
+            });
+            await editor.panel.receiveMessage({
+                type: "exportSelection",
+                selection: editor.selection,
+            });
+            expect(
+                await readFile(path.join(root, "file.txt"), "utf8"),
+                "export preserves selected source bytes",
+            ).toBe(working);
+            expect(
+                await readFile(path.join(root, ".git/index")),
+                "export preserves exact index bytes",
+            ).toEqual(index);
+        }
+    });
+
+    it("selected export refuses a hard-linked HEAD alias before truncating Git state", async () => {
+        const editor = await selectedShelfEditor();
+        const target = path.join(root, "head-alias.patch");
+        const headFile = path.join(root, ".git/HEAD");
+        const head = await readFile(headFile);
+        const index = await readFile(path.join(root, ".git/index"));
+        await link(headFile, target);
+        Object.defineProperty(vscode.window, "showSaveDialog", {
+            configurable: true,
+            value: vi.fn().mockResolvedValue({ scheme: "file", fsPath: target }),
+        });
+        await editor.panel.receiveMessage({ type: "exportSelection", selection: editor.selection });
+        expect(
+            await readFile(headFile),
+            "export must not truncate HEAD through an outside hard link",
+        ).toEqual(head);
+        expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        expect(editor.messages).toContainEqual(expect.objectContaining({ type: "partialError" }));
+    });
+
+    it.each(["revision", "dirty buffer"])(
+        "stale postpreview %s retains saved recovery and refuses removal",
+        async (kind) => {
+            const editor = await selectedShelfEditor();
+            const remove = vi.spyOn(PartialChanges.prototype, "rollback");
+            vi.mocked(vscode.window.showWarningMessage).mockImplementationOnce(async () => {
+                if (kind === "revision") await store.saveDraft(root, "default", "", "later draft");
+                else
+                    (vscode.workspace.textDocuments as unknown[]).push({
+                        isDirty: true,
+                        uri: { scheme: "file", fsPath: path.join(root, "file.txt") },
+                    });
+                return "Remove Selected Changes" as never;
+            });
+            await editor.panel.receiveMessage({
+                type: "shelveSelection",
+                selection: editor.selection,
+            });
+            const ids = (await editor.shelves.listShelves()).shelfIds;
+            expect(ids).toHaveLength(1);
+            expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+            expect(editor.messages).toContainEqual(
+                expect.objectContaining({
+                    type: "partialError",
+                    message: expect.stringContaining(ids[0]),
+                }),
+            );
+            expect(remove).not.toHaveBeenCalled();
+        },
+    );
+
+    it("save alone never calls removal and preserves exact source drafts and inclusion", async () => {
+        const editor = await selectedShelfEditor();
+        await store.saveDraft(root, "default", "", " exact source draft 名前\n");
+        await store.saveDraft(root, "all", "", "separate aggregate draft");
+        const before = store.get(root);
+        const index = await readFile(path.join(root, ".git/index"));
+        const remove = vi.spyOn(PartialChanges.prototype, "rollback");
+        await editor.panel.receiveMessage({ type: "saveSelection", selection: editor.selection });
+        expect(editor.messages.filter((message) => message.type === "partialError")).toEqual([]);
+        const catalog = await editor.shelves.listShelves();
+        expect(catalog.shelfIds, "save publishes one durable shelf").toHaveLength(1);
+        expect(remove, "save alone never calls removal").not.toHaveBeenCalled();
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+        expect(store.get(root)).toEqual(before);
+        const saved = await editor.service.getShelfManifest(catalog.shelfIds[0]);
+        expect(saved.metadata.selection?.sourceLists).toEqual(
+            before.lists.map((list) => ({
+                id: list.id,
+                name: list.name,
+                description: list.description ?? "",
+                draft: list.draft ?? "",
+            })),
+        );
+        expect(saved.metadata.selection?.scopeDraft).toBe("separate aggregate draft");
+    });
+
+    it("service rejects forged released and foreign metadata leases before capture", async () => {
+        const editor = await selectedShelfEditor();
+        const save = vi.spyOn(editor.service, "saveSelectedChanges");
+        await editor.panel.receiveMessage({ type: "saveSelection", selection: editor.selection });
+        const [plan, released, revision, scope, guard] = save.mock.calls[0];
+        await expect(
+            editor.service.saveSelectedChanges(plan, released, revision, scope, guard),
+        ).rejects.toThrow(/lease/);
+        const lease = await store.acquireTargetOperationLease(root);
+        try {
+            await expect(
+                editor.service.saveSelectedChanges(plan, { ...lease }, revision, scope, guard),
+            ).rejects.toThrow(/lease/);
+        } finally {
+            await lease.release();
+        }
+        const foreign = new ChangelistStore();
+        await foreign.connect(root, path.join(root, ".git"));
+        const foreignLease = await foreign.acquireTargetOperationLease(root);
+        try {
+            await expect(
+                editor.service.saveSelectedChanges(plan, foreignLease, revision, scope, guard),
+            ).rejects.toThrow(/lease/);
+        } finally {
+            await foreignLease.release();
+        }
+        expect(
+            (await editor.shelves.listShelves()).shelfIds,
+            "invalid capability cannot publish another shelf",
+        ).toHaveLength(1);
+    });
+
+    it("save lock-release failure reports durable shelf identity without removing local changes", async () => {
+        const editor = await selectedShelfEditor();
+        const locked = editor.shelves.withLock.bind(editor.shelves);
+        vi.spyOn(editor.shelves, "withLock").mockImplementationOnce(async (operation) => {
+            await locked(operation);
+            throw new Error("injected shelf lock release failure");
+        });
+        const before = store.get(root);
+        await editor.panel.receiveMessage({ type: "saveSelection", selection: editor.selection });
+        const ids = (await editor.shelves.listShelves()).shelfIds;
+        expect(ids).toHaveLength(1);
+        expect(
+            editor.messages,
+            "durable save cleanup failure retains saved shelf identity",
+        ).toContainEqual(
+            expect.objectContaining({
+                type: "partialError",
+                message: expect.stringContaining(ids[0]),
+            }),
+        );
+        expect(editor.messages, "durable save cleanup failure warns against repeat").toContainEqual(
+            expect.objectContaining({ message: expect.stringContaining("do not repeat") }),
+        );
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        expect(store.get(root)).toEqual(before);
+    });
+
+    it.each(["false result", "disposed panel"])(
+        "selected save completion with %s warns natively and prevents repeat",
+        async (failure) => {
+            const editor = await selectedShelfEditor();
+            const save = editor.service.saveSelectedChanges.bind(editor.service);
+            const saves = vi
+                .spyOn(editor.service, "saveSelectedChanges")
+                .mockImplementation(async (...args) => {
+                    const result = await save(...args);
+                    if (failure === "disposed panel") editor.panel.dispose();
+                    return result;
+                });
+            if (failure === "false result") {
+                const post = editor.panel.webview.postMessage.bind(editor.panel.webview);
+                vi.spyOn(editor.panel.webview, "postMessage").mockImplementation(async (message) =>
+                    (message as PartialEditorReply).type === "partialOperationCompleted"
+                        ? false
+                        : post(message),
+                );
+            }
+            await editor.panel.receiveMessage({
+                type: "saveSelection",
+                selection: editor.selection,
+            });
+            const ids = (await editor.shelves.listShelves()).shelfIds;
+            expect(ids).toHaveLength(1);
+            expect(
+                vscode.window.showWarningMessage,
+                "undelivered completion exposes saved recovery identity natively",
+            ).toHaveBeenCalledWith(expect.stringContaining(ids[0]));
+            expect(
+                vscode.window.showWarningMessage,
+                "undelivered completion forbids repeating the completed save",
+            ).toHaveBeenCalledWith(expect.stringContaining("do not repeat"));
+            await editor.panel.receiveMessage({
+                type: "saveSelection",
+                selection: editor.selection,
+            });
+            expect(
+                saves,
+                "failed completion delivery fences duplicate saves",
+            ).toHaveBeenCalledTimes(1);
+            expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        },
+    );
+
+    it("combined save cleanup failures preserve the durable shelf identity", async () => {
+        const editor = await selectedShelfEditor();
+        const locked = editor.shelves.withLock.bind(editor.shelves);
+        vi.spyOn(editor.shelves, "withLock").mockImplementationOnce(async (operation) => {
+            await locked(operation);
+            throw new Error("injected shelf lock release failure");
+        });
+        const acquire = ChangelistPersistence.prototype.acquire;
+        vi.spyOn(ChangelistPersistence.prototype, "acquire").mockImplementationOnce(async function (
+            this: ChangelistPersistence,
+        ) {
+            const release = await acquire.call(this);
+            return async () => {
+                await release();
+                throw new Error("injected metadata release failure");
+            };
+        });
+        await editor.panel.receiveMessage({ type: "saveSelection", selection: editor.selection });
+        const ids = (await editor.shelves.listShelves()).shelfIds;
+        expect(ids).toHaveLength(1);
+        expect(
+            editor.messages,
+            "secondary metadata cleanup must preserve the saved shelf identity",
+        ).toContainEqual(
+            expect.objectContaining({
+                type: "partialError",
+                message: expect.stringContaining(ids[0]),
+            }),
+        );
+        expect(
+            editor.messages,
+            "combined cleanup failures still warn against repeating the durable save",
+        ).toContainEqual(
+            expect.objectContaining({ message: expect.stringContaining("do not repeat") }),
+        );
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+    });
+
+    it.each(["false result", "disposed panel"])(
+        "selected save cleanup error with %s retains its native recovery notice without retry",
+        async (failure) => {
+            const editor = await selectedShelfEditor();
+            const locked = editor.shelves.withLock.bind(editor.shelves);
+            vi.spyOn(editor.shelves, "withLock").mockImplementationOnce(async (operation) => {
+                await locked(operation);
+                if (failure === "disposed panel") editor.panel.dispose();
+                throw new Error("injected shelf lock release failure");
+            });
+            if (failure === "false result") {
+                const post = editor.panel.webview.postMessage.bind(editor.panel.webview);
+                vi.spyOn(editor.panel.webview, "postMessage").mockImplementation(async (message) =>
+                    (message as PartialEditorReply).type === "partialError" ? false : post(message),
+                );
+            }
+            const saves = vi.spyOn(editor.service, "saveSelectedChanges");
+            await editor.panel.receiveMessage({
+                type: "saveSelection",
+                selection: editor.selection,
+            });
+            const ids = (await editor.shelves.listShelves()).shelfIds;
+            expect(ids).toHaveLength(1);
+            expect(
+                vscode.window.showWarningMessage,
+                "undeliverable selected error preserves the saved identity natively",
+            ).toHaveBeenCalledWith(expect.stringContaining(ids[0]));
+            expect(
+                vscode.window.showWarningMessage,
+                "native recovery notice preserves the host cleanup error",
+            ).toHaveBeenCalledWith(
+                expect.stringContaining("was saved. Lock cleanup failed; do not repeat the save."),
+            );
+            await editor.panel.receiveMessage({
+                type: "saveSelection",
+                selection: editor.selection,
+            });
+            expect(
+                saves,
+                "undeliverable cleanup failure cannot repeat the save",
+            ).toHaveBeenCalledTimes(1);
+        },
+    );
+
+    it("exports only host-generated selected bytes to the native destination without consuming metadata", async () => {
+        const editor = await selectedShelfEditor();
+        const before = store.get(root);
+        const target = path.join(root, "selected.patch");
+        Object.defineProperty(vscode.window, "showSaveDialog", {
+            configurable: true,
+            value: vi.fn().mockResolvedValue({ scheme: "file", fsPath: target }),
+        });
+        await editor.panel.receiveMessage({
+            type: "exportSelection",
+            selection: editor.selection,
+            path: path.join(root, "file.txt"),
+            patch: "forged",
+        });
+        const patch = await readFile(target, "utf8");
+        expect(patch).toContain("+selected");
+        expect(patch).not.toContain("remaining");
+        expect(patch).not.toContain("forged");
+        expect(store.get(root)).toEqual(before);
+    });
+
+    it("cancel removal retains shelf and every local byte with all locks released at confirmation", async () => {
+        const editor = await selectedShelfEditor();
+        const before = store.get(root);
+        const index = await readFile(path.join(root, ".git/index"));
+        const remove = vi.spyOn(PartialChanges.prototype, "rollback");
+        vi.mocked(vscode.window.showWarningMessage).mockImplementationOnce(async () => {
+            expect(
+                (await editor.shelves.listShelves()).shelfIds,
+                "save precedes confirmation",
+            ).toHaveLength(1);
+            const lease = await store.acquireTargetOperationLease(root);
+            await lease.release();
+            return undefined;
+        });
+        await editor.panel.receiveMessage({ type: "shelveSelection", selection: editor.selection });
+        expect(editor.messages.filter((message) => message.type === "partialError")).toEqual([]);
+        expect(
+            (await editor.shelves.listShelves()).shelfIds,
+            "cancel keeps the durable shelf",
+        ).toHaveLength(1);
+        expect(remove).not.toHaveBeenCalled();
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+        expect(store.get(root)).toEqual(before);
+    });
+});
 
 /** Snapshots Git bytes without status refreshes that could rewrite the index. */
 async function nativeGitSnapshot() {
@@ -1391,3 +2334,29 @@ it.each(["capture", "hook"] as const)(
         expect(store.get(root).changes["observed.txt"].contentId).toBe("newer-observation");
     },
 );
+
+describe("focus after native prompts", () => {
+    it("hands focus back to the requesting view after a cancelled prompt, and only then", async () => {
+        const focusView = vi.fn();
+        host.dispose();
+        host = new ChangeWorkflowHost({ ...hostDeps, focusView });
+        await host.handle({ type: "loadChangelists", repositoryRoot: root });
+        expect(
+            focusView,
+            "a reload opens no prompt and keeps focus where it is",
+        ).not.toHaveBeenCalled();
+        const revision = store.revision(root);
+        Object.defineProperty(vscode.window, "showInputBox", {
+            configurable: true,
+            value: vi.fn().mockResolvedValue(undefined),
+        });
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            revision,
+            action: "create",
+        });
+        expect(store.revision(root), "the cancelled prompt changed nothing").toBe(revision);
+        expect(focusView, "a closed prompt returns focus to its view").toHaveBeenCalledTimes(1);
+    });
+});

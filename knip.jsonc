@@ -27,21 +27,33 @@
         // measurement tool as a dead file.
         "scripts/measure-diff-budgets.ts",
         "scripts/benchmark-changelist-storage.ts",
+        "scripts/benchmark-changelist-operations.ts",
     ],
     "project": ["src/**/*.{ts,tsx}", "scripts/**/*.{js,ts}", "tests/**/*.{ts,tsx}"],
-    // Spawned by path from the shelf crash suite rather than imported, so knip
+    // Spawned by path from the crash suites rather than imported, so knip
     // has no edge to it. Declared here rather than under a `knip` key in
     // package.json: knip picks the FIRST config source it finds and does not
     // merge, so a root config file silently voids the package.json one -- which
     // is exactly what had happened to this entry.
-    "ignore": ["tests/integration/shelf/shelfCrashWorker.ts"],
+    "ignore": [
+        "tests/integration/shelf/shelfCrashWorker.ts",
+        "tests/fixtures/targetNativeRecoveryCrashWorker.ts",
+        "tests/integration/changes/targetShelfCompletionCrashWorker.ts",
+        "tests/integration/shelf/listAwareRestoreCrashWorker.ts",
+        "tests/integration/shelf/selectedRemovalCrashWorker.ts",
+        "tests/integration/shelf/targetShelfPublicationCrashWorker.ts",
+    ],
 
-    // Both paths below are resolved by the SPAWNED process against the repository root, not by
-    // the importer: the shelf suite runs the worker by path and the localization suite runs the
+    // Every path below is resolved by the SPAWNED process against the repository root, not by
+    // the importer: the crash suites run their workers by path and the localization suite runs the
     // CSV script by path. Knip resolves a path literal against the file that names it, so it
-    // cannot find either and reports them as unresolved imports.
+    // cannot find any of them and reports them as unresolved imports.
     "ignoreUnresolved": [
         "tests/integration/shelf/shelfCrashWorker.ts",
+        "tests/integration/changes/targetShelfCompletionCrashWorker.ts",
+        "tests/integration/shelf/listAwareRestoreCrashWorker.ts",
+        "tests/integration/shelf/selectedRemovalCrashWorker.ts",
+        "tests/integration/shelf/targetShelfPublicationCrashWorker.ts",
         "scripts/localization-csv.js",
     ],
 

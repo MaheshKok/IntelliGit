@@ -1,3 +1,4 @@
+import type { ChangelistStore } from "../changes/changelistStore";
 import type { GitExecutor } from "../git/executor";
 import type { GitOps } from "../git/operations";
 import type { RepositoryMutationGate } from "../git/repositoryMutationGate";
@@ -23,6 +24,8 @@ export interface CommitActionContext {
     /** Shared repository-wide gate used for multi-command mutation transactions. */
     mutationGate: RepositoryMutationGate;
     repoRoot: string;
+    /** Changelist metadata for `repoRoot`, captured with it before any prompt. */
+    changelists: ChangelistStore;
     /** Branch metadata snapshot from the view; handlers may refresh it if upstream data is stale. */
     currentBranches: Branch[];
     /** Refreshes all IntelliGit views after confirmed mutations or failed mutation attempts. */

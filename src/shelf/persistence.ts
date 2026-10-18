@@ -7,6 +7,11 @@ export function assertPersistedObjectReferences(
 ): void {
     if (!objectHashes.every(isShelfObjectHash)) throw new ShelfPersistenceContractError();
     const available = new Set(objectHashes);
+    for (const entry of persistence.metadata.selection?.entries ?? []) {
+        if (entry.ownershipObjectHash && !available.has(entry.ownershipObjectHash)) {
+            throw new ShelfPersistenceContractError();
+        }
+    }
     for (const entry of persistence.files) {
         for (const block of [entry.indexBlock, entry.worktreeBlock]) {
             if (!block) continue;

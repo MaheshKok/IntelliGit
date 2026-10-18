@@ -264,6 +264,39 @@ describe("repository working-tree changes", () => {
         }
     });
 
+    // A repository nested inside this root keeps its own `.git` here, and IntelliGit writes lock
+    // files into it on every changelist operation. Git never tracks a path with a `.git`
+    // component, so those writes cannot change this root's status. Publishing them refreshed this
+    // root about once a second, and each refresh discarded its lazily loaded line statistics
+    // before the visible rows received them.
+    it("ignores writes inside a nested repository's Git directory but keeps its working files", () => {
+        const listener = vi.fn();
+        const subscription = subscribeToRepositoryWorkingTreeChanges(REPO, listener);
+        try {
+            const onDidChange = mocks.watchers[0]?.onDidChange.mock.calls[0]?.[0] as
+                ((uri: { fsPath: string }) => void) | undefined;
+            if (!onDidChange) throw new Error("Expected a workspace change route");
+
+            onDidChange({ fsPath: path.join(REPO, "nested", ".git", "intelligit", "repo.lock") });
+            expect(
+                listener,
+                "a lock written inside a nested repository's .git refreshed this root, discarding its line statistics",
+            ).not.toHaveBeenCalled();
+
+            onDidChange({ fsPath: path.join(REPO, "nested", "file.txt") });
+            expect(
+                listener,
+                "a working file in the nested directory stopped publishing, so the filter drops more than Git metadata",
+            ).toHaveBeenCalledWith({
+                repoRoot: REPO,
+                path: "nested/file.txt",
+                source: "workspace-file",
+            });
+        } finally {
+            subscription.dispose();
+        }
+    });
+
     // One route publishes changes that are not on disk. The diff viewer needs them -- it renders
     // an open document's unsaved text -- while every consumer that reads the filesystem or Git
     // gets an answer that cannot have changed. Marking is what lets the two share one stream; the

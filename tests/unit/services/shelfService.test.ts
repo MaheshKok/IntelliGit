@@ -1,3 +1,4 @@
+import { connectedChangelists } from "../../helpers/connectedChangelists";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -60,11 +61,13 @@ async function makeService(options: { readonly recordBaseRevisions?: boolean } =
         new RepositoryLock(),
     );
     const executor = new GitExecutor(root);
+    await store.withLock(() => store.migrateWithHeldLocks());
     return {
         root,
         store,
         executor,
         service: new ShelfService({
+            changelists: await connectedChangelists(root),
             repositoryRoot: root,
             executor,
             store,
@@ -848,6 +851,59 @@ describe("ShelfService", () => {
         expect(importedEntry.worktreeBlock).toMatchObject({ path: "tracked.txt", status: "M" });
         expect(importedEntry.worktreeBlock?.renamedFrom).toBeUndefined();
         expect(importedEntry.binary).toBe(false);
+    });
+
+    it("export snapshot reads never refresh history or change the shelf", async () => {
+        const { root, service, store } = await makeService({ recordBaseRevisions: false });
+        await writeFile(path.join(root, "tracked.txt"), "saved\n");
+        const saved = await service.shelve({
+            name: "snapshot",
+            paths: ["tracked.txt"],
+            silent: true,
+            keepLocal: true,
+        });
+        const captured = await store.readCurrentShelfManifest(saved.shelfId!);
+        const before = await store.writeShelfGeneration(saved.shelfId!, {
+            ...captured,
+            metadata: {
+                ...captured.metadata,
+                baseCommit: "f".repeat(captured.metadata.baseCommit!.length),
+            },
+        });
+        await expect(service.getShelfManifest(saved.shelfId!)).resolves.toEqual(before);
+        expect(await store.readCurrentShelfManifest(saved.shelfId!)).toEqual(before);
+    });
+
+    it("export rejects changed generation or checksum after the content-only notice", async () => {
+        const { root, service, store } = await makeService();
+        await writeFile(path.join(root, "tracked.txt"), "saved\n");
+        const saved = await service.shelve({
+            name: "identity",
+            paths: ["tracked.txt"],
+            silent: true,
+            keepLocal: true,
+        });
+        const captured = await store.readCurrentShelfManifest(saved.shelfId!);
+        await expect(
+            service.exportPatch({
+                id: saved.shelfId!,
+                expectedShelfGeneration: captured.generation,
+                expectedShelfChecksum: "0".repeat(64),
+            }),
+        ).rejects.toThrow("changed");
+        await service.renameShelf({
+            id: saved.shelfId!,
+            name: "later",
+            expectedShelfGeneration: captured.generation,
+        });
+        await expect(
+            service.exportPatch({
+                id: saved.shelfId!,
+                expectedShelfGeneration: captured.generation,
+                expectedShelfChecksum: captured.checksum,
+            }),
+        ).rejects.toThrow("stale");
+        expect((await store.readCurrentShelfManifest(saved.shelfId!)).metadata.name).toBe("later");
     });
 
     it("exports content-only patches, rejects hostile imports, and retains a base-less failed apply", async () => {

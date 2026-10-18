@@ -52,6 +52,46 @@ beforeEach(() => {
 });
 
 describe("selected change editor protocol", () => {
+    it("offers separate host-approved save export and removal actions without browser paths or bytes", () => {
+        const mounted = mount(<PartialChangesApp />);
+        try {
+            receive({ ...data, selectedOperations: true });
+            for (const [label, type] of [
+                ["Save to Shelf", "saveSelection"],
+                ["Save and Remove", "shelveSelection"],
+                ["Rollback Selected Changes", "rollbackSelection"],
+                ["Export Patch", "exportSelection"],
+            ]) {
+                const button = [...mounted.container.querySelectorAll("button")].find(
+                    (item) => item.textContent === label,
+                );
+                expect(button, `${label} is a separate action`).toBeDefined();
+                act(() => button!.click());
+                expect(api.postMessage).toHaveBeenLastCalledWith({
+                    type,
+                    selection: { snapshotId: "session", lineIds: expect.any(Array) },
+                });
+                receive({
+                    type: "partialOperationCompleted",
+                    message: "Saved shelf identity",
+                    removed: false,
+                });
+            }
+            receive({
+                type: "partialOperationCompleted",
+                message: "Removal completed. Do not repeat.",
+                removed: true,
+            });
+            expect(
+                [...mounted.container.querySelectorAll(".partial-actions button")].every(
+                    (button) => (button as HTMLButtonElement).disabled,
+                ),
+            ).toBe(true);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
     it("fences a deletion-merged selection even when a pane retains the same content snapshot", () => {
         const mounted = mount(<PartialChangesApp />);
         try {

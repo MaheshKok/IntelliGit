@@ -1,12 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
 const writeClipboardText = vi.hoisted(() => vi.fn(async () => undefined));
+const showQuickPick = vi.hoisted(() => vi.fn());
 
 vi.mock("vscode", () => ({
     env: { clipboard: { writeText: writeClipboardText } },
     l10n: { t: (message: string) => message },
     commands: { executeCommand: vi.fn(async () => undefined) },
-    window: { showWarningMessage: vi.fn(), showInformationMessage: vi.fn() },
+    window: {
+        showWarningMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showQuickPick,
+        showInputBox: vi.fn(),
+    },
 }));
 
 import type { OutboundMessage } from "../../../src/webviews/protocol/commitPanelMessages";
@@ -159,6 +165,12 @@ describe("executeShelfMutationRequest", () => {
                         shelves: [{ id: "shelf-1" }],
                         catalogGeneration: 1,
                     })),
+                    getShelfManifest: vi.fn(async () => ({
+                        generation: 1,
+                        checksum: "a".repeat(64),
+                        metadata: {},
+                        files: [{ changeId: "change-1" }],
+                    })),
                     getShelfFiles: vi.fn(async () => [{ changeId: "change-1" }]),
                     exportPatch,
                 },
@@ -176,7 +188,12 @@ describe("executeShelfMutationRequest", () => {
             postCompleted,
         );
 
-        expect(exportPatch).toHaveBeenCalledWith({ id: "shelf-1", changeIds: ["change-1"] });
+        expect(exportPatch).toHaveBeenCalledWith({
+            id: "shelf-1",
+            changeIds: ["change-1"],
+            expectedShelfGeneration: 1,
+            expectedShelfChecksum: "a".repeat(64),
+        });
         expect(writeClipboardText).toHaveBeenCalledWith("diff --git a/a.ts b/a.ts\n");
         expect(selectExportDestination).not.toHaveBeenCalled();
         expect(postCompleted).toHaveBeenCalledWith(
@@ -199,6 +216,12 @@ describe("executeShelfMutationRequest", () => {
                             corruptShelfIds: [],
                             shelves: [{ id: "shelf-1" }],
                             catalogGeneration: 1,
+                        })),
+                        getShelfManifest: vi.fn(async () => ({
+                            generation: 1,
+                            checksum: "a".repeat(64),
+                            metadata: {},
+                            files: [{ changeId: "change-1" }],
                         })),
                         getShelfFiles: vi.fn(async () => [{ changeId: "change-1" }]),
                         exportPatch: vi.fn(async () => Buffer.from("patch")),
@@ -408,5 +431,218 @@ describe("executeShelfMutationRequest", () => {
         expect(postCompleted).toHaveBeenCalledWith(
             expect.objectContaining({ requestId: "request-1", status, entries: [] }),
         );
+    });
+});
+
+describe("renderer targeted unshelve", () => {
+    const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+    const unshelveMessage = {
+        type: "unshelve",
+        requestId: "restore-1",
+        shelfId: "shelf-1",
+        expectedGeneration: 4,
+        changeIds: ["change-1"],
+        removeFromShelf: false,
+        mode: "flattened",
+    } satisfies OutboundMessage;
+
+    const restoreDeps = (status = "applied") => {
+        const unshelve = vi.fn(async () => ({
+            status,
+            entries: [{ kind: "applied" as const, changeId: "change-1" }],
+            shelfId: "shelf-1",
+            operationId: "00000000-0000-4000-8000-000000000000",
+        }));
+        const deps = {
+            shelfService: {
+                repositoryRoot: "/repo",
+                unshelve,
+                listShelves: vi.fn(async () => ({
+                    shelfIds: ["shelf-1"],
+                    corruptShelfIds: [],
+                    shelves: [{ id: "shelf-1" }, { id: "shelf-2" }],
+                    catalogGeneration: 9,
+                })),
+                getShelfFiles: vi.fn(async () => [{ changeId: "change-1" }]),
+                getShelfManifest: vi.fn(async () => ({
+                    generation: 4,
+                    checksum: "e".repeat(64),
+                    metadata: { name: "Shelf", lifecycle: "shelved" },
+                    files: [{ changeId: "change-1" }],
+                })),
+            },
+            changelists: {
+                get: vi.fn(() => ({
+                    revision: 3,
+                    activeId: "c",
+                    lists: [
+                        { id: "c", name: "C", description: "", draft: "" },
+                        { id: "d", name: "D", description: "", draft: "" },
+                    ],
+                    allDraft: "",
+                    files: {},
+                    changes: {},
+                })),
+                settled: async () => undefined,
+                holdObservers: async () => () => undefined,
+            },
+            refreshData: vi.fn(async () => undefined),
+            fireWorkingTreeChanged: vi.fn(),
+        };
+        return { deps, unshelve };
+    };
+
+    const chooseD = () =>
+        showQuickPick.mockImplementation(async (items: { label: string }[]) =>
+            items.find((item) => item.label === "D"),
+        );
+
+    it("cancel target picker runs zero Git commands", async () => {
+        const { deps, unshelve } = restoreDeps();
+        showQuickPick.mockReset().mockResolvedValue(undefined);
+        const postCompleted = vi.fn();
+
+        await executeShelfMutationRequest(deps as never, unshelveMessage, postCompleted);
+
+        expect(unshelve, "renderer cancellation must not reach the service").not.toHaveBeenCalled();
+        expect(deps.fireWorkingTreeChanged).not.toHaveBeenCalled();
+        expect(postCompleted).toHaveBeenCalledWith(
+            expect.objectContaining({
+                requestId: "restore-1",
+                status: "ok",
+                entries: [],
+                message: "Unshelve cancelled.",
+            }),
+        );
+    });
+
+    it("passes the captured source and target and never accepts a renderer operation", async () => {
+        const { deps, unshelve } = restoreDeps();
+        showQuickPick.mockReset();
+        chooseD();
+        const postCompleted = vi.fn();
+
+        await expect(
+            executeShelfMutationRequest(
+                deps as never,
+                {
+                    ...unshelveMessage,
+                    requestId: "forged",
+                    targetOperation: { id: "00000000-0000-4000-8000-000000000001" },
+                },
+                postCompleted,
+            ),
+        ).rejects.toThrow("issued by the host");
+        expect(unshelve).not.toHaveBeenCalled();
+
+        await executeShelfMutationRequest(
+            deps as never,
+            { ...unshelveMessage, requestId: "restore-captured" },
+            postCompleted,
+        );
+        expect(unshelve).toHaveBeenCalledWith({
+            id: "shelf-1",
+            changeIds: ["change-1"],
+            removeFromShelf: false,
+            mode: "flattened",
+            expectedShelfGeneration: 4,
+            targetOperation: {
+                id: expect.stringMatching(UUID),
+                root: "/repo",
+                target: { kind: "existing", id: "d", revision: 3 },
+                sourceChecksum: "e".repeat(64),
+            },
+        });
+    });
+
+    it.each([
+        ["applied", "ok"],
+        ["notApplied", "partial"],
+        ["conflicted", "conflicts"],
+        ["stale", "staleShelf"],
+        ["busy", "busy"],
+        ["appliedNeedsReview", "needsReview"],
+    ] as const)("maps targeted %s to the distinct %s completion", async (result, status) => {
+        const { deps } = restoreDeps(result);
+        showQuickPick.mockReset();
+        chooseD();
+        const postCompleted = vi.fn();
+
+        await executeShelfMutationRequest(
+            deps as never,
+            { ...unshelveMessage, requestId: `restore-${result}` },
+            postCompleted,
+        );
+
+        expect(postCompleted).toHaveBeenCalledWith(
+            expect.objectContaining({ requestId: `restore-${result}`, status }),
+        );
+    });
+
+    it("duplicate request returns the known result with no second Git", async () => {
+        const { deps, unshelve } = restoreDeps();
+        showQuickPick.mockReset();
+        chooseD();
+        const postCompleted = vi.fn();
+        const message = { ...unshelveMessage, requestId: "restore-duplicate" };
+
+        await Promise.all([
+            executeShelfMutationRequest(deps as never, message, postCompleted),
+            executeShelfMutationRequest(deps as never, message, postCompleted),
+        ]);
+        await executeShelfMutationRequest(deps as never, message, postCompleted);
+
+        expect(unshelve, "duplicate request must not repeat Git").toHaveBeenCalledOnce();
+        expect(postCompleted).toHaveBeenCalledTimes(3);
+        const [first, second, third] = postCompleted.mock.calls.map((call) => call[0]);
+        expect(second).toEqual(first);
+        expect(third).toEqual(first);
+    });
+
+    it("reused request ID for a different restore is refused without Git", async () => {
+        const { deps, unshelve } = restoreDeps();
+        showQuickPick.mockReset();
+        chooseD();
+        const postCompleted = vi.fn();
+        const message = { ...unshelveMessage, requestId: "restore-reused" };
+
+        await executeShelfMutationRequest(deps as never, message, postCompleted);
+        await executeShelfMutationRequest(
+            deps as never,
+            { ...message, shelfId: "shelf-2" },
+            postCompleted,
+        );
+
+        expect(unshelve).toHaveBeenCalledOnce();
+        expect(postCompleted).toHaveBeenLastCalledWith(
+            expect.objectContaining({ requestId: "restore-reused", status: "staleShelf" }),
+        );
+    });
+
+    it("refresh and catalog failures after applied Git keep the applied completion", async () => {
+        const { deps } = restoreDeps();
+        deps.refreshData.mockRejectedValueOnce(new Error("refresh down"));
+        deps.shelfService.listShelves
+            .mockResolvedValueOnce({
+                shelfIds: ["shelf-1"],
+                corruptShelfIds: [],
+                shelves: [{ id: "shelf-1" }],
+                catalogGeneration: 9,
+            })
+            .mockRejectedValueOnce(new Error("catalog down"));
+        showQuickPick.mockReset();
+        chooseD();
+        const postCompleted = vi.fn();
+
+        await executeShelfMutationRequest(
+            deps as never,
+            { ...unshelveMessage, requestId: "restore-refresh" },
+            postCompleted,
+        );
+
+        expect(postCompleted).toHaveBeenCalledWith(
+            expect.objectContaining({ requestId: "restore-refresh", status: "ok" }),
+        );
+        expect(deps.fireWorkingTreeChanged).toHaveBeenCalledOnce();
     });
 });

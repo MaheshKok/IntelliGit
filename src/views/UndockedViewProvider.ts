@@ -1,4 +1,6 @@
 import { ChangelistStore } from "../changes/changelistStore";
+import { WorkingFileStatsLoader } from "./workingFileStatsLoader";
+import { mergeWorkingFileStats } from "../webviews/protocol/workingFileStats";
 import {
     attachAfterChangelistLoad,
     changelistDraftBridge,
@@ -214,6 +216,7 @@ export class UndockedViewProvider {
     >;
     private bridgedRoots = new Set<string>();
     private shelfService?: ShelfService;
+    private readonly shelfRewriteSubscriptions = new Map<ShelfService, () => void>();
     private readonly iconTheme: IconThemeService;
     private repoRootUri: vscode.Uri;
     private repositoryLabel = "";
@@ -240,6 +243,7 @@ export class UndockedViewProvider {
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
+    private readonly fileStats = new WorkingFileStatsLoader();
     /** Serialized form of the last `setCommitDetail` payload actually posted to the CURRENT
      * panel webview -- see `shared/postedPayload.ts`. Reset to `undefined` whenever a fresh panel
      * is created (`open()`'s create-panel branch, never its `reveal()` fast path) or the
@@ -358,6 +362,7 @@ export class UndockedViewProvider {
             repoRootUri.fsPath;
         this.repoRootUri = vscode.Uri.file(this.selectedRepositoryRoot);
         this.shelfService = this.shelfServiceForRepository?.(this.selectedRepositoryRoot);
+        this.subscribeToShelfRewrites(this.shelfService);
         this.executor?.setRoot(this.selectedRepositoryRoot);
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.nativeCommitInputBridge = (
@@ -526,6 +531,7 @@ export class UndockedViewProvider {
      * Starts a repository switch and returns a guard for async continuations spawned by it.
      */
     private beginRepositorySwitch(): () => boolean {
+        this.fileStats.dispose();
         const requestId = ++this.repositorySwitchSeq;
         return () => requestId === this.repositorySwitchSeq;
     }
@@ -564,6 +570,7 @@ export class UndockedViewProvider {
         this.repoRootUri = vscode.Uri.file(repository.root);
         this.repositoryLabel = repository.label;
         this.shelfService = this.shelfServiceForRepository?.(repository.root);
+        this.subscribeToShelfRewrites(this.shelfService);
         if (this.panel) this.panel.title = `IntelliGit — ${repository.label}`;
         if (options.updateExecutor) this.executor?.setRoot(repository.root);
         if (options.reset) this.resetRepositoryScopedState();
@@ -750,6 +757,7 @@ export class UndockedViewProvider {
         this.panel.webview.html = this.getHtml(this.panel.webview);
         this.nativeCommitInputBridge.setVisible(this.panel.visible);
         this.panel.onDidDispose(() => {
+            this.fileStats.dispose();
             this.commitCheckDemandSeq += 1;
             this.commitMessageGenerationCoordinator?.dropHost(this.commitMessageGenerationHost);
             this.nativeCommitInputBridge.setVisible(false);
@@ -782,8 +790,11 @@ export class UndockedViewProvider {
      * Invalidates commit-check demand and disposes the panel, theme resources, and host emitters.
      */
     dispose(): void {
+        this.fileStats.dispose();
         for (const workflow of this.changeWorkflows.values()) workflow.dispose();
         this.changeWorkflows.clear();
+        for (const unsubscribe of this.shelfRewriteSubscriptions.values()) unsubscribe();
+        this.shelfRewriteSubscriptions.clear();
         this.commitCheckDemandSeq += 1;
         this.commitMessageGenerationCoordinator?.dropHost(this.commitMessageGenerationHost);
         this.nativeCommitInputBridge.dispose();
@@ -855,6 +866,7 @@ export class UndockedViewProvider {
             await executeShelfMutationRequest(
                 {
                     shelfService,
+                    changelists: ChangelistStore.forStorage(this.workspaceState),
                     refreshData: () => this.refreshCommitPanelData(false),
                     fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
                     selectExportDestination: async () =>
@@ -881,6 +893,25 @@ export class UndockedViewProvider {
         if (!this.shelfService)
             throw new Error("Shelf service is unavailable for this repository.");
         return this.shelfService;
+    }
+
+    /** Re-lists the shown repository when its service's host-side rewrite published a new generation. */
+    private subscribeToShelfRewrites(service: ShelfService | undefined): void {
+        if (!service || this.shelfRewriteSubscriptions.has(service)) return;
+        this.shelfRewriteSubscriptions.set(
+            service,
+            service.subscribeToRewrites(() => {
+                if (service !== this.shelfService) return;
+                const repositoryRoot = this.selectedRepositoryRoot;
+                this.refreshCommitPanelData(true).catch((error: unknown) => {
+                    this.postToWebview({
+                        type: "error",
+                        repositoryRoot,
+                        message: getErrorMessage(error),
+                    });
+                });
+            }),
+        );
     }
 
     /** Validates and opens a non-mutating shelf conflict editor for the selected repository. */
@@ -1061,6 +1092,19 @@ export class UndockedViewProvider {
         };
         const publishBranch = () => publishBranchFromPanel(fileActionDeps);
         switch (msg.type) {
+            case "requestWorkingFileStats":
+                await this.fileStats.request(
+                    msg.revision,
+                    msg.paths,
+                    commitRepositoryRoot,
+                    rootGitOps,
+                    (reply) => {
+                        if (!canRefresh()) return;
+                        this.files = mergeWorkingFileStats(this.files, reply);
+                        this.postToWebview(reply);
+                    },
+                );
+                break;
             // Graph-side
             case "ready":
                 // A fresh webview context has received nothing, so any commit-detail post made
@@ -1244,6 +1288,8 @@ export class UndockedViewProvider {
             case "abortMerge":
                 await abortMergeWithConfirmation({
                     gitOps: rootGitOps,
+                    root: commitRepositoryRoot,
+                    changelists: ChangelistStore.forStorage(this.workspaceState),
                     onConflictStateChanged: async () => {
                         await Promise.all([
                             this.refreshCommitPanelData(false),
@@ -1531,6 +1577,8 @@ export class UndockedViewProvider {
             root,
             extensionUri: this.extensionUri,
             workspaceState: this.workspaceState,
+            shelfService: this.shelfServiceForRepository?.(root),
+            focusView: () => this.panel?.reveal(undefined, false),
             mirrorDraft: (_scope, text) => this.setFromPanelSafely(root, text),
             postScopedCommit: () =>
                 this.postToWebview({
@@ -1969,7 +2017,10 @@ export class UndockedViewProvider {
             if (!canUpdate()) return;
             // The post-await root guard prevents stale refresh data from being published.
             // react-doctor-disable-next-line react-doctor/async-defer-await
-            const status = await rootGitOps.getStatus({ includeIgnored: this.showIgnoredFiles });
+            const status = await rootGitOps.getStatus({
+                includeIgnored: this.showIgnoredFiles,
+                withStats: "lazy",
+            });
             if (!canUpdate()) return;
             // The post-await root guard prevents stale refresh data from being published.
             // react-doctor-disable-next-line react-doctor/async-defer-await
@@ -2020,7 +2071,7 @@ export class UndockedViewProvider {
                 this.operationSnapshotFor(rootGitOps, repositoryRoot),
             ]);
             if (!canUpdate()) return;
-            this.files = files;
+            this.files = this.fileStats.reset(files);
             void this.changeWorkflows
                 .get(this.repoRootUri.fsPath)
                 ?.reconcile(files)
@@ -2047,7 +2098,7 @@ export class UndockedViewProvider {
             this.postToWebview({
                 type: "update",
                 repositoryRoot,
-                files,
+                files: this.files,
                 stashes,
                 stashFiles,
                 selectedStashIndex,

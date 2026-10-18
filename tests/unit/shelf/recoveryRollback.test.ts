@@ -66,6 +66,7 @@ async function createReverter(checkpoint?: (checkpoint: RevertCheckpoint) => Pro
         new RepositoryLock(),
     );
     const store = new ShelfStore(paths);
+    await store.withLock(() => store.migrateWithHeldLocks());
     return {
         repositoryRoot,
         gitOps,

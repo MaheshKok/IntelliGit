@@ -27,15 +27,18 @@ export class ChangeRangeTracker {
         private readonly store: ChangelistStore,
     ) {}
 
-    /** Serialize status observations so an older scan cannot overwrite a newer ownership decision. */
-    reconcile(files: readonly WorkingFile[]): Promise<void> {
-        const operation = this.pending.then(() => this.refresh(files));
+    /**
+     * Serialize status observations so an older scan cannot overwrite a newer ownership decision.
+     * `epoch` makes the store refuse this pass's writes once a target hold has interrupted it.
+     */
+    reconcile(files: readonly WorkingFile[], epoch?: number): Promise<void> {
+        const operation = this.pending.then(() => this.refresh(files, epoch));
         this.pending = operation.catch(() => undefined);
         return operation;
     }
 
     /** Absent paths are inspected too: clean content can consume ownership, status absence alone cannot. */
-    private async refresh(files: readonly WorkingFile[]): Promise<void> {
+    private async refresh(files: readonly WorkingFile[], epoch?: number): Promise<void> {
         const state = this.store.get(this.root);
         const current = new Map(files.map((file) => [file.path, file]));
         let observation = this.directories
@@ -80,7 +83,7 @@ export class ChangeRangeTracker {
                 capturedContentId = snapshot.contentId;
                 this.directories = { gitDir: snapshot.gitDir, commonDir: snapshot.commonDir };
                 observation ??= await rangeObservation(snapshot.gitDir, snapshot.commonDir);
-                await this.track(file, rangeSnapshot(snapshot), before);
+                await this.track(file, rangeSnapshot(snapshot), before, epoch);
                 this.observed.set(file, `${hash}:${observation}`);
             } catch (error) {
                 this.observed.delete(file);
@@ -91,20 +94,21 @@ export class ChangeRangeTracker {
                     throw error;
                 if (error instanceof ChangelistRevisionError) {
                     if (this.store.get(this.root).changes[file]?.contentId !== capturedContentId)
-                        await this.store.requireReview(this.root, file, true);
+                        await this.store.requireReview(this.root, file, true, epoch);
                     return;
                 }
                 await this.store.requireReview(
                     this.root,
                     file,
                     !(error instanceof PartialChangesUnsupportedError),
+                    epoch,
                 );
             }
         });
         for (const file of files) {
             if (file.sourcePath && state.changes[file.sourcePath]) {
                 // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Rename review markers are ordered metadata transactions.
-                await this.store.requireReview(this.root, file.path, true);
+                await this.store.requireReview(this.root, file.path, true, epoch);
             }
         }
     }
@@ -119,9 +123,10 @@ export class ChangeRangeTracker {
             fileOwner?: string;
             ownership?: ChangelistState["changes"][string];
         },
+        epoch: number | undefined,
     ): Promise<void> {
         try {
-            await this.store.track(this.root, file, snapshot, before.revision);
+            await this.store.track(this.root, file, snapshot, before.revision, epoch);
         } catch (error) {
             const latest = this.store.get(this.root);
             if (
@@ -131,7 +136,7 @@ export class ChangeRangeTracker {
                 JSON.stringify(latest.changes[file]) !== JSON.stringify(before.ownership)
             )
                 throw error;
-            await this.store.track(this.root, file, snapshot, latest.revision);
+            await this.store.track(this.root, file, snapshot, latest.revision, epoch);
         }
     }
 }

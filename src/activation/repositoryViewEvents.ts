@@ -1,3 +1,5 @@
+import { ChangelistStore } from "../changes/changelistStore";
+import { controlTargetHistoryWithConfirmation } from "../views/targetHistoryControl";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
@@ -307,6 +309,7 @@ export function registerRepositoryViewEvents(
                     gitOps: gitOps.deriveFor(root),
                     mutationGate,
                     repoRoot: root,
+                    changelists: ChangelistStore.forStorage(context.workspaceState),
                     currentBranches: getCurrentBranches(),
                     refreshAll: () => refreshService().refreshAll(),
                     originProvider,
@@ -407,6 +410,19 @@ export function registerRepositoryViewEvents(
             const scopedGitOps = repoRoot === getRepoRoot() ? gitOps : gitOps.deriveFor(repoRoot);
             const scopedExecutor =
                 repoRoot === getRepoRoot() ? executor : new GitExecutor(repoRoot, mutationGate);
+            if (
+                await controlTargetHistoryWithConfirmation({
+                    gitOps: scopedGitOps.deriveFor(repoRoot),
+                    root: repoRoot,
+                    changelists: ChangelistStore.forStorage(context.workspaceState),
+                    action,
+                    onConflictStateChanged: async () => {
+                        await refreshService().refreshCommitPanels();
+                        if (getRepoRoot() === repoRoot) await refreshService().refreshConflictUi();
+                    },
+                })
+            )
+                return;
             const directories = await scopedGitOps.getGitDirectories();
             const dependencies = {
                 executor: scopedExecutor,

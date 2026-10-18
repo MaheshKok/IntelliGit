@@ -49,7 +49,26 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
             return next;
         });
     }, [api, state, tree.repositoryRoot, tree.expandAllSignal, tree.collapseAllSignal]);
-    const [menu, setMenu] = useState<{ id: string; x: number; y: number }>();
+    const [menu, setMenu] = useState<{
+        id: string;
+        root?: string;
+        revision: number;
+        x: number;
+        y: number;
+    }>();
+    // The control that opened the menu gets focus back when the menu closes.
+    const menuOpener = useRef<HTMLElement | null>(null);
+    const menuOpen = menu !== undefined;
+    useEffect(() => {
+        if (!menuOpen) return;
+        document
+            .querySelector<HTMLElement>('[role="menu"] [role="menuitem"][tabindex="0"]')
+            ?.focus();
+    }, [menuOpen]);
+    const closeMenu = () => {
+        setMenu(undefined);
+        menuOpener.current?.focus();
+    };
     const groups = useMemo(
         () =>
             state?.lists.map((list) => {
@@ -77,6 +96,31 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
     if (!state) return <FileTree {...tree} />;
     return (
         <>
+            <Button
+                size="xs"
+                variant="ghost"
+                disabled={workflow.busy || workflow.checkedPaths.size === 0}
+                onClick={() => workflow.saveShelf("files")}
+            >
+                {t("changes.saveSelectedWholeFiles")}
+            </Button>
+            <Button
+                size="xs"
+                variant="ghost"
+                disabled={workflow.busy || workflow.checkedPaths.size === 0}
+                onClick={() => workflow.saveShelf("files", undefined, "saveAndRemove")}
+            >
+                {t("changes.saveAndRemoveSelectedWholeFiles")}
+            </Button>
+            <Button
+                size="xs"
+                variant="ghost"
+                disabled={workflow.busy || workflow.checkedPaths.size === 0}
+                onClick={() => workflow.saveShelf("files", undefined, "rollback")}
+            >
+                {t("changes.rollBackSelectedWholeFiles")}
+            </Button>
+            {workflow.notice ? <Box role="status">{workflow.notice}</Box> : null}
             {groups.map((list) => {
                 const key = JSON.stringify([tree.repositoryRoot, list.id]);
                 const selected = workflow.filter === list.id;
@@ -91,6 +135,16 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                             fullyIncluded(state, file.path, workflow.filter),
                     );
                 const some = list.files.some((file) => checked.has(file.path));
+                const review =
+                    (state.targetOperationSummary?.phase === "reviewRequired" &&
+                        state.targetOperationSummary.destinationId === list.id) ||
+                    list.files.some((file) => {
+                        const ownership = state.changes[file.path];
+                        return (
+                            ownership?.stale ||
+                            ownership?.selections?.[workflow.filter]?.reviewRequired === true
+                        );
+                    });
                 return (
                     <Box
                         key={key}
@@ -101,7 +155,17 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                             onContextMenu={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
-                                setMenu({ id: list.id, x: event.clientX, y: event.clientY });
+                                menuOpener.current =
+                                    document.activeElement instanceof HTMLElement
+                                        ? document.activeElement
+                                        : null;
+                                setMenu({
+                                    id: list.id,
+                                    root: tree.repositoryRoot,
+                                    revision: state.revision,
+                                    x: event.clientX,
+                                    y: event.clientY,
+                                });
                             }}
                             align="center"
                             gap="6px"
@@ -169,6 +233,15 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                                     {t("changes.active")}
                                 </Box>
                             ) : null}
+                            {review ? (
+                                <Box as="span" fontSize="11px">
+                                    {t("changes.reviewRequired")}
+                                </Box>
+                            ) : some && !all ? (
+                                <Box as="span" fontSize="11px">
+                                    {t("changes.partialInclusion")}
+                                </Box>
+                            ) : null}
                             <Box
                                 as="span"
                                 fontSize="11px"
@@ -186,8 +259,15 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                                 p={0}
                                 aria-label={t("changes.listActions", { name: list.name })}
                                 onClick={(event) => {
+                                    menuOpener.current = event.currentTarget;
                                     const rect = event.currentTarget.getBoundingClientRect();
-                                    setMenu({ id: list.id, x: rect.left, y: rect.bottom });
+                                    setMenu({
+                                        id: list.id,
+                                        root: tree.repositoryRoot,
+                                        revision: state.revision,
+                                        x: rect.left,
+                                        y: rect.bottom,
+                                    });
                                 }}
                             >
                                 <VscEllipsis />
@@ -243,6 +323,19 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                     x={menu.x}
                     y={menu.y}
                     items={[
+                        ...(
+                            [
+                                ["save", t("changes.saveToShelf")],
+                                ["saveAndRemove", t("changes.saveAndRemove")],
+                                ["rollback", t("changes.rollback")],
+                            ] as const
+                        ).map(([action, label]) => ({
+                            action,
+                            label,
+                            disabled:
+                                workflow.busy ||
+                                !groups.find((list) => list.id === menu.id)?.files.length,
+                        })),
                         { action: "create", label: t("changes.newList") },
                         { action: "rename", label: t("changes.editList") },
                         {
@@ -252,8 +345,16 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                         },
                         { action: "remove", label: t("changes.removeList") },
                     ]}
-                    onClose={() => setMenu(undefined)}
+                    onClose={closeMenu}
                     onSelect={(action) => {
+                        if (
+                            (action === "save" ||
+                                action === "saveAndRemove" ||
+                                action === "rollback") &&
+                            menu.root === tree.repositoryRoot &&
+                            menu.revision === state.revision
+                        )
+                            workflow.saveShelf("list", menu.id, action);
                         if (
                             action === "create" ||
                             action === "rename" ||
@@ -261,7 +362,7 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                             action === "remove"
                         )
                             workflow.command(action, menu.id);
-                        setMenu(undefined);
+                        closeMenu();
                     }}
                 />
             ) : null}

@@ -13,6 +13,8 @@ import type { CommitActionContext } from "./commitActionContext";
 import type { PendingRebaseDialogRequests } from "../git/interactiveRebase/types";
 import type { CommitGraphInbound } from "../webviews/protocol/commitGraphTypes";
 import { rejectCommitActionWhenOperationInProgress } from "./operationFence";
+import type { ChangelistStore } from "../changes/changelistStore";
+import { cherryPickToChangelist, revertToChangelist } from "./targetHistoryActions";
 import {
     checkoutRevision,
     cherryPick,
@@ -51,6 +53,7 @@ export async function handleCommitContextAction(params: {
     gitOps: GitOps;
     mutationGate: RepositoryMutationGate;
     repoRoot: string;
+    changelists: ChangelistStore;
     currentBranches: Branch[];
     refreshAll: () => Promise<void>;
     originProvider: object;
@@ -66,6 +69,7 @@ export async function handleCommitContextAction(params: {
         gitOps,
         mutationGate,
         repoRoot,
+        changelists,
         currentBranches,
         refreshAll,
         originProvider,
@@ -88,6 +92,7 @@ export async function handleCommitContextAction(params: {
         gitOps,
         mutationGate,
         repoRoot,
+        changelists,
         currentBranches,
         refreshAll,
         originProvider,
@@ -119,6 +124,12 @@ async function dispatchCommitContextAction(
             return;
         case "cherryPick":
             await cherryPick(ctx);
+            return;
+        case "cherryPickToChangelist":
+            await cherryPickToChangelist(ctx);
+            return;
+        case "revertToChangelist":
+            await revertToChangelist(ctx);
             return;
         case "checkoutRevision":
             await checkoutRevision(ctx);

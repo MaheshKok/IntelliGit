@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import {
@@ -739,4 +739,120 @@ it("recovers whole-owned index publication without creating another commit", asy
     expect(git(["show", "HEAD:text.txt"])).toBe(working);
     expect(git(["show", ":text.txt"])).toBe(working);
     expect(git(["ls-files", "--stage", "--", "other.txt"])).toBe(unrelatedIndex);
+});
+
+describe("selected patch export", () => {
+    it.each(["text.txt", "literal [é]*.txt"])(
+        "exports only selected lines for %s without changing repository state",
+        async (file) => {
+            if (file !== "text.txt") {
+                git(["mv", "text.txt", file]);
+                git(["commit", "-qm", "rename"]);
+            }
+            await writeFile(path.join(root, file), base.replace("line 80\n", "staged other\n"));
+            await writeFile(path.join(root, "other.txt"), "unrelated staged\n");
+            git(["add", "--", file, "other.txt"]);
+            await writeFile(path.join(root, file), working);
+            const view = await workflow.open(file);
+            const head = git(["rev-parse", "HEAD"]);
+            const index = await readFile(path.join(root, ".git/index"));
+            await mkdir(path.join(root, ".git/intelligit"), { recursive: true });
+            await writeFile(path.join(root, ".git/intelligit", "metadata.json"), "preserved");
+            const metadata = await readdir(path.join(root, ".git/intelligit"));
+            const patch = await workflow.exportPatch(firstBlock(view), () => undefined);
+            const fixture = await mkdtemp(path.join(tmpdir(), "intelligit-export-apply-"));
+            try {
+                execFileSync("git", ["init", "-q"], { cwd: fixture });
+                await writeFile(path.join(fixture, file), base);
+                execFileSync("git", ["apply", "--binary", "-"], { cwd: fixture, input: patch });
+                expect(await readFile(path.join(fixture, file), "utf8")).toBe(selected);
+                expect(await readdir(fixture)).toEqual(expect.arrayContaining([file, ".git"]));
+                expect(patch.toString()).not.toContain("unrelated staged");
+                expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+                expect(await readFile(path.join(root, file), "utf8")).toBe(working);
+                expect(git(["rev-parse", "HEAD"])).toBe(head);
+                expect(await readdir(path.join(root, ".git/intelligit"))).toEqual(metadata);
+            } finally {
+                await removeScratchDirectories(fixture);
+            }
+        },
+    );
+
+    it.each(["validate", "exportPatch"] as const)(
+        "%s rejects empty, foreign, dirty and stale selections",
+        async (method) => {
+            const view = await workflow.open("text.txt");
+            const selection = firstBlock(view);
+            const index = await readFile(path.join(root, ".git/index"));
+            const head = git(["rev-parse", "HEAD"]);
+            await expect(
+                workflow[method]({ ...selection, lineIds: [] }, () => undefined),
+            ).rejects.toThrow("Select changes first");
+            await expect(
+                workflow[method]({ ...selection, lineIds: ["foreign"] }, () => undefined),
+            ).rejects.toThrow();
+            await expect(
+                workflow[method](selection, () => {
+                    throw new Error("dirty buffer");
+                }),
+            ).rejects.toThrow("dirty buffer");
+            await writeFile(path.join(root, "text.txt"), working + "external\n");
+            await expect(workflow[method](selection, () => undefined)).rejects.toThrow("changed");
+            expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+            expect(git(["rev-parse", "HEAD"])).toBe(head);
+        },
+    );
+
+    it.each([
+        "worktree",
+        "index",
+        "ref",
+        "head",
+        "attributes",
+        "dirty",
+        "empty",
+        "truncated",
+    ] as const)(
+        "rejects %s after patch generation and removes its private index",
+        async (fault) => {
+            const executor = new GitExecutor(root);
+            workflow = new PartialChanges(executor, root);
+            const view = await workflow.open("text.txt");
+            const original = executor.runBinary.bind(executor);
+            let privateIndex: string | undefined;
+            let generated = false;
+            vi.spyOn(executor, "runBinary").mockImplementation(async (args, options) => {
+                const result = await original(args, options);
+                if (args.includes("--cached") && args.includes("--binary")) {
+                    generated = true;
+                    privateIndex = options?.env?.GIT_INDEX_FILE;
+                    if (fault === "worktree")
+                        await writeFile(path.join(root, "text.txt"), working + "external\n");
+                    if (fault === "index") {
+                        await writeFile(path.join(root, "other.txt"), "external\n");
+                        git(["add", "other.txt"]);
+                    }
+                    if (fault === "ref") git(["checkout", "-qb", "changed-ref"]);
+                    if (fault === "head") git(["commit", "--allow-empty", "-qm", "changed head"]);
+                    if (fault === "attributes")
+                        await writeFile(path.join(root, ".gitattributes"), "text.txt -filter\n");
+                    if (fault === "empty") return { ...result, stdout: Buffer.alloc(0) };
+                    if (fault === "truncated") return { ...result, truncated: true };
+                }
+                return result;
+            });
+            try {
+                await expect(
+                    workflow.exportPatch(firstBlock(view), () => {
+                        if (generated && fault === "dirty") throw new Error("dirty buffer");
+                    }),
+                ).rejects.toThrow();
+                expect(generated).toBe(true);
+                expect(privateIndex).toBeDefined();
+                await expect(readFile(privateIndex!)).rejects.toMatchObject({ code: "ENOENT" });
+            } finally {
+                vi.restoreAllMocks();
+            }
+        },
+    );
 });

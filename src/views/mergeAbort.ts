@@ -1,3 +1,5 @@
+import type { ChangelistStore } from "../changes/changelistStore";
+import { controlTargetHistoryWithConfirmation } from "./targetHistoryControl";
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import { getErrorMessage } from "../utils/errors";
@@ -6,8 +8,10 @@ import { runWithNotificationProgress, showTimedInformationMessage } from "../uti
 /** Dependencies for the shared merge-abort confirmation flow. */
 export interface AbortMergeOptions {
     gitOps: GitOps;
+    root: string;
+    changelists: ChangelistStore;
     /** Uses Rebase copy only for a session known to be rebasing; Merge remains the default. */
-    operation?: "merge" | "rebase";
+    operation?: "merge" | "rebase" | (() => Promise<"merge" | "rebase">);
     onConflictStateChanged: () => Promise<void>;
     disposePanel?: () => void;
 }
@@ -17,7 +21,10 @@ export interface AbortMergeOptions {
  * conflict state and closes any owning panel. Callers omitting operation retain Merge copy.
  */
 export async function abortMergeWithConfirmation(options: AbortMergeOptions): Promise<void> {
-    const rebase = options.operation === "rebase";
+    if (await controlTargetHistoryWithConfirmation({ ...options, action: "abort" })) return;
+    const operation =
+        typeof options.operation === "function" ? await options.operation() : options.operation;
+    const rebase = operation === "rebase";
     const abortAction = rebase ? vscode.l10n.t("Abort Rebase") : vscode.l10n.t("Abort Merge");
     const confirmMessage = rebase
         ? vscode.l10n.t("Abort the current rebase? Local conflict resolutions will be discarded.")
@@ -28,6 +35,8 @@ export async function abortMergeWithConfirmation(options: AbortMergeOptions): Pr
         abortAction,
     );
     if (confirmed !== abortAction) return;
+    // Another window may have prepared a targeted operation while this ordinary prompt was open.
+    if (await controlTargetHistoryWithConfirmation({ ...options, action: "abort" })) return;
 
     try {
         await runWithNotificationProgress(

@@ -1,6 +1,14 @@
 import * as vscode from "vscode";
-import type { ShelfMutationResult, ShelfService, ShelfSummary } from "../services/shelfService";
+import type { ChangelistStore } from "../changes/changelistStore";
+import { prepareShelfRestore } from "../commands/shelfRestoreTarget";
+import {
+    ShelfStaleShelfError,
+    type ShelfMutationResult,
+    type ShelfService,
+    type ShelfSummary,
+} from "../services/shelfService";
 import { logShelfOperation, logShelfWarning } from "../services/shelfObservability";
+import type { TargetShelfMutationResult } from "../services/shelfTargetRestore";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { getErrorMessage } from "../utils/errors";
 
@@ -11,6 +19,7 @@ export const SHELF_COMMAND_IDS = [
     "intelligit.saveToShelf",
     "intelligit.unshelve",
     "intelligit.importPatch",
+    "intelligit.applyPatchToChangelist",
     "intelligit.cleanUpShelf",
     "intelligit.purgeShelfRecovery",
 ] as const;
@@ -20,6 +29,8 @@ export interface ShelfCommandsDeps {
     readonly context: vscode.ExtensionContext;
     readonly getRepositories: () => readonly DiscoveredRepository[];
     readonly shelfServiceForRepository: (repositoryRoot: string) => ShelfService | undefined;
+    /** Shared metadata store already connected for every shelf repository at activation. */
+    readonly changelists: ChangelistStore;
     /** Refreshes docked and undocked commit-panel state after a successful command mutation. */
     readonly refreshAfterMutation: () => Promise<void>;
 }
@@ -79,11 +90,47 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
                 result ?? { status: "ok" },
             );
             vscode.window.showInformationMessage(success);
-            await deps.refreshAfterMutation();
         } catch (error) {
             logShelfWarning(`${operation} failed`, error);
             vscode.window.showErrorMessage(`${failure}: ${getErrorMessage(error)}`);
+            return;
         }
+        await refreshAfter(operation);
+    };
+
+    /** A refresh failure is logged separately and never relabels a completed mutation. */
+    const refreshAfter = async (operation: string): Promise<void> => {
+        try {
+            await deps.refreshAfterMutation();
+        } catch (error) {
+            logShelfWarning(`refresh after ${operation} failed`, error);
+        }
+    };
+
+    const staleRestoreMessage = (): string =>
+        localize("The shelf or changelists changed. Nothing was unshelved; try again.");
+
+    /** Every targeted outcome has its own text; only a fully applied restore reports success. */
+    const reportTargetedRestore = (result: TargetShelfMutationResult): void => {
+        if (result.status === "applied") {
+            vscode.window.showInformationMessage(localize("Shelf unshelved."));
+            return;
+        }
+        vscode.window.showWarningMessage(
+            {
+                notApplied: localize("No shelf changes were applied."),
+                conflicted: localize(
+                    "Unshelve stopped with conflicts. Resolve them from the Shelf tab.",
+                ),
+                stale: staleRestoreMessage(),
+                busy: localize(
+                    "Another repository operation is running or awaiting review. Nothing was unshelved.",
+                ),
+                appliedNeedsReview: localize(
+                    "Unshelve changed files but needs review before it can finish.",
+                ),
+            }[result.status],
+        );
     };
 
     const defaultName = (): string => localize("Uncommitted changes");
@@ -142,23 +189,36 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
                 { placeHolder: localize("Select a shelf to unshelve") },
             );
             if (!picked) return;
-            await runMutation(
+            // The repository, service and settings are captured here; the destination prompt
+            // below can outlive an active-repository switch without redirecting the restore.
+            const result = await prepareShelfRestore(
                 service,
-                "unshelve",
-                () =>
-                    service.unshelve({
-                        id: picked.shelf.id,
-                        expectedShelfGeneration: picked.shelf.generation,
-                        removeFromShelf:
-                            vscode.workspace
-                                .getConfiguration("intelligit")
-                                .get<boolean>("shelf.removeOnUnshelve", true) !== false,
-                        mode: "flattened",
-                    }),
-                localize("Shelf unshelved."),
-                localize("Unshelve failed"),
+                deps.changelists,
+                {
+                    shelfId: picked.shelf.id,
+                    expectedShelfGeneration: picked.shelf.generation,
+                    removeFromShelf:
+                        vscode.workspace
+                            .getConfiguration("intelligit")
+                            .get<boolean>("shelf.removeOnUnshelve", true) !== false,
+                    mode: "flattened",
+                },
+                (input) => service.unshelve(input),
             );
+            if (!result) return;
+            logShelfOperation(
+                { operation: "unshelve", repositoryRoot: service.repositoryRoot },
+                result,
+            );
+            reportTargetedRestore(result);
+            if (result.status !== "stale" && result.status !== "busy")
+                await refreshAfter("unshelve");
         } catch (error) {
+            if (error instanceof ShelfStaleShelfError) {
+                vscode.window.showWarningMessage(staleRestoreMessage());
+                return;
+            }
+            logShelfWarning("unshelve failed", error);
             vscode.window.showErrorMessage(
                 `${localize("Unshelve failed")}: ${getErrorMessage(error)}`,
             );
@@ -182,6 +242,102 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
             localize("Patch imported to shelf."),
             localize("Import patch failed"),
         );
+    };
+
+    /**
+     * Imports first: the durable shelf freezes and validates the exact patch bytes, and its
+     * checksum fences the later apply. Every cancel after that point reports the import.
+     */
+    const applyPatchToChangelist = async (): Promise<void> => {
+        const service = await selectService();
+        if (!service) return;
+        const sources = await vscode.window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: true,
+            filters: { [localize("Patch files")]: ["patch", "diff"] },
+        });
+        if (!sources) return;
+        let imported: ShelfMutationResult;
+        try {
+            imported = await service.importPatch({ fileUris: sources.map((uri) => uri.fsPath) });
+            logShelfOperation(
+                { operation: "shelfImportPatch", repositoryRoot: service.repositoryRoot },
+                imported,
+            );
+        } catch (error) {
+            logShelfWarning("shelfImportPatch failed", error);
+            vscode.window.showErrorMessage(
+                `${localize("Import patch failed")}: ${getErrorMessage(error)}`,
+            );
+            return;
+        }
+        const shelfId = imported.shelfId;
+        const generation = imported.newGeneration;
+        if (shelfId === undefined || generation === undefined)
+            throw new Error("Patch import did not report the new shelf.");
+        const importedOnly = async (): Promise<void> => {
+            vscode.window.showInformationMessage(
+                localize("Patch imported to shelf. Nothing was applied."),
+            );
+            await refreshAfter("shelfImportPatch");
+        };
+        try {
+            const manifest = await service.getShelfManifest(shelfId);
+            const result = await prepareShelfRestore(
+                service,
+                deps.changelists,
+                {
+                    shelfId,
+                    expectedShelfGeneration: generation,
+                    removeFromShelf:
+                        vscode.workspace
+                            .getConfiguration("intelligit")
+                            .get<boolean>("shelf.removeOnUnshelve", true) !== false,
+                    mode: "flattened",
+                },
+                async (input) => {
+                    const target = input.targetOperation.target;
+                    const listName =
+                        target.kind === "new"
+                            ? target.name
+                            : (deps.changelists
+                                  .get(service.repositoryRoot)
+                                  .lists.find((list) => list.id === target.id)?.name ?? target.id);
+                    const applyLabel = localize("Apply Patch");
+                    const confirmed = await vscode.window.showInformationMessage(
+                        localize("Apply the imported patch to changelist {list}?", {
+                            list: listName,
+                        }),
+                        {
+                            modal: true,
+                            detail: manifest.files
+                                .map(
+                                    (entry) =>
+                                        (entry.worktreeBlock ?? entry.indexBlock)?.path ??
+                                        entry.changeId,
+                                )
+                                .join("\n"),
+                        },
+                        applyLabel,
+                    );
+                    return confirmed === applyLabel ? service.unshelve(input) : undefined;
+                },
+            );
+            if (!result) return await importedOnly();
+            logShelfOperation(
+                { operation: "unshelve", repositoryRoot: service.repositoryRoot },
+                result,
+            );
+            reportTargetedRestore(result);
+            await refreshAfter("unshelve");
+        } catch (error) {
+            logShelfWarning("apply patch to changelist failed", error);
+            vscode.window.showErrorMessage(
+                `${localize("Patch imported to shelf, but applying it failed")}: ${getErrorMessage(error)}`,
+            );
+            await refreshAfter("shelfImportPatch");
+        }
     };
 
     const cleanUp = async (): Promise<void> => {
@@ -252,6 +408,10 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
         vscode.commands.registerCommand("intelligit.saveToShelf", () => shelve(true, true, false)),
         vscode.commands.registerCommand("intelligit.unshelve", unshelve),
         vscode.commands.registerCommand("intelligit.importPatch", importPatch),
+        vscode.commands.registerCommand(
+            "intelligit.applyPatchToChangelist",
+            applyPatchToChangelist,
+        ),
         vscode.commands.registerCommand("intelligit.cleanUpShelf", cleanUp),
         vscode.commands.registerCommand("intelligit.purgeShelfRecovery", purgeRecovery),
     );

@@ -96,6 +96,7 @@ async function createReverter(
         new RepositoryLock(),
     );
     const store = new ShelfStore(paths);
+    await store.withLock(() => store.migrateWithHeldLocks());
     return {
         repositoryRoot,
         gitOps,
@@ -489,6 +490,7 @@ describe("ShelfReverter", () => {
             new RepositoryLock(),
         );
         const store = new ShelfStore(paths);
+        await store.withLock(() => store.migrateWithHeldLocks());
         const reverter = new ShelfReverter({ repositoryRoot: linkedWorktree, gitOps, gate, store });
 
         const result = await reverter.revert({

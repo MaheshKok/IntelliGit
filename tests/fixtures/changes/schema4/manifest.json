@@ -1,0 +1,7 @@
+{
+    "fixtureVersion": 1,
+    "originRevision": "23464b48c7d47ae4f83429898c6df49b56faf0d3",
+    "entrypoint": "src/changes/changelistStore.ts",
+    "bundle": "changelistStore.cjs",
+    "bundleSha256": "2b963c404643c83e2287a49c21dd63516cbb0087e94f697b8fa19f5fae183eb0"
+}

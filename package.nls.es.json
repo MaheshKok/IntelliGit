@@ -121,5 +121,8 @@
     "configuration.updateStrategy.markdownDescription": "Elige cómo las acciones manuales Pull y Actualizar integran los commits entrantes en la rama actual. Se aplica tanto a repositorios sin cambios locales como a repositorios con cambios locales. Configura esta opción por carpeta del espacio de trabajo para usar distintas estrategias en distintos repositorios. Sincronizar y Actualizar en otras ramas mantienen su comportamiento actual.",
     "configuration.updateStrategy.rebase.description": "Vuelve a aplicar los commits locales sobre los commits entrantes para mantener un historial lineal.",
     "configuration.updateStrategy.merge.description": "Conserva los commits existentes y crea un commit de fusión cuando los historiales divergen; realiza un avance rápido cuando es posible.",
-    "command.openPartialChanges": "Abrir cambios parciales"
+    "command.openPartialChanges": "Abrir cambios parciales",
+    "command.shelf.applyPatchToChangelist": "Aplicar parche a la lista de cambios…",
+    "command.completeTargetedHistory": "Completar acción del historial sin confirmar",
+    "command.discardTargetedHistory": "Descartar acción del historial sin confirmar"
 }

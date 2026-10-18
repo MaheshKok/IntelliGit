@@ -247,6 +247,39 @@ function initialSelection(
         .map((line) => line.id);
 }
 
+/** Keeps save/export separate from removal and disables destructive actions outside working changes. */
+function SelectedShelfActions({
+    available,
+    mutable,
+    assignable,
+    send,
+}: {
+    available: boolean;
+    mutable: boolean;
+    assignable: boolean;
+    send: (
+        type: "saveSelection" | "shelveSelection" | "rollbackSelection" | "exportSelection",
+    ) => void;
+}) {
+    if (!available) return null;
+    return (
+        <>
+            <button disabled={!mutable} onClick={() => send("exportSelection")}>
+                {t("changes.exportPatch")}
+            </button>
+            <button disabled={!mutable} onClick={() => send("saveSelection")}>
+                {t("shelf.action.save")}
+            </button>
+            <button disabled={!assignable} onClick={() => send("shelveSelection")}>
+                {t("changes.saveAndRemoveSelection")}
+            </button>
+            <button disabled={!assignable} onClick={() => send("rollbackSelection")}>
+                {t("changes.rollbackSelection")}
+            </button>
+        </>
+    );
+}
+
 /** Presents immutable host snapshots; only identities and explicit selections are sent back. */
 export function PartialChangesApp() {
     const api = getVsCodeApi<PartialEditorOutbound, SavedSelection>();
@@ -258,6 +291,8 @@ export function PartialChangesApp() {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
     const [commit, setCommit] = useState("");
+    const [operationMessage, setOperationMessage] = useState("");
+    const [removed, setRemoved] = useState(false);
     const current = useRef<FileData | null>(null);
     const currentSelected = useRef(selected);
     useLayoutEffect(() => {
@@ -294,6 +329,10 @@ export function PartialChangesApp() {
             } else if (reply.type === "partialCommitted") {
                 setCommit(reply.commit);
                 setBusy(false);
+            } else if (reply.type === "partialOperationCompleted") {
+                setOperationMessage(reply.message);
+                setRemoved(reply.removed);
+                setBusy(false);
             }
         };
         window.addEventListener("message", receive);
@@ -329,7 +368,7 @@ export function PartialChangesApp() {
         });
     };
     const send = (kind: "stage" | "commit" | "assign" | "use") => {
-        if (!data || busy || commit || !selected.size) return;
+        if (!data || busy || commit || removed || !selected.size) return;
         const selection = { snapshotId: data.file.snapshotId, lineIds: [...selected] };
         setBusy(true);
         setError("");
@@ -345,7 +384,18 @@ export function PartialChangesApp() {
                 revision: data.lists.revision,
             });
     };
-    const locked = busy || commit.length > 0;
+    const selectedOperation = (
+        type: "saveSelection" | "shelveSelection" | "rollbackSelection" | "exportSelection",
+    ) => {
+        if (!data?.selectedOperations || !mutable) return;
+        setBusy(true);
+        setError("");
+        api.postMessage({
+            type,
+            selection: { snapshotId: data.file.snapshotId, lineIds: [...selected] },
+        });
+    };
+    const locked = busy || commit.length > 0 || removed;
     const mutable = !locked && selected.size > 0;
     const assignable = mutable && side === "working";
     const committable = mutable && message.trim().length > 0 && deferred === selected;
@@ -424,6 +474,12 @@ export function PartialChangesApp() {
             </div>
             <footer className="partial-footer">
                 <div className="partial-actions">
+                    <SelectedShelfActions
+                        available={data?.selectedOperations === true}
+                        mutable={mutable}
+                        assignable={assignable}
+                        send={selectedOperation}
+                    />
                     <select
                         aria-label={t("changes.targetList")}
                         value={targetList}
@@ -471,7 +527,7 @@ export function PartialChangesApp() {
                             ? `${t("changes.committed")} ${commit.slice(0, 8)}`
                             : busy
                               ? t("changes.pending")
-                              : ""}
+                              : operationMessage}
                     </span>
                     <button disabled={!committable} onClick={() => send("commit")}>
                         <VscCheck />

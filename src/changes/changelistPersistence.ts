@@ -1,7 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants, lstatSync, readFileSync, type BigIntStats } from "node:fs";
 import { link, lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
+import { GitExecutor } from "../git/executor";
 import { RepositoryLock } from "../git/repositoryLock";
 import { PartialChangesUnsupportedError } from "../git/partialSnapshot";
 import { acquireWithBoundedWait } from "../git/boundedLockRetry";
@@ -13,14 +14,33 @@ import type {
 import { changeFingerprint } from "./parseDiff";
 import { assertRepoRelativePath } from "../utils/repoRelativePath";
 import { resolveNoFollowFlag } from "../shelf/noFollowFlag";
-import { snapshotReference, validSnapshot, validSnapshotReference } from "./rangeMetadata";
+import {
+    snapshotReference,
+    validSnapshot,
+    validSnapshotReference,
+    parseTargetOperationAttribution,
+    type TargetOperationAttribution,
+} from "./rangeMetadata";
 import type { HydratedChangelistState } from "./rangeMapping";
+import {
+    parseTargetOperationEvidence,
+    targetOperationObjectReferences,
+    type TargetOperationEvidence,
+    type TargetOperationAttributionReference,
+    type TargetOperationBlobReference,
+} from "./targetOperation";
 
 const MAX_BYTES = 64 * 1024 * 1024;
 
+/** Latest evidence and its original root, returned only after the complete chain validates. */
+export interface TargetOperationEvidenceChain {
+    readonly evidence: TargetOperationEvidence;
+    readonly root: { readonly hash: string; readonly evidence: TargetOperationEvidence };
+}
+
 /** Authoritative metadata is scoped to a canonical worktree and its own Git directory. */
 interface Envelope {
-    schemaVersion: 4;
+    schemaVersion: 5;
     root: string;
     gitDir: string;
     state: ChangelistState;
@@ -32,6 +52,7 @@ interface Envelope {
  */
 export class ChangelistPersistence {
     private readonly lock: RepositoryLock;
+    private readonly git: GitExecutor;
     private cached?: {
         identity: string;
         parse: (value: unknown) => ChangelistState | undefined;
@@ -40,6 +61,9 @@ export class ChangelistPersistence {
     readonly filename: string;
     readonly evidenceDirectory: string;
     private evidenceDirectoryDurable = false;
+    /** True only inside `storeSnapshotBatch`, whose final barrier replaces per-payload directory syncs. */
+    private deferEvidenceDirectorySync = false;
+    private readonly operationEvidenceCache = new Map<string, Map<string, string>>();
 
     /** Binds paths already canonicalized by open; metadata locking remains separate from Git's index lock. */
     private constructor(
@@ -50,6 +74,7 @@ export class ChangelistPersistence {
         this.filename = path.join(directory, "state.json");
         this.evidenceDirectory = path.join(directory, "evidence");
         this.lock = new RepositoryLock({ lockDirectory: directory, lockFileName: "metadata.lock" });
+        this.git = new GitExecutor(root);
     }
 
     /** Refuse symlinked metadata directories before acquiring or writing any record. */
@@ -106,7 +131,7 @@ export class ChangelistPersistence {
         const saved = JSON.parse(bytes) as Partial<Envelope>;
         const state = parse(saved.state);
         if (
-            saved.schemaVersion !== 4 ||
+            saved.schemaVersion !== 5 ||
             saved.root !== this.root ||
             saved.gitDir !== this.gitDir ||
             !state
@@ -119,7 +144,7 @@ export class ChangelistPersistence {
     /** Publish only a complete fsynced record; a failed write leaves the previous file intact. */
     async write(state: ChangelistState): Promise<void> {
         const envelope: Envelope = {
-            schemaVersion: 4,
+            schemaVersion: 5,
             root: this.root,
             gitDir: this.gitDir,
             state,
@@ -130,8 +155,13 @@ export class ChangelistPersistence {
 
     /** Reads the old inline envelope only during a lease-protected connection upgrade. */
     async readLegacy(
-        parse: (value: unknown) => HydratedChangelistState | undefined,
-    ): Promise<{ state: HydratedChangelistState; bytes: string } | undefined> {
+        parseInline: (value: unknown) => HydratedChangelistState | undefined,
+        parseCompact: (value: unknown) => ChangelistState | undefined,
+    ): Promise<
+        | { schemaVersion: 3; state: HydratedChangelistState; bytes: string }
+        | { schemaVersion: 4; state: ChangelistState; bytes: string }
+        | undefined
+    > {
         let bytes: string;
         try {
             bytes = await this.readImmutable(this.filename);
@@ -145,23 +175,25 @@ export class ChangelistPersistence {
             gitDir?: unknown;
             state?: unknown;
         };
-        if (saved.schemaVersion === 4) return undefined;
-        const state = parse(saved.state);
-        if (
-            saved.schemaVersion !== 3 ||
-            saved.root !== this.root ||
-            saved.gitDir !== this.gitDir ||
-            !state
-        )
+        if (saved.schemaVersion === 5) return undefined;
+        const state =
+            saved.schemaVersion === 3
+                ? parseInline(saved.state)
+                : saved.schemaVersion === 4
+                  ? parseCompact(saved.state)
+                  : undefined;
+        if (saved.root !== this.root || saved.gitDir !== this.gitDir || !state)
             throw new ChangelistEvidenceError();
-        return { state, bytes };
+        return { schemaVersion: saved.schemaVersion as 3 | 4, state, bytes } as
+            | { schemaVersion: 3; state: HydratedChangelistState; bytes: string }
+            | { schemaVersion: 4; state: ChangelistState; bytes: string };
     }
 
     /** Retains every interrupted legacy generation; a matching corrupt backup cannot be replaced. */
-    async backupLegacy(bytes: string): Promise<void> {
+    async backupLegacy(bytes: string, schemaVersion: 3 | 4): Promise<void> {
         const filename = path.join(
             this.directory,
-            `state-v3.${changeFingerprint(bytes)}.backup.json`,
+            `state-v${schemaVersion}.${changeFingerprint(bytes)}.backup.json`,
         );
         await this.publishImmutable(filename, bytes);
     }
@@ -190,6 +222,137 @@ export class ChangelistPersistence {
             return reference;
         } catch (error) {
             if (error instanceof PartialChangesUnsupportedError) throw error;
+            throw new ChangelistEvidenceError(error);
+        }
+    }
+
+    /**
+     * Migration publishes many individually fsynced payloads, then crosses one evidence-directory
+     * barrier before any manifest can name them. `publish` must settle every write before resolving.
+     */
+    async storeSnapshotBatch<T>(publish: () => Promise<T>): Promise<T> {
+        // One parent barrier up front; parallel first publications would each repeat it.
+        await this.evidenceDirectoryReady(true).catch((error: unknown) => {
+            throw new ChangelistEvidenceError(error);
+        });
+        this.deferEvidenceDirectorySync = true;
+        let result: T;
+        try {
+            result = await publish();
+        } finally {
+            this.deferEvidenceDirectorySync = false;
+        }
+        await this.syncDirectory(this.evidenceDirectory).catch((error: unknown) => {
+            throw new ChangelistEvidenceError(error);
+        });
+        return result;
+    }
+
+    /** Publish exact recovery bytes before an evidence checkpoint can reference them. */
+    async storeTargetOperationObject(_contents: Uint8Array): Promise<string> {
+        try {
+            if (_contents.byteLength > MAX_BYTES) throw new ChangelistEvidenceError();
+            const hash = changeFingerprint(_contents);
+            await this.evidenceDirectoryReady(true);
+            await this.publishImmutableBytes(
+                path.join(this.evidenceDirectory, `${hash}.bin`),
+                _contents,
+            );
+            return hash;
+        } catch (error) {
+            throw new ChangelistEvidenceError(error);
+        }
+    }
+
+    /** Read exact retained bytes through the existing no-follow boundary; reject wrong sizes and digests. */
+    async loadTargetOperationObject(reference: TargetOperationBlobReference): Promise<Buffer> {
+        try {
+            if (
+                !/^[a-f0-9]{64}$/.test(reference.hash) ||
+                !Number.isSafeInteger(reference.size) ||
+                reference.size < 0 ||
+                reference.size > MAX_BYTES
+            )
+                throw new ChangelistEvidenceError();
+            await this.evidenceDirectoryReady(false);
+            const { bytes } = await this.readImmutableBytesWithIdentity(
+                path.join(this.evidenceDirectory, `${reference.hash}.bin`),
+            );
+            if (bytes.length !== reference.size || changeFingerprint(bytes) !== reference.hash)
+                throw new ChangelistEvidenceError();
+            return bytes;
+        } catch (error) {
+            throw new ChangelistEvidenceError(error);
+        }
+    }
+
+    /** Read only a checksum-verified payload bound to this operation and affected path. */
+    async loadTargetOperationAttribution(
+        reference: TargetOperationAttributionReference,
+        operationId: string,
+    ): Promise<TargetOperationAttribution> {
+        try {
+            if (!/^[a-f0-9]{64}$/.test(reference.object.hash)) throw new ChangelistEvidenceError();
+            const file = assertRepoRelativePath(reference.path);
+            await this.evidenceDirectoryReady(false);
+            const bytes = await this.readImmutableBytes(
+                path.join(this.evidenceDirectory, `${reference.object.hash}.bin`),
+            );
+            if (
+                bytes.byteLength !== reference.object.size ||
+                changeFingerprint(bytes) !== reference.object.hash
+            )
+                throw new ChangelistEvidenceError();
+            const payload = parseTargetOperationAttribution(
+                JSON.parse(bytes.toString("utf8")),
+                this.root,
+                this.gitDir,
+                operationId,
+                file,
+            );
+            if (!payload) throw new ChangelistEvidenceError();
+            return payload;
+        } catch (error) {
+            throw new ChangelistEvidenceError(error);
+        }
+    }
+
+    /** Publish one validated repository-bound operation checkpoint immutably. */
+    async storeTargetOperationEvidence(_evidence: TargetOperationEvidence): Promise<string> {
+        try {
+            const evidence = parseTargetOperationEvidence(_evidence, this.root, this.gitDir);
+            if (!evidence) throw new ChangelistEvidenceError();
+            await this.validateOperationObjects(evidence);
+            if (evidence.previousEvidenceHash)
+                await this.readOperationEvidence(
+                    evidence.previousEvidenceHash,
+                    new Set(),
+                    evidence.operationId,
+                );
+            const bytes = JSON.stringify(evidence);
+            const hash = changeFingerprint(bytes);
+            await this.evidenceDirectoryReady(true);
+            await this.publishImmutable(
+                path.join(this.evidenceDirectory, `${hash}.operation.json`),
+                bytes,
+            );
+            return hash;
+        } catch (error) {
+            throw new ChangelistEvidenceError(error);
+        }
+    }
+
+    /** Load and validate one immutable operation checkpoint and all of its object references. */
+    async loadTargetOperationEvidence(_hash: string): Promise<TargetOperationEvidence> {
+        return (await this.loadTargetOperationEvidenceChain(_hash)).evidence;
+    }
+
+    /** Retains the root from the same full validation pass; callers need not reread ancestor suffixes. */
+    async loadTargetOperationEvidenceChain(hash: string): Promise<TargetOperationEvidenceChain> {
+        try {
+            const { evidence, root } = await this.readOperationEvidence(hash, new Set());
+            return { evidence, root };
+        } catch (error) {
             throw new ChangelistEvidenceError(error);
         }
     }
@@ -239,6 +402,7 @@ export class ChangelistPersistence {
         for (const [file, references] of fileReferences(state)) {
             for (const reference of references) await this.loadSnapshot(file, reference);
         }
+        await this.operationEvidenceFiles(state, true);
     }
 
     /** Counts names once per publication and refuses dangling references without hydrating payloads. */
@@ -251,28 +415,38 @@ export class ChangelistPersistence {
                     throw new ChangelistEvidenceError();
             }
         }
+        for (const name of await this.operationEvidenceFiles(state)) {
+            if (!names.has(name)) throw new ChangelistEvidenceError();
+        }
     }
 
     /** Collection is lease-protected and post-publication; failure leaves harmless recovery debris. */
     async collect(previous: ChangelistState | undefined, current: ChangelistState): Promise<void> {
         try {
             await this.evidenceDirectoryReady(false);
-            const live = new Set(
-                fileReferences(current).flatMap(([, refs]) =>
+            const live = new Set([
+                ...fileReferences(current).flatMap(([, refs]) =>
                     refs.map((ref) => `${ref.blob}.json`),
                 ),
-            );
+                ...(await this.operationEvidenceFiles(current)),
+            ]);
             const candidates = previous
                 ? [
-                      ...new Set(
-                          fileReferences(previous).flatMap(([, refs]) =>
+                      ...new Set([
+                          ...fileReferences(previous).flatMap(([, refs]) =>
                               refs.map((ref) => `${ref.blob}.json`),
                           ),
-                      ),
+                          ...(await this.operationEvidenceFiles(previous)),
+                      ]),
                   ]
                 : await readdir(this.evidenceDirectory);
             for (const name of candidates) {
-                if (live.has(name) || !/^[a-f0-9]{64}\.json(?:\.[a-f0-9-]{36}\.tmp)?$/.test(name))
+                if (
+                    live.has(name) ||
+                    !/^[a-f0-9]{64}\.(?:json|operation\.json|bin)(?:\.[a-f0-9-]{36}\.tmp)?$/.test(
+                        name,
+                    )
+                )
                     continue;
                 const filename = path.join(this.evidenceDirectory, name);
                 const stat = await lstat(filename).catch((error: unknown) => {
@@ -309,12 +483,25 @@ export class ChangelistPersistence {
 
     /** Bounded actual reads plus descriptor/path identity checks also protect platforms without O_NOFOLLOW. */
     private async readImmutable(filename: string): Promise<string> {
+        return (await this.readImmutableBytes(filename)).toString("utf8");
+    }
+
+    /** Binary recovery objects use the same bounded no-follow identity checks as JSON evidence. */
+    private async readImmutableBytes(filename: string): Promise<Buffer> {
+        return (await this.readImmutableBytesWithIdentity(filename)).bytes;
+    }
+
+    /** Return the exact identity that remained stable for the complete immutable read. */
+    private async readImmutableBytesWithIdentity(
+        filename: string,
+    ): Promise<{ bytes: Buffer; identity: string }> {
         const before = await lstat(filename, { bigint: true });
         if (!before.isFile() || before.isSymbolicLink() || before.size > MAX_BYTES)
             throw new ChangelistEvidenceError();
+        const identity = recordIdentity(before);
         const handle = await open(filename, constants.O_RDONLY | resolveNoFollowFlag());
         try {
-            if (recordIdentity(await handle.stat({ bigint: true })) !== recordIdentity(before))
+            if (recordIdentity(await handle.stat({ bigint: true })) !== identity)
                 throw new ChangelistEvidenceError();
             const chunks: Buffer[] = [];
             let total = 0;
@@ -327,11 +514,11 @@ export class ChangelistPersistence {
                 chunks.push(chunk.subarray(0, bytesRead));
             }
             if (
-                recordIdentity(await handle.stat({ bigint: true })) !== recordIdentity(before) ||
-                recordIdentity(await lstat(filename, { bigint: true })) !== recordIdentity(before)
+                recordIdentity(await handle.stat({ bigint: true })) !== identity ||
+                recordIdentity(await lstat(filename, { bigint: true })) !== identity
             )
                 throw new ChangelistEvidenceError();
-            return Buffer.concat(chunks, total).toString("utf8");
+            return { bytes: Buffer.concat(chunks, total), identity };
         } finally {
             await handle.close();
         }
@@ -355,9 +542,196 @@ export class ChangelistPersistence {
         }
     }
 
+    /** Create-only binary publication never replaces a same-name object with different bytes. */
+    private async publishImmutableBytes(filename: string, bytes: Uint8Array): Promise<void> {
+        try {
+            if (!Buffer.from(await this.readImmutableBytes(filename)).equals(Buffer.from(bytes)))
+                throw new ChangelistEvidenceError();
+            await this.syncDirectory(path.dirname(filename));
+            return;
+        } catch (error) {
+            if (!hasCode(error, "ENOENT")) throw error;
+        }
+        try {
+            await this.publish(filename, bytes, true, true);
+        } catch (error) {
+            if (!hasCode(error, "EEXIST")) throw error;
+            if (!Buffer.from(await this.readImmutableBytes(filename)).equals(Buffer.from(bytes)))
+                throw new ChangelistEvidenceError();
+            await this.syncDirectory(path.dirname(filename));
+        }
+    }
+
+    /** Resolves the full immutable evidence chain and content objects for GC and validation. */
+    private async readOperationEvidence(
+        hash: string,
+        seen: Set<string>,
+        operationId?: string,
+        files = new Map<string, string>(),
+    ): Promise<TargetOperationEvidenceChain & { files: Map<string, string> }> {
+        if (!/^[a-f0-9]{64}$/.test(hash) || seen.has(hash)) throw new ChangelistEvidenceError();
+        seen.add(hash);
+        await this.evidenceDirectoryReady(false);
+        const filename = `${hash}.operation.json`;
+        const saved = await this.readImmutableBytesWithIdentity(
+            path.join(this.evidenceDirectory, filename),
+        );
+        const bytes = saved.bytes.toString("utf8");
+        if (changeFingerprint(bytes) !== hash) throw new ChangelistEvidenceError();
+        const evidence = parseTargetOperationEvidence(JSON.parse(bytes), this.root, this.gitDir);
+        if (!evidence || (operationId !== undefined && evidence.operationId !== operationId))
+            throw new ChangelistEvidenceError();
+        files.set(filename, saved.identity);
+        for (const [name, identity] of await this.validateOperationObjects(evidence))
+            files.set(name, identity);
+        let root = { hash, evidence };
+        if (evidence.previousEvidenceHash) {
+            const previous = await this.readOperationEvidence(
+                evidence.previousEvidenceHash,
+                seen,
+                evidence.operationId,
+                files,
+            );
+            root = previous.root;
+        }
+        return { evidence, root, files };
+    }
+
+    /** Content references are exact checksums and sizes, never arbitrary evidence paths. */
+    private async validateOperationObjects(
+        evidence: TargetOperationEvidence,
+    ): Promise<Map<string, string>> {
+        const files = new Map<string, string>();
+        const sizes = new Map<string, number>();
+        const contents = new Map<string, Buffer>();
+        for (const reference of targetOperationObjectReferences(evidence)) {
+            const name = `${reference.hash}.bin`;
+            const knownSize = sizes.get(reference.hash);
+            if (knownSize !== undefined) {
+                if (knownSize !== reference.size) throw new ChangelistEvidenceError();
+                continue;
+            }
+            const saved = await this.readImmutableBytesWithIdentity(
+                path.join(this.evidenceDirectory, name),
+            );
+            const bytes = saved.bytes;
+            if (bytes.byteLength !== reference.size || changeFingerprint(bytes) !== reference.hash)
+                throw new ChangelistEvidenceError();
+            sizes.set(reference.hash, bytes.byteLength);
+            contents.set(reference.hash, bytes);
+            files.set(name, saved.identity);
+        }
+        const gitEntries = [
+            ...evidence.index,
+            ...(evidence.wholeFileBefore ?? []).flatMap((entry) =>
+                entry.head.kind === "present" ? [entry.head] : [],
+            ),
+        ];
+        const algorithm = gitEntries.length ? await this.gitObjectAlgorithm() : undefined;
+        for (const entry of gitEntries) {
+            const bytes = contents.get(entry.object.hash);
+            if (!bytes || !algorithm || !matchesGitObject(entry.oid, entry.mode, bytes, algorithm))
+                throw new ChangelistEvidenceError();
+        }
+        for (const reference of evidence.attribution ?? []) {
+            const bytes = contents.get(reference.object.hash);
+            if (
+                !bytes ||
+                !parseTargetOperationAttribution(
+                    JSON.parse(bytes.toString("utf8")),
+                    this.root,
+                    this.gitDir,
+                    evidence.operationId,
+                    reference.path,
+                )
+            )
+                throw new ChangelistEvidenceError();
+        }
+        return files;
+    }
+
+    /** Ask the repository-bound Git runtime for the object format; unknown output fails closed. */
+    private async gitObjectAlgorithm(): Promise<"sha1" | "sha256"> {
+        const result = await this.git.runBinary(["rev-parse", "--show-object-format"], {
+            maxOutputBytes: 16,
+        });
+        if (result.truncated) throw new ChangelistEvidenceError();
+        const algorithm = result.stdout.toString("utf8").trim();
+        if (!algorithm) throw new ChangelistEvidenceError();
+        if (algorithm !== "sha1" && algorithm !== "sha256") throw new ChangelistEvidenceError();
+        return algorithm;
+    }
+
+    /** Pending records and retained receipts are the only roots of operation evidence. */
+    private async operationEvidenceFiles(
+        state: ChangelistState,
+        forceValidation = false,
+    ): Promise<Set<string>> {
+        const files = new Set<string>();
+        const roots = [
+            ...(state.pendingTargetOperation
+                ? [
+                      {
+                          id: state.pendingTargetOperation.id,
+                          hash: state.pendingTargetOperation.evidenceHash,
+                      },
+                  ]
+                : []),
+            ...Object.values(state.targetOperationReceipts ?? {}).map((receipt) => ({
+                id: receipt.id,
+                hash: receipt.evidenceHash,
+            })),
+        ];
+        for (const root of roots) {
+            const key = `${root.id}\0${root.hash}`;
+            if (forceValidation) this.operationEvidenceCache.delete(key);
+            let resolved = this.operationEvidenceCache.get(key);
+            if (resolved && !(await this.cachedOperationEvidenceIsCurrent(resolved))) {
+                this.operationEvidenceCache.delete(key);
+                resolved = undefined;
+            }
+            if (!resolved) {
+                try {
+                    resolved = (await this.readOperationEvidence(root.hash, new Set(), root.id))
+                        .files;
+                    this.operationEvidenceCache.set(key, new Map(resolved));
+                } catch (error) {
+                    this.operationEvidenceCache.delete(key);
+                    throw error;
+                }
+            }
+            for (const name of resolved.keys()) files.add(name);
+        }
+        return files;
+    }
+
+    /** Cached operation objects are reusable only while every immutable file identity is unchanged. */
+    private async cachedOperationEvidenceIsCurrent(
+        identities: ReadonlyMap<string, string>,
+    ): Promise<boolean> {
+        try {
+            for (const [name, identity] of identities) {
+                const details = await lstat(path.join(this.evidenceDirectory, name), {
+                    bigint: true,
+                });
+                if (
+                    !details.isFile() ||
+                    details.isSymbolicLink() ||
+                    details.size > MAX_BYTES ||
+                    recordIdentity(details) !== identity
+                )
+                    return false;
+            }
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
     /** Existing orphan payloads also cross the directory durability barrier before being referenced. */
     private async syncDirectory(filename: string): Promise<void> {
         if (process.platform === "win32") return;
+        if (this.deferEvidenceDirectorySync && filename === this.evidenceDirectory) return;
         const directory = await open(filename, "r");
         try {
             await directory.sync();
@@ -428,8 +802,12 @@ export class ChangelistPersistence {
         createOnly = false,
         exactBytes = false,
     ): Promise<void> {
-        const bytes = exactBytes ? String(value) : JSON.stringify(value);
-        if (Buffer.byteLength(bytes) > MAX_BYTES)
+        const bytes = exactBytes
+            ? typeof value === "string"
+                ? Buffer.from(value)
+                : Buffer.from(value as Uint8Array)
+            : Buffer.from(JSON.stringify(value));
+        if (bytes.byteLength > MAX_BYTES)
             throw new Error("Changelist metadata exceeds its storage budget.");
         const temporary = `${filename}.${randomUUID()}.tmp`;
         const handle = await open(temporary, "wx", 0o600);
@@ -439,19 +817,25 @@ export class ChangelistPersistence {
             await handle.close();
             if (createOnly) await link(temporary, filename);
             else await rename(temporary, filename);
-            if (process.platform !== "win32") {
-                const directory = await open(path.dirname(filename), "r");
-                try {
-                    await directory.sync();
-                } finally {
-                    await directory.close();
-                }
-            }
+            await this.syncDirectory(path.dirname(filename));
         } finally {
             await handle.close().catch(() => undefined);
             await rm(temporary, { force: true });
         }
     }
+}
+
+/** Git object IDs hash a type-and-length header plus the exact saved payload bytes. */
+function matchesGitObject(
+    oid: string,
+    mode: TargetOperationEvidence["index"][number]["mode"],
+    bytes: Buffer,
+    algorithm: "sha1" | "sha256",
+): boolean {
+    if (oid.length !== (algorithm === "sha1" ? 40 : 64)) return false;
+    const type = mode === "160000" ? "commit" : "blob";
+    const header = Buffer.from(`${type} ${bytes.byteLength}\0`);
+    return createHash(algorithm).update(header).update(bytes).digest("hex") === oid;
 }
 
 /** Nanosecond timestamps retain same-size edits; device and inode distinguish atomic replacements. */

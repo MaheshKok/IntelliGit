@@ -121,5 +121,8 @@
     "configuration.updateStrategy.markdownDescription": "Choisissez comment les actions manuelles Pull et Mise à jour intègrent les commits entrants dans la branche actuelle. S'applique aux dépôts sans modifications locales comme à ceux qui en contiennent. Configurez ce paramètre par dossier de l'espace de travail pour utiliser des stratégies différentes selon les dépôts. Synchroniser et Mise à jour sur les autres branches conservent leur comportement actuel.",
     "configuration.updateStrategy.rebase.description": "Réapplique les commits locaux par-dessus les commits entrants pour conserver un historique linéaire.",
     "configuration.updateStrategy.merge.description": "Conserve les commits existants et crée un commit de fusion lorsque les historiques divergent ; effectue une avance rapide lorsque c'est possible.",
-    "command.openPartialChanges": "Ouvrir les modifications partielles"
+    "command.openPartialChanges": "Ouvrir les modifications partielles",
+    "command.shelf.applyPatchToChangelist": "Appliquer le correctif à la liste de modifications…",
+    "command.completeTargetedHistory": "Terminer l'action d'historique non validée",
+    "command.discardTargetedHistory": "Abandonner l'action d'historique non validée"
 }

@@ -1,3 +1,4 @@
+import type { ChangelistStore } from "../../../src/changes/changelistStore";
 /**
  * Phase 2c-v-a's recorder: records the `conflicted` scenario for the `merge-conflict-session`
  * resolved host context -- `MergeConflictSessionPanel` (`src/views/MergeConflictSessionPanel.ts`),
@@ -127,6 +128,7 @@ export function buildMergeConflictSessionLabels(): {
  * expected path.
  */
 interface MergeConflictSessionCallbacksDouble {
+    changelists: ChangelistStore;
     onOpenMergeConflict: (filePath: string) => Promise<void>;
     onConflictStateChanged: () => Promise<void>;
 }

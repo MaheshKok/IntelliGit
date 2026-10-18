@@ -213,6 +213,7 @@ const executorRunBinary = vi.fn(defaultExecutorRunBinaryImpl);
 const notifyGitSuccessSafely = vi.fn();
 
 const gitOpsState = {
+    controlTargetHistory: vi.fn(),
     isRepository: vi.fn(async () => true),
     getRepositoryRoot: vi.fn(async () => "/repo"),
     getBranches: vi.fn(async () => [
@@ -519,6 +520,10 @@ class MockCommitPanelViewProvider {
     /** Emits an interactive-rebase dialog cancellation from this mocked commit panel. */
     emitRebaseDialogCancel(payload: { requestId: string }): void {
         this.rebaseDialogCancelEmitter.fire(payload);
+    }
+    /** Delivers the real docked control event to activation's pending-first dispatcher. */
+    emitRebaseControl(payload: { action: "continue" | "abort"; repositoryRoot?: string }): void {
+        this.rebaseControlEmitter.fire(payload);
     }
     /** Emits file-diff requests from the mocked commit panel. */
     emitOpenCommitFileDiff(payload: { commitHash: string; filePath: string }): void {
@@ -906,6 +911,7 @@ vi.mock("../../../src/git/operations", async (importOriginal) => {
                 const gitDir = path.join(root, ".git");
                 return { root, gitDir, commonDir: gitDir };
             };
+            controlTargetHistory = gitOpsState.controlTargetHistory;
             getBranches = gitOpsState.getBranches;
             getCommitDetail = gitOpsState.getCommitDetail;
             getUnpushedCommitHashes = gitOpsState.getUnpushedCommitHashes;
@@ -1071,6 +1077,7 @@ function createWorkspaceState(
 describe("extension integration", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        gitOpsState.controlTargetHistory.mockResolvedValue({ status: "noPending" });
         registeredCommands.clear();
         mockDisposables.length = 0;
         textDocListeners.length = 0;
@@ -4445,6 +4452,69 @@ describe("extension integration", () => {
         expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("no longer active"));
         expect(showInformationMessage).not.toHaveBeenCalled();
     });
+
+    it.each(["docked", "undocked"] as const)(
+        "targeted history %s Continue and Abort dispatch never fall through for pending cancellation or handled results",
+        async (surface) => {
+            const controlModule = await import("../../../src/git/interactiveRebase/control");
+            const ordinaryContinue = vi.spyOn(controlModule, "continueInteractiveRebase");
+            const ordinaryAbort = vi.spyOn(controlModule, "abortInteractiveRebase");
+            const { activate } = await import("../../../src/extension");
+            const context = {
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: mockDisposables,
+                asAbsolutePath: (relative: string) => `/ext/${relative}`,
+            } as unknown as MockExtensionContext;
+            await activate(context);
+            await registeredCommands.get("intelligit.openUndocked")?.();
+            await waitForAsync();
+            const provider =
+                surface === "docked" ? latestCommitPanelProvider : latestUndockedProvider;
+            if (!provider) throw new Error("Expected the activated history control host.");
+            const capturedRoot = fixturePath("/repo");
+            try {
+                for (const action of ["continue", "abort"] as const) {
+                    for (const status of ["cancelled", "handled"] as const) {
+                        gitOpsState.controlTargetHistory.mockResolvedValueOnce(
+                            status === "cancelled"
+                                ? { status, id: "pending" }
+                                : {
+                                      status,
+                                      result: {
+                                          id: "pending",
+                                          outcome: "appliedNeedsReview",
+                                          reason: "Retained",
+                                      },
+                                  },
+                        );
+                        provider.emitRebaseControl({ action, repositoryRoot: capturedRoot });
+                        await waitForAsync();
+                        await waitForAsync();
+                        expect(
+                            gitOpsState.controlTargetHistory,
+                            "each host control must carry the captured root and action",
+                        ).toHaveBeenLastCalledWith(
+                            capturedRoot,
+                            expect.anything(),
+                            action,
+                            expect.any(Function),
+                        );
+                    }
+                }
+                expect(
+                    ordinaryContinue,
+                    "pending targeted Continue must never invoke ordinary native continue",
+                ).not.toHaveBeenCalled();
+                expect(
+                    ordinaryAbort,
+                    "pending targeted Abort must never invoke ordinary native abort",
+                ).not.toHaveBeenCalled();
+            } finally {
+                ordinaryContinue.mockRestore();
+                ordinaryAbort.mockRestore();
+            }
+        },
+    );
 
     it("routes undocked rebase controls through a root-captured Git runtime", async () => {
         const controlModule = await import("../../../src/git/interactiveRebase/control");

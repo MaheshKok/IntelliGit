@@ -1,7 +1,20 @@
 import * as vscode from "vscode";
+import path from "node:path";
+import { open, realpath, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { randomUUID } from "node:crypto";
+import type { ShelfService } from "../services/shelfService";
+import type { SelectedShelfInput } from "../services/shelfSelectedCapture";
 import type { GitOps } from "../git/operations";
+import { GitExecutor } from "../git/executor";
 import type { PartialChanges } from "../git/partialChanges";
-import { ChangelistRevisionError, ChangelistStore } from "../changes/changelistStore";
+import {
+    ChangelistRevisionError,
+    ChangelistStore,
+    TargetOperationLeaseHeldError,
+    type TargetOperationLease,
+} from "../changes/changelistStore";
+import { ShelfWorktreeRemovalCompletedError } from "../shelf/recovery";
 import { changeIds, validateSelection } from "../changes/selection";
 import type { ChangelistReply, ChangelistOutbound } from "../webviews/protocol/changelists";
 import type { SelectedFileChanges } from "../webviews/protocol/changeSelection";
@@ -34,6 +47,10 @@ interface ChangeWorkflowDeps {
     mirrorDraft?(scope: string, text: string): void;
     postScopedCommit?(): void;
     clearLastCommit?(): boolean;
+    /** Root-matching shelf service enables selected save and removal in the standalone editor. */
+    shelfService?: ShelfService;
+    /** Gives workbench focus back to the view that sent a prompting request. */
+    focusView?(): void;
 }
 type CommitPanelActionDeps = Parameters<typeof commitSelectedFromPanel>[0];
 
@@ -43,11 +60,19 @@ const COMMANDS = new Set([
     "changelistAction",
     "openPartialChanges",
     "commitChangelist",
+    "saveChangelistShelf",
 ]);
 
 /** Recognizes only the additive workflow family, leaving existing panel routes unchanged. */
 export function isChangeWorkflowCommand(type: string): boolean {
     return COMMANDS.has(type);
+}
+
+/** An empty id cannot name one terminal result, so it must never reach the prompt or Git. */
+function assertRequestId(value: unknown): string {
+    const requestId = assertString(value, "requestId");
+    if (!requestId) throw new Error("Expected a non-empty 'requestId'.");
+    return requestId;
 }
 
 /** Coordinates metadata and a captured-root Git service for one provider runtime. */
@@ -59,9 +84,18 @@ export class ChangeWorkflowHost {
     private reconciling = 0;
     private readonly tracker: ChangeRangeTracker;
     private connected?: Promise<void>;
+    private retry?: Promise<void>;
     private readonly poll: ReturnType<typeof setInterval>;
     private lastRevision = -1;
     private lastPollError?: string;
+    private savingShelf = false;
+    private readonly shelfRequests = new Map<
+        string,
+        {
+            intent: string;
+            result?: Extract<ChangelistReply, { type: "changelistShelfResult" }>;
+        }
+    >();
 
     /**
      * Shares metadata through a root-bound Git facade and polls until disposal.
@@ -120,11 +154,30 @@ export class ChangeWorkflowHost {
         this.open(filePath, undefined);
     }
 
-    /** Durable migration is awaited before host intents can mutate metadata or Git. */
+    /** Captures the native file's root and metadata revision before any name dialog. */
+    async saveFileFromEditor(file: string): Promise<void> {
+        const filePath = assertRepoRelativePath(file);
+        await this.connect();
+        await this.saveScopedShelf({
+            type: "saveChangelistShelf",
+            repositoryRoot: this.deps.root,
+            requestId: randomUUID(),
+            revision: this.store.revision(this.deps.root),
+            scope: "files",
+            listId: "all",
+            paths: [filePath],
+        });
+    }
+
+    /** Durable migration is awaited before host intents can mutate metadata or Git, and before target prompts. */
     private connect(): Promise<void> {
-        this.connected ??= this.deps.gitOps
-            .getGitDirectories()
-            .then(({ gitDir }) => this.store.connect(this.deps.root, gitDir))
+        this.connected ??= this.store
+            .observe(
+                this.deps.root,
+                this.deps.gitOps
+                    .getGitDirectories()
+                    .then(({ gitDir }) => this.store.connect(this.deps.root, gitDir)),
+            )
             .catch((error: unknown) => {
                 this.connected = undefined;
                 throw error;
@@ -132,36 +185,85 @@ export class ChangeWorkflowHost {
         return this.connected;
     }
 
+    /** Target prompts never wait for this observation: their hold refuses its writes and it re-observes after. */
+    reconcile(files: readonly WorkingFile[]): Promise<void> {
+        return this.observeFiles(files, this.store.observerEpoch(this.deps.root));
+    }
+
     /** Keeps actions busy through overlapping range observations and membership updates. */
-    async reconcile(files: readonly WorkingFile[]): Promise<void> {
+    private async observeFiles(files: readonly WorkingFile[], epoch: number): Promise<void> {
         this.reconciling++;
         try {
             await this.connect();
             this.post();
             if (this.store.isCommitting(this.deps.root)) return;
-            await this.tracker.reconcile(files);
+            await this.tracker.reconcile(files, epoch);
             await this.store.reconcileFiles(
                 this.deps.root,
                 files.filter((file) => file.status !== "!").map((file) => file.path),
+                epoch,
             );
+        } catch (error) {
+            if (!(error instanceof TargetOperationLeaseHeldError)) throw error;
+            // A target hold or lease discarded this observation; re-read status once both end.
+            // Every refusal before that shares one retry; it clears first so a new hold schedules anew.
+            this.retry ??= this.store
+                .targetOperationReleased(this.deps.root)
+                .then(() => {
+                    this.retry = undefined;
+                    const fresh = this.store.observerEpoch(this.deps.root);
+                    return this.deps.gitOps
+                        .getStatus({ withStats: false })
+                        .then((latest) => this.observeFiles(latest, fresh));
+                })
+                .catch((retry: unknown) =>
+                    this.deps.post({
+                        type: "error",
+                        repositoryRoot: this.deps.root,
+                        message: vscode.l10n.t("Changelist action failed: {message}", {
+                            message: getErrorMessage(retry),
+                        }),
+                    }),
+                );
         } finally {
             this.reconciling--;
             this.post();
         }
     }
 
+    /** Target prompts wait for the initial load's connection and recovery, never for its observer writes. */
+    handle(raw: Record<string, unknown>): Promise<void> {
+        return this.dispatch(
+            raw,
+            raw.type === "loadChangelists" && raw.repositoryRoot === this.deps.root
+                ? this.store.observe(
+                      this.deps.root,
+                      this.connect().then(() => this.partial.recover()),
+                  )
+                : undefined,
+        );
+    }
+
     /** Validates repository identity and keeps initial recovery/loading busy before allowing actions. */
-    async handle(raw: Record<string, unknown>): Promise<void> {
+    private async dispatch(
+        raw: Record<string, unknown>,
+        recovering?: Promise<boolean>,
+    ): Promise<void> {
         if (raw.repositoryRoot !== this.deps.root)
             throw new Error("Unknown changelist repository.");
         const loading = raw.type === "loadChangelists";
+        const prompting =
+            raw.type === "saveChangelistShelf" ||
+            (raw.type === "changelistAction" &&
+                raw.action !== "activate" &&
+                raw.action !== "resetSelection");
         if (loading) this.reconciling++;
         try {
             await this.connect();
             const message = raw as unknown as ChangelistOutbound;
             switch (message.type) {
                 case "loadChangelists": {
-                    const recovered = await this.partial.recover();
+                    const recovered = await recovering;
                     const files = this.deps.files();
                     await this.reconcile(
                         files.length
@@ -221,6 +323,9 @@ export class ChangeWorkflowHost {
                 case "commitChangelist":
                     await this.runCommit(() => this.commitList(message));
                     break;
+                case "saveChangelistShelf":
+                    await this.saveScopedShelf(message);
+                    break;
             }
         } catch (error) {
             this.deps.post({
@@ -233,6 +338,8 @@ export class ChangeWorkflowHost {
         } finally {
             if (loading) this.reconciling--;
             this.post();
+            // A closing native prompt leaves workbench focus on the editor group, not this view.
+            if (prompting) this.deps.focusView?.();
         }
     }
 
@@ -365,7 +472,8 @@ export class ChangeWorkflowHost {
     private async activate(revision: number, id: string): Promise<void> {
         const before = this.store.get(this.deps.root);
         if (before.revision !== revision) throw new ChangelistRevisionError();
-        await this.tracker.reconcile(await this.deps.gitOps.getStatus({ withStats: false }));
+        const epoch = this.store.observerEpoch(this.deps.root);
+        await this.tracker.reconcile(await this.deps.gitOps.getStatus({ withStats: false }), epoch);
         const latest = this.store.get(this.deps.root);
         // Observation may advance ownership revisions itself. Preserve those writes, but
         // never overwrite another window's intervening active-list choice.
@@ -549,7 +657,13 @@ export class ChangeWorkflowHost {
                     }
                 }
                 const lists = this.store.view(this.deps.root);
-                return { file: view, contentId: snapshot.contentId, lists, listId };
+                return {
+                    file: view,
+                    contentId: snapshot.contentId,
+                    lists,
+                    listId,
+                    selectedOperations: this.deps.shelfService?.repositoryRoot === this.deps.root,
+                };
             },
             /** Holds the metadata lease across staging and restores prepared inclusion when an unpublished operation fails. */
             stage: async (selection) => {
@@ -667,6 +781,8 @@ export class ChangeWorkflowHost {
                     new Set(lines.map((line) => line.fingerprint)),
                 );
             },
+            selected: (selection, operation) =>
+                this.selectedOperation(file, listId, selection, operation),
             openNative: () =>
                 showDiffFromPanel(
                     {
@@ -695,6 +811,699 @@ export class ChangeWorkflowHost {
             throw new Error("The partial editor cannot target another file.");
         validateSelection(snapshot.view.blocks, value.lineIds);
         return snapshot;
+    }
+
+    /** Keeps a scoped request terminal within its originating host, including cancellation and cleanup failure. */
+    private async saveScopedShelf(
+        message: Extract<ChangelistOutbound, { type: "saveChangelistShelf" }>,
+    ): Promise<void> {
+        const requestId = assertRequestId(message.requestId);
+        const operation = message.operation ?? "save";
+        const intent = JSON.stringify([
+            message.repositoryRoot,
+            message.revision,
+            message.scope,
+            message.listId,
+            message.paths,
+            operation,
+        ]);
+        const previous = this.shelfRequests.get(requestId);
+        if (previous) {
+            const stale = vscode.l10n.t("This save request is already in progress or stale.");
+            this.deps.post(
+                previous.intent === intent && previous.result
+                    ? previous.result
+                    : {
+                          type: "changelistShelfResult",
+                          repositoryRoot: this.deps.root,
+                          requestId,
+                          message: stale,
+                          error: stale,
+                      },
+            );
+            return;
+        }
+        const record: {
+            intent: string;
+            result?: Extract<ChangelistReply, { type: "changelistShelfResult" }>;
+        } = { intent };
+        this.shelfRequests.set(requestId, record);
+        const reply: Extract<ChangelistReply, { type: "changelistShelfResult" }> = {
+            type: "changelistShelfResult",
+            repositoryRoot: this.deps.root,
+            requestId,
+            message: vscode.l10n.t("Save cancelled."),
+        };
+        if (this.savingShelf) {
+            reply.error = reply.message = vscode.l10n.t(
+                "Another save is in progress. Wait for its result.",
+            );
+            record.result = reply;
+            this.deps.post(reply);
+            return;
+        }
+        this.savingShelf = true;
+        try {
+            if (!["save", "saveAndRemove", "rollback"].includes(operation))
+                throw new Error("Unknown shelf operation.");
+            const state = this.store.get(this.deps.root);
+            if (
+                message.repositoryRoot !== this.deps.root ||
+                expectedRevision(message.revision) !== state.revision
+            )
+                throw new Error("Changelists changed. Refresh before saving.");
+            if (message.scope !== "list" && message.scope !== "files")
+                throw new Error("Unknown shelf scope.");
+            if (message.listId !== "all" && !state.lists.some((list) => list.id === message.listId))
+                throw new Error("Unknown changelist.");
+            if (message.scope === "list" && message.listId === "all")
+                throw new Error("Choose one source changelist.");
+            const paths =
+                message.scope === "files"
+                    ? [...new Set(assertRepoPathArray(message.paths, "paths"))]
+                    : undefined;
+            if (paths?.length === 0) throw new Error("Select whole files before saving.");
+            const source =
+                message.scope === "list"
+                    ? state.lists.find((list) => list.id === message.listId)!.name
+                    : vscode.l10n.t("Selected files");
+            const name = await scopedShelfName(operation, source);
+            if (name !== undefined) {
+                if (this.store.revision(this.deps.root) !== state.revision)
+                    throw new Error("Changelists changed during the save prompt.");
+                const plan = await this.scopedShelfPlan(state, message.listId, paths, name);
+                await this.runScopedShelfOperation(
+                    operation,
+                    plan,
+                    message.listId,
+                    state.revision,
+                    reply,
+                );
+            }
+        } catch (error) {
+            // A failure after Save (for example the preview dialog) must still name the saved shelf.
+            reply.error = reply.message = reply.shelfId
+                ? vscode.l10n.t("Shelf {shelfId} is retained. {reason}", {
+                      shelfId: reply.shelfId,
+                      reason: getErrorMessage(error),
+                  })
+                : getErrorMessage(error);
+        } finally {
+            this.savingShelf = false;
+            record.result = reply;
+        }
+        this.deps.post(reply);
+        if (reply.error || reply.shelfId) {
+            // Notification dismissal or delivery failure cannot delay or replace the terminal result.
+            void Promise.resolve()
+                .then(() =>
+                    reply.error
+                        ? vscode.window.showWarningMessage(reply.message)
+                        : vscode.window.showInformationMessage(reply.message),
+                )
+                .catch(() => undefined);
+        }
+    }
+
+    /** Resolves list membership independently of commit inclusion; explicit paths always capture whole files. */
+    private async scopedShelfPlan(
+        state: ChangelistState,
+        scope: string,
+        requested: string[] | undefined,
+        name: string,
+    ): Promise<SelectedShelfInput> {
+        const status = await this.deps.gitOps.getStatus({ withStats: false });
+        const changed = [
+            ...new Set(status.filter((file) => file.status !== "!").map((file) => file.path)),
+        ];
+        const paths =
+            requested ??
+            changed.filter((file) => {
+                const ranges = state.changes[file];
+                return (
+                    (state.files[file] ?? state.activeId) === scope ||
+                    Object.values(ranges?.lines ?? {}).includes(scope)
+                );
+            });
+        if (!paths.length || paths.some((file) => !changed.includes(file)))
+            throw new Error("Select changed files before saving.");
+        const baseCommit = (
+            await new GitExecutor(this.deps.root).run(["rev-parse", "--verify", "HEAD"])
+        ).trim();
+        const plan: SelectedShelfInput = {
+            name,
+            scope: requested ? "files" : "list",
+            baseCommit,
+            sourceLists: [],
+            scopeDraft: this.store.draft(this.deps.root, scope),
+            selected: [],
+            whole: [],
+        };
+        const selected: SelectedShelfInput["selected"][number][] = [];
+        const whole: SelectedShelfInput["whole"][number][] = [];
+        const sourceIds = new Set<string>();
+        for (const file of paths) {
+            const tracking = state.changes[file];
+            if (tracking?.stale) throw new Error("Change assignments need review before saving.");
+            const fallback = state.files[file] ?? state.activeId;
+            if (!tracking || tracking.totalChanges === 0) {
+                if (requested || fallback === scope) {
+                    whole.push({ path: file, sourceListIds: [fallback] });
+                    sourceIds.add(fallback);
+                }
+                continue;
+            }
+            const view = await this.partial.open(file);
+            const snapshot = this.partial.snapshot(view.snapshotId);
+            if (snapshot.contentId !== tracking.contentId)
+                throw new Error("Source changes changed. Reopen their assignments.");
+            const lines = view.blocks
+                .flatMap((block) => block.lines)
+                .filter(
+                    (line) =>
+                        line.kind !== "context" &&
+                        (requested || (tracking.lines[line.fingerprint] ?? fallback) === scope),
+                );
+            if (!lines.length) continue;
+            const owners = Object.fromEntries(
+                lines.map((line) => [
+                    line.fingerprint,
+                    tracking.lines[line.fingerprint] ?? fallback,
+                ]),
+            );
+            const ids = [...new Set(Object.values(owners))];
+            ids.forEach((id) => sourceIds.add(id));
+            if (requested)
+                whole.push({ path: file, sourceListIds: ids, ownership: { snapshot, owners } });
+            else {
+                const lineIds = lines.map((line) => line.id);
+                const patch = await this.partial.exportPatch(
+                    { snapshotId: view.snapshotId, lineIds },
+                    (files) => assertChangeBuffersSaved(this.deps.root, files),
+                );
+                selected.push({ snapshot, owners, lineIds, patch });
+            }
+        }
+        if (!selected.length && !whole.length) throw new Error("No owned changes to save.");
+        return {
+            ...plan,
+            selected,
+            whole,
+            sourceLists: state.lists
+                .filter((list) => sourceIds.has(list.id))
+                .map((list) => ({
+                    id: list.id,
+                    name: list.name,
+                    description: list.description ?? "",
+                    draft: list.draft ?? "",
+                })),
+        };
+    }
+
+    /** Revalidates under the actual lease and preserves the saved identity across cleanup errors. */
+    private async publishScopedShelf(
+        plan: SelectedShelfInput,
+        revision: number,
+        scope: string,
+    ): Promise<string> {
+        const service = this.deps.shelfService;
+        if (!service || service.repositoryRoot !== this.deps.root)
+            throw new Error("A shelf service for this repository is unavailable.");
+        const lease = await this.store.acquireTargetOperationLease(this.deps.root);
+        let savedId: string | undefined;
+        let primary: Error | undefined;
+        try {
+            const result = await service.saveSelectedChanges(
+                plan,
+                lease,
+                revision,
+                scope,
+                (files) => assertChangeBuffersSaved(this.deps.root, files),
+            );
+            savedId = result.shelfId;
+            if (!savedId) throw new Error("The shelf was not durably saved.");
+            return savedId;
+        } catch (error) {
+            primary =
+                error instanceof Error
+                    ? error
+                    : new Error(getErrorMessage(error), { cause: error });
+            throw primary;
+        } finally {
+            try {
+                await lease.release();
+            } catch (error) {
+                if (primary !== undefined) throw primary;
+                if (savedId)
+                    throw new Error(
+                        `Shelf ${savedId} was saved. Metadata release failed; do not repeat the save. ${getErrorMessage(error)}`,
+                        { cause: error },
+                    );
+                throw error;
+            }
+        }
+    }
+
+    /** Captures names, drafts and selected fingerprint owners before acquiring any mutation lock. */
+    private selectedShelfPlan(
+        snapshot: PartialFileSnapshot,
+        selection: SelectedFileChanges,
+        scope: string,
+        name: string,
+        patch: Buffer,
+    ): SelectedShelfInput {
+        const state = this.store.get(this.deps.root);
+        const selected = validateSelection(snapshot.view.blocks, selection.lineIds);
+        const owners = Object.fromEntries(
+            snapshot.view.blocks
+                .flatMap((block) => block.lines)
+                .filter((line) => selected.has(line.id))
+                .map((line) => [
+                    line.fingerprint,
+                    state.changes[snapshot.view.path]?.lines[line.fingerprint] ??
+                        state.files[snapshot.view.path] ??
+                        state.activeId,
+                ]),
+        );
+        const ids = new Set(Object.values(owners));
+        return {
+            name,
+            scope: "selection",
+            baseCommit: snapshot.head,
+            scopeDraft: this.store.draft(this.deps.root, scope),
+            sourceLists: state.lists
+                .filter((list) => ids.has(list.id))
+                .map((list) => ({
+                    id: list.id,
+                    name: list.name,
+                    description: list.description ?? "",
+                    draft: list.draft ?? "",
+                })),
+            selected: [{ snapshot, lineIds: [...selection.lineIds], patch, owners }],
+            whole: [],
+        };
+    }
+
+    /** Save is durable before optional confirmation; browser messages never supply patch bytes or a destination. */
+    private async selectedOperation(
+        file: string,
+        scope: string,
+        selection: SelectedFileChanges,
+        operation: "save" | "shelve" | "rollback" | "export",
+    ): Promise<{ message: string; removed: boolean }> {
+        const snapshot = this.assertFileSelection(file, selection);
+        const shelf = this.deps.shelfService;
+        if (!shelf || shelf.repositoryRoot !== this.deps.root)
+            throw new Error("A shelf service for this repository is unavailable.");
+        const guard = (files: readonly string[]) => assertChangeBuffersSaved(this.deps.root, files);
+        if (operation === "export") {
+            return this.exportSelectedPatch(snapshot, selection);
+        }
+        if (operation !== "save" && snapshot.view.side !== "working")
+            throw new Error("Selected removal requires working-tree changes.");
+        const name =
+            operation === "rollback"
+                ? vscode.l10n.t("Before selected rollback: {file}", {
+                      file: path.basename(file).slice(0, 40),
+                  })
+                : await vscode.window.showInputBox({
+                      title: vscode.l10n.t("Shelf selected changes"),
+                      value: path.basename(file),
+                  });
+        if (name === undefined)
+            return { message: vscode.l10n.t("Save cancelled."), removed: false };
+        const revision = this.store.get(this.deps.root).revision;
+        const patch = await this.partial.exportPatch(selection, guard);
+        const plan = this.selectedShelfPlan(snapshot, selection, scope, name, patch);
+        if (operation === "rollback" && !(await this.confirmSelectedRemoval(plan, true)))
+            return { message: vscode.l10n.t("Rollback cancelled."), removed: false };
+        const lease = await this.store.acquireTargetOperationLease(this.deps.root);
+        let shelfId: string | undefined;
+        let saveFailure: Error | undefined;
+        try {
+            const result = await shelf.saveSelectedChanges(plan, lease, revision, scope, guard);
+            shelfId = result.shelfId;
+            if (!shelfId) throw new Error("The selected shelf was not durably saved.");
+        } catch (error) {
+            saveFailure =
+                error instanceof Error
+                    ? error
+                    : new Error(getErrorMessage(error), { cause: error });
+            throw saveFailure;
+        } finally {
+            try {
+                await lease.release();
+            } catch (error) {
+                if (saveFailure !== undefined) throw saveFailure;
+                if (shelfId)
+                    throw new Error(
+                        `Shelf ${shelfId} was saved. Metadata release failed; do not repeat the save. ${getErrorMessage(error)}`,
+                        { cause: error },
+                    );
+                throw error;
+            }
+        }
+        if (operation !== "save") {
+            if (operation === "shelve" && !(await this.confirmSelectedRemoval(plan, false)))
+                return {
+                    message: vscode.l10n.t("Removal cancelled. Shelf {shelfId} is retained.", {
+                        shelfId,
+                    }),
+                    removed: false,
+                };
+            return this.removeSavedSelection(plan, selection, scope, revision, shelfId);
+        }
+        return {
+            message: vscode.l10n.t("Selected changes saved in shelf {shelfId}.", { shelfId }),
+            removed: false,
+        };
+    }
+
+    /** The native picker grants only an output file; source aliases and Git internals cannot be overwritten. */
+    private async exportSelectedPatch(
+        snapshot: PartialFileSnapshot,
+        selection: SelectedFileChanges,
+    ): Promise<{ message: string; removed: boolean }> {
+        const destination = await vscode.window.showSaveDialog({ filters: { Patch: ["patch"] } });
+        if (!destination)
+            return { message: vscode.l10n.t("Patch export cancelled."), removed: false };
+        if (destination.scheme !== "file") throw new Error("Choose a local patch file.");
+        const target = path.join(
+            await realpath(path.dirname(destination.fsPath)),
+            path.basename(destination.fsPath),
+        );
+        const source = path.join(snapshot.root, snapshot.view.path);
+        if (
+            target === source ||
+            [snapshot.gitDir, snapshot.commonDir].some(
+                (directory) => target === directory || target.startsWith(`${directory}${path.sep}`),
+            )
+        )
+            throw new Error("Export to a separate patch file outside Git metadata.");
+        const guard = (files: readonly string[]) => assertChangeBuffersSaved(this.deps.root, files);
+        const patch = await this.partial.exportPatch(selection, guard);
+        const handle = await open(
+            target,
+            constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW,
+            0o600,
+        );
+        try {
+            const output = await handle.stat();
+            const protectedFiles = await Promise.all([stat(source), stat(snapshot.indexPath)]);
+            if (
+                !output.isFile() ||
+                output.nlink > 1 ||
+                protectedFiles.some((file) => file.dev === output.dev && file.ino === output.ino)
+            )
+                throw new Error("Export to a separate regular patch file.");
+            await this.partial.validate(selection, guard);
+            await handle.truncate(0);
+            await handle.writeFile(patch);
+        } finally {
+            await handle.close();
+        }
+        return { message: vscode.l10n.t("Selected patch exported."), removed: false };
+    }
+
+    /** Presents the exact captured diff and selection counts outside every metadata/Git/store lock. */
+    private async confirmSelectedRemoval(
+        plan: SelectedShelfInput,
+        rollback: boolean,
+    ): Promise<boolean> {
+        let ranges = 0;
+        let lines = 0;
+        for (const entry of plan.selected) {
+            const ids = new Set(entry.lineIds);
+            lines += ids.size;
+            for (const block of entry.snapshot.view.blocks) {
+                let selected = false;
+                for (const line of block.lines) {
+                    const next = ids.has(line.id);
+                    if (next && !selected) ranges++;
+                    selected = next;
+                }
+            }
+        }
+        const action = rollback
+            ? vscode.l10n.t("Rollback Selected Changes")
+            : vscode.l10n.t("Remove Selected Changes");
+        return (
+            (await vscode.window.showWarningMessage(
+                rollback
+                    ? vscode.l10n.t(
+                          "Roll back the selected changes? An independent recovery shelf will be kept.",
+                      )
+                    : vscode.l10n.t("Remove the saved selected changes? The shelf will be kept."),
+                {
+                    modal: true,
+                    detail: [
+                        vscode.l10n.t(
+                            "{files} file(s), {ranges} selected range(s), {lines} changed line(s)",
+                            { files: plan.selected.length + plan.whole.length, ranges, lines },
+                        ),
+                        ...plan.whole.map((entry) =>
+                            // The preview renders only bytes captured into the plan; nothing is re-read after confirmation.
+                            entry.ownership
+                                ? [
+                                      vscode.l10n.t(
+                                          "{path}: whole file, including staged changes",
+                                          { path: entry.path },
+                                      ),
+                                      ...entry.ownership.snapshot.view.blocks.flatMap((block) => [
+                                          `@@ -${block.oldStart},${block.oldCount} +${block.newStart},${block.newCount} @@`,
+                                          ...block.lines.map(
+                                              (line) => `${DIFF_PREFIX[line.kind]}${line.text}`,
+                                          ),
+                                      ]),
+                                  ].join("\n")
+                                : vscode.l10n.t(
+                                      "{path}: whole file (binary, untracked or structural change; no text diff was captured)",
+                                      { path: entry.path },
+                                  ),
+                        ),
+                        ...plan.selected.map((entry) => entry.patch.toString("utf8")),
+                    ].join("\n\n"),
+                },
+                action,
+            )) === action
+        );
+    }
+
+    /** Reacquires metadata only after confirmation; completed removals remain terminal through cleanup failures. */
+    private async removeSavedSelection(
+        plan: SelectedShelfInput,
+        selection: SelectedFileChanges,
+        scope: string,
+        revision: number,
+        shelfId: string,
+    ): Promise<{ message: string; removed: boolean }> {
+        let completed = false;
+        let failure: unknown;
+        let lease: TargetOperationLease | undefined;
+        try {
+            lease = await this.store.acquireTargetOperationLease(this.deps.root);
+            await this.deps.shelfService!.removeSelectedChanges(
+                plan,
+                selection,
+                this.partial,
+                lease,
+                revision,
+                scope,
+                (files) => assertChangeBuffersSaved(this.deps.root, files),
+            );
+            completed = true;
+            await this.consumeRemovedSelection(plan, scope, lease);
+        } catch (error) {
+            completed ||= error instanceof ShelfWorktreeRemovalCompletedError;
+            failure = error;
+        } finally {
+            if (lease) {
+                try {
+                    await lease.release();
+                } catch (error) {
+                    failure ??= error;
+                }
+            }
+        }
+        if (failure) {
+            if (!completed)
+                throw new Error(
+                    `Shelf ${shelfId} is retained. Selected removal did not complete: ${getErrorMessage(failure)}`,
+                    { cause: failure },
+                );
+            return {
+                message: vscode.l10n.t(
+                    "Selected removal completed. Shelf {shelfId} is retained. Review recovery and metadata; do not repeat removal. {reason}",
+                    { shelfId, reason: getErrorMessage(failure) },
+                ),
+                removed: true,
+            };
+        }
+        try {
+            await this.deps.actions.refreshData();
+            this.deps.actions.fireWorkingTreeChanged();
+        } catch (error) {
+            return {
+                message: vscode.l10n.t(
+                    "Selected removal completed. Shelf {shelfId} is retained. Refresh failed; do not repeat removal. {reason}",
+                    { shelfId, reason: getErrorMessage(error) },
+                ),
+                removed: true,
+            };
+        }
+        return {
+            message: vscode.l10n.t(
+                "Selected changes removed. Recovery shelf {shelfId} is retained.",
+                { shelfId },
+            ),
+            removed: true,
+        };
+    }
+
+    /** Plain Save never removes; Save and Remove saves before its preview; Rollback confirms before its recovery save. */
+    private async runScopedShelfOperation(
+        operation: "save" | "saveAndRemove" | "rollback",
+        plan: SelectedShelfInput,
+        scope: string,
+        revision: number,
+        reply: Extract<ChangelistReply, { type: "changelistShelfResult" }>,
+    ): Promise<void> {
+        if (operation === "rollback" && !(await this.confirmSelectedRemoval(plan, true))) {
+            reply.message = vscode.l10n.t("Rollback cancelled. Nothing was saved or removed.");
+            return;
+        }
+        reply.shelfId = await this.publishScopedShelf(plan, revision, scope);
+        reply.message = vscode.l10n.t("Shelf {shelfId} was saved. Local changes are unchanged.", {
+            shelfId: reply.shelfId,
+        });
+        if (operation === "saveAndRemove" && !(await this.confirmSelectedRemoval(plan, false)))
+            reply.message = vscode.l10n.t(
+                "Removal cancelled. Shelf {shelfId} is retained. Local changes are unchanged.",
+                { shelfId: reply.shelfId },
+            );
+        else if (operation !== "save") {
+            const removal = await this.removeScopedPlan(plan, scope, revision, reply.shelfId);
+            reply.message = removal.message;
+            if (removal.failed) reply.error = removal.message;
+        }
+    }
+
+    /** Reacquires metadata only after confirmation; names exact completed and retained paths instead of offering a repeatable removal. */
+    private async removeScopedPlan(
+        plan: SelectedShelfInput,
+        scope: string,
+        revision: number,
+        shelfId: string,
+    ): Promise<{ message: string; failed: boolean }> {
+        let result: Awaited<ReturnType<ShelfService["removeScopedChanges"]>> | undefined;
+        let failure: unknown;
+        let lease: TargetOperationLease | undefined;
+        try {
+            lease = await this.store.acquireTargetOperationLease(this.deps.root);
+            result = await this.deps.shelfService!.removeScopedChanges(
+                plan,
+                shelfId,
+                this.partial,
+                lease,
+                revision,
+                scope,
+                (files) => assertChangeBuffersSaved(this.deps.root, files),
+            );
+            if (result.completedPaths.length)
+                await this.consumeRemovedSelection(plan, scope, lease, result.completedPaths);
+        } catch (error) {
+            failure = error;
+        } finally {
+            if (lease) {
+                try {
+                    await lease.release();
+                } catch (error) {
+                    failure ??= error;
+                }
+            }
+        }
+        if (!result)
+            return {
+                failed: true,
+                message: vscode.l10n.t(
+                    "Shelf {shelfId} is retained. Removal was refused: {reason}",
+                    {
+                        shelfId,
+                        reason: getErrorMessage(failure),
+                    },
+                ),
+            };
+        if (result.completedPaths.length) {
+            try {
+                await this.deps.actions.refreshData();
+                this.deps.actions.fireWorkingTreeChanged();
+            } catch (error) {
+                failure ??= error;
+            }
+        }
+        const removed = result.completedPaths.join(", ") || vscode.l10n.t("none");
+        const reason =
+            result.error ?? (failure === undefined ? undefined : getErrorMessage(failure));
+        if (reason === undefined)
+            return {
+                failed: false,
+                message: vscode.l10n.t("Removed: {removed}. Shelf {shelfId} is retained.", {
+                    removed,
+                    shelfId,
+                }),
+            };
+        return {
+            failed: true,
+            message: vscode.l10n.t(
+                "Shelf {shelfId} is retained. Removed: {removed}. Not removed: {retained}. Do not repeat removal; review the remaining changes and their assignments. {reason}",
+                {
+                    shelfId,
+                    removed,
+                    retained: result.retainedPaths.join(", ") || vscode.l10n.t("none"),
+                    reason,
+                },
+            ),
+        };
+    }
+
+    /** Reconciles surviving anchors and consumes only completed captured paths under the same real metadata lease. */
+    private async consumeRemovedSelection(
+        plan: SelectedShelfInput,
+        scope: string,
+        lease: TargetOperationLease,
+        completed?: readonly string[],
+    ): Promise<void> {
+        const entries = [
+            ...plan.selected.map((entry) => ({
+                file: entry.snapshot.view.path,
+                owners: entry.owners,
+            })),
+            // Whole-file entries without range evidence have no line owners to consume.
+            ...plan.whole.flatMap((entry) =>
+                entry.ownership ? [{ file: entry.path, owners: entry.ownership.owners }] : [],
+            ),
+        ].filter((entry) => !completed || completed.includes(entry.file));
+        for (const { file, owners } of entries) {
+            const view = await this.partial.open(file);
+            const snapshot = this.partial.snapshot(view.snapshotId);
+            const available = new Set(
+                view.blocks
+                    .flatMap((block) => block.lines)
+                    .filter((line) => line.kind !== "context")
+                    .map((line) => line.fingerprint),
+            );
+            await this.store.consumeCommitted(
+                this.deps.root,
+                file,
+                snapshot.contentId,
+                scope,
+                new Set(Object.keys(owners)),
+                available,
+                changeIds(view.blocks).length,
+                rangeSnapshot(snapshot),
+                lease,
+            );
+        }
     }
 
     /** Keeps exact inclusion and ownership fences while obtaining review for stale structural files. */
@@ -1085,7 +1894,16 @@ export class ChangeWorkflowHost {
     }
 }
 
+const DIFF_PREFIX = { add: "+", remove: "-", context: " " } as const;
+
 function expectedRevision(value: number): number {
     if (!Number.isSafeInteger(value) || value < 0) throw new Error("Invalid changelist revision.");
     return value;
+}
+
+/** Rollback's recovery shelf is not a named save, so it never prompts for a name. */
+async function scopedShelfName(operation: string, source: string): Promise<string | undefined> {
+    if (operation === "rollback")
+        return vscode.l10n.t("Before rollback: {source}", { source: source.slice(0, 40) });
+    return vscode.window.showInputBox({ title: vscode.l10n.t("Save to Shelf"), value: source });
 }

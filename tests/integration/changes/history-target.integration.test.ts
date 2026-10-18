@@ -1,0 +1,937 @@
+import { GitOps } from "../../../src/git/operations";
+import { afterEach, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import {
+    chmod,
+    lstat,
+    mkdtemp,
+    readFile,
+    readlink,
+    realpath,
+    symlink,
+    writeFile,
+} from "node:fs/promises";
+import { tmpdir, devNull } from "node:os";
+import path from "node:path";
+import { ChangelistPersistence } from "../../../src/changes/changelistPersistence";
+import { ChangelistStore } from "../../../src/changes/changelistStore";
+import { GitExecutor } from "../../../src/git/executor";
+import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
+import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
+import { RepositoryLock } from "../../../src/git/repositoryLock";
+import { applyTargetHistoryOperation } from "../../../src/git/targetHistoryOperation";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { captureTargetNativeEvidence } from "../../../src/git/targetOperationRecovery";
+import {
+    captureTargetHistoryReview,
+    continueReviewedTargetHistoryOperation,
+    abortReviewedTargetHistoryOperation,
+} from "../../../src/git/targetHistoryRecovery";
+
+const roots: string[] = [];
+afterEach(async () => {
+    vi.restoreAllMocks();
+    await removeScratchDirectories(...roots.splice(0));
+});
+
+/** A real native conflict leaves both unrelated index and worktree layers outstanding. */
+async function targetedConflictFixture(kind: "cherryPick" | "revert") {
+    const f = await fixture(kind);
+    await writeFile(path.join(f.root, "affected"), "competing committed change\n");
+    await f.git.run(["commit", "--only", "-qm", "competing", "--", "affected"]);
+    const request = { ...f.request, head: (await f.git.run(["rev-parse", "HEAD"])).trim() };
+    expect(
+        (await applyTargetHistoryOperation(f.git, f.persistence, f.store, request)).outcome,
+    ).toBe("conflicted");
+    return { ...f, request };
+}
+
+it.each(["cherryPick", "revert"] as const)(
+    "reviewed targeted %s conflict completion never auto-commits",
+    async (kind) => {
+        const f = await targetedConflictFixture(kind);
+        await writeFile(path.join(f.root, "affected"), "accepted resolution\n");
+        await f.git.run(["add", "affected"]);
+        const review = await captureTargetHistoryReview(f.git, f.persistence, f.store, "continue");
+        expect(review?.id).toBe(f.request.id);
+        const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+        const result = await continueReviewedTargetHistoryOperation(
+            f.git,
+            f.persistence,
+            f.store,
+            review!,
+        );
+        expect(
+            calls.mock.calls.filter(([args]) => args.includes("--continue")),
+            "targeted completion cannot invoke native continue",
+        ).toHaveLength(0);
+        expect(
+            result.outcome,
+            `reviewed resolution must finish the recorded operation: ${result.reason ?? ""}`,
+        ).toBe("applied");
+        expect(
+            (await f.git.run(["rev-parse", "HEAD"])).trim(),
+            "targeted conflict completion must never create a commit",
+        ).toBe(f.request.head);
+        if (kind === "cherryPick")
+            expect(
+                calls.mock.calls.filter(([args]) => args.includes("--quit")),
+                "markerless completion must skip native cleanup",
+            ).toHaveLength(0);
+        expect(await f.git.run(["show", ":unrelated"])).toBe("staged unrelated\n");
+        expect(await readFile(path.join(f.root, "unrelated"), "utf8")).toBe("working unrelated\n");
+        expect(f.store.get(f.root).targetOperationReceipts?.[f.request.id]?.outcome).toBe(
+            "applied",
+        );
+    },
+    30_000,
+);
+
+it.each(["cherryPick", "revert"] as const)(
+    "reviewed targeted %s abort preserves both unrelated layers without native abort or global reset",
+    async (kind) => {
+        const f = await targetedConflictFixture(kind);
+        const review = await captureTargetHistoryReview(f.git, f.persistence, f.store, "abort");
+        const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+        const result = await abortReviewedTargetHistoryOperation(
+            f.git,
+            f.persistence,
+            f.store,
+            review!,
+        );
+        expect(
+            result.outcome,
+            `reviewed discard must restore the recorded operation: ${result.reason ?? ""}`,
+        ).toBe("notApplied");
+        expect(
+            await readFile(path.join(f.root, "affected"), "utf8"),
+            "targeted abort must restore only the affected before bytes",
+        ).toBe("competing committed change\n");
+        expect(
+            calls.mock.calls.filter(([args]) => args.includes("--abort") || args[0] === "reset"),
+            "targeted abort cannot route through global native abort/reset",
+        ).toHaveLength(0);
+        expect(await f.git.run(["show", ":unrelated"])).toBe("staged unrelated\n");
+        expect(await readFile(path.join(f.root, "unrelated"), "utf8")).toBe("working unrelated\n");
+        expect(f.store.get(f.root).targetOperationReceipts?.[f.request.id]?.outcome).toBe(
+            "aborted",
+        );
+    },
+    30_000,
+);
+
+/** Accepted resolution is durable before quit; cleanup can only advance its native fingerprints. */
+async function completionCleanupFixture() {
+    const f = await fixture("revert");
+    await writeFile(path.join(f.root, "affected"), "competing committed change\n");
+    await f.git.run(["commit", "--only", "-qm", "competing", "--", "affected"]);
+    const request = { ...f.request, head: (await f.git.run(["rev-parse", "HEAD"])).trim() };
+    expect(
+        (await applyTargetHistoryOperation(f.git, f.persistence, f.store, request)).outcome,
+    ).toBe("conflicted");
+    await writeFile(path.join(f.root, "affected"), "accepted resolution\n");
+    await f.git.run(["add", "affected"]);
+    const lease = await f.store.acquireTargetOperationLease(f.root);
+    const state = f.store.get(f.root);
+    const pending = state.pendingTargetOperation!;
+    const previous = await f.persistence.loadTargetOperationEvidence(pending.evidenceHash);
+    const accepted = {
+        ...(await captureTargetNativeEvidence(f.git, f.persistence, request.id, ["affected"])),
+        checkpoint: "after" as const,
+        previousEvidenceHash: pending.evidenceHash,
+        entries: previous.entries.map((entry) => ({ ...entry, outcome: "applied" as const })),
+    };
+    expect(accepted.native.some((entry) => entry.name === "revertHead" && entry.present)).toBe(
+        true,
+    );
+    const acceptedHash = await f.persistence.storeTargetOperationEvidence(accepted);
+    const selected = await f.store.checkpointTargetOperation(lease, {
+        id: request.id,
+        revision: state.revision,
+        expectedPhase: "conflicted",
+        phase: "gitApplied",
+        evidenceHash: acceptedHash,
+    });
+    await f.git.run(["revert", "--quit"]);
+    const cleaned = {
+        ...(await captureTargetNativeEvidence(f.git, f.persistence, request.id, ["affected"])),
+        checkpoint: "after" as const,
+        previousEvidenceHash: acceptedHash,
+        entries: accepted.entries,
+    };
+    return { ...f, lease, accepted, acceptedHash, selected, cleaned };
+}
+
+it("native completion cleanup advances only the durable evidence pointer after quit", async () => {
+    const f = await completionCleanupFixture();
+    try {
+        const hash = await f.persistence.storeTargetOperationEvidence(f.cleaned);
+        const state = await f.store.checkpointTargetNativeCompletionCleanup(f.lease, {
+            id: f.request.id,
+            revision: f.selected.revision,
+            expectedPhase: "gitApplied",
+            evidenceHash: hash,
+        });
+        expect(
+            state.pendingTargetOperation?.evidenceHash,
+            "cleanup must durably acknowledge the native-absent result",
+        ).toBe(hash);
+        expect(state.pendingTargetOperation?.beforeEvidenceHash).toBe(
+            f.selected.pendingTargetOperation?.beforeEvidenceHash,
+        );
+        expect(state.pendingTargetOperation?.phase).toBe("gitApplied");
+    } finally {
+        await f.lease.release();
+    }
+}, 30_000);
+
+it.each(["head", "index", "entries"] as const)(
+    "native completion cleanup rejects changed %s evidence",
+    async (field) => {
+        const f = await completionCleanupFixture();
+        try {
+            const changed = {
+                ...f.cleaned,
+                ...(field === "head" ? { head: "a".repeat(40) } : {}),
+                ...(field === "index" ? { indexFingerprint: "b".repeat(64) } : {}),
+                ...(field === "entries"
+                    ? {
+                          entries: f.cleaned.entries.map((entry) => ({
+                              ...entry,
+                              outcome: "retained" as const,
+                          })),
+                      }
+                    : {}),
+            };
+            const hash = await f.persistence.storeTargetOperationEvidence(changed);
+            await expect(
+                f.store.checkpointTargetNativeCompletionCleanup(f.lease, {
+                    id: f.request.id,
+                    revision: f.selected.revision,
+                    expectedPhase: "gitApplied",
+                    evidenceHash: hash,
+                }),
+                "native cleanup cannot authorize changed accepted content",
+            ).rejects.toThrow();
+            expect(f.store.get(f.root).pendingTargetOperation?.evidenceHash).toBe(f.acceptedHash);
+        } finally {
+            await f.lease.release();
+        }
+    },
+    30_000,
+);
+
+/** Real Git separates the committed delta from unrelated staged and working layers. */
+async function fixture(
+    kind: "cherryPick" | "revert",
+    change: (root: string, git: GitExecutor) => Promise<void> = async (root) =>
+        writeFile(path.join(root, "affected"), "source change\n"),
+    seed: (root: string) => Promise<void> = async () => undefined,
+) {
+    const root = await realpath(await mkdtemp(path.join(tmpdir(), "history-target-")));
+    roots.push(root);
+    const git = new GitExecutor(
+        root,
+        new RepositoryMutationGate(new RepositoryMutationCoordinator(), new RepositoryLock()),
+        { GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" },
+    );
+    await git.run(["init", "-q"]);
+    await git.run(["config", "user.name", "Fixture"]);
+    await git.run(["config", "user.email", "fixture@example.invalid"]);
+    await writeFile(path.join(root, "affected"), "base\n");
+    await writeFile(path.join(root, "unrelated"), "original\n");
+    await seed(root);
+    await git.run(["add", "."]);
+    await git.run(["commit", "-qm", "base"]);
+    const base = (await git.run(["rev-parse", "HEAD"])).trim();
+    await change(root, git);
+    await git.run(["add", "-A", "--", ".", ":!unrelated"]);
+    await git.run(["commit", "-qm", "source"]);
+    const commit = (await git.run(["rev-parse", "HEAD"])).trim();
+    if (kind === "cherryPick") await git.run(["reset", "--hard", base]);
+    await writeFile(path.join(root, "unrelated"), "staged unrelated\n");
+    await git.run(["add", "unrelated"]);
+    await writeFile(path.join(root, "unrelated"), "working unrelated\n");
+    const store = new ChangelistStore();
+    await store.connect(root, path.join(root, ".git"));
+    await store.reconcileFiles(root, ["unrelated"]);
+    await store.create(root, store.get(root).revision, "Existing", "", false, ["unrelated"]);
+    const owner = store.get(root).files.unrelated;
+    const persistence = await ChangelistPersistence.open(root, path.join(root, ".git"));
+    const head = (await git.run(["rev-parse", "HEAD"])).trim();
+    const request = {
+        id: randomUUID(),
+        kind,
+        commit,
+        head,
+        target: { kind: "new" as const, name: "Destination", revision: store.get(root).revision },
+    };
+    return { root, git, store, persistence, request, owner };
+}
+
+it.each(["cherryPick", "revert"] as const)(
+    "targeted %s leaves HEAD unchanged and preserves unrelated ownership and both layers",
+    async (kind) => {
+        const f = await fixture(kind);
+        const outcome = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+        expect(
+            outcome.outcome,
+            `actual adapter must publish its applied result: ${outcome.reason ?? "no reason"}`,
+        ).toBe("applied");
+        expect(
+            (await f.git.run(["rev-parse", "HEAD"])).trim(),
+            "targeted native action must never create a commit",
+        ).toBe(f.request.head);
+        expect(await f.git.run(["show", ":unrelated"]), "unrelated staged bytes survive").toBe(
+            "staged unrelated\n",
+        );
+        expect(
+            await readFile(path.join(f.root, "unrelated"), "utf8"),
+            "unrelated working bytes survive",
+        ).toBe("working unrelated\n");
+        expect(await readFile(path.join(f.root, "affected"), "utf8")).toBe(
+            kind === "cherryPick" ? "source change\n" : "base\n",
+        );
+        const state = f.store.get(f.root);
+        const destination = state.lists.find((list) => list.name === "Destination")!;
+        expect(state.files.unrelated, "existing unrelated owner survives").toBe(f.owner);
+        expect(
+            new Set(Object.values(state.changes.affected.lines)),
+            "only introduced anchors belong to explicit destination",
+        ).toEqual(new Set([destination.id]));
+        expect(
+            state.pendingTargetOperation,
+            "terminal receipt closes the operation",
+        ).toBeUndefined();
+        expect(state.targetOperationReceipts?.[f.request.id]?.outcome).toBe("applied");
+    },
+    30_000,
+);
+
+it.each(["cherryPick", "revert"] as const)(
+    "duplicate %s request after receipt never applies Git twice",
+    async (kind) => {
+        const f = await fixture(kind);
+        const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+        expect(
+            (await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request)).outcome,
+        ).toBe("applied");
+        const second = new ChangelistStore();
+        await second.connect(f.root, f.persistence.gitDir);
+        expect(
+            (await applyTargetHistoryOperation(f.git, f.persistence, second, f.request)).outcome,
+        ).toBe("applied");
+        expect(
+            calls.mock.calls.filter(([args]) => args.includes("--no-commit")),
+            "terminal replay must execute the native apply exactly once",
+        ).toHaveLength(1);
+    },
+    30_000,
+);
+
+it.each(["cherryPick", "revert"] as const)(
+    "targeted %s with an otherwise clean index never creates a commit",
+    async (kind) => {
+        const f = await fixture(kind);
+        await f.git.run(["reset", "--", "unrelated"]);
+        const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+        expect(
+            (await f.git.run(["rev-parse", "HEAD"])).trim(),
+            "no-commit flag must preserve exact HEAD even when Git could commit",
+        ).toBe(f.request.head);
+        expect(result.outcome, result.reason).toBe("applied");
+    },
+    30_000,
+);
+
+it.each(["cherryPick", "revert"] as const)(
+    "metadata failure after %s never replays the original native command",
+    async (kind) => {
+        const f = await fixture(kind);
+        const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+        vi.spyOn(f.store, "checkpointTargetOperation").mockRejectedValueOnce(
+            new Error("Injected after-Git metadata failure"),
+        );
+        const first = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+        expect(first.outcome, "after-Git failure must retain review identity").toBe(
+            "appliedNeedsReview",
+        );
+        expect(f.store.get(f.root).pendingTargetOperation?.id).toBe(f.request.id);
+        const second = new ChangelistStore();
+        await second.connect(f.root, f.persistence.gitDir);
+        const retry = await applyTargetHistoryOperation(f.git, f.persistence, second, f.request);
+        expect(retry.outcome).toBe("appliedNeedsReview");
+        expect(
+            calls.mock.calls.filter(([args]) => args.includes("--no-commit")),
+            "metadata failure must never replay native apply",
+        ).toHaveLength(1);
+        expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.request.head);
+        expect(await f.git.run(["show", ":unrelated"])).toBe("staged unrelated\n");
+        expect(await readFile(path.join(f.root, "unrelated"), "utf8")).toBe("working unrelated\n");
+    },
+    30_000,
+);
+
+it.each(["cherryPick", "revert"] as const)(
+    "targeted %s conflict retains actual native stages and replay identity",
+    async (kind) => {
+        const f = await fixture(kind);
+        await writeFile(path.join(f.root, "affected"), "competing committed change\n");
+        await f.git.run(["commit", "--only", "-qm", "competing", "--", "affected"]);
+        const request = { ...f.request, head: (await f.git.run(["rev-parse", "HEAD"])).trim() };
+        const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+        const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, request);
+        expect(result.outcome, result.reason).toBe("conflicted");
+        const pending = f.store.get(f.root).pendingTargetOperation!;
+        expect(pending.phase).toBe("conflicted");
+        const after = await f.persistence.loadTargetOperationEvidence(pending.evidenceHash);
+        expect(
+            after.index.filter((entry) => entry.path === "affected").map((entry) => entry.stage),
+            "native conflict must retain stages 1, 2 and 3",
+        ).toEqual([1, 2, 3]);
+        expect(after.entries[0].outcome).toBe("conflicted");
+        expect(
+            (await applyTargetHistoryOperation(f.git, f.persistence, f.store, request)).outcome,
+        ).toBe("appliedNeedsReview");
+        expect(
+            calls.mock.calls.filter(([args]) => args.includes("--no-commit")),
+            "pending conflict must never apply again",
+        ).toHaveLength(1);
+        expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(request.head);
+        expect(await f.git.run(["show", ":unrelated"])).toBe("staged unrelated\n");
+        expect(await readFile(path.join(f.root, "unrelated"), "utf8")).toBe("working unrelated\n");
+    },
+    30_000,
+);
+
+it.each(["revert"] as const)(
+    "reviewed targeted %s resumes after quit before cleanup publication without repeating Git",
+    async (kind) => {
+        const f = await targetedConflictFixture(kind);
+        await writeFile(path.join(f.root, "affected"), "accepted resolution\n");
+        await f.git.run(["add", "affected"]);
+        const review = await captureTargetHistoryReview(f.git, f.persistence, f.store, "continue");
+        const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+        const checkpoint = vi
+            .spyOn(f.store, "checkpointTargetNativeCompletionCleanup")
+            .mockRejectedValueOnce(new Error("Injected quit-before-pointer crash"));
+        const first = await continueReviewedTargetHistoryOperation(
+            f.git,
+            f.persistence,
+            f.store,
+            review!,
+        );
+        expect(first.outcome).toBe("appliedNeedsReview");
+        expect(f.store.get(f.root).pendingTargetOperation?.phase).toBe("gitApplied");
+        expect(
+            calls.mock.calls.filter(([args]) => args.includes("--quit")),
+            "the first attempt must reach native cleanup",
+        ).toHaveLength(1);
+        checkpoint.mockRestore();
+        const second = new ChangelistStore();
+        await second.connect(f.root, f.persistence.gitDir);
+        const retryReview = await captureTargetHistoryReview(
+            f.git,
+            f.persistence,
+            second,
+            "continue",
+        );
+        const retry = await continueReviewedTargetHistoryOperation(
+            f.git,
+            f.persistence,
+            second,
+            retryReview!,
+        );
+        expect(
+            retry.outcome,
+            `cleanup crash replay must finish metadata only: ${retry.reason ?? ""}`,
+        ).toBe("applied");
+        expect(
+            calls.mock.calls.filter(([args]) => args.includes("--quit")),
+            "cleanup crash recovery must never repeat quit",
+        ).toHaveLength(1);
+        expect(
+            calls.mock.calls.filter(
+                ([args]) => args.includes("--no-commit") || args.includes("--continue"),
+            ),
+            "cleanup crash recovery must never repeat source apply or native continue",
+        ).toHaveLength(0);
+        expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.request.head);
+        expect(await readFile(path.join(f.root, "affected"), "utf8")).toBe("accepted resolution\n");
+        expect(await f.git.run(["show", ":unrelated"])).toBe("staged unrelated\n");
+        expect(await readFile(path.join(f.root, "unrelated"), "utf8")).toBe("working unrelated\n");
+    },
+    30_000,
+);
+
+it.each(["continue", "abort"] as const)(
+    "reviewed targeted %s rejects affected edits made after the prompt",
+    async (action) => {
+        const f = await targetedConflictFixture("revert");
+        await writeFile(path.join(f.root, "affected"), "accepted resolution\n");
+        await f.git.run(["add", "affected"]);
+        const review = await captureTargetHistoryReview(f.git, f.persistence, f.store, action);
+        await writeFile(path.join(f.root, "affected"), "external edit after prompt\n");
+        const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+        const operation =
+            action === "continue"
+                ? continueReviewedTargetHistoryOperation
+                : abortReviewedTargetHistoryOperation;
+        const result = await operation(f.git, f.persistence, f.store, review!);
+        expect(result.outcome, "post-prompt affected edit must block destructive recovery").toBe(
+            "appliedNeedsReview",
+        );
+        expect(result.reason).toContain("changed after the review");
+        expect(
+            await readFile(path.join(f.root, "affected"), "utf8"),
+            "external affected bytes must survive stale consent",
+        ).toBe("external edit after prompt\n");
+        expect(
+            calls.mock.calls.filter(
+                ([args]) =>
+                    args.includes("--quit") ||
+                    args.includes("--abort") ||
+                    args.includes("--continue") ||
+                    args[0] === "reset",
+            ),
+        ).toHaveLength(0);
+        expect(f.store.get(f.root).pendingTargetOperation?.id).toBe(f.request.id);
+    },
+    30_000,
+);
+
+it("reviewed targeted fresh discard accepts explicitly reviewed affected edits and restores before bytes", async () => {
+    const f = await targetedConflictFixture("revert");
+    await writeFile(path.join(f.root, "affected"), "explicitly discarded edit\n");
+    await f.git.run(["add", "affected"]);
+    const review = await captureTargetHistoryReview(f.git, f.persistence, f.store, "abort");
+    const result = await abortReviewedTargetHistoryOperation(
+        f.git,
+        f.persistence,
+        f.store,
+        review!,
+    );
+    expect(result.outcome, result.reason).toBe("notApplied");
+    expect(await readFile(path.join(f.root, "affected"), "utf8")).toBe(
+        "competing committed change\n",
+    );
+    expect(await f.git.run(["show", ":unrelated"])).toBe("staged unrelated\n");
+    expect(await readFile(path.join(f.root, "unrelated"), "utf8")).toBe("working unrelated\n");
+}, 30_000);
+
+it("targeted host control routes markerless pending before native classification and captures root across the prompt", async () => {
+    const f = await targetedConflictFixture("cherryPick");
+    const other = await fixture("revert");
+    const ops = new GitOps(f.git);
+    const nativeClassification = vi.spyOn(ops, "getActiveOperation");
+    const confirm = vi.fn(async (review) => {
+        expect(review.id).toBe(f.request.id);
+        expect(review.paths).toEqual(["affected"]);
+        f.git.setRoot(other.root);
+        return true;
+    });
+    const result = await ops.controlTargetHistory(f.root, f.store, "abort", confirm);
+    expect(result.status, "markerless pending must be handled before any ordinary fallback").toBe(
+        "handled",
+    );
+    expect(result.status === "handled" && result.result.outcome).toBe("notApplied");
+    expect(
+        nativeClassification,
+        "pending-first host routing must never classify native markers",
+    ).not.toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(await readFile(path.join(f.root, "affected"), "utf8")).toBe(
+        "competing committed change\n",
+    );
+    expect(
+        await readFile(path.join(other.root, "affected"), "utf8"),
+        "active-root switch must never retarget recovery",
+    ).toBe("source change\n");
+    expect(await other.git.run(["show", ":unrelated"])).toBe("staged unrelated\n");
+}, 30_000);
+
+it("targeted host control cancellation leaves pending, HEAD and both Git layers unchanged", async () => {
+    const f = await targetedConflictFixture("revert");
+    const before = await captureTargetNativeEvidence(f.git, f.persistence, f.request.id, [
+        "affected",
+    ]);
+    const pending = f.store.get(f.root).pendingTargetOperation;
+    const result = await new GitOps(f.git).controlTargetHistory(
+        f.root,
+        f.store,
+        "abort",
+        async () => false,
+    );
+    expect(result.status, "cancelled target review must never permit ordinary fallback").toBe(
+        "cancelled",
+    );
+    expect(f.store.get(f.root).pendingTargetOperation).toEqual(pending);
+    expect(
+        await captureTargetNativeEvidence(f.git, f.persistence, f.request.id, ["affected"]),
+    ).toEqual(before);
+}, 30_000);
+
+it("targeted host control permits ordinary fallback only after authoritative pending absence", async () => {
+    const f = await fixture("revert");
+    const confirm = vi.fn(async () => true);
+    const result = await new GitOps(f.git).controlTargetHistory(f.root, f.store, "abort", confirm);
+    expect(result.status).toBe("noPending");
+    expect(confirm).not.toHaveBeenCalled();
+}, 30_000);
+
+/** One commit adds, deletes, renames, links and re-modes paths that start clean and unassigned. */
+const structuralSeed = async (root: string) => {
+    await writeFile(path.join(root, "gone"), "gone text\n");
+    await writeFile(path.join(root, "old"), "renamed text\n");
+    await writeFile(path.join(root, "tool"), "tool text\n");
+};
+const structuralChange = async (root: string, git: GitExecutor) => {
+    await writeFile(path.join(root, "added"), "added text\n");
+    await git.run(["rm", "-q", "gone"]);
+    await git.run(["mv", "old", "renamed"]);
+    await symlink("affected", path.join(root, "link"));
+    await chmod(path.join(root, "tool"), 0o755);
+};
+const STRUCTURAL_PATHS = ["added", "gone", "link", "old", "renamed", "tool"];
+
+/** Index modes keyed by path; a missing key is an absent index entry. */
+async function indexModes(git: GitExecutor): Promise<Record<string, string>> {
+    const out = await git.run(["ls-files", "-s", "--", ...STRUCTURAL_PATHS]);
+    return Object.fromEntries(
+        out
+            .split("\n")
+            .filter(Boolean)
+            .map((line) => [line.split("\t")[1], line.split(" ")[0]]),
+    );
+}
+
+it.each(["cherryPick", "revert"] as const)(
+    "targeted %s supports add, delete, rename endpoints, symlink and mode changes",
+    async (kind) => {
+        const f = await fixture(kind, structuralChange, structuralSeed);
+        const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+        expect(result.outcome, `structural apply must publish: ${result.reason ?? ""}`).toBe(
+            "applied",
+        );
+        expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.request.head);
+        expect(
+            await indexModes(f.git),
+            "structural index entries must match the applied direction",
+        ).toEqual(
+            kind === "cherryPick"
+                ? { added: "100644", link: "120000", renamed: "100644", tool: "100755" }
+                : { gone: "100644", old: "100644", tool: "100644" },
+        );
+        if (kind === "cherryPick") {
+            expect(await readlink(path.join(f.root, "link"))).toBe("affected");
+            expect((await lstat(path.join(f.root, "tool"))).mode & 0o111).not.toBe(0);
+            expect(await readFile(path.join(f.root, "renamed"), "utf8")).toBe("renamed text\n");
+        } else {
+            expect(await readFile(path.join(f.root, "old"), "utf8")).toBe("renamed text\n");
+            expect((await lstat(path.join(f.root, "tool"))).mode & 0o111).toBe(0);
+        }
+        const state = f.store.get(f.root);
+        const destination = state.lists.find((list) => list.name === "Destination")!;
+        for (const file of STRUCTURAL_PATHS)
+            expect(state.files[file], `${file} belongs to the explicit destination`).toBe(
+                destination.id,
+            );
+        expect(state.files.unrelated, "existing unrelated owner survives").toBe(f.owner);
+        expect(await f.git.run(["show", ":unrelated"])).toBe("staged unrelated\n");
+        expect(await readFile(path.join(f.root, "unrelated"), "utf8")).toBe("working unrelated\n");
+        expect(state.pendingTargetOperation).toBeUndefined();
+    },
+    30_000,
+);
+
+it("targeted cherryPick refuses an owned structural path before any Git mutation", async () => {
+    const f = await fixture("cherryPick", structuralChange, structuralSeed);
+    await f.store.reconcileFiles(f.root, ["unrelated", "gone"]);
+    await f.store.create(f.root, f.store.get(f.root).revision, "Owner", "", false, ["gone"]);
+    const owner = f.store.get(f.root).files.gone;
+    const request = {
+        ...f.request,
+        target: { ...f.request.target, revision: f.store.get(f.root).revision },
+    };
+    const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, request);
+    expect(result.outcome).toBe("notApplied");
+    expect(result.reason, "refusal names the structural path").toContain("gone");
+    expect(
+        calls.mock.calls.filter(([args]) => args.includes("--no-commit")),
+        "unsupported structural ownership must refuse before native apply",
+    ).toHaveLength(0);
+    const state = f.store.get(f.root);
+    expect(state.lists.some((list) => list.name === "Destination")).toBe(false);
+    expect(state.pendingTargetOperation).toBeUndefined();
+    expect(state.files.gone, "pre-existing whole-file owner is never stolen").toBe(owner);
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(request.head);
+    expect(await readFile(path.join(f.root, "gone"), "utf8")).toBe("gone text\n");
+}, 30_000);
+
+it("targeted cherryPick keeps a pre-existing staged edit's owner in the same file", async () => {
+    const lines = ["one", "two", "three", "four", "five", "six", "seven", "eight", ""];
+    const f = await fixture(
+        "cherryPick",
+        async (root) =>
+            writeFile(path.join(root, "affected"), ["ONE", ...lines.slice(1)].join("\n")),
+        async (root) => writeFile(path.join(root, "affected"), lines.join("\n")),
+    );
+    await writeFile(path.join(f.root, "affected"), [...lines.slice(0, 7), "EIGHT", ""].join("\n"));
+    await f.git.run(["add", "affected"]);
+    const prior = f.store.get(f.root).activeId;
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(result.outcome, result.reason).toBe("applied");
+    expect(await readFile(path.join(f.root, "affected"), "utf8")).toBe(
+        ["ONE", ...lines.slice(1, 7), "EIGHT", ""].join("\n"),
+    );
+    const state = f.store.get(f.root);
+    const destination = state.lists.find((list) => list.name === "Destination")!;
+    expect(state.files.affected, "the pre-existing file owner is retained").toBe(prior);
+    expect(state.changes.affected.totalChanges).toBe(4);
+    expect(
+        Object.values(state.changes.affected.lines).filter((id) => id === destination.id),
+        "same-file pre-existing lines keep their owner while operation lines go to the target",
+    ).toHaveLength(2);
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.request.head);
+}, 30_000);
+
+it("native refusal of an unstaged affected edit leaves no list, pending record or Git change", async () => {
+    const f = await fixture("cherryPick");
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(result.outcome, `native refusal must stay unapplied: ${result.reason ?? ""}`).toBe(
+        "notApplied",
+    );
+    const state = f.store.get(f.root);
+    expect(
+        state.lists.some((list) => list.name === "Destination"),
+        "a refused operation must not leave its new destination behind",
+    ).toBe(false);
+    expect(state.pendingTargetOperation).toBeUndefined();
+    expect(await readFile(path.join(f.root, "affected"), "utf8")).toBe("local edit\n");
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.request.head);
+}, 30_000);
+
+it("reviewed targeted abort preserves unrelated index edits introduced after the prompt", async () => {
+    const f = await targetedConflictFixture("revert");
+    const review = await captureTargetHistoryReview(f.git, f.persistence, f.store, "abort");
+    await writeFile(path.join(f.root, "unrelated"), "new staged unrelated\n");
+    await f.git.run(["add", "unrelated"]);
+    await writeFile(path.join(f.root, "unrelated"), "new working unrelated\n");
+    const result = await abortReviewedTargetHistoryOperation(
+        f.git,
+        f.persistence,
+        f.store,
+        review!,
+    );
+    expect(
+        result.outcome,
+        `unrelated post-prompt edits must remain outside targeted discard: ${result.reason ?? ""}`,
+    ).toBe("notApplied");
+    expect(
+        await f.git.run(["show", ":unrelated"]),
+        "fresh unrelated index entries must survive targeted abort",
+    ).toBe("new staged unrelated\n");
+    expect(await readFile(path.join(f.root, "unrelated"), "utf8")).toBe("new working unrelated\n");
+    expect(await readFile(path.join(f.root, "affected"), "utf8")).toBe(
+        "competing committed change\n",
+    );
+}, 30_000);
+
+/** Undo starts at the source commit, with an unrelated file carrying distinct staged and working edits. */
+async function undoFixture() {
+    const f = await fixture("revert");
+    const parent = (await f.git.run(["rev-parse", "HEAD^"])).trim();
+    return { ...f, parent, request: { ...f.request, kind: "undoCommit" as const } };
+}
+
+it("undo preserves working bytes and produces expected staged diff", async () => {
+    const f = await undoFixture();
+    const undone = await f.git.run(["diff", f.parent, f.request.head, "--", "affected"]);
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(result.outcome, `undo must publish its soft reset: ${result.reason ?? ""}`).toBe(
+        "applied",
+    );
+    expect(
+        (await f.git.run(["rev-parse", "HEAD"])).trim(),
+        "undo moves HEAD to the undone commit's parent",
+    ).toBe(f.parent);
+    expect(
+        await f.git.run(["diff", "--cached", "--name-status"]),
+        "the index keeps the undone commit plus the pre-existing staged unrelated edit",
+    ).toBe("M\taffected\nM\tunrelated\n");
+    expect(
+        await f.git.run(["diff", "--cached", "--", "affected"]),
+        "the staged diff is the undone commit relative to the new base",
+    ).toBe(undone);
+    expect(await f.git.run(["show", ":unrelated"])).toBe("staged unrelated\n");
+    expect(await readFile(path.join(f.root, "affected"), "utf8")).toBe("source change\n");
+    expect(await readFile(path.join(f.root, "unrelated"), "utf8")).toBe("working unrelated\n");
+    const state = f.store.get(f.root);
+    const destination = state.lists.find((list) => list.name === "Destination")!;
+    expect(state.files.affected, "undone file belongs to the explicit destination").toBe(
+        destination.id,
+    );
+    expect(state.files.unrelated, "existing unrelated owner survives").toBe(f.owner);
+    expect(state.pendingTargetOperation).toBeUndefined();
+    expect(destination.draft, "message copy is opt-in").toBe("");
+}, 30_000);
+
+it("undo retains pre-existing mixed ownership", async () => {
+    const lines = ["one", "two", "three", "four", "five", "six", "seven", "eight", ""];
+    const f = await fixture(
+        "cherryPick",
+        async (root) =>
+            writeFile(path.join(root, "affected"), ["ONE", ...lines.slice(1)].join("\n")),
+        async (root) => writeFile(path.join(root, "affected"), lines.join("\n")),
+    );
+    await writeFile(path.join(f.root, "affected"), [...lines.slice(0, 7), "EIGHT", ""].join("\n"));
+    await f.git.run(["add", "affected"]);
+    expect(
+        (await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request)).outcome,
+    ).toBe("applied");
+    await writeFile(path.join(f.root, "doc"), "doc\n");
+    await f.git.run(["add", "doc"]);
+    await f.git.run(["commit", "--only", "-qm", "doc", "--", "doc"]);
+    const head = (await f.git.run(["rev-parse", "HEAD"])).trim();
+    const prior = structuredClone(f.store.get(f.root));
+    const picked = prior.lists.find((list) => list.name === "Destination")!.id;
+    expect(prior.files.affected, "precondition: the file owner differs from").not.toBe(picked);
+    expect(
+        new Set(Object.values(prior.changes.affected.lines)),
+        "precondition: the picked lines' owner",
+    ).toEqual(new Set([picked]));
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, {
+        id: randomUUID(),
+        kind: "undoCommit",
+        commit: head,
+        head,
+        target: { kind: "new", name: "Undone", revision: prior.revision },
+    });
+    expect(result.outcome, result.reason).toBe("applied");
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(
+        (await f.git.run(["rev-parse", `${head}^`])).trim(),
+    );
+    const state = f.store.get(f.root);
+    expect(state.files.affected, "mixed file owner survives the base change").toBe(
+        prior.files.affected,
+    );
+    expect(state.changes.affected, "mixed line owners survive the base change").toEqual(
+        prior.changes.affected,
+    );
+    expect(state.files.doc).toBe(state.lists.find((list) => list.name === "Undone")!.id);
+    expect(state.files.unrelated).toBe(f.owner);
+}, 30_000);
+
+it("undo refuses a locally changed affected file before any reset", async () => {
+    const f = await undoFixture();
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(result.outcome).toBe("notApplied");
+    expect(result.reason, "refusal names the changed path").toContain("affected");
+    expect(
+        calls.mock.calls.filter(([args]) => args[0] === "reset"),
+        "refused undo must never reset",
+    ).toHaveLength(0);
+    const state = f.store.get(f.root);
+    expect(state.lists.some((list) => list.name === "Destination")).toBe(false);
+    expect(state.pendingTargetOperation).toBeUndefined();
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.request.head);
+    expect(await readFile(path.join(f.root, "affected"), "utf8")).toBe("local edit\n");
+}, 30_000);
+
+it("metadata failure after soft reset never resets again", async () => {
+    const f = await undoFixture();
+    const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+    vi.spyOn(f.store, "checkpointTargetOperation").mockRejectedValueOnce(
+        new Error("Injected after-reset metadata failure"),
+    );
+    const first = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(first.outcome, "after-reset failure must retain review identity").toBe(
+        "appliedNeedsReview",
+    );
+    expect(f.store.get(f.root).pendingTargetOperation?.id).toBe(f.request.id);
+    const second = new ChangelistStore();
+    await second.connect(f.root, f.persistence.gitDir);
+    const retry = await applyTargetHistoryOperation(f.git, f.persistence, second, f.request);
+    expect(
+        calls.mock.calls.filter(([args]) => args[0] === "reset"),
+        "metadata failure must never repeat the soft reset",
+    ).toHaveLength(1);
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.parent);
+    expect(retry.outcome, "the retried undo stays in review").toBe("appliedNeedsReview");
+    expect(await f.git.run(["show", ":unrelated"])).toBe("staged unrelated\n");
+    expect(await readFile(path.join(f.root, "unrelated"), "utf8")).toBe("working unrelated\n");
+}, 30_000);
+
+it("undo copies the commit message into the destination only when chosen", async () => {
+    const f = await undoFixture();
+    const message = await f.git.run(["log", "-1", "--format=%B", f.request.head]);
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, {
+        ...f.request,
+        draftChoice: {
+            kind: "copySource",
+            sourceListId: randomUUID(),
+            expectedDestinationDraft: "",
+        },
+        sourceDraft: message,
+    });
+    expect(result.outcome, result.reason).toBe("applied");
+    const destination = f.store.get(f.root).lists.find((list) => list.name === "Destination")!;
+    expect(destination.draft, "explicit copy choice publishes the undone message").toBe(message);
+}, 30_000);
+
+it("undo after a changelist commit admits the consumed record", async () => {
+    const f = await undoFixture();
+    await f.store.reconcileFiles(f.root, ["unrelated", "affected"]);
+    await f.store.consumeCommitted(f.root, "affected", "committed", "all", new Set(), new Set(), 0);
+    await f.store.reconcileFiles(f.root, ["unrelated"]);
+    const prior = f.store.get(f.root);
+    expect(
+        prior.changes.affected?.selections,
+        "precondition: the commit kept its record",
+    ).toBeDefined();
+    expect(prior.files.affected, "precondition: the record keeps its old list").toBe(
+        prior.activeId,
+    );
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, {
+        ...f.request,
+        target: { kind: "new", name: "Destination", revision: prior.revision },
+    });
+    expect(result.outcome, `undo right after a normal commit: ${result.reason ?? ""}`).toBe(
+        "applied",
+    );
+    expect(
+        (await f.git.run(["rev-parse", "HEAD"])).trim(),
+        "undo moves HEAD to the undone commit's parent",
+    ).toBe(f.parent);
+    const state = f.store.get(f.root);
+    const destination = state.lists.find((list) => list.name === "Destination")!;
+    expect(state.files.affected, "the destination owns the whole undone file").toBe(destination.id);
+    expect(state.changes.affected, "the consumed record is replaced, not kept").toBeUndefined();
+    expect(state.files.unrelated).toBe(f.owner);
+}, 30_000);
+
+it("undo still refuses a path whose record owns a live change", async () => {
+    const f = await undoFixture();
+    await f.store.reconcileFiles(f.root, ["unrelated", "affected"]);
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    await f.store.consumeCommitted(f.root, "affected", "live", "all", new Set(), new Set(), 1);
+    const prior = f.store.get(f.root);
+    const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, {
+        ...f.request,
+        target: { kind: "new", name: "Destination", revision: prior.revision },
+    });
+    expect(result.outcome).toBe("notApplied");
+    expect(result.reason, "a record owning a live change still owns the path").toContain(
+        "already belongs to a changelist",
+    );
+    expect(calls.mock.calls.filter(([args]) => args[0] === "reset")).toHaveLength(0);
+    expect(f.store.get(f.root).files.affected, "the live owner is never stolen").toBe(
+        prior.files.affected,
+    );
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.request.head);
+}, 30_000);

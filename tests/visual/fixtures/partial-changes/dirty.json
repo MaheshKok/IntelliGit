@@ -73,7 +73,8 @@
                         }
                     }
                 },
-                "listId": "all"
+                "listId": "all",
+                "selectedOperations": false
             }
         }
     ]
