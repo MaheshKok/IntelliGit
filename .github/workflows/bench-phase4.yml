@@ -43,6 +43,11 @@ jobs:
                   ref: ${{ env.BASELINE_SHA }}
                   path: baseline
 
+            # The same e2e-only instrumentation (metrics store, IPC counters) the local Mac baseline
+            # carries uncommitted; without it the baseline cannot answer the harness's metrics request.
+            - name: Instrument baseline
+              run: git -C baseline apply "$GITHUB_WORKSPACE/.github/bench/baseline-instrumentation.patch"
+
             - name: Setup Node.js
               uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
               with:
