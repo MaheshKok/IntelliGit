@@ -1,0 +1,128 @@
+name: Phase 4 operation benchmark (temporary)
+
+# Lives only on the throwaway bench/phase4-matrix branch and is never merged. Each job runs one
+# shard (6 samples + 3 warmups) of one dataset for BOTH builds on the same runner, so candidate
+# and baseline always share hardware; five shards per dataset give the 30 samples.
+on:
+    push:
+        branches:
+            - bench/phase4-matrix
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+env:
+    BASELINE_SHA: 23464b48c7d47ae4f83429898c6df49b56faf0d3
+
+jobs:
+    shard:
+        name: ${{ matrix.files }} files / ${{ matrix.lists }} lists, shard ${{ matrix.shard }}
+        runs-on: ubuntu-latest
+        timeout-minutes: 340
+        strategy:
+            fail-fast: false
+            matrix:
+                files: [1000, 10000]
+                lists: [20, 100]
+                shard: [1, 2, 3, 4, 5]
+
+        steps:
+            - name: Checkout candidate
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            - name: Checkout baseline
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+                  ref: ${{ env.BASELINE_SHA }}
+                  path: baseline
+
+            - name: Setup Node.js
+              uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+              with:
+                  node-version: "22"
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+              with:
+                  bun-version: "1.3.5"
+
+            - name: Install system tools
+              run: sudo apt-get update && sudo apt-get install -y xfsprogs xvfb
+
+            - name: Build both extensions
+              run: |
+                  bun install --frozen-lockfile && bun run build
+                  cd baseline && bun install --frozen-lockfile && bun run build
+
+            # The harness clones every cold-sample fixture with macOS `cp -c` and refuses a full
+            # copy. ext4 cannot share blocks, so scratch lives on an XFS reflink volume and a
+            # PATH shim turns `cp -c` into GNU `cp --reflink=always`; the harness's own probe
+            # still proves blocks are shared.
+            - name: Prepare a reflink scratch volume
+              run: |
+                  img="$RUNNER_TEMP/bench.img"
+                  truncate -s 40G "$img"
+                  mkfs.xfs -q -m reflink=1 "$img"
+                  sudo mkdir -p /bench
+                  sudo mount -o loop "$img" /bench
+                  sudo chown "$(id -u):$(id -g)" /bench
+                  mkdir -p "$RUNNER_TEMP/shim" bench-out
+                  printf '%s\n' '#!/bin/sh' \
+                      'if [ "$1" = -c ]; then shift; exec /usr/bin/cp --reflink=always "$@"; fi' \
+                      'exec /usr/bin/cp "$@"' > "$RUNNER_TEMP/shim/cp"
+                  chmod +x "$RUNNER_TEMP/shim/cp"
+                  echo "$RUNNER_TEMP/shim" >> "$GITHUB_PATH"
+                  sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+                  { uname -a; nproc; free -g; lscpu; df -h /bench; } > bench-out/machine.txt
+
+            # Odd shards run candidate first, even shards baseline first, so run order cancels out.
+            - name: Run both builds
+              env:
+                  FILES: ${{ matrix.files }}
+                  LISTS: ${{ matrix.lists }}
+                  SHARD: ${{ matrix.shard }}
+              run: |
+                  set +e
+                  order="candidate baseline"
+                  [ $((SHARD % 2)) -eq 0 ] && order="baseline candidate"
+                  status=0
+                  for build in $order; do
+                      ext="$GITHUB_WORKSPACE"
+                      [ "$build" = baseline ] && ext="$GITHUB_WORKSPACE/baseline"
+                      mkdir -p "/bench/tmp-$build"
+                      start=$(date +%s)
+                      TMPDIR="/bench/tmp-$build" INTELLIGIT_OPERATION_BENCHMARK=1 \
+                          INTELLIGIT_BENCHMARK_MODE=thin INTELLIGIT_BENCHMARK_SAMPLES=6 \
+                          INTELLIGIT_BENCHMARK_WARMUPS=3 INTELLIGIT_BENCHMARK_FILES="$FILES" \
+                          INTELLIGIT_BENCHMARK_LISTS="$LISTS" \
+                          INTELLIGIT_BENCHMARK_OUTPUT="$GITHUB_WORKSPACE/bench-out/$build" \
+                          INTELLIGIT_BENCHMARK_EXTENSION_PATH="$ext" \
+                          xvfb-run -a -s "-screen 0 1920x1080x24" \
+                          node ./node_modules/@playwright/test/cli.js test \
+                          --config playwright.e2e.config.ts --reporter=list \
+                          --global-timeout=86400000 tests/e2e/changelistScale.spec.ts \
+                          -g "operation benchmark" --output "bench-out/pw-$build" \
+                          > "bench-out/$build.log" 2>&1
+                      rc=$?
+                      echo "$build exit=$rc minutes=$(( ($(date +%s) - start) / 60 ))" | tee -a bench-out/summary.txt
+                      tail -40 "bench-out/$build.log"
+                      [ "$rc" -eq 0 ] || status=1
+                      rm -rf "/bench/tmp-$build"
+                  done
+                  exit "$status"
+
+            - name: Upload shard results
+              if: always()
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              with:
+                  name: bench-${{ matrix.files }}-${{ matrix.lists }}-shard${{ matrix.shard }}
+                  path: bench-out/
+                  if-no-files-found: error
+                  retention-days: 14
