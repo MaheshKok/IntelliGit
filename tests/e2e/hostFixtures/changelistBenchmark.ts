@@ -367,7 +367,54 @@ async function captureFailure(app: ElectronApplication, output: string, label: s
 }
 
 type GitTiming = Awaited<ReturnType<typeof instrumentGit>>;
+/** Diagnostic branch only: samples the extension host's CPU through --inspect-extensions. */
+async function hostProfiler(port: string) {
+    const deadline = Date.now() + 60_000;
+    let url: string | undefined;
+    while (!url) {
+        url = await fetch(`http://127.0.0.1:${port}/json/list`)
+            .then((response) => response.json() as Promise<{ webSocketDebuggerUrl?: string }[]>)
+            .then((targets) => targets[0]?.webSocketDebuggerUrl)
+            .catch(() => undefined);
+        if (url) break;
+        if (Date.now() > deadline) throw new Error("Extension host inspector never opened.");
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const socket = new WebSocket(url);
+    await new Promise((resolve, reject) => {
+        socket.onopen = resolve;
+        socket.onerror = reject;
+    });
+    let id = 0;
+    const replies = new Map<number, (reply: { result?: { profile?: unknown } }) => void>();
+    socket.onmessage = (event) => {
+        const reply = JSON.parse(String(event.data)) as {
+            id?: number;
+            result?: { profile?: unknown };
+        };
+        if (reply.id === undefined) return;
+        replies.get(reply.id)?.(reply);
+        replies.delete(reply.id);
+    };
+    const send = (method: string, params: object = {}) =>
+        new Promise<{ result?: { profile?: unknown } }>((resolve) => {
+            replies.set(++id, resolve);
+            socket.send(JSON.stringify({ id, method, params }));
+        });
+    await send("Profiler.enable");
+    await send("Profiler.setSamplingInterval", { interval: 1000 });
+    return {
+        start: () => send("Profiler.start"),
+        stop: async (file: string) =>
+            writeFile(file, JSON.stringify((await send("Profiler.stop")).result?.profile)),
+        close: () => socket.close(),
+    };
+}
+
 interface Session {
+    /** Diagnostic: file stem for a cold-open CPU profile of this session's extension host. */
+    profile?: string;
+    profiler?: Awaited<ReturnType<typeof hostProfiler>>;
     app?: ElectronApplication;
     timing?: GitTiming;
 }
@@ -398,6 +445,11 @@ async function openSession(
         timeout: 90_000,
     });
     session.app = app;
+    const inspectPort = process.env.INTELLIGIT_E2E_INSPECT_EXTENSIONS;
+    if (inspectPort && session.profile) {
+        session.profiler = await hostProfiler(inspectPort);
+        await session.profiler.start();
+    }
     const page = await app.firstWindow();
     if (traceStats)
         page.on("console", (message) => {
@@ -428,6 +480,8 @@ async function openSession(
     await expandPane(page, frame);
     await settle(frame);
     const settledMs = performance.now() - start;
+    if (session.profiler && session.profile)
+        await session.profiler.stop(path.join(options.output, `${session.profile}.cpuprofile`));
     const runtime = await app.evaluate(({ app }) => ({
         vscode: app.getVersion(),
         versions: process.versions,
@@ -590,7 +644,9 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
         for (let iteration = 0; iteration < total; iteration++) {
             const sampleStarted = performance.now();
             const cloneMs = await freshClone();
-            const session: Session = {};
+            // Diagnostic: profile the first measured cold open only.
+            const session: Session =
+                iteration === options.warmups ? { profile: `cold-${iteration}` } : {};
             let record: Record<string, unknown>;
             try {
                 const opened = await openSession(
@@ -626,7 +682,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
 
         const warmStarted = performance.now();
         const cloneMs = await freshClone();
-        const session: Session = {};
+        const session: Session = { profile: "warm-open" };
         try {
             const { page, frame, client, timing, record } = await openSession(
                 options,
@@ -662,6 +718,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                 await observeDisk();
             };
 
+            await session.profiler?.start();
             const coverageStarted = performance.now();
             await frame
                 .getByTestId("commit-tab")
@@ -692,6 +749,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                     });
                 },
             );
+            await session.profiler?.stop(path.join(options.output, "warm-sweep.cpuprofile"));
             result.viewportSweep = diagnostic.windows;
             result.coverage = {
                 completionMs: performance.now() - coverageStarted,
@@ -711,6 +769,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
             }
 
             const refresh = frame.getByTestId("commit-tab").getByTestId("refresh-button");
+            await session.profiler?.start();
             await costed("warmRefresh", () =>
                 measureBenchmark(options.samples, options.warmups, async () => {
                     const start = Date.now();
@@ -733,6 +792,12 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                     await settle(frame);
                 }),
             );
+            if (session.profiler) {
+                await session.profiler.stop(path.join(options.output, "warm-refresh.cpuprofile"));
+                // Diagnostic: the profiled scenarios are done; skip the rest to keep the job short.
+                result.profileTerminalSample = true;
+                return result;
+            }
             const targets = [fixture.rows[0].path, fixture.rows.at(-1)!.path];
             await costed("viewportScroll", () =>
                 measureBenchmark(options.samples, options.warmups, async (i) => {

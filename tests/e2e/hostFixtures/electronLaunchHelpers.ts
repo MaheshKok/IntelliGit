@@ -269,6 +269,10 @@ export async function launchFixtureWorkspace(options: {
                 extensionsDir,
                 workspacePath: workspace.root,
             }),
+            // Diagnostic branch only: expose the extension host to a CPU profiler.
+            ...(process.env.INTELLIGIT_E2E_INSPECT_EXTENSIONS
+                ? [`--inspect-extensions=${process.env.INTELLIGIT_E2E_INSPECT_EXTENSIONS}`]
+                : []),
         ],
         // `NodeJS.ProcessEnv` permits undefined values, but Electron's env contract does not;
         // this shared narrowing also prevents an absent inherited variable from being forwarded

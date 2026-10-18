@@ -95,9 +95,10 @@ jobs:
                   SHARD: ${{ matrix.shard }}
               run: |
                   set +e
-                  # Diagnostic: candidate only, with the lazy-stat request/reply trace.
-                  order="candidate"
+                  # Diagnostic: both builds, lazy-stat trace plus extension-host CPU profiles.
+                  order="candidate baseline"
                   export INTELLIGIT_E2E_TRACE_WORKING_FILE_STATS=1
+                  export INTELLIGIT_E2E_INSPECT_EXTENSIONS=9339
                   status=0
                   for build in $order; do
                       ext="$GITHUB_WORKSPACE"
