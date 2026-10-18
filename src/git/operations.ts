@@ -87,7 +87,11 @@ import {
 } from "./workingTree";
 import { parseStashFiles } from "./stashFiles";
 import { normalizeGitNumstatPath } from "./numstat";
-import { LAZY_WORKING_FILE_THRESHOLD, readWorkingFileStats } from "./workingFileStats";
+import {
+    LAZY_WORKING_FILE_THRESHOLD,
+    readWorkingFileStats,
+    readWorkingFileStatsBasis,
+} from "./workingFileStats";
 import { applyPatchTextToRepo } from "./patchApplication";
 import { EMPTY_TREE_HASH } from "../utils/constants";
 import {
@@ -873,6 +877,11 @@ export class GitOps {
         signal?: AbortSignal,
     ): Promise<WorkingFile[]> {
         return readWorkingFileStats(this.executor, files, paths, signal);
+    }
+
+    /** Reads what staged and unstaged counts depend on besides each file: the index and HEAD. */
+    getWorkingFileStatsBasis(): Promise<{ indexPath: string; head: string }> {
+        return readWorkingFileStatsBasis(this.executor);
     }
 
     /** Returns whether porcelain status reports any working-tree entry without loading numstat. */

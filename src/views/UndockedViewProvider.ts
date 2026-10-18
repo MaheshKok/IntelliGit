@@ -2066,12 +2066,13 @@ export class UndockedViewProvider {
             if (!canUpdate()) return;
             // The post-await root guard prevents stale refresh data from being published.
             // react-doctor-disable-next-line react-doctor/async-defer-await
-            const [hasCommits, operation] = await Promise.all([
+            const [hasCommits, operation, statsBasis] = await Promise.all([
                 rootGitOps.hasAnyCommits(),
                 this.operationSnapshotFor(rootGitOps, repositoryRoot),
+                this.fileStats.capture(files, rootGitOps, repositoryRoot),
             ]);
             if (!canUpdate()) return;
-            this.files = this.fileStats.reset(files);
+            this.files = this.fileStats.reset(files, statsBasis);
             void this.changeWorkflows
                 .get(this.repoRootUri.fsPath)
                 ?.reconcile(files)

@@ -16,6 +16,23 @@ export function workingFileStatsPathBytes(files: readonly WorkingFile[]): number
     );
 }
 
+/** Reads the index path and HEAD object; a repository without commits reports HEAD as "unborn". */
+export async function readWorkingFileStatsBasis(
+    executor: GitExecutor,
+): Promise<{ indexPath: string; head: string }> {
+    const lines = (args: string[]) =>
+        executor
+            .run(["rev-parse", "--git-path", "index", ...args])
+            .then((output) => output.trim().split(/\r?\n/));
+    // `--verify --quiet HEAD` exits non-zero only when HEAD names no commit yet.
+    const [indexPath, head] = await lines(["--verify", "--quiet", "HEAD"]).catch(async () => [
+        ...(await lines([])),
+        "unborn",
+    ]);
+    if (!indexPath || !head) throw new Error("Working-file statistics basis is unavailable.");
+    return { indexPath, head };
+}
+
 /** Reads bounded, literal path batches from a trusted status snapshot, never another status scan. */
 export async function readWorkingFileStats(
     executor: GitExecutor,

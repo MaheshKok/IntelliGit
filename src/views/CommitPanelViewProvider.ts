@@ -1528,9 +1528,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     ...shelfFilePaths(shelfState.shelves),
                 ])
                 .catch(() => runtime.folderIconsByName);
+            const statsBasis = await runtime.fileStats.capture(
+                files,
+                runtime.gitOps,
+                runtime.repository.root,
+            );
             if (refreshRequestId === runtime.dataRefreshSeq) {
                 runtime.folderIconsByName = folderIconsByName;
-                runtime.files = runtime.fileStats.reset(files);
+                runtime.files = runtime.fileStats.reset(files, statsBasis);
                 void this.changeWorkflows
                     .get(runtime.repository.root)
                     ?.reconcile(files)

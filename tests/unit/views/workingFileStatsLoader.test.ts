@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 import type { WorkingFile } from "../../../src/types";
 import { WorkingFileStatsLoader } from "../../../src/views/workingFileStatsLoader";
 import { mergeWorkingFileStats } from "../../../src/webviews/protocol/workingFileStats";
@@ -11,6 +15,23 @@ const pending = (path: string, sourcePath?: string): WorkingFile => ({
     deletions: 0,
     statsState: "pending",
 });
+
+/** A real directory for file timestamps, with a fake index path and a settable HEAD. */
+function repository() {
+    const root = mkdtempSync(path.join(tmpdir(), "intelligit-stats-"));
+    const write = (file: string, text: string) => writeFileSync(path.join(root, file), text);
+    for (const file of ["index", "a", "b"]) write(file, "initial");
+    let head = "h1";
+    const git = {
+        head: { set: (value: string) => (head = value) },
+        getWorkingFileStatsBasis: vi.fn(async () => ({ indexPath: "index", head })),
+        getWorkingFileStats: vi.fn(async (rows: readonly WorkingFile[]) =>
+            rows.map((row) => ({ ...row, additions: 9, statsState: "ready" as const })),
+        ),
+    };
+    onTestFinished(() => removeScratchDirectoriesSync(root));
+    return { root, git, write };
+}
 
 describe("WorkingFileStatsLoader", () => {
     it("every accepted visible path reaches ready or unavailable after backpressure", async () => {
@@ -152,7 +173,7 @@ describe("WorkingFileStatsLoader", () => {
         loader.dispose();
     });
 
-    it("aborts and discards an old refresh even if its Git read ignores cancellation", async () => {
+    it("discards an old refresh's late counts when the new refresh cannot prove them current", async () => {
         const loader = new WorkingFileStatsLoader();
         const files = loader.reset([pending("a")]);
         let resolve!: (rows: WorkingFile[]) => void;
@@ -179,6 +200,171 @@ describe("WorkingFileStatsLoader", () => {
             next,
         );
         loader.dispose();
+    });
+
+    it("keeps finished counts across a refresh and recounts only what changed", async () => {
+        const { root, git, write } = repository();
+        const loader = new WorkingFileStatsLoader();
+        const refresh = async () => {
+            const status = [pending("a"), pending("b")];
+            return loader.reset(status, await loader.capture(status, git, root));
+        };
+        const first = await refresh();
+        await loader.request(first[0].statsRevision, ["a", "b"], root, git, vi.fn());
+
+        write("b", "changed");
+        const second = await refresh();
+        expect(second[0]).toMatchObject({ path: "a", additions: 9, statsState: "ready" });
+        expect(second[1]).toMatchObject({ path: "b", statsState: "pending" });
+
+        await loader.request(second[1].statsRevision, ["b"], root, git, vi.fn());
+        expect((await refresh()).map((row) => row.statsState)).toEqual(["ready", "ready"]);
+        for (const change of [() => git.head.set("h2"), () => write("index", "staged")]) {
+            await loader.request(
+                (await refresh())[0].statsRevision,
+                ["a", "b"],
+                root,
+                git,
+                vi.fn(),
+            );
+            change();
+            expect((await refresh()).map((row) => row.statsState)).toEqual(["pending", "pending"]);
+        }
+        loader.dispose();
+    });
+
+    it("delivers counts that finish after a refresh when the file did not change", async () => {
+        const { root, git, write } = repository();
+        const loader = new WorkingFileStatsLoader();
+        const refresh = async () => {
+            const status = [pending("a")];
+            return loader.reset(status, await loader.capture(status, git, root));
+        };
+        // While `hold` is set each read waits for `release`, like a read slower than one refresh.
+        let hold = true;
+        let release = () => undefined as void;
+        const counted = (rows: readonly WorkingFile[]) =>
+            rows.map((row) => ({ ...row, additions: 100, statsState: "ready" as const }));
+        const read = vi.fn((rows: readonly WorkingFile[]) =>
+            hold
+                ? new Promise<WorkingFile[]>((done) => (release = () => done(counted(rows))))
+                : Promise.resolve(counted(rows)),
+        );
+        const slowGit = { ...git, getWorkingFileStats: read };
+        const deliver = vi.fn();
+        const slow = loader.request(
+            (await refresh())[0].statsRevision,
+            ["a"],
+            root,
+            slowGit,
+            deliver,
+        );
+        await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+        const second = await refresh();
+        release();
+        await slow;
+        expect(deliver).toHaveBeenCalledOnce();
+        expect(mergeWorkingFileStats(second, deliver.mock.calls[0][0])[0]).toMatchObject({
+            additions: 100,
+            statsState: "ready",
+        });
+        expect((await refresh())[0]).toMatchObject({ additions: 100, statsState: "ready" });
+
+        // The panel asks again on the new refresh while the slow read runs: no second read.
+        write("a", "changed");
+        const inFlight = loader.request(
+            (await refresh())[0].statsRevision,
+            ["a"],
+            root,
+            slowGit,
+            deliver,
+        );
+        await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+        hold = false;
+        const again = loader.request(
+            (await refresh())[0].statsRevision,
+            ["a"],
+            root,
+            slowGit,
+            deliver,
+        );
+        release();
+        await Promise.all([inFlight, again]);
+        expect(read).toHaveBeenCalledTimes(2);
+        expect(deliver).toHaveBeenCalledTimes(2);
+
+        // A file that changed while its read ran never shows the old count.
+        hold = true;
+        write("a", "changed again");
+        const stale = loader.request(
+            (await refresh())[0].statsRevision,
+            ["a"],
+            root,
+            slowGit,
+            deliver,
+        );
+        await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(3));
+        write("a", "changed a third time");
+        await refresh();
+        release();
+        await stale;
+        expect(deliver).toHaveBeenCalledTimes(2);
+        loader.dispose();
+    });
+
+    it("keys counts per staged and unstaged row and carries a path only when all its rows match", async () => {
+        const { root, git } = repository();
+        const both = (stagedStatus: WorkingFile["status"]): WorkingFile[] => [
+            { ...pending("a"), staged: true, status: stagedStatus },
+            pending("a"),
+        ];
+        const counted = (rows: readonly WorkingFile[]) =>
+            rows.map((row) => ({
+                ...row,
+                additions: row.staged ? 1 : 2,
+                statsState: "ready" as const,
+            }));
+        git.getWorkingFileStats.mockImplementation(async (rows) => counted(rows));
+        const loader = new WorkingFileStatsLoader();
+        const refresh = async (status: WorkingFile[]) =>
+            loader.reset(status, await loader.capture(status, git, root));
+        await loader.request(
+            (await refresh(both("M")))[0].statsRevision,
+            ["a"],
+            root,
+            git,
+            vi.fn(),
+        );
+        expect((await refresh(both("M"))).map((row) => row.additions)).toEqual([1, 2]);
+        expect((await refresh(both("A"))).map((row) => row.statsState)).toEqual([
+            "pending",
+            "ready",
+        ]);
+        loader.dispose();
+
+        let release = () => undefined as void;
+        git.getWorkingFileStats.mockImplementationOnce(
+            (rows) => new Promise((done) => (release = () => done(counted(rows)))),
+        );
+        const fresh = new WorkingFileStatsLoader();
+        const freshRefresh = async (status: WorkingFile[]) =>
+            fresh.reset(status, await fresh.capture(status, git, root));
+        const deliver = vi.fn();
+        const slow = fresh.request(
+            (await freshRefresh(both("M")))[0].statsRevision,
+            ["a"],
+            root,
+            git,
+            deliver,
+        );
+        await vi.waitFor(() => expect(git.getWorkingFileStats).toHaveBeenCalledTimes(2));
+        const next = await freshRefresh(both("A"));
+        release();
+        await slow;
+        expect(deliver).not.toHaveBeenCalled();
+        await fresh.request(next[0].statsRevision, ["a"], root, git, deliver);
+        expect(deliver).toHaveBeenCalledOnce();
+        fresh.dispose();
     });
 
     it("refuses unknown and oversized path arrays before the reader", async () => {

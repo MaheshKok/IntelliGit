@@ -43,6 +43,23 @@ async function git(root: string, args: string[]): Promise<void> {
 }
 
 describe("viewport working-file statistics", () => {
+    it("reads the index path and HEAD object, including a repository without commits", async () => {
+        const root = await mkdtemp(path.join(tmpdir(), "intelligit-working-stats-"));
+        directories.push(root);
+        await git(root, ["init"]);
+        const gitOps = new GitOps(new GitExecutor(root));
+        const unborn = await gitOps.getWorkingFileStatsBasis();
+        expect(path.resolve(root, unborn.indexPath)).toBe(path.resolve(root, ".git", "index"));
+        expect(unborn.head).toBe("unborn");
+        await git(root, ["config", "--local", "user.name", "Test User"]);
+        await git(root, ["config", "--local", "user.email", "test@example.invalid"]);
+        await git(root, ["commit", "--allow-empty", "-m", "base"]);
+        const { stdout: head } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: root });
+        const basis = await gitOps.getWorkingFileStatsBasis();
+        expect(path.resolve(root, basis.indexPath)).toBe(path.resolve(root, ".git", "index"));
+        expect(basis.head).toBe(head.trim());
+    });
+
     it("returns large status snapshots without scanning their file contents", async () => {
         const run = vi.fn(async (args: string[]) =>
             args[0] === "status"
