@@ -404,7 +404,13 @@ async function openSession(
     const revealStarted = performance.now();
     const frame = await new IntelliGitView(page).reveal(180_000);
     const revealMs = performance.now() - revealStarted;
-    await selectRepository(frame, primaryRoot);
+    // A late webview reload can re-expand the other repository; reselect until one Commit viewport remains.
+    await expect(async () => {
+        await selectRepository(frame, primaryRoot);
+        await expect(frame.getByRole("separator", { exact: true })).toHaveCount(1, {
+            timeout: 2_000,
+        });
+    }).toPass({ timeout: 60_000 });
     await frame.locator('[title^="bench-"]').first().waitFor();
     const firstRowsMs = performance.now() - start;
     await expandPane(page, frame);
