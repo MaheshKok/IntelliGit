@@ -6,7 +6,13 @@ import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import { expect, type ElectronApplication, type FrameLocator, type Page } from "@playwright/test";
+import {
+    expect,
+    type CDPSession,
+    type ElectronApplication,
+    type FrameLocator,
+    type Page,
+} from "@playwright/test";
 import { createFixtureWorkspace, type FixtureWorkspace } from "../../fixtures/repo/harness";
 import { runGit } from "../../fixtures/repo/gitRun";
 import {
@@ -411,6 +417,29 @@ async function hostProfiler(port: string) {
     };
 }
 
+/** Diagnostic: CPU profiles of the workbench renderer and of every out-of-process webview frame. */
+async function rendererProfiler(page: Page) {
+    const sessions: CDPSession[] = [];
+    for (const target of [page, ...page.frames().filter((frame) => frame !== page.mainFrame())]) {
+        // Same-process frames refuse their own session; the page session already samples them.
+        const session = await page.context().newCDPSession(target).catch(() => undefined);
+        if (session) sessions.push(session);
+    }
+    for (const session of sessions) {
+        await session.send("Profiler.enable");
+        await session.send("Profiler.setSamplingInterval", { interval: 1000 });
+        await session.send("Profiler.start");
+    }
+    return async (file: string) => {
+        for (const [i, session] of sessions.entries()) {
+            const { profile } = await session.send("Profiler.stop");
+            await writeFile(`${file}-${i}.cpuprofile`, JSON.stringify(profile));
+            await session.detach();
+        }
+        return sessions.length;
+    };
+}
+
 interface Session {
     /** Diagnostic: file stem for a cold-open CPU profile of this session's extension host. */
     profile?: string;
@@ -770,6 +799,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
 
             const refresh = frame.getByTestId("commit-tab").getByTestId("refresh-button");
             await session.profiler?.start();
+            const stopRenderer = session.profiler ? await rendererProfiler(page) : undefined;
             await costed("warmRefresh", () =>
                 measureBenchmark(options.samples, options.warmups, async () => {
                     const start = Date.now();
@@ -794,6 +824,9 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
             );
             if (session.profiler) {
                 await session.profiler.stop(path.join(options.output, "warm-refresh.cpuprofile"));
+                result.rendererProfiles = await stopRenderer?.(
+                    path.join(options.output, "warm-refresh-renderer"),
+                );
                 // Diagnostic: the profiled scenarios are done; skip the rest to keep the job short.
                 result.profileTerminalSample = true;
                 return result;
