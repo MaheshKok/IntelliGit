@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import { chmod, cp, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import os from "node:os";
@@ -386,6 +386,9 @@ async function openSession(
     await mkdir(channelDir, { recursive: true });
     const timing = await instrumentGit(sessionWorkspace);
     session.timing = timing;
+    // Diagnostic branch only: timestamped lazy-stat request/reply trace from the extension host.
+    const traceStats = process.env.INTELLIGIT_E2E_TRACE_WORKING_FILE_STATS === "1";
+    if (traceStats) sessionWorkspace.env.INTELLIGIT_E2E_TRACE_WORKING_FILE_STATS = "1";
     const start = performance.now();
     const app = await launchFixtureWorkspace({
         executablePath,
@@ -396,6 +399,15 @@ async function openSession(
     });
     session.app = app;
     const page = await app.firstWindow();
+    if (traceStats)
+        page.on("console", (message) => {
+            const text = message.text();
+            if (text.includes("working-file-stats"))
+                appendFileSync(
+                    path.join(options.output, "working-stats-trace.log"),
+                    `${Date.now()} ${text.replaceAll("\n", " ")}\n`,
+                );
+        });
     const client = new E2eControlChannelClient(channelDir);
     const hostBeforeReveal = await hostMetrics(client);
     // DOM snapshots of a 1000-row list made a single trace exceed 512 MB; screenshots suffice.
@@ -672,6 +684,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                               ) as { schemaVersion: number; state: { revision: number } })
                             : undefined;
                     viewportObservations.push({
+                        atMs: Date.now(),
                         elapsedMs: performance.now() - coverageStarted,
                         schemaVersion: metadata?.schemaVersion,
                         metadataRevision: metadata?.state.revision,

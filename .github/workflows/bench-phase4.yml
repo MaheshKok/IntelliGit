@@ -6,7 +6,7 @@ name: Phase 4 operation benchmark (temporary)
 on:
     push:
         branches:
-            - bench/phase4-matrix
+            - bench/phase4-diag
 
 permissions:
     contents: read
@@ -26,9 +26,9 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                files: [1000, 10000]
-                lists: [20, 100]
-                shard: [1, 2, 3, 4, 5]
+                files: [1000]
+                lists: [100]
+                shard: [1]
 
         steps:
             - name: Checkout candidate
@@ -95,8 +95,9 @@ jobs:
                   SHARD: ${{ matrix.shard }}
               run: |
                   set +e
-                  order="candidate baseline"
-                  [ $((SHARD % 2)) -eq 0 ] && order="baseline candidate"
+                  # Diagnostic: candidate only, with the lazy-stat request/reply trace.
+                  order="candidate"
+                  export INTELLIGIT_E2E_TRACE_WORKING_FILE_STATS=1
                   status=0
                   for build in $order; do
                       ext="$GITHUB_WORKSPACE"
