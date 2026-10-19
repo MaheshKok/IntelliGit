@@ -361,6 +361,9 @@ async function clearToasts(page: Page) {
 /** The host never confirmed a shelf mutation within the bound: a measured outcome, not a harness fault. */
 class HostConfirmationTimeout extends Error {}
 
+/** The host itself reported a shelf mutation failed (for example a Git index lock race): a measured outcome. */
+class HostReportedFailure extends Error {}
+
 /** Waits for the host's own success toast, failing at once on a failure toast. */
 async function waitForToast(page: Page, success: string) {
     const toasts = page.locator(TOASTS);
@@ -378,7 +381,8 @@ async function waitForToast(page: Page, success: string) {
         const failures = texts.filter(
             (text) => !statsWarnings.includes(text) && /fail|error|unavailable|no git/i.test(text),
         );
-        if (failures.length > 0) throw new Error(`Shelf command failed: ${failures.join(" | ")}`);
+        if (failures.length > 0)
+            throw new HostReportedFailure(`Shelf command failed: ${failures.join(" | ")}`);
         if (Date.now() > deadline)
             throw new HostConfirmationTimeout(
                 `No "${success}" within 600 s; visible notifications: ${texts.join(" | ") || "none"}`,
@@ -806,7 +810,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                     .split("\n")
                     .filter(Boolean).length;
             let blockedBy: string | undefined;
-            /** Runs one shelf scenario; a host that never confirms is recorded, and later ones skipped. */
+            /** Runs one shelf scenario; a host that never confirms or reports failure is recorded, and later ones skipped. */
             const shelfScenario = async (
                 name: string,
                 details: () => Record<string, unknown>,
@@ -822,7 +826,11 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                     await run();
                     scenarios[name] = { ...(scenarios[name] as object), ...details() };
                 } catch (error) {
-                    if (!(error instanceof HostConfirmationTimeout)) throw error;
+                    if (
+                        !(error instanceof HostConfirmationTimeout) &&
+                        !(error instanceof HostReportedFailure)
+                    )
+                        throw error;
                     blockedBy = error.message;
                     scenarios[name] = { incomplete: true, reason: error.message, ...details() };
                 }
