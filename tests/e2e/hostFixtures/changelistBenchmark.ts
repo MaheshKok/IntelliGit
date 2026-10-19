@@ -230,6 +230,44 @@ async function expandPane(page: Page, frame: FrameLocator) {
         await frame.getByRole("separator", { exact: true }).press("ArrowDown");
 }
 
+/**
+ * Waits until the panel shows every fixture list and its first list's checkbox is enabled (the
+ * changelist host is no longer busy), so both builds measure the same grouped view after the same
+ * first load. A panel that still shows another list count is reloaded once per quiet window. The
+ * wait and reloads are untimed setup and are reported.
+ */
+async function showAllLists(page: Page, frame: FrameLocator, root: string, lists: number) {
+    const started = performance.now();
+    const groups = frame.locator(
+        `[data-changelist-id][data-repository-root=${JSON.stringify(root)}]`,
+    );
+    const include = groups.first().getByRole("checkbox", { name: /^Include .+ in commit$/ });
+    let reloads = 0;
+    for (;;) {
+        const windowStarted = performance.now();
+        let count = await groups.count();
+        while (performance.now() - windowStarted < 120_000) {
+            count = await groups.count();
+            if (count === lists && (await include.isEnabled({ timeout: 1_000 }).catch(() => false)))
+                return { waitMs: performance.now() - started, reloads };
+            await new Promise((resolve) => setTimeout(resolve, 1_000));
+        }
+        if (performance.now() - started > 3_600_000)
+            throw new Error(`${count} of ${lists} lists shown after ${reloads} webview reloads`);
+        // The right count with a disabled checkbox is a host still loading: keep waiting.
+        if (count === lists) continue;
+        await (await paletteOption(page, "Developer: Reload Webviews")).click();
+        reloads++;
+        await expect(async () => {
+            await selectRepository(frame, root);
+            await expect(frame.getByRole("separator", { exact: true })).toHaveCount(1, {
+                timeout: 2_000,
+            });
+        }).toPass({ timeout: 60_000 });
+        await expandPane(page, frame);
+    }
+}
+
 /** Sweeps every viewport without sampling the dataset, proving first, final and Unicode rows exist. */
 async function sweep(
     frame: FrameLocator,
@@ -327,10 +365,19 @@ class HostConfirmationTimeout extends Error {}
 async function waitForToast(page: Page, success: string) {
     const toasts = page.locator(TOASTS);
     const deadline = Date.now() + 600_000;
+    const logged = new Set<string>();
     for (;;) {
         const texts = await toasts.allTextContents();
         if (texts.includes(success)) return;
-        const failures = texts.filter((text) => /fail|error|unavailable|no git/i.test(text));
+        // A line-count warning is not the shelf's result: log it once and keep waiting for the shelf toast.
+        const statsWarnings = texts.filter((text) => /change stats may be unavailable/i.test(text));
+        for (const text of statsWarnings) {
+            if (!logged.has(text)) console.log(`[benchmark] ${success} wait saw: ${text}`);
+            logged.add(text);
+        }
+        const failures = texts.filter(
+            (text) => !statsWarnings.includes(text) && /fail|error|unavailable|no git/i.test(text),
+        );
         if (failures.length > 0) throw new Error(`Shelf command failed: ${failures.join(" | ")}`);
         if (Date.now() > deadline)
             throw new HostConfirmationTimeout(
@@ -491,6 +538,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
             "Capture is the shared palette command Save to Shelf (whole repository, local changes kept). Restore is measured from the Unshelve command to settled visible rows; its unmeasured setup is Shelve Silently, which removes every local change into a fresh shelf. After the first restore, every restored file belongs to the chosen destination list (candidate: first picker entry; baseline: the active list).",
             "Palette latency starts at the command click and includes answering the repository picker by typing its label.",
             "Thin mode is harness calibration only; it is not comparison or p95 evidence.",
+            "Before the warm scenarios, untimed setup waits until the panel shows every fixture list with the changelist host idle, reloading the webview when it shows another list count (listGate records the wait and reloads). Without it the baseline webview could keep an empty first state and measure one ungrouped list.",
         ],
         unavailable: capabilities.targetPicker
             ? {}
@@ -650,6 +698,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                 await observeDisk();
             };
 
+            result.listGate = await showAllLists(page, frame, primaryRoot, options.lists);
             const coverageStarted = performance.now();
             await frame
                 .getByTestId("commit-tab")
@@ -830,7 +879,10 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                     const option = await paletteOption(page, capabilities.unshelve);
                     await option.click();
                     await acceptPrompt(page, REPOSITORY_PROMPT, repositoryLabel);
-                    await expect(input).toHaveAttribute("placeholder", SHELF_PROMPT);
+                    // A busy host can take longer than the 5 s default to list shelves.
+                    await expect(input).toHaveAttribute("placeholder", SHELF_PROMPT, {
+                        timeout: 60_000,
+                    });
                     const opened = performance.now();
                     await page.locator(".quick-input-widget").getByRole("option").first().click();
                     await expect(input).toHaveAttribute("placeholder", TARGET_PROMPT, {
