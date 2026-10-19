@@ -341,7 +341,8 @@ describe("GitOps", () => {
                 run: vi.fn(async (args: string[]) => {
                     if (args.includes("--porcelain=v1")) return statusOutput;
                     if (args.includes("--cached")) return stagedStatOutput;
-                    if (args[0] === "diff" && args.includes("--numstat")) return diffStatOutput;
+                    if (args[0] === "diff-files" && args.includes("--numstat"))
+                        return diffStatOutput;
                     return "";
                 }),
             } as unknown as GitExecutor;
@@ -353,6 +354,10 @@ describe("GitOps", () => {
             const staged = files.filter((f) => f.staged);
 
             expect(unstaged.some((f) => f.path === "src/foo.ts" && f.status === "M")).toBe(true);
+            expect(unstaged.find((f) => f.path === "src/foo.ts")).toMatchObject({
+                additions: 3,
+                deletions: 1,
+            });
             expect(unstaged.some((f) => f.path === "src/new.ts" && f.status === "?")).toBe(true);
             expect(staged.some((f) => f.path === "src/added.ts" && f.status === "A")).toBe(true);
         });

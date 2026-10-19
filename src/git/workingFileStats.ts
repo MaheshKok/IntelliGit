@@ -61,8 +61,9 @@ export async function readWorkingFileStats(
             const result = await executor.runBinary(
                 [
                     "--literal-pathspecs",
-                    "diff",
-                    ...(staged ? ["--cached"] : []),
+                    // Porcelain `diff` refreshes stat-dirty entries under index.lock, which can
+                    // fail a concurrent shelve or commit; plumbing `diff-files` never writes it.
+                    ...(staged ? ["diff", "--cached"] : ["diff-files"]),
                     "--numstat",
                     "-z",
                     "--no-ext-diff",
