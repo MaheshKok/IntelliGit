@@ -6,7 +6,7 @@ name: Phase 4 operation benchmark (temporary)
 on:
     push:
         branches:
-            - bench/phase4-matrix
+            - bench/phase4-gate
 
 permissions:
     contents: read
@@ -26,9 +26,9 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                files: [1000, 10000]
-                lists: [20, 100]
-                shard: [1, 2, 3, 4, 5]
+                files: [1000]
+                lists: [100]
+                shard: [1]
 
         steps:
             - name: Checkout candidate
