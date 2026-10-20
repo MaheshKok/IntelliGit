@@ -276,7 +276,7 @@ export class ShelfStore {
      * then this store lock. The host must refuse native/pending target operations first.
      * Restart inventories actual disk state; immutable backups never resurrect deleted shelves.
      */
-    async migrateWithHeldLocks(): Promise<void> {
+    async migrateWithHeldLocks(): Promise<boolean> {
         if (!this.lockContext.getStore()?.active)
             throw new Error("Shelf migration requires the store lock.");
         const journals = await this.readJournals();
@@ -294,7 +294,7 @@ export class ShelfStore {
         const previous = await this.readMigrationRecord();
         if (previous?.state === "complete") {
             await this.assertMutationReady();
-            return;
+            return false;
         }
         if (!previous && catalog.schemaVersion !== SCHEMA_VERSION) {
             throw new ShelfStoreCorruptionError("Shelf migration evidence is missing.");
@@ -374,6 +374,7 @@ export class ShelfStore {
             encodeJson(sealMigration({ ...pending, state: "complete" as const })),
         );
         await this.assertMutationReady();
+        return true;
     }
 
     /** Validates all live schemas once per uninterrupted lock hold, after durable completion. */

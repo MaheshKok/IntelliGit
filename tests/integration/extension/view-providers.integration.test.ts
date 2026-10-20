@@ -441,6 +441,7 @@ const refreshServiceInstances = vi.hoisted(
         [] as Array<{
             root: string;
             registerFileWatchers: ReturnType<typeof vi.fn>;
+            refreshCommitPanels: ReturnType<typeof vi.fn>;
             dispose: ReturnType<typeof vi.fn>;
         }>,
 );
@@ -548,6 +549,7 @@ vi.mock("../../../src/views/RefreshService", () => ({
         refreshMergeConflicts = vi.fn(async () => undefined);
         refreshConflictUi = vi.fn(async () => undefined);
         refreshAll = vi.fn(async () => undefined);
+        refreshCommitPanels = vi.fn(async () => undefined);
         registerFileWatchers = vi.fn();
         dispose = vi.fn();
     },
@@ -1862,6 +1864,71 @@ describe("view providers integration", () => {
             await removeScratchDirectories(repositoryRoot, globalStoragePath);
         }
     });
+
+    it.each([true, false])(
+        "refreshes the commit panels after startup recovery only when it upgraded the shelves (upgraded=%s)",
+        async (upgraded) => {
+            const repositoryRoot = await mkdtemp(
+                path.join(tmpdir(), "intelligit-shelf-repository-"),
+            );
+            await mkdir(path.join(repositoryRoot, ".git"));
+            const globalStoragePath = await mkdtemp(
+                path.join(tmpdir(), "intelligit-shelf-storage-"),
+            );
+            const { ShelfService } = await import("../../../src/services/shelfService");
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
+            let finishRecovery!: () => void;
+            const resumePendingRecovery = vi
+                .spyOn(ShelfService.prototype, "resumePendingRecovery")
+                .mockImplementationOnce(
+                    () =>
+                        new Promise((resolve) => {
+                            finishRecovery = () =>
+                                resolve({ rolledBackIds: [], retainedIds: [], upgraded });
+                        }),
+                );
+            // Both stubs keep real store-lock writes from racing the scratch cleanup, as above.
+            const cleanUp = vi
+                .spyOn(ShelfService.prototype, "cleanUpExpiredGhosts")
+                .mockResolvedValue({ status: "ok" } as never);
+            const listShelves = vi.spyOn(ShelfService.prototype, "listShelves").mockResolvedValue({
+                shelfIds: [],
+                corruptShelfIds: [],
+                catalogGeneration: 0,
+                shelves: [],
+            });
+            const refreshes = () =>
+                refreshServiceInstances.reduce(
+                    (count, instance) => count + instance.refreshCommitPanels.mock.calls.length,
+                    0,
+                );
+            try {
+                await activateRepositoryMode(
+                    {
+                        extensionUri: vscodeMock.Uri.file("/ext"),
+                        globalStorageUri: vscodeMock.Uri.file(globalStoragePath),
+                        subscriptions: [],
+                        workspaceState: createMemento(),
+                        secrets: {},
+                    } as never,
+                    [{ root: repositoryRoot, label: "Shelf repository" }],
+                );
+                await flushMicrotasks();
+                const before = refreshes();
+                finishRecovery();
+                await vi.waitFor(() => expect(cleanUp).toHaveBeenCalled());
+                await flushMicrotasks();
+                expect(refreshes() - before).toBe(upgraded ? 1 : 0);
+                await vi.waitFor(() => expect(listShelves).toHaveBeenCalled());
+            } finally {
+                resumePendingRecovery.mockRestore();
+                cleanUp.mockRestore();
+                listShelves.mockRestore();
+                await removeScratchDirectories(repositoryRoot, globalStoragePath);
+            }
+        },
+    );
 
     it("graph active repository follows the active editor without mutating commit accordion expansion", async () => {
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");

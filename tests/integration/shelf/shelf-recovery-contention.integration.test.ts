@@ -210,6 +210,7 @@ describe("ShelfService recovery and real lock contention", () => {
         await expect(restarted.service.resumePendingRecovery()).resolves.toEqual({
             rolledBackIds: [],
             retainedIds: [],
+            upgraded: false,
         });
         await expect(restarted.service.listShelves()).resolves.toMatchObject({
             shelves: [{ id: shelf.shelfId!, metadata: { lifecycle: "shelved" } }],

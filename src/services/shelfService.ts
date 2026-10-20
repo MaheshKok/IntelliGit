@@ -923,7 +923,9 @@ export class ShelfService {
         };
     }
     /** Rolls back incomplete destructive captures and removes their now-cancelled durable shelves. */
-    async resumePendingRecovery(): Promise<PendingShelfRecoveryResult> {
+    async resumePendingRecovery(): Promise<
+        PendingShelfRecoveryResult & { readonly upgraded: boolean }
+    > {
         return this.withLockedState(async () => {
             const journals = await this.options.store.readJournals();
             const links = new Map<string, { id: string; manifest: ShelfManifest }>();
@@ -936,7 +938,17 @@ export class ShelfService {
                 }
             }
             const result = await this.reverter.resumePendingWithHeldLocks();
-            if (result.rolledBackIds.length > 0) await this.options.store.migrateWithHeldLocks();
+            const upgraded = await this.options.store
+                .migrateWithHeldLocks()
+                .catch((error: unknown) => {
+                    // Upgrading at startup lets panels list post-upgrade generations; a refused upgrade waits for the next write.
+                    if (
+                        result.rolledBackIds.length === 0 &&
+                        error instanceof ShelfMutationAdmissionError
+                    )
+                        return false;
+                    throw error;
+                });
             for (const id of result.rolledBackIds) {
                 const shelf = links.get(id);
                 if (!shelf) continue;
@@ -955,7 +967,7 @@ export class ShelfService {
                       ]
                     : [],
             );
-            return result;
+            return { ...result, upgraded };
         });
     }
     private async captureShelf(input: ShelveInput): Promise<ShelfMutationResult> {

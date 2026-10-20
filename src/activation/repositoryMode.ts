@@ -172,11 +172,18 @@ export async function activateRepositoryMode(
         shelfServices.get(repositoryRoot);
     for (const [repositoryRoot, shelfService] of shelfServices) {
         void (async () => {
-            await shelfService.resumePendingRecovery();
+            const recovered = await shelfService.resumePendingRecovery();
             logShelfOperation(
                 { operation: "resumePendingRecovery", repositoryRoot },
                 { status: "ok" },
             );
+            // A panel listed before the upgrade still holds pre-upgrade generations.
+            if (recovered.upgraded)
+                void getRefreshService()
+                    .refreshCommitPanels()
+                    .catch((error: unknown) =>
+                        logShelfWarning("refresh after startup shelf upgrade failed", error),
+                    );
             const cleaned = await shelfService.cleanUpExpiredGhosts(shelfSettings.cleanupAfterDays);
             logShelfOperation({ operation: "cleanUpExpiredGhosts", repositoryRoot }, cleaned);
         })().catch((error: unknown) => {
@@ -404,7 +411,10 @@ export async function activateRepositoryMode(
     let refreshService = createRefreshService(repoRoot);
     let refreshServiceWatchersRegistered = false;
     /** Returns the currently active refresh coordinator after repository switches replace it. */
-    const getRefreshService = (): RefreshService => refreshService;
+    // A declaration, so startup shelf recovery above can call it once its first await has passed.
+    function getRefreshService(): RefreshService {
+        return refreshService;
+    }
     if (globalStoragePath) {
         void Promise.all(
             repositories.map((repository) =>

@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ShelfStore } from "../../../src/shelf/store";
+import { ShelfMutationAdmissionError, ShelfStore } from "../../../src/shelf/store";
 import { ShelfService, type ShelfServiceOptions } from "../../../src/services/shelfService";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { ChangelistPersistence } from "../../../src/changes/changelistPersistence";
@@ -310,9 +310,37 @@ describe("migration service admission", () => {
         await expect(service.resumePendingRecovery()).resolves.toEqual({
             rolledBackIds: ["pending"],
             retainedIds: [],
+            upgraded: true,
         });
         expect((await store.listShelves()).shelfIds).toEqual([]);
         expect(await store.readJournals()).toEqual([]);
+    });
+
+    it("startup recovery upgrades a legacy store, so a write carrying the generation listed afterwards succeeds", async () => {
+        const { service, store, id } = await currentService();
+        const recovered = await service.resumePendingRecovery();
+        // A panel that lists shelves after startup sends this generation back with the click.
+        const listed = await store.readCurrentShelfManifest(id);
+        expect(listed.schemaVersion).toBe(2);
+        await expect(
+            service.renameShelf({
+                id,
+                name: "renamed",
+                expectedShelfGeneration: listed.generation,
+            }),
+        ).resolves.toMatchObject({ status: "ok" });
+        expect(recovered).toEqual({ rolledBackIds: [], retainedIds: [], upgraded: true });
+        await expect(service.resumePendingRecovery()).resolves.toMatchObject({ upgraded: false });
+    });
+
+    it("startup recovery leaves a refused upgrade for the next write and still reports any other failure", async () => {
+        const { service, store, id, before } = await currentService();
+        const migrate = vi.spyOn(store, "migrateWithHeldLocks");
+        migrate.mockRejectedValueOnce(new ShelfMutationAdmissionError("blocked upgrade"));
+        await expect(service.resumePendingRecovery()).resolves.toMatchObject({ upgraded: false });
+        expect(await store.readCurrentManifest(id)).toEqual(before);
+        migrate.mockRejectedValueOnce(new Error("upgrade IO failure"));
+        await expect(service.resumePendingRecovery()).rejects.toThrow("upgrade IO failure");
     });
 });
 
