@@ -355,11 +355,15 @@ export class ShelfStore {
         }
         if (catalog.schemaVersion !== CURRENT_SCHEMA_VERSION) {
             const currentCatalog = await this.readCatalog();
+            const shelves = [...verified.keys()];
+            // An unchanged list keeps a panel's pre-upgrade generation valid; each promoted shelf's own generation still moves.
+            const unchanged =
+                JSON.stringify([...currentCatalog.shelves].sort()) === JSON.stringify(shelves);
             await this.writeCatalog({
                 ...currentCatalog,
                 schemaVersion: CURRENT_SCHEMA_VERSION,
-                catalogGeneration: currentCatalog.catalogGeneration + 1,
-                shelves: [...verified.keys()],
+                catalogGeneration: currentCatalog.catalogGeneration + (unchanged ? 0 : 1),
+                shelves,
             });
             await this.options.migrationCheckpoint?.({ phase: "catalog" });
         }

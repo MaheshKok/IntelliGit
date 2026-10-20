@@ -619,7 +619,8 @@ describe("ShelfStore", () => {
         await expect(store.listShelves()).resolves.toEqual({
             shelfIds: [],
             corruptShelfIds: [],
-            catalogGeneration: 3,
+            // The write and the delete each advance it; upgrading an empty store does not.
+            catalogGeneration: 2,
         });
         await expect(store.readCurrentShelfManifest("shelf-one")).rejects.toMatchObject({
             code: "ENOENT",

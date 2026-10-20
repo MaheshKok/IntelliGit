@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureShelfRoot, resolveShelfPaths } from "../../../src/shelf/paths";
-import { ShelfStore, type ShelfStoreOptions } from "../../../src/shelf/store";
+import { ShelfStaleShelfError, ShelfStore, type ShelfStoreOptions } from "../../../src/shelf/store";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { ShelfReverter } from "../../../src/shelf/recovery";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
@@ -443,6 +443,47 @@ describe("all-pointer shelf migration", () => {
             JSON.parse(await readFile(path.join(paths.root, "catalog.json"), "utf8")).schemaVersion,
         ).toBe(2);
     });
+
+    it.each([0, 3])(
+        "a catalog generation read before migrating %i shelves still admits a write after it",
+        async (count) => {
+            const { store } = await fixture(count);
+            const seen = (await store.listShelves()).catalogGeneration;
+            await migrate(store);
+            await expect(
+                store.withGenerationCas(
+                    { expectedCatalogGeneration: seen },
+                    async () => "admitted",
+                ),
+            ).resolves.toBe("admitted");
+            // Each promoted shelf's own generation still moves, so a stale per-shelf view is refused.
+            if (count > 0)
+                await expect(
+                    store.withGenerationCas(
+                        { shelfId: "shelf-0", expectedShelfGeneration: 1 },
+                        async () => "admitted",
+                    ),
+                ).rejects.toThrow(ShelfStaleShelfError);
+        },
+    );
+
+    it.each([
+        ["keeps", "lists the same shelves out of order", ["shelf-2", "shelf-0", "shelf-1"], 0],
+        ["advances", "missed a shelf", ["shelf-0", "shelf-1"], 1],
+        // Same length as the real list, so only a member-by-member comparison sees the swap.
+        ["advances", "swaps a shelf for one with no folder", ["shelf-0", "shelf-1", "gone"], 1],
+    ])(
+        "migration %s the catalog generation when the catalog %s",
+        async (_verb, _case, shelves, delta) => {
+            const { paths, store } = await fixture(3);
+            const catalogPath = path.join(paths.root, "catalog.json");
+            const catalog = JSON.parse(await readFile(catalogPath, "utf8"));
+            await writeFile(catalogPath, JSON.stringify({ ...catalog, shelves }));
+            const seen = (await store.listShelves()).catalogGeneration;
+            await migrate(store);
+            expect((await store.listShelves()).catalogGeneration).toBe(seen + delta);
+        },
+    );
 
     it("new mutators refuse unmigrated storage before objects or callbacks", async () => {
         const { paths, store } = await fixture(0);
