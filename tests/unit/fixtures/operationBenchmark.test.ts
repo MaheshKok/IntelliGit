@@ -191,7 +191,6 @@ describe("operation benchmark contracts", () => {
         const capabilities = await extensionCapabilities(repo);
         expect(capabilities).toEqual({
             saveToShelf: "IntelliGit: Save to Shelf…",
-            shelveSilently: "IntelliGit: Shelve Silently",
             unshelve: "IntelliGit: Unshelve…",
             targetPicker: true,
         });
@@ -204,7 +203,7 @@ describe("operation benchmark contracts", () => {
                 path.join(root, "package.json"),
                 JSON.stringify({
                     contributes: {
-                        commands: ["saveToShelf", "shelveSilently", "unshelve"].map((id) => ({
+                        commands: ["saveToShelf", "unshelve"].map((id) => ({
                             command: `intelligit.${id}`,
                             title: id,
                         })),

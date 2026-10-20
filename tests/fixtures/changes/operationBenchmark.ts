@@ -388,7 +388,6 @@ export async function extensionCapabilities(extensionPath: string) {
     const bundle = await read("l10n/bundle.l10n.json");
     return {
         saveToShelf: title("intelligit.saveToShelf"),
-        shelveSilently: title("intelligit.shelveSilently"),
         unshelve: title("intelligit.unshelve"),
         targetPicker: "Select a destination changelist" in bundle,
     };

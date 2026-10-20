@@ -6,7 +6,14 @@ import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import { expect, type ElectronApplication, type FrameLocator, type Page } from "@playwright/test";
+import {
+    errors,
+    expect,
+    type ElectronApplication,
+    type FrameLocator,
+    type Locator,
+    type Page,
+} from "@playwright/test";
 import { createFixtureWorkspace, type FixtureWorkspace } from "../../fixtures/repo/harness";
 import { runGit } from "../../fixtures/repo/gitRun";
 import {
@@ -347,8 +354,9 @@ async function shelfCount(frame: FrameLocator, root: string) {
 const TOASTS = ".notifications-toasts .notification-list-item-message";
 /** Success texts both builds show once a shelf mutation has finished on disk. */
 const SAVED_TOAST = "Changes saved to shelf.";
-const SHELVED_TOAST = "Changes shelved.";
 const UNSHELVED_TOAST = "Shelf unshelved.";
+/** Files the restore scenario shelves and restores per sample. */
+const RESTORE_FILES = 20;
 /** How long a finished mutation may take to appear in the view before it is recorded as not shown. */
 const VISIBLE_TIMEOUT_MS = 120_000;
 
@@ -397,20 +405,54 @@ async function visibleWithin(check: () => Promise<boolean>, timeoutMs: number) {
     return null;
 }
 
-/** Saves screenshots and frame HTML of a failed session before it closes. */
-async function captureFailure(app: ElectronApplication, output: string, label: string) {
-    const page = await app.firstWindow();
-    await page.screenshot({ path: path.join(output, `failed-${label}.png`) });
-    return Promise.all(
-        page.frames().map(async (frame, index) => {
-            const filename = `failed-${label}-frame-${index}.html`;
-            await writeFile(
-                path.join(output, filename),
-                await frame.content().catch(() => "unreachable"),
+/** Ticks each file's commit checkbox in one downward pass, since lists over 200 rows draw only near the viewport. */
+async function tickFiles(frame: FrameLocator, scope: Locator, files: readonly string[]) {
+    const pending = new Set(files);
+    for (let next = 0; ;) {
+        await viewport(frame, next);
+        // The second frame lets the virtualizer commit the rows its scroll handler measured.
+        const view = await viewport(frame, next);
+        for (const row of view.rows.filter((row) => pending.has(row.path))) {
+            try {
+                // The panel disables selection while it is busy with the previous mutation.
+                await scope
+                    .getByRole("checkbox", { name: row.path, exact: true })
+                    .first()
+                    .check({ timeout: 120_000 });
+            } catch (error) {
+                if (!(error instanceof errors.TimeoutError)) throw error;
+                throw new HostConfirmationTimeout(`${row.path} stayed unselectable for 120 s`);
+            }
+            pending.delete(row.path);
+        }
+        if (!pending.size) break;
+        if (view.offset >= view.maximum)
+            throw new HostConfirmationTimeout(
+                `${[...pending].join(", ")} never drew in the commit view`,
             );
-            return { url: frame.url(), filename };
-        }),
-    );
+        next = Math.min(view.maximum, view.offset + Math.max(1, view.height - 32));
+    }
+    await viewport(frame, 0);
+}
+
+/** Saves screenshots and frame HTML of a failed session before it closes; never displaces the session's own error. */
+async function captureFailure(app: ElectronApplication, output: string, label: string) {
+    try {
+        const page = await app.firstWindow({ timeout: 10_000 });
+        await page.screenshot({ path: path.join(output, `failed-${label}.png`) });
+        return await Promise.all(
+            page.frames().map(async (frame, index) => {
+                const filename = `failed-${label}-frame-${index}.html`;
+                await writeFile(
+                    path.join(output, filename),
+                    await frame.content().catch(() => "unreachable"),
+                );
+                return { url: frame.url(), filename };
+            }),
+        );
+    } catch (error) {
+        return { unavailable: error instanceof Error ? error.message : String(error) };
+    }
 }
 
 type GitTiming = Awaited<ReturnType<typeof instrumentGit>>;
@@ -535,7 +577,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
             "Chromium performance.memory is a renderer estimate; no forced renderer GC. Cold timing includes launch, one numeric host snapshot probe, first-run dismissal, native view reveal and selecting the primary repository accordion.",
             "Fixture preparation runs once per dataset and is excluded from timing. A clone resets file ctimes and inodes, so the first git status refreshes index stat data; the original freshly written fixture refreshed it too, and both builds see the same clone.",
             "Warm scenarios run in one dedicated session after the cold samples, each with its own warmups and samples, in this order: coverage sweep, refresh, scroll, repository switch, capture, target pick/cancel, restore.",
-            "Capture is the shared palette command Save to Shelf (whole repository, local changes kept). Restore is measured from the Unshelve command to settled visible rows; its unmeasured setup is Shelve Silently, which removes every local change into a fresh shelf. After the first restore, every restored file belongs to the chosen destination list (candidate: first picker entry; baseline: the active list).",
+            "Capture is the shared palette command Save to Shelf (whole repository, local changes kept). Restore is measured from the Unshelve command to settled visible rows; its unmeasured setup ticks 20 fixed fixture files in the commit panel and runs the panel's Shelve Silently, which removes only those files into a fresh shelf (a whole-repository silent shelve took minutes per sample in both builds). After the first restore, every restored file belongs to the chosen destination list (candidate: first picker entry; baseline: the active list).",
             "Palette latency starts at the command click and includes answering the repository picker by typing its label.",
             "Thin mode is harness calibration only; it is not comparison or p95 evidence.",
             "Before the warm scenarios, untimed setup waits until the panel shows every fixture list with the changelist host idle, reloading the webview when it shows another list count (listGate records the wait and reloads). Without it the baseline webview could keep an empty first state and measure one ungrouped list.",
@@ -917,13 +959,28 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                     gitProcessesStartedAfterCancel: cancelGit,
                 };
             }
-            const rows = frame.locator('[title^="bench-"]');
+            const accordion = frame.locator(
+                `[data-testid="repository-accordion"][data-repository-root=${JSON.stringify(primaryRoot)}]`,
+            );
+            // A whole-repository silent shelve takes minutes per sample in both builds, so restore
+            // shelves a fixed set of plain fixture files inside the full dataset instead. A checked
+            // split-ownership file disables the panel's shelf actions, so only whole-owner rows qualify.
+            const restorePaths = fixture.rows
+                .filter((row) => row.splitOwner === undefined)
+                .slice(0, RESTORE_FILES)
+                .map((row) => row.path);
+            const rows = accordion.locator(
+                restorePaths.map((file) => `[title=${JSON.stringify(file)}]`).join(", "),
+            );
+            // Unshelve removes the used shelf, so every sample starts back at this count.
+            const shelves = await shelfCount(frame, primaryRoot);
             const restoreDurable: number[] = [];
             const restoreVisible: (number | null)[] = [];
             viewStalled = false;
             await shelfScenario(
                 "restore",
                 () => ({
+                    restoredFiles: restorePaths,
                     latencyEndsAt: `host toast "${UNSHELVED_TOAST}" with the worktree change count restored on disk`,
                     durableMsIncludingWarmups: restoreDurable,
                     rowsVisibleMs: restoreVisible,
@@ -935,12 +992,36 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                     costed("restore", () =>
                         measureBenchmark(options.samples, options.warmups, async (_i, start) => {
                             const changed = await worktreeChanges();
-                            await clearToasts(page);
-                            const shelve = await paletteOption(page, capabilities.shelveSilently);
-                            await shelve.click();
-                            await acceptPrompt(page, REPOSITORY_PROMPT, repositoryLabel);
-                            await waitForToast(page, SHELVED_TOAST);
-                            expect(await worktreeChanges()).toBeLessThan(changed);
+                            // The panel must show the previous unshelve before it shelves again: it
+                            // sends its own shelf version, and a stale count would never be exceeded.
+                            for (
+                                const settled = Date.now() + 600_000;
+                                (await shelfCount(frame, primaryRoot)) !== shelves;
+                            ) {
+                                if (Date.now() > settled)
+                                    throw new HostConfirmationTimeout(
+                                        `Shelf tab did not return to ${shelves} shelves within 600 s`,
+                                    );
+                                await new Promise((resolve) => setTimeout(resolve, 250));
+                            }
+                            await tickFiles(frame, accordion, restorePaths);
+                            await accordion.getByRole("button", { name: "Shelf actions" }).click();
+                            // The panel's Shelve Silently shows no toast; the change and shelf counts prove it finished.
+                            await frame.getByRole("menuitem", { name: "Shelve Silently" }).click();
+                            const shelved = changed - RESTORE_FILES;
+                            const deadline = Date.now() + 600_000;
+                            while (
+                                (await worktreeChanges()) > shelved ||
+                                (await shelfCount(frame, primaryRoot)) <= shelves
+                            ) {
+                                if (Date.now() > deadline)
+                                    throw new HostConfirmationTimeout(
+                                        `Shelve Silently of ${RESTORE_FILES} checked files did not reach ${shelved} changes and a new shelf within 600 s`,
+                                    );
+                                await new Promise((resolve) => setTimeout(resolve, 250));
+                            }
+                            // Exactly the checked files left the worktree, no other selection leaked in.
+                            expect(await worktreeChanges()).toBe(shelved);
                             // Restored rows only prove anything once the view has dropped them.
                             const cleared = await visibleWithin(
                                 async () => (await rows.count()) === 0,
