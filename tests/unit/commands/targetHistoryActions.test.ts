@@ -23,10 +23,18 @@ vi.mock("../../../src/services/gitHelpers", () => ({ pickMainlineParent: vi.fn()
 vi.mock("../../../src/commands/changelistTarget", () => ({ pickChangelistTarget: vi.fn() }));
 
 import * as vscode from "vscode";
+import { mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { devNull, tmpdir } from "node:os";
+import path from "node:path";
 import {
     cherryPickToChangelist,
     revertToChangelist,
+    undoCommitRoute,
 } from "../../../src/commands/targetHistoryActions";
+import { ChangelistStore } from "../../../src/changes/changelistStore";
+import { GitExecutor } from "../../../src/git/executor";
+import { GitOps } from "../../../src/git/operations";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { pickChangelistTarget } from "../../../src/commands/changelistTarget";
 import { pickMainlineParent } from "../../../src/services/gitHelpers";
 import { showTimedInformationMessage } from "../../../src/utils/notifications";
@@ -148,3 +156,38 @@ describe("targeted history commands", () => {
         expect(showTimedInformationMessage).not.toHaveBeenCalled();
     });
 });
+
+it("undoCommitRoute connects the captured root and runs the plain undo there", async () => {
+    const root = await realpath(await mkdtemp(path.join(tmpdir(), "undo-route-")));
+    try {
+        const executor = new GitExecutor(root, undefined, {
+            GIT_CONFIG_GLOBAL: devNull,
+            GIT_CONFIG_NOSYSTEM: "1",
+        });
+        await executor.run(["init", "-q"]);
+        await executor.run(["config", "user.name", "Fixture"]);
+        await executor.run(["config", "user.email", "fixture@example.invalid"]);
+        await writeFile(path.join(root, "file"), "base\n");
+        await executor.run(["add", "file"]);
+        await executor.run(["commit", "-qm", "base"]);
+        const parent = (await executor.run(["rev-parse", "HEAD"])).trim();
+        await writeFile(path.join(root, "file"), "change\n");
+        await executor.run(["commit", "-qam", "change"]);
+        const head = (await executor.run(["rev-parse", "HEAD"])).trim();
+        await writeFile(path.join(root, "file"), "local edit\n");
+        const context = {
+            executor,
+            gitOps: new GitOps(executor),
+            repoRoot: root,
+            changelists: new ChangelistStore(),
+        } as unknown as CommitActionContext;
+        expect(
+            await undoCommitRoute(context, { commit: head, head }),
+            "an unconnected store is connected at the captured root before the decision",
+        ).toEqual({ route: "plainReset", path: "file", reason: "localChanges" });
+        expect((await executor.run(["rev-parse", "HEAD"])).trim()).toBe(parent);
+        expect(await readFile(path.join(root, "file"), "utf8")).toBe("local edit\n");
+    } finally {
+        await removeScratchDirectories(root);
+    }
+}, 30_000);

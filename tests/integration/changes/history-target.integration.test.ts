@@ -19,7 +19,10 @@ import { GitExecutor } from "../../../src/git/executor";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
-import { applyTargetHistoryOperation } from "../../../src/git/targetHistoryOperation";
+import {
+    applyTargetHistoryOperation,
+    preflightUndoCommit,
+} from "../../../src/git/targetHistoryOperation";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { captureTargetNativeEvidence } from "../../../src/git/targetOperationRecovery";
 import {
@@ -824,22 +827,113 @@ it("undo retains pre-existing mixed ownership", async () => {
     expect(state.files.unrelated).toBe(f.owner);
 }, 30_000);
 
-it("undo refuses a locally changed affected file before any reset", async () => {
+/** Git argument lists of every `reset` the spy saw. */
+const resets = (calls: { mock: { calls: unknown[][] } }) =>
+    calls.mock.calls.map(([args]) => args as string[]).filter((args) => args[0] === "reset");
+
+it("undo of a locally changed affected file falls back to the plain soft reset", async () => {
     const f = await undoFixture();
     await writeFile(path.join(f.root, "affected"), "local edit\n");
     const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
-    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
-    expect(result.outcome).toBe("notApplied");
-    expect(result.reason, "refusal names the changed path").toContain("affected");
-    expect(
-        calls.mock.calls.filter(([args]) => args[0] === "reset"),
-        "refused undo must never reset",
-    ).toHaveLength(0);
+    const refused = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(refused.outcome, "the targeted adapter alone still refuses").toBe("notApplied");
+    expect(refused.reason, "refusal names the changed path").toContain("affected");
+    expect(resets(calls), "refused targeted undo must never reset").toHaveLength(0);
+    const route = await preflightUndoCommit(f.git, f.persistence, f.store, f.request);
+    expect(route, "a local edit routes Undo Commit to the previous release's reset").toEqual({
+        route: "plainReset",
+        path: "affected",
+        reason: "localChanges",
+    });
+    expect(resets(calls), "the plain undo soft-resets exactly once").toEqual([
+        ["reset", "--soft", f.parent],
+    ]);
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.parent);
+    expect(await readFile(path.join(f.root, "affected"), "utf8"), "the local edit survives").toBe(
+        "local edit\n",
+    );
+    expect(await f.git.run(["show", ":affected"]), "the undone commit stays staged").toBe(
+        "source change\n",
+    );
     const state = f.store.get(f.root);
     expect(state.lists.some((list) => list.name === "Destination")).toBe(false);
     expect(state.pendingTargetOperation).toBeUndefined();
-    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.request.head);
-    expect(await readFile(path.join(f.root, "affected"), "utf8")).toBe("local edit\n");
+    expect(state.files.unrelated).toBe(f.owner);
+}, 30_000);
+
+it("plain undo keeps staged and unstaged edits to an undone file", async () => {
+    const f = await undoFixture();
+    await writeFile(path.join(f.root, "affected"), "staged edit\n");
+    await f.git.run(["add", "affected"]);
+    await writeFile(path.join(f.root, "affected"), "working edit\n");
+    const route = await preflightUndoCommit(f.git, f.persistence, f.store, f.request);
+    expect(route.route, "a staged edit also routes to the plain reset").toBe("plainReset");
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim(), "the undo succeeded").toBe(f.parent);
+    expect(await f.git.run(["show", ":affected"]), "the staged edit stays staged").toBe(
+        "staged edit\n",
+    );
+    expect(await readFile(path.join(f.root, "affected"), "utf8"), "the working edit survives").toBe(
+        "working edit\n",
+    );
+    expect(await f.git.run(["show", ":unrelated"])).toBe("staged unrelated\n");
+    expect(await readFile(path.join(f.root, "unrelated"), "utf8")).toBe("working unrelated\n");
+}, 30_000);
+
+it("plain undo of a file that belongs to a list keeps its owner", async () => {
+    const f = await undoFixture();
+    await f.store.reconcileFiles(f.root, ["unrelated", "affected"]);
+    await f.store.create(f.root, f.store.get(f.root).revision, "Owner", "", false, ["affected"]);
+    const owner = f.store.get(f.root).files.affected;
+    const route = await preflightUndoCommit(f.git, f.persistence, f.store, f.request);
+    expect(route, "list membership routes Undo Commit to the previous release's reset").toEqual({
+        route: "plainReset",
+        path: "affected",
+        reason: "owned",
+    });
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.parent);
+    const state = f.store.get(f.root);
+    expect(state.files.affected, "the existing owner is kept").toBe(owner);
+    expect(state.lists.some((list) => list.name === "Destination")).toBe(false);
+}, 30_000);
+
+it("a clean undo keeps the targeted path and changes nothing before the prompt", async () => {
+    const f = await undoFixture();
+    const paths = ["affected", "unrelated"];
+    const before = await captureTargetNativeEvidence(f.git, f.persistence, f.request.id, paths);
+    const prior = structuredClone(f.store.get(f.root));
+    const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+    const route = await preflightUndoCommit(f.git, f.persistence, f.store, f.request);
+    expect(route, "a clean undo keeps its destination choice").toEqual({ route: "targeted" });
+    expect(resets(calls), "the preflight never resets a clean undo").toHaveLength(0);
+    expect(await captureTargetNativeEvidence(f.git, f.persistence, f.request.id, paths)).toEqual(
+        before,
+    );
+    expect(f.store.get(f.root)).toEqual(prior);
+}, 30_000);
+
+it("a pending target operation blocks the plain undo before any reset", async () => {
+    // Markerless and conflict-free, so only the fence (not Git) can stop the reset.
+    const f = await fixture("cherryPick");
+    await writeFile(path.join(f.root, "doc"), "doc\n");
+    await f.git.run(["add", "doc"]);
+    await f.git.run(["commit", "--only", "-qm", "doc", "--", "doc"]);
+    const head = (await f.git.run(["rev-parse", "HEAD"])).trim();
+    vi.spyOn(f.store, "checkpointTargetOperation").mockRejectedValueOnce(
+        new Error("Injected after-Git metadata failure"),
+    );
+    const request = { ...f.request, head };
+    expect(
+        (await applyTargetHistoryOperation(f.git, f.persistence, f.store, request)).outcome,
+    ).toBe("appliedNeedsReview");
+    const pending = f.store.get(f.root).pendingTargetOperation;
+    expect(pending?.id, "precondition: a target operation is pending").toBe(request.id);
+    await writeFile(path.join(f.root, "doc"), "local edit\n");
+    const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+    const route = await preflightUndoCommit(f.git, f.persistence, f.store, { commit: head, head });
+    expect(route, "a pending target operation fences the plain undo").toEqual({ route: "busy" });
+    expect(resets(calls), "a fenced undo must never reset").toHaveLength(0);
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(head);
+    expect(f.store.get(f.root).pendingTargetOperation).toEqual(pending);
 }, 30_000);
 
 it("metadata failure after soft reset never resets again", async () => {

@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
-import type { TargetHistoryRequest, TargetHistoryResult } from "../git/targetHistoryOperation";
+import { ChangelistPersistence } from "../changes/changelistPersistence";
+import {
+    preflightUndoCommit,
+    type TargetHistoryRequest,
+    type TargetHistoryResult,
+    type UndoCommitPreflight,
+} from "../git/targetHistoryOperation";
 import { pickMainlineParent } from "../services/gitHelpers";
 import { getErrorMessage } from "../utils/errors";
 import { showTimedInformationMessage } from "../utils/notifications";
@@ -39,6 +45,20 @@ export async function applyHistoryToChangelist(
     if (outcome.status === "cancelled") return undefined;
     await ctx.refreshAll();
     return outcome.result;
+}
+
+/**
+ * Decides Undo Commit's route at the captured root before any destination prompt. `plainReset`
+ * means the previous release's soft reset has already run, so no destination is offered.
+ */
+export async function undoCommitRoute(
+    ctx: CommitActionContext,
+    intent: Pick<TargetHistoryRequest, "commit" | "head">,
+): Promise<UndoCommitPreflight> {
+    const { root, gitDir } = await ctx.gitOps.deriveFor(ctx.repoRoot).getGitDirectories();
+    await ctx.changelists.connect(root, gitDir);
+    const persistence = await ChangelistPersistence.open(root, gitDir);
+    return preflightUndoCommit(ctx.executor, persistence, ctx.changelists, intent);
 }
 
 /** Cherry-picks the selected commit into a chosen changelist and leaves the result uncommitted. */
@@ -99,7 +119,7 @@ async function historyToChangelist(
 export function showTargetHistoryResult(
     short: string,
     kind: TargetHistoryRequest["kind"],
-    result: TargetHistoryResult,
+    result: Pick<TargetHistoryResult, "outcome" | "reason">,
 ): void {
     const reason = result.reason ?? vscode.l10n.t("No changes were made.");
     switch (result.outcome) {

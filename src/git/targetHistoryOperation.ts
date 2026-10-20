@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -275,6 +276,63 @@ export async function applyTargetHistoryOperation(
     return result;
 }
 
+/** Why the targeted rules refuse one whole-file path. */
+interface WholeFileRefusal {
+    readonly path: string;
+    readonly reason: "owned" | "localChanges";
+}
+
+/**
+ * Undo Commit's route, decided before any destination prompt. `plainReset` means the targeted
+ * rules refuse `path`, so the previous release's soft reset has already run instead.
+ */
+export type UndoCommitPreflight =
+    { readonly route: "targeted" | "busy" } | ({ readonly route: "plainReset" } & WholeFileRefusal);
+
+/**
+ * Under the metadata lease and mutation gate, apply the targeted admission rules to the undone
+ * paths. A pending target operation or held lease is `busy`. When the rules refuse a path for its
+ * owner or local changes, the plain `reset --soft` runs under the same lease so nothing interleaves
+ * between decision and reset. Anything else is left to the targeted path's own checks.
+ */
+export async function preflightUndoCommit(
+    executor: GitExecutor,
+    persistence: ChangelistPersistence,
+    store: ChangelistStore,
+    request: Pick<TargetHistoryRequest, "commit" | "head">,
+): Promise<UndoCommitPreflight> {
+    const git = executor.deriveFor(persistence.root);
+    let lease: TargetOperationLease | undefined;
+    try {
+        lease = await store.acquireTargetOperationLease(persistence.root);
+        return await git.runWithinMutationGate(async (run): Promise<UndoCommitPreflight> => {
+            const state = store.inspectTargetOperationLease(persistence.root, lease!);
+            if (state.pendingTargetOperation) return { route: "busy" };
+            const { paths, parent } = await admittedPaths(git, { ...request, kind: "undoCommit" });
+            const captured = await captureTargetNativeEvidence(
+                git,
+                persistence,
+                randomUUID(),
+                paths,
+            );
+            if (captured.head !== request.head || captured.native.some((entry) => entry.present))
+                return { route: "targeted" };
+            const whole: TargetWholeFileBefore[] = [];
+            for (const file of paths)
+                whole.push(await wholeBefore(git, persistence, state, file, request.head));
+            const refusal = wholeFileRefusal(captured, whole);
+            if (!refusal) return { route: "targeted" };
+            await run(["reset", "--soft", parent]);
+            return { route: "plainReset", ...refusal };
+        });
+    } catch (error) {
+        if (error instanceof RepositoryLockBusyError) return { route: "busy" };
+        throw error;
+    } finally {
+        await lease?.release();
+    }
+}
+
 /** Runs the one native mutation; a failure message is returned so evidence decides what changed. */
 async function runHistoryCommand(
     run: (args: string[]) => Promise<string>,
@@ -336,7 +394,7 @@ async function readHistorySnapshots(
  */
 async function admittedPaths(
     git: GitExecutor,
-    request: TargetHistoryRequest,
+    request: Pick<TargetHistoryRequest, "kind" | "commit" | "head" | "mainline">,
 ): Promise<{ paths: string[]; whole: Set<string>; parent: string }> {
     if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(request.commit))
         throw new Error("History commit must be an exact object ID.");
@@ -452,19 +510,34 @@ function assertAdmitted(
     text: readonly string[],
     whole: readonly TargetWholeFileBefore[],
 ): void {
-    const plain = (entry: TargetIndexEntry) =>
-        entry.stage === 0 && !entry.intentToAdd && !entry.skipWorktree && !entry.assumeUnchanged;
     for (const file of text) {
         const index = evidence.index.filter((entry) => entry.path === file);
-        if (index.length !== 1 || !plain(index[0]))
+        if (index.length !== 1 || !plainIndexEntry(index[0]))
             throw new Error(`"${file}" has an unsupported index entry for this history action.`);
     }
+    const refusal = wholeFileRefusal(evidence, whole);
+    if (refusal?.reason === "owned")
+        throw new Error(
+            `"${refusal.path}" already belongs to a changelist. Added, deleted, renamed, linked or re-moded files must be unassigned and clean.`,
+        );
+    if (refusal)
+        throw new Error(
+            `"${refusal.path}" has local changes. Added, deleted, renamed, linked or re-moded files must be unassigned and clean.`,
+        );
+}
+
+function plainIndexEntry(entry: TargetIndexEntry): boolean {
+    return entry.stage === 0 && !entry.intentToAdd && !entry.skipWorktree && !entry.assumeUnchanged;
+}
+
+/** First whole-file path that is owned, or whose HEAD, index and disk differ; Undo Commit shares it. */
+function wholeFileRefusal(
+    evidence: TargetOperationEvidence,
+    whole: readonly TargetWholeFileBefore[],
+): WholeFileRefusal | undefined {
     for (const captured of whole) {
         const file = captured.path;
-        if (!captured.unowned)
-            throw new Error(
-                `"${file}" already belongs to a changelist. Added, deleted, renamed, linked or re-moded files must be unassigned and clean.`,
-            );
+        if (!captured.unowned) return { path: file, reason: "owned" };
         const index = evidence.index.filter((entry) => entry.path === file);
         const working = evidence.paths.find((entry) => entry.path === file)?.state;
         const head = captured.head;
@@ -472,7 +545,7 @@ function assertAdmitted(
             head.kind === "absent"
                 ? !index.length && working?.kind === "absent"
                 : index.length === 1 &&
-                  plain(index[0]) &&
+                  plainIndexEntry(index[0]) &&
                   index[0].mode === head.mode &&
                   index[0].oid === head.oid &&
                   isDeepStrictEqual(index[0].object, head.object) &&
@@ -482,11 +555,9 @@ function assertAdmitted(
                       : working?.kind === "regular" &&
                         working.executable === (head.mode === "100755") &&
                         isDeepStrictEqual(working.content, head.object));
-        if (!clean)
-            throw new Error(
-                `"${file}" has local changes. Added, deleted, renamed, linked or re-moded files must be unassigned and clean.`,
-            );
+        if (!clean) return { path: file, reason: "localChanges" };
     }
+    return undefined;
 }
 
 /** Pair a normal text snapshot with exact native evidence, including raw worktree bytes. */

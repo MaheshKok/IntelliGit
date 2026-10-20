@@ -21,7 +21,11 @@ import type {
     InteractiveRebaseRangeRejectionReason,
 } from "../git/interactiveRebase/types";
 import type { CommitActionContext } from "./commitActionContext";
-import { applyHistoryToChangelist, showTargetHistoryResult } from "./targetHistoryActions";
+import {
+    applyHistoryToChangelist,
+    showTargetHistoryResult,
+    undoCommitRoute,
+} from "./targetHistoryActions";
 
 /**
  * Soft-resets unpushed commits through the selected commit back into the index.
@@ -30,6 +34,8 @@ import { applyHistoryToChangelist, showTargetHistoryResult } from "./targetHisto
  * working tree intact, moves `HEAD` to the selected commit's parent, keeps the undone changes staged
  * in a chosen changelist (optionally copying the commit message to its draft), shows Git failures in
  * VS Code, and refreshes views after the reset attempt. Cancelling the destination changes nothing.
+ * When an undone file has local edits or belongs to a list, the previous release's plain soft reset
+ * runs instead, without a destination prompt. A pending target operation blocks both paths.
  */
 export async function undoCommit(ctx: CommitActionContext): Promise<void> {
     if (
@@ -72,7 +78,22 @@ export async function undoCommit(ctx: CommitActionContext): Promise<void> {
         undoLabel,
     );
     if (confirm !== undoLabel) return;
+    const undone = vscode.l10n.t("Undid {count} commit(s) up to {short}.", {
+        count: undoCount,
+        short: ctx.short,
+    });
     try {
+        // Typed route, decided after consent and before any destination prompt.
+        const route = await undoCommitRoute(ctx, { commit: ctx.validatedHash, head });
+        if (route.route === "busy") {
+            showTargetHistoryResult(ctx.short, "undoCommit", { outcome: "busy" });
+            return;
+        }
+        if (route.route === "plainReset") {
+            showTimedInformationMessage(undone);
+            await ctx.refreshAll();
+            return;
+        }
         const result = await applyHistoryToChangelist(
             ctx,
             { kind: "undoCommit", commit: ctx.validatedHash, head },
@@ -86,13 +107,7 @@ export async function undoCommit(ctx: CommitActionContext): Promise<void> {
                   ]
                 : [],
         );
-        if (result?.outcome === "applied")
-            showTimedInformationMessage(
-                vscode.l10n.t("Undid {count} commit(s) up to {short}.", {
-                    count: undoCount,
-                    short: ctx.short,
-                }),
-            );
+        if (result?.outcome === "applied") showTimedInformationMessage(undone);
         else if (result) showTargetHistoryResult(ctx.short, "undoCommit", result);
     } catch (err) {
         const message = getErrorMessage(err);
