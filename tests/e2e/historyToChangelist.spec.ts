@@ -320,11 +320,12 @@ test.describe("History into a changelist", () => {
         }
     });
 
-    test("Undo Commit refuses when an affected file has an unstaged edit", async ({
+    test("Undo Commit falls back to the plain soft reset when an affected file has an unstaged edit", async ({
         fixtureWorkspace,
     }, testInfo) => {
         const { workspace } = fixtureWorkspace;
         const { undone } = await seedHistory(workspace);
+        const parent = await git(workspace, ["rev-parse", `${undone}^`]);
         const dirty = "u0\nundo me\nunstaged edit\n";
         await writeFile(path.join(workspace.root, UNDO), dirty);
         const { app, page } = await launch(fixtureWorkspace);
@@ -337,31 +338,21 @@ test.describe("History into a changelist", () => {
                 confirmHoles: { count: "1" },
                 buttonKey: "Undo",
             });
-            await pickNewList(page, "Refused work");
-            const input = page.locator(".quick-input-widget .quick-input-box input");
-            await expect(input).toHaveAttribute(
-                "placeholder",
-                hostText("Choose how to handle the destination draft"),
-            );
-            await page
-                .getByRole("option", {
-                    name: new RegExp(`^${hostText("Keep Destination Draft")}`),
-                })
-                .click();
             await expect(
                 toast(
                     page,
-                    catalogPattern(hostText("Nothing was applied for {short}: {reason}"), undone, {
-                        reason: `.*"${UNDO}"`,
+                    catalogPattern(hostText("Undid {count} commit(s) up to {short}."), undone, {
+                        count: "1",
                     }),
                 ),
             ).toBeVisible();
-            expect(await git(workspace, ["rev-parse", "HEAD"])).toBe(undone);
+            expect(await git(workspace, ["rev-parse", "HEAD"])).toBe(parent);
+            // The soft reset keeps the undone change staged and the unstaged edit on disk.
+            expect(await git(workspace, ["diff", "--cached", "--name-only"])).toBe(UNDO);
             expect(await fileText(workspace, UNDO)).toBe(dirty);
-            expect((await readState(workspace)).lists.map((list) => list.name)).not.toContain(
-                "Refused work",
-            );
-            await attachScreenshot(page, testInfo, "undo-commit-refused.png");
+            // The plain path offers no destination picker.
+            await expect(page.locator(".quick-input-widget .quick-input-box input")).toBeHidden();
+            await attachScreenshot(page, testInfo, "undo-commit-plain-reset.png");
         } finally {
             await app.close();
         }
