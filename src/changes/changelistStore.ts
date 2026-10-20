@@ -685,6 +685,11 @@ export class ChangelistStore {
         return observation;
     }
 
+    /** Resolves once every write already queued, including a background connection, has finished. */
+    async writesSettled(): Promise<void> {
+        await this.writes;
+    }
+
     /**
      * Resolves once every prerequisite already in flight settles. A rejected one never blocks; the
      * revision fence still guards. Observer writes are held by `holdObservers`, never awaited here.

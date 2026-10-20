@@ -845,9 +845,11 @@ export class GitOps {
                 logGitOpsWarning(`Failed to get ${label} numstat`, err, { userWarningMessage });
             }
         };
-        // Fetch unstaged and staged numstat in parallel
+        // Fetch unstaged and staged numstat in parallel. Unstaged uses plumbing `diff-files`:
+        // porcelain `diff` refreshes stat-dirty entries under index.lock even with
+        // GIT_OPTIONAL_LOCKS=0, failing a concurrent shelve or commit outside the mutation gate.
         const [unstagedStat, stagedStat] = await Promise.all([
-            this.executor.run(["diff", "--numstat"]).catch((err) => {
+            this.executor.run(["diff-files", "--numstat"]).catch((err) => {
                 logGitOpsWarning("Failed to get unstaged numstat", err, {
                     userWarningMessage: unstagedStatsUnavailableMessage(),
                 });

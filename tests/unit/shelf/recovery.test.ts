@@ -34,6 +34,7 @@ import {
     ShelfRollbackRetainedError,
     type RevertCheckpoint,
 } from "../../../src/shelf/recovery";
+import { GitExecutorRecoveryGit } from "../../../src/shelf/recoveryGit";
 import { ShelfStore, type ShelfJournalPathProgress } from "../../../src/shelf/store";
 
 const execFileAsync = promisify(execFile);
@@ -139,6 +140,46 @@ describe("ShelfReverter", () => {
             }),
         ).rejects.toThrow("crash at " + checkpoint);
         expect(await readFile(path.join(repositoryRoot, "tracked.txt"), "utf8")).toBe("change\n");
+    });
+
+    it("reverts many files within a fixed Git process budget per file", async () => {
+        const { repositoryRoot, gitOps, gate, store } = await createReverter();
+        const files = Array.from({ length: 20 }, (_, i) => `many/file-${i}.txt`);
+        await mkdir(path.join(repositoryRoot, "many"));
+        for (const file of files) await writeFile(path.join(repositoryRoot, file), "base\n");
+        await git(repositoryRoot, ["add", "many"]);
+        await git(repositoryRoot, ["commit", "-m", "many"]);
+        for (const file of files) await writeFile(path.join(repositoryRoot, file), "change\n");
+        const executor = new GitExecutor(repositoryRoot);
+        const runBinary = executor.runBinary.bind(executor);
+        let processes = 0;
+        executor.runBinary = (args, options) => {
+            processes++;
+            return runBinary(args, options);
+        };
+        const reverter = new ShelfReverter({
+            repositoryRoot,
+            gitOps,
+            gate,
+            store,
+            git: new GitExecutorRecoveryGit(executor),
+        });
+
+        await reverter.revert({
+            transactionId: "many-files",
+            files: files.map((relativePath) => ({
+                relativePath,
+                baseBytes: Buffer.from("base\n"),
+            })),
+        });
+
+        for (const file of files)
+            expect(await readFile(path.join(repositoryRoot, file), "utf8")).toBe("base\n");
+        expect(await gitOutput(repositoryRoot, ["diff", "--name-only", "HEAD", "--", "many"])).toBe(
+            "",
+        );
+        // Per file: HEAD and index checks before and after (6), the index write and one listing.
+        expect(processes).toBeLessThanOrEqual(8 * files.length + 6);
     });
 
     it("never rolls back after the shelved journal has committed", async () => {

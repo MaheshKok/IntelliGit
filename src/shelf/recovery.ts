@@ -23,7 +23,7 @@ import type {
 } from "./store";
 import { resolveNoFollowFlag } from "./noFollowFlag";
 import { GitExecutorRecoveryGit, RecoverySafetyError } from "./recoveryGit";
-import type { ShelfRecoveryGit } from "./recoveryGit";
+import type { IndexListing, ShelfRecoveryGit } from "./recoveryGit";
 import {
     assertContainedParent,
     assertContainedParentIfPresent,
@@ -337,6 +337,7 @@ export class ShelfReverter {
         try {
             await this.writePendingJournal(state);
             await this.checkpoint("journal-created");
+            await this.prefetchBaseEntries(state.baseOid, input.files);
             for (const file of input.files) {
                 // Per-path journal checkpoints and index fingerprints make this transaction ordered.
                 // react-doctor-disable-next-line react-doctor/async-await-in-loop
@@ -381,11 +382,15 @@ export class ShelfReverter {
         state.seenPaths.add(relativePath);
         // Snapshot index state only after the transaction-wide Git precondition has held.
         // react-doctor-disable-next-line react-doctor/async-parallel
-        await this.verifyGitPreconditions(state.originalHead, state.expectedIndex);
-        const originalIndexEntry = await this.git.getIndexEntry(relativePath);
+        const listing = await this.verifiedIndexListing(state.originalHead, state.expectedIndex);
+        const originalIndexEntry = listing
+            ? listing.entry(relativePath)
+            : await this.git.getIndexEntry(relativePath);
         // Preserve index-entry failure precedence before its fingerprint is read.
         // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
-        const originalIndexFingerprint = await this.git.getIndexPathFingerprint(relativePath);
+        const originalIndexFingerprint = listing
+            ? listing.pathFingerprint(relativePath)
+            : await this.git.getIndexPathFingerprint(relativePath);
         const target = resolveRepositoryPath(this.options.repositoryRoot, relativePath);
         const recoveryPath = resolveRecoveryPath(recoveryDirectory, relativePath);
         // Lexical containment permits a deleted parent; writeBaseFile recreates and realpath-checks it.
@@ -518,12 +523,18 @@ export class ShelfReverter {
     ): Promise<void> {
         await this.verifyGitPreconditions(state.originalHead, state.expectedIndex);
         await this.git.writeIndexEntry(entry.relativePath, baseEntry);
-        entry.writtenIndexEntry = await this.git.getIndexEntry(entry.relativePath);
-        entry.writtenIndexFingerprint = await this.git.getIndexPathFingerprint(entry.relativePath);
+        // One listing answers the written entry, its fingerprint and the new whole-index fingerprint.
+        const listing = await this.indexListing();
+        entry.writtenIndexEntry = listing
+            ? listing.entry(entry.relativePath)
+            : await this.git.getIndexEntry(entry.relativePath);
+        entry.writtenIndexFingerprint = listing
+            ? listing.pathFingerprint(entry.relativePath)
+            : await this.git.getIndexPathFingerprint(entry.relativePath);
         if (!sameIndexEntry(entry.writtenIndexEntry, baseEntry)) {
             throw new RecoverySafetyError("Git did not restore the expected base index entry.");
         }
-        state.expectedIndex = await this.currentIndexFingerprint();
+        state.expectedIndex = listing ? listing.fingerprint : await this.currentIndexFingerprint();
         state.pathProgress[entry.relativePath] = journalProgress(entry, "written");
         await this.writePendingJournal(state);
         await this.checkpoint("index-updated");
@@ -617,6 +628,46 @@ export class ShelfReverter {
         if ((await this.currentIndexFingerprint()) !== expectedIndex) {
             throw new RecoverySafetyError("Index changed during the shelf recovery transaction.");
         }
+    }
+
+    /**
+     * Same checks as `verifyGitPreconditions`, returning the verified listing so per-path index
+     * reads need no further Git processes. Undefined when a fingerprint seam or Git double is used.
+     */
+    private async verifiedIndexListing(
+        originalHead: string | undefined,
+        expectedIndex: string | undefined,
+    ): Promise<IndexListing | undefined> {
+        if ((await this.currentHead()) !== originalHead) {
+            throw new RecoverySafetyError("HEAD changed during the shelf recovery transaction.");
+        }
+        const listing = await this.indexListing();
+        if (
+            (listing ? listing.fingerprint : await this.currentIndexFingerprint()) !== expectedIndex
+        ) {
+            throw new RecoverySafetyError("Index changed during the shelf recovery transaction.");
+        }
+        return listing;
+    }
+
+    private async indexListing(): Promise<IndexListing | undefined> {
+        return this.options.getIndexFingerprint ? undefined : this.git.readIndexListing?.();
+    }
+
+    /** One bounded batch read of base entries; a failed batch leaves those paths to per-path reads. */
+    private async prefetchBaseEntries(
+        baseOid: string,
+        files: readonly RevertFile[],
+    ): Promise<void> {
+        const paths: string[] = [];
+        for (const file of files) {
+            try {
+                paths.push(assertRepositoryRelativePath(file.relativePath));
+            } catch {
+                // revertFile refuses this path at its own position in the transaction.
+            }
+        }
+        await this.git.prefetchBaseEntries?.(baseOid, paths).catch(() => undefined);
     }
 
     private async currentHead(): Promise<string | undefined> {

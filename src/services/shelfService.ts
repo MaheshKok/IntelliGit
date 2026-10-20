@@ -741,6 +741,8 @@ export class ShelfService {
     ): Promise<ShelfConflictSessionPayload> {
         const payload = await this.conflictSessions.open({ id, changeId });
         // The host binds the editor to the durable pending restore it reads here, never to a webview value.
+        // Activation connects in the background; read only after that connection has loaded it.
+        await this.options.changelists.writesSettled();
         const pending = this.options.changelists.get(this.repositoryRoot).pendingTargetOperation;
         return pending?.kind === "shelfRestore" &&
             pending.phase === "conflicted" &&

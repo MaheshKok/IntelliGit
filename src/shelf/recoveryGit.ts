@@ -28,11 +28,31 @@ export interface ShelfRecoveryGit {
     getIndexEntry(relativePath: string): Promise<ShelfJournalIndexEntry | undefined>;
     readBlob(oid: string): Promise<Buffer>;
     writeIndexEntry(relativePath: string, entry: ShelfJournalIndexEntry | undefined): Promise<void>;
+    /** One whole-index read answering the fingerprint and every per-path query above. */
+    readIndexListing?(): Promise<IndexListing>;
+    /** Reads base entries for many paths in bounded batches; `getBaseEntry` then answers from them. */
+    prefetchBaseEntries?(baseOid: string, relativePaths: readonly string[]): Promise<void>;
 }
+
+/**
+ * A consistent raw `ls-files --stage -v -z` listing. Per-path answers are byte-identical to the
+ * `--literal-pathspecs` per-path commands: a path matches itself and every record below `path/`.
+ */
+export interface IndexListing {
+    readonly fingerprint: string;
+    entry(relativePath: string): ShelfJournalIndexEntry | undefined;
+    pathFingerprint(relativePath: string): string;
+}
+
+/** Bounds one batched `ls-tree` command line. */
+const BASE_ENTRY_BATCH_PATHS = 200;
+const BASE_ENTRY_BATCH_BYTES = 64 * 1024;
 
 /** Default direct Git plumbing; callers already own the repository mutation gate. */
 export class GitExecutorRecoveryGit implements ShelfRecoveryGit {
     private emptyTree?: Promise<string>;
+    /** Raw base records by path; tree objects are immutable, so they never go stale for one OID. */
+    private baseRecords?: { readonly baseOid: string; readonly byPath: Map<string, Buffer> };
 
     /** Binds binary plumbing to the active repository without re-entering its gate. */
     constructor(private readonly executor: GitExecutor) {}
@@ -49,6 +69,13 @@ export class GitExecutorRecoveryGit implements ShelfRecoveryGit {
     async getIndexFingerprint(): Promise<string> {
         const listing = await this.executor.runBinary(["ls-files", "--stage", "-v", "-z"]);
         return createHash("sha256").update(listing.stdout).digest("hex");
+    }
+
+    /** Reads the whole index once; see {@link IndexListing}. */
+    async readIndexListing(): Promise<IndexListing> {
+        return parseIndexListing(
+            (await this.executor.runBinary(["ls-files", "--stage", "-v", "-z"])).stdout,
+        );
     }
 
     /** Hashes one raw index record, including flags, without coupling rollback to other paths. */
@@ -80,6 +107,11 @@ export class GitExecutorRecoveryGit implements ShelfRecoveryGit {
         relativePath: string,
     ): Promise<ShelfJournalIndexEntry | undefined> {
         if (baseOid === (await this.emptyTreeOid())) return undefined;
+        const prefetched =
+            this.baseRecords?.baseOid === baseOid
+                ? this.baseRecords.byPath.get(relativePath)
+                : undefined;
+        if (prefetched) return parseTreeEntry(prefetched);
         return parseTreeEntry(
             (
                 await this.executor.runBinary([
@@ -92,6 +124,55 @@ export class GitExecutorRecoveryGit implements ShelfRecoveryGit {
                 ])
             ).stdout,
         );
+    }
+
+    /**
+     * Batches the per-path `ls-tree` reads: each path keeps exactly the records named by it, which
+     * is what the single-path command prints. Parsing, and so any refusal, still happens per path.
+     */
+    async prefetchBaseEntries(baseOid: string, relativePaths: readonly string[]): Promise<void> {
+        const byPath = new Map<string, Buffer>();
+        this.baseRecords = { baseOid, byPath };
+        if (baseOid === (await this.emptyTreeOid())) return;
+        // ls-tree descends into a tree named by one pathspec when another names a path inside it,
+        // and then omits the tree's own entry. Such ancestors keep their single-path reads.
+        const requested = new Set(relativePaths);
+        const ancestors = new Set<string>();
+        for (const file of requested)
+            for (let slash = file.indexOf("/"); slash > 0; slash = file.indexOf("/", slash + 1))
+                if (requested.has(file.slice(0, slash))) ancestors.add(file.slice(0, slash));
+        const pending = [...requested].filter((file) => !ancestors.has(file));
+        while (pending.length > 0) {
+            const batch: string[] = [];
+            let bytes = 0;
+            while (
+                pending.length > 0 &&
+                batch.length < BASE_ENTRY_BATCH_PATHS &&
+                (batch.length === 0 ||
+                    bytes + Buffer.byteLength(pending[0]) <= BASE_ENTRY_BATCH_BYTES)
+            ) {
+                const next = pending.shift()!;
+                bytes += Buffer.byteLength(next) + 1;
+                batch.push(next);
+            }
+            // Bounded sequential batches keep one ls-tree process at a time under the held gate.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            const listing = await this.executor.runBinary([
+                "--literal-pathspecs",
+                "ls-tree",
+                "-z",
+                baseOid,
+                "--",
+                ...batch,
+            ]);
+            const records = new Map<string, Buffer[]>(batch.map((file) => [file, []]));
+            for (const record of splitRawNulRecords(listing.stdout)) {
+                const tab = record.indexOf(0x09);
+                const name = tab < 0 ? undefined : record.subarray(tab + 1, -1).toString("utf8");
+                if (name !== undefined) records.get(name)?.push(record);
+            }
+            for (const [file, matched] of records) byPath.set(file, Buffer.concat(matched));
+        }
     }
 
     /** Reads the one supported stage-zero index entry for a literal path. */
@@ -149,6 +230,57 @@ function parseIndexEntry(bytes: Buffer): ShelfJournalIndexEntry | undefined {
         throw new RecoverySafetyError("Unmerged index entries cannot enter shelf recovery.");
     }
     return { mode: match[1], oid: match[2] };
+}
+
+/** Builds per-path views over one raw listing without re-encoding any record bytes. */
+function parseIndexListing(bytes: Buffer): IndexListing {
+    const records = splitRawNulRecords(bytes);
+    // Record positions by exact name and by every ancestor directory, so a literal pathspec's
+    // directory match is answered in index order without scanning the whole listing per path.
+    const exact = new Map<string, number[]>();
+    const below = new Map<string, number[]>();
+    records.forEach((record, position) => {
+        const tab = record.indexOf(0x09);
+        if (tab < 0) throw new RecoverySafetyError("Git returned an invalid index listing.");
+        const name = record.subarray(tab + 1, -1).toString("utf8");
+        appendPosition(exact, name, position);
+        for (let slash = name.indexOf("/"); slash > 0; slash = name.indexOf("/", slash + 1))
+            appendPosition(below, name.slice(0, slash), position);
+    });
+    const matching = (relativePath: string): Buffer[] =>
+        [...(exact.get(relativePath) ?? []), ...(below.get(relativePath) ?? [])]
+            .sort((left, right) => left - right)
+            .map((position) => records[position]);
+    return {
+        fingerprint: createHash("sha256").update(bytes).digest("hex"),
+        // `-v` prefixes each record with a one-letter tag and a space; the entry command has none.
+        entry: (relativePath) =>
+            parseIndexEntry(
+                Buffer.concat(matching(relativePath).map((record) => record.subarray(2))),
+            ),
+        pathFingerprint: (relativePath) =>
+            createHash("sha256")
+                .update(Buffer.concat(matching(relativePath)))
+                .digest("hex"),
+    };
+}
+
+function appendPosition(map: Map<string, number[]>, key: string, position: number): void {
+    const positions = map.get(key);
+    if (positions) positions.push(position);
+    else map.set(key, [position]);
+}
+
+/** Splits NUL-terminated records, keeping each record's raw bytes and its terminator. */
+function splitRawNulRecords(bytes: Buffer): Buffer[] {
+    const records: Buffer[] = [];
+    let start = 0;
+    for (let end = bytes.indexOf(0, start); end >= 0; end = bytes.indexOf(0, start)) {
+        records.push(bytes.subarray(start, end + 1));
+        start = end + 1;
+    }
+    if (start < bytes.length) throw new RecoverySafetyError("Git returned an unterminated record.");
+    return records;
 }
 
 function splitNulRecords(bytes: Buffer): string[] {
