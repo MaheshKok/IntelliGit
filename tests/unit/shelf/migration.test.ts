@@ -421,6 +421,26 @@ describe("all-pointer shelf migration", () => {
         await migrate(store);
         expect((await store.readJournals())[0].state).toBe("ghost");
     });
+
+    // Nothing ever finishes these journals, so refusing on one would refuse every later shelf write.
+    it.each(["before", "after"] as const)(
+        "an unshelve-pending journal left %s the upgrade stays inert and admits writes",
+        async (when) => {
+            const { old, store } = await fixture(1);
+            const journal = {
+                id: "unshelve-interrupted",
+                state: "unshelvePending" as const,
+                pathProgress: {},
+                shelf: { id: "shelf-0", generation: 1 },
+            };
+            if (when === "before") await old.writeJournal(journal);
+            await migrate(store);
+            if (when === "after") await store.writeJournal(journal);
+            // Every shelf mutation runs the upgrade first, so this is the next write's admission.
+            await expect(migrate(store)).resolves.toBeUndefined();
+            expect((await store.readJournals())[0].state).toBe("unshelvePending");
+        },
+    );
     it("migration finishes every live pointer before enabling v2 writes", async () => {
         const { paths, old, store } = await fixture();
         const original = await readFile(

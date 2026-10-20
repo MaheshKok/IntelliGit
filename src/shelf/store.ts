@@ -280,10 +280,12 @@ export class ShelfStore {
         if (!this.lockContext.getStore()?.active)
             throw new Error("Shelf migration requires the store lock.");
         const journals = await this.readJournals();
+        // A plain unshelve-pending journal is inert (nothing finishes it); only a publication one must resume first.
         if (
             journals.some(
                 (journal) =>
-                    journal.state === "shelvePendingRevert" || journal.state === "unshelvePending",
+                    journal.state === "shelvePendingRevert" ||
+                    (journal.targetPublication && journal.state === "unshelvePending"),
             )
         ) {
             throw new ShelfMutationAdmissionError("Shelf recovery must finish before migration.");
