@@ -1,6 +1,15 @@
 import { afterEach, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, symlink, unlink, writeFile } from "node:fs/promises";
+import {
+    lstat,
+    mkdir,
+    mkdtemp,
+    readFile,
+    realpath,
+    symlink,
+    unlink,
+    writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ChangelistPersistence } from "../../../src/changes/changelistPersistence";
@@ -67,9 +76,14 @@ const cases: {
         crashOccurrence: 1,
         busy: true,
     },
+    { kind: "cherry-pick", scenario: "partialInstall", stop: "beforeInstall:affected" },
     ...[
         "markerless",
         "unrelatedAtLock",
+        "indexAtLock",
+        "nativeAtPublication",
+        "replacedLock",
+        "foreignInstall",
         "affectedAtPublication",
         "affectedBeforeAbort",
         "indexBeforeAbort",
@@ -92,6 +106,9 @@ const cases: {
         "beforeInstall:affected",
         "afterInstall:affected",
         "checkpoint:abortPathsRestored",
+        "evidence:abortIndexPrepared",
+        "checkpoint:abortIndexPrepared",
+        "beforeIndexPublish",
         "afterIndexPublish",
         "checkpoint:abortIndexRestored",
         "beforeQuit",
@@ -228,6 +245,25 @@ it.each(cases)(
                             await git.run(["add", "unrelated"]);
                             await writeFile(path.join(root, "unrelated"), "new working\n");
                         }
+                        if (scenario === "indexAtLock" && point === "beforeIndexLock")
+                            await git.run(["add", "affected"]);
+                        if (
+                            scenario === "nativeAtPublication" &&
+                            point === "beforeIndexPublish" &&
+                            !stopped
+                        ) {
+                            stopped = true;
+                            await writeFile(path.join(gitDir, "MERGE_HEAD"), `${commit}\n`);
+                        }
+                        if (scenario === "replacedLock" && point === "beforeIndexPublish") {
+                            await unlink(path.join(gitDir, "index.lock"));
+                            await writeFile(path.join(gitDir, "index.lock"), "foreign lock");
+                        }
+                        if (scenario.endsWith("Install") && point === "beforeInstall:affected")
+                            await writeFile(
+                                path.join(root, ".intelligit-recovery", id, "0.install"),
+                                scenario === "partialInstall" ? "cur" : "foreign\n",
+                            );
                         if (scenario === "affectedAtPublication" && point === "beforeIndexPublish")
                             await writeFile(path.join(root, "affected"), "external\n");
                         if (scenario === "nativeAtQuit" && point === "beforeQuit")
@@ -244,6 +280,10 @@ it.each(cases)(
                 [
                     "affectedBeforeAbort",
                     "indexBeforeAbort",
+                    "indexAtLock",
+                    "nativeAtPublication",
+                    "replacedLock",
+                    "foreignInstall",
                     "foreignLock",
                     "affectedAtPublication",
                     "nativeBeforeAbort",
@@ -274,10 +314,11 @@ it.each(cases)(
                         await git.run(["ls-files", "-u"]),
                         "a post-restore edit must stop index publication",
                     ).not.toBe("");
-                if (scenario === "foreignLock")
-                    expect(await readFile(path.join(gitDir, "index.lock"), "utf8")).toBe(
-                        "foreign lock",
-                    );
+                if (scenario === "foreignLock" || scenario === "replacedLock")
+                    await expect(
+                        readFile(path.join(gitDir, "index.lock"), "utf8"),
+                        "a lock this abort does not own must never be deleted",
+                    ).resolves.toBe("foreign lock");
                 if (scenario === "nativeAtQuit")
                     await expect(
                         readFile(path.join(gitDir, "REVERT_HEAD"), "utf8"),
@@ -288,9 +329,34 @@ it.each(cases)(
                         await readFile(path.join(root, ".intelligit-recovery", id, "0"), "utf8"),
                         "foreign recovery bytes must not be overwritten",
                     ).toBe("foreign recovery bytes\n");
-                return;
+                if (scenario !== "foreignLock" && scenario !== "replacedLock")
+                    await expect(
+                        lstat(path.join(gitDir, "index.lock")),
+                        "a refused abort must release the index lock it created",
+                    ).rejects.toThrow("ENOENT");
+                if (scenario === "foreignInstall")
+                    await expect(
+                        readFile(path.join(root, ".intelligit-recovery", id, "0.install"), "utf8"),
+                        "a foreign install temporary must not be replaced",
+                    ).resolves.toBe("foreign\n");
+                if (scenario !== "nativeAtPublication") return;
             }
-            if (crashOccurrence && stop) {
+            if (scenario === "nativeAtPublication") {
+                // The refusal was transient; Git writes the index again before the user retries.
+                await unlink(path.join(gitDir, "MERGE_HEAD"));
+                await writeFile(path.join(root, "unrelated"), "new staged\n");
+                await git.run(["add", "unrelated"]);
+                await writeFile(path.join(root, "unrelated"), "new working\n");
+                const retried = store.get(root);
+                await expect(
+                    abortTargetNativeOperation(git, persistence, store, lease, {
+                        id,
+                        revision: retried.revision,
+                        expectedPhase: retried.pendingTargetOperation!.phase,
+                    }),
+                    "a retry after a refused publication must start the index step over",
+                ).resolves.toBeUndefined();
+            } else if (crashOccurrence && stop) {
                 ({ store, lease } = await restartNativeRecoveryAfterProcessExit(
                     root,
                     lease,
@@ -311,11 +377,14 @@ it.each(cases)(
                 lease = await store.acquireTargetOperationLease(root);
                 const recovered = store.get(root);
                 if (recovered.pendingTargetOperation)
-                    await abortTargetNativeOperation(git, persistence, store, lease, {
-                        id,
-                        revision: recovered.revision,
-                        expectedPhase: recovered.pendingTargetOperation.phase,
-                    });
+                    await expect(
+                        abortTargetNativeOperation(git, persistence, store, lease, {
+                            id,
+                            revision: recovered.revision,
+                            expectedPhase: recovered.pendingTargetOperation.phase,
+                        }),
+                        "a restarted abort must finish from the last durable checkpoint",
+                    ).resolves.toBeUndefined();
             } else
                 await expect(
                     abort(),
@@ -333,16 +402,21 @@ it.each(cases)(
                 (await captureTargetNativeEvidence(git, persistence, id, ["affected"])).index,
                 "every restored affected mode and OID must match before",
             ).toEqual(before.index);
+            const restaged = ["unrelatedAtLock", "nativeAtPublication"].includes(scenario);
             expect(
                 await git.run(["show", ":unrelated"]),
                 "unrelated staged content must survive",
-            ).toBe(scenario === "unrelatedAtLock" ? "new staged\n" : "staged\n");
+            ).toBe(restaged ? "new staged\n" : "staged\n");
             expect(
                 await readFile(path.join(root, "unrelated"), "utf8"),
                 "unrelated working content must survive",
-            ).toBe(scenario === "unrelatedAtLock" ? "new working\n" : "working\n");
+            ).toBe(restaged ? "new working\n" : "working\n");
             expect(store.get(root).pendingTargetOperation).toBeUndefined();
             expect(store.get(root).targetOperationReceipts?.[id]?.outcome).toBe("aborted");
+            expect(
+                store.get(root).targetOperationReceipts?.[id],
+                "a finished abort releases its evidence to collection",
+            ).not.toHaveProperty("evidenceHash");
         } finally {
             await lease.release();
         }

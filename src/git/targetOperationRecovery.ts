@@ -10,6 +10,7 @@ import {
     link,
     unlink,
     symlink,
+    type FileHandle,
 } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import path from "node:path";
@@ -488,15 +489,23 @@ async function installBefore(
     if (entry.desiredBefore.kind === "symlink") await symlink(bytes, target);
     else {
         const temp = `${path.join(persistence.root, entry.recoveryPath)}.install`;
-        const handle = await open(temp, "wx", entry.desiredBefore.executable ? 0o755 : 0o644).catch(
-            async (error) => {
-                if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-                const existing = await readPath(persistence, path.relative(persistence.root, temp));
-                if (!samePath(existing, entry.desiredBefore, false))
-                    throw new Error("Recovery install temporary changed.");
-                return undefined;
-            },
-        );
+        const mode = entry.desiredBefore.executable ? 0o755 : 0o644;
+        const handle = await open(temp, "wx", mode).catch(async (error) => {
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+            const existing = await readPath(persistence, path.relative(persistence.root, temp));
+            if (samePath(existing, entry.desiredBefore, false)) return undefined;
+            // A crash mid-write leaves a regular prefix of the retained bytes; anything else is foreign.
+            if (
+                existing.kind !== "regular" ||
+                existing.content.size > bytes.length ||
+                !bytes
+                    .subarray(0, existing.content.size)
+                    .equals(await persistence.loadTargetOperationObject(existing.content))
+            )
+                throw new Error("Recovery install temporary changed.");
+            await unlink(temp);
+            return open(temp, "wx", mode);
+        });
         if (handle) {
             try {
                 await handle.writeFile(bytes);
@@ -554,42 +563,15 @@ async function restoreIndex(
     const lockPath = `${live}.lock`;
     let publication = saved.indexPublication;
     if (publication) {
-        const candidate = path.join(persistence.gitDir, publication.candidate.path);
-        await safeParent(persistence.gitDir, publication.candidate.path);
-        const candidateBytes = await readRegularBytes(candidate, publication.candidate.identity);
-        if (changeFingerprint(candidateBytes) !== publication.candidate.fingerprint)
-            throw new Error("Recovery candidate index changed.");
-        const currentBytes = await readFile(live);
-        if (
-            changeFingerprint(currentBytes) === publication.candidate.fingerprint &&
-            !(await lstat(lockPath).catch((error) => {
-                if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-                throw error;
-            }))
-        ) {
-            const affected = new Set(before.paths.map((entry) => entry.path));
-            const restored = (await readIndex(executor, candidate)).filter((entry) =>
-                affected.has(entry.path),
-            );
-            if (
-                !isDeepStrictEqual(
-                    restored,
-                    before.index.map(({ object: _object, ...entry }) => entry),
-                )
-            )
-                throw new Error("Recovery candidate does not contain restored affected entries.");
-            return { ...publication, state: "published" };
-        }
-        const lock = await lstat(lockPath, { bigint: true });
-        if (
-            !isDeepStrictEqual(identity(lock), publication.lock.identity) ||
-            !ownerDead(publication.lock.owner.pid)
-        )
-            throw new Error("Recovery index lock is busy or ambiguous.");
-        if (changeFingerprint(currentBytes) !== publication.liveIndexFingerprint)
-            throw new Error("Live index changed during recovery.");
-        await unlink(lockPath);
-        await syncParent(lockPath);
+        const published = await settleSavedPublication(
+            executor,
+            persistence,
+            publication,
+            before,
+            live,
+            lockPath,
+        );
+        if (published) return published;
     }
     await fault?.("beforeIndexLock");
     const lock = await open(lockPath, "wx", 0o600);
@@ -700,8 +682,88 @@ async function restoreIndex(
         await syncParent(live);
         await fault?.("afterIndexPublish");
         return { ...publication, state: "published" };
+    } catch (error) {
+        // A refusal releases our lock (gone once published) so Git works and a retry starts over.
+        await releaseOwnedLock(lockPath, lock).catch((cleanup: unknown) => {
+            throw new Error(
+                `${String(error)}; releasing the owned index lock also failed: ${String(cleanup)}`,
+                { cause: error },
+            );
+        });
+        throw error;
     } finally {
         await lock.close();
+    }
+}
+
+/**
+ * Returns a saved publication that is already in place; otherwise clears its dead owner's lock so
+ * the index step starts over.
+ */
+async function settleSavedPublication(
+    executor: GitExecutor,
+    persistence: ChangelistPersistence,
+    publication: TargetIndexPublicationEvidence,
+    before: TargetOperationEvidence,
+    live: string,
+    lockPath: string,
+): Promise<TargetIndexPublicationEvidence | undefined> {
+    const candidate = path.join(persistence.gitDir, publication.candidate.path);
+    await safeParent(persistence.gitDir, publication.candidate.path);
+    const candidateBytes = await readRegularBytes(candidate, publication.candidate.identity);
+    if (changeFingerprint(candidateBytes) !== publication.candidate.fingerprint)
+        throw new Error("Recovery candidate index changed.");
+    const currentBytes = await readFile(live);
+    const lock = await lstat(lockPath, { bigint: true }).catch((error) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+        throw error;
+    });
+    // Without a lock only a restored candidate in place proves publication; otherwise start the
+    // index step over, whose own locked checks refuse an affected index that moved.
+    if (
+        !lock &&
+        changeFingerprint(currentBytes) === publication.candidate.fingerprint &&
+        publication.candidate.fingerprint !== publication.liveIndexFingerprint
+    ) {
+        const affected = new Set(before.paths.map((entry) => entry.path));
+        const restored = (await readIndex(executor, candidate)).filter((entry) =>
+            affected.has(entry.path),
+        );
+        if (
+            !isDeepStrictEqual(
+                restored,
+                before.index.map(({ object: _object, ...entry }) => entry),
+            )
+        )
+            throw new Error("Recovery candidate does not contain restored affected entries.");
+        return { ...publication, state: "published" };
+    }
+    if (!lock) return undefined;
+    if (
+        !isDeepStrictEqual(identity(lock), publication.lock.identity) ||
+        !ownerDead(publication.lock.owner.pid)
+    )
+        throw new Error("Recovery index lock is busy or ambiguous.");
+    if (changeFingerprint(currentBytes) !== publication.liveIndexFingerprint)
+        throw new Error("Live index changed during recovery.");
+    await unlink(lockPath);
+    await syncParent(lockPath);
+    return undefined;
+}
+
+/** Deletes the index lock only while its path still names the file this open handle holds. */
+async function releaseOwnedLock(lockPath: string, lock: FileHandle): Promise<void> {
+    const onDisk = await lstat(lockPath, { bigint: true }).catch((missing) => {
+        if ((missing as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+        throw missing;
+    });
+    // The open handle keeps our inode alive, so equal identity proves the path is still ours.
+    if (
+        onDisk &&
+        isDeepStrictEqual(identity(onDisk), identity(await lock.stat({ bigint: true })))
+    ) {
+        await unlink(lockPath);
+        await syncParent(lockPath);
     }
 }
 
