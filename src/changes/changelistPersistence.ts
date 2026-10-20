@@ -677,10 +677,9 @@ export class ChangelistPersistence {
                       },
                   ]
                 : []),
-            ...Object.values(state.targetOperationReceipts ?? {}).map((receipt) => ({
-                id: receipt.id,
-                hash: receipt.evidenceHash,
-            })),
+            ...Object.values(state.targetOperationReceipts ?? {}).flatMap((receipt) =>
+                receipt.evidenceHash ? [{ id: receipt.id, hash: receipt.evidenceHash }] : [],
+            ),
         ];
         for (const root of roots) {
             const key = `${root.id}\0${root.hash}`;

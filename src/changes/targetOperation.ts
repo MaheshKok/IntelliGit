@@ -83,7 +83,8 @@ export interface TargetOperationReceipt {
     readonly requestHash: string;
     readonly outcome:
         "notApplied" | "applied" | "appliedNeedsReview" | "conflicted" | "stale" | "aborted";
-    readonly evidenceHash: string;
+    /** Absent once the finished outcome needs no evidence, so collection reclaims its bytes. */
+    readonly evidenceHash?: string;
 }
 
 /** Browser-safe operation status without recovery evidence or source identifiers. */
@@ -283,8 +284,8 @@ export function parseTargetOperationReceipt(_input: unknown): TargetOperationRec
             "stale",
             "aborted",
         ]) ||
-        typeof input.evidenceHash !== "string" ||
-        !HASH.test(input.evidenceHash)
+        (input.evidenceHash !== undefined &&
+            (typeof input.evidenceHash !== "string" || !HASH.test(input.evidenceHash)))
     )
         return undefined;
     return structuredClone(input) as unknown as TargetOperationReceipt;

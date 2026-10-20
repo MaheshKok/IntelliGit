@@ -325,6 +325,16 @@ describe("target operation persistence contracts", () => {
             outcome: "aborted",
         });
         expect(parseTargetOperationReceipt({ ...receipt, outcome: "unknown" })).toBeUndefined();
+        const { evidenceHash: _released, ...compact } = receipt;
+        expect(
+            parseTargetOperationReceipt(compact),
+            "a finished receipt may release its evidence reference",
+        ).toEqual(compact);
+        for (const evidenceHash of [null, "", "B".repeat(64), 1])
+            expect(
+                parseTargetOperationReceipt({ ...receipt, evidenceHash }),
+                `a present evidence reference ${String(evidenceHash)} is still a strict hash`,
+            ).toBeUndefined();
         expect(summarizeTargetOperation(prepared())).toEqual({
             id,
             kind: "shelfRestore",

@@ -630,6 +630,89 @@ describe("target operation completion recovery", () => {
         expect(await readFile(file, "utf8")).toBe("op\ndata");
     });
 
+    it("collects finished operations' evidence while their compact receipts still answer retries", async () => {
+        const { second, persistence, checkpoint, publication, request, after, afterHash } =
+            await ownershipFixture("applied", false, false, 1, true);
+        const evidenceOnDisk = async (name: string) =>
+            (await readdir(persistence.evidenceDirectory)).includes(name);
+        const payloadObject = `${after.attribution![0].object.hash}.bin`;
+        expect(await evidenceOnDisk(payloadObject), "the fixture stored applied bytes").toBe(true);
+        const lease = await second.acquireTargetOperationLease(root);
+        try {
+            const applied = await second.recoverTargetOperation(lease, {
+                ...publication,
+                shelf: undefined,
+            });
+            expect(
+                applied.targetOperationReceipts?.[operationId],
+                "a finished receipt keeps only its identity, request and outcome",
+            ).toEqual({
+                version: 1,
+                id: operationId,
+                requestHash: checkpoint.pendingTargetOperation!.requestHash,
+                outcome: "applied",
+            });
+            for (const name of [
+                `${afterHash}.operation.json`,
+                `${request.evidenceHash}.operation.json`,
+                payloadObject,
+            ])
+                expect(await evidenceOnDisk(name), `finished evidence ${name} is collected`).toBe(
+                    false,
+                );
+            expect(await second.prepareTargetOperation(lease, request)).toEqual({
+                status: "known",
+                state: applied,
+            });
+
+            const nextBefore = await observeTextFixture(
+                persistence,
+                evidence(receiptId, hash("e")),
+            );
+            const next = {
+                ...request,
+                id: receiptId,
+                evidenceHash: await persistence.storeTargetOperationEvidence(nextBefore),
+                headBefore: nextBefore.head,
+                target: { kind: "new" as const, name: "Second", revision: applied.revision },
+            };
+            const pending = (await second.prepareTargetOperation(lease, next)).state;
+            expect(
+                await evidenceOnDisk(`${next.evidenceHash}.operation.json`),
+                "a pending operation keeps its evidence",
+            ).toBe(true);
+            const done = await second.finishTargetOperation(lease, {
+                id: receiptId,
+                revision: pending.revision,
+                expectedPhase: "prepared",
+                observedEvidenceHash: next.evidenceHash,
+            });
+            expect(done.targetOperationReceipts?.[receiptId]).toEqual({
+                version: 1,
+                id: receiptId,
+                requestHash: pending.pendingTargetOperation!.requestHash,
+                outcome: "notApplied",
+            });
+            expect(
+                await evidenceOnDisk(`${next.evidenceHash}.operation.json`),
+                "the second finished operation's evidence is collected",
+            ).toBe(false);
+            for (const retry of [request, next])
+                expect(
+                    await second.prepareTargetOperation(lease, retry),
+                    `retry ${retry.id} returns its known answer without evidence`,
+                ).toEqual({ status: "known", state: done });
+        } finally {
+            await lease.release();
+        }
+        const reopened = new ChangelistStore();
+        await reopened.connect(root, gitDir);
+        expect(
+            reopened.get(root).targetOperationReceipts,
+            "evidence-free receipts survive a strict reopen",
+        ).toEqual(second.get(root).targetOperationReceipts);
+    });
+
     it.each(["observed state", "shelf identity"])(
         "completion keeps ownership and later draft fenced for changed %s",
         async (changed) => {

@@ -291,6 +291,15 @@ function assertPreparedEvidence(
         throw new Error("Target operation before evidence does not match the request.");
 }
 
+/**
+ * Receipts are written only once review is resolved, so finished evidence is released to collection.
+ * shortcut: shelf restore replay still rebuilds its request and entry results from this chain
+ * (shelfTargetRestore.ts run); drop this exception once that replay no longer reads it.
+ */
+function retainedReceiptEvidence(pending: TargetOperationRecord): { evidenceHash?: string } {
+    return pending.kind === "shelfRestore" ? { evidenceHash: pending.evidenceHash } : {};
+}
+
 /** Only forward application progress is accepted; review and completion use separate named methods. */
 function assertCheckpointPhase(
     from: TargetOperationRecord["phase"],
@@ -1484,7 +1493,7 @@ export class ChangelistStore {
                         id: pending.id,
                         requestHash: pending.requestHash,
                         outcome,
-                        evidenceHash: pending.evidenceHash,
+                        ...retainedReceiptEvidence(pending),
                     };
                     delete state.pendingTargetOperation;
                 },
@@ -1737,7 +1746,7 @@ export class ChangelistStore {
                     id: pending.id,
                     requestHash: pending.requestHash,
                     outcome: "aborted",
-                    evidenceHash: pending.evidenceHash,
+                    ...retainedReceiptEvidence(pending),
                 };
                 delete state.pendingTargetOperation;
             },

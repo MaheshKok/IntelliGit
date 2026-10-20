@@ -179,6 +179,9 @@ class TargetShelfRestore {
             const receipt = state.targetOperationReceipts?.[this.intent.id];
             if (receipt) {
                 this.durable = true;
+                // Shelf receipts keep their evidence (changelistStore retainedReceiptEvidence); a missing one is damage.
+                if (!receipt.evidenceHash)
+                    throw new Error("Shelf restore receipt is missing its evidence.");
                 const chain = await this.persistence.loadTargetOperationEvidenceChain(
                     receipt.evidenceHash,
                 );
