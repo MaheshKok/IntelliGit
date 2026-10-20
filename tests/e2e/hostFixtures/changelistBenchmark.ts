@@ -866,6 +866,13 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                 } catch (error) {
                     if (!(error instanceof HostConfirmationTimeout)) throw error;
                     blockedBy = error.message;
+                    // The host's own log says why it never confirmed; keep the workspace and profile.
+                    keepFiles = true;
+                    result.failedWorkspace = {
+                        root: workspace.root,
+                        profile: workspace.profileDir,
+                        template,
+                    };
                     scenarios[name] = { incomplete: true, reason: error.message, ...details() };
                 }
             };
