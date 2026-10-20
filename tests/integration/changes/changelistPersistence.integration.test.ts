@@ -44,6 +44,20 @@ function storage() {
 }
 
 describe("authoritative worktree changelist persistence", () => {
+    it("lets readers wait for a background connection before reading durable state", async () => {
+        const published = new ChangelistStore();
+        await published.connect(root, gitDir);
+        await published.saveDraft(root, "all", "", "Durable draft");
+        const store = new ChangelistStore();
+        // Activation starts the connection without awaiting it.
+        void store.connect(root, gitDir);
+
+        await store.writesSettled();
+
+        expect(store.needsConnection(root)).toBe(false);
+        expect(store.draft(root, "all")).toBe("Durable draft");
+    });
+
     it("reuses validated metadata until another window publishes a replacement", async () => {
         const first = new ChangelistStore();
         const second = new ChangelistStore();

@@ -1834,6 +1834,11 @@ describe("view providers integration", () => {
             shelves: [],
         });
         const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        // Activation connects changelist metadata in the background; it writes under the
+        // repository's .git, so cleanup must wait for it.
+        const { ChangelistStore: CurrentStore } =
+            await import("../../../src/changes/changelistStore");
+        const connect = vi.spyOn(CurrentStore.prototype, "connect");
         try {
             await activateRepositoryMode(
                 {
@@ -1856,9 +1861,64 @@ describe("view providers integration", () => {
             // than letting a real `.store-lock` write race the cleanup below unobserved.
             await vi.waitFor(() => expect(listShelves).toHaveBeenCalled());
         } finally {
+            await Promise.allSettled(connect.mock.results.map((result) => result.value));
+            connect.mockRestore();
             resumePendingRecovery.mockRestore();
             listShelves.mockRestore();
             consoleError.mockRestore();
+            await removeScratchDirectories(repositoryRoot, globalStoragePath);
+        }
+    });
+
+    it("does not hold activation on the changelist metadata connection", async () => {
+        const repositoryRoot = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-repository-"));
+        await mkdir(path.join(repositoryRoot, ".git"));
+        const globalStoragePath = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-storage-"));
+        const { ShelfService } = await import("../../../src/services/shelfService");
+        const { ChangelistStore: CurrentStore } =
+            await import("../../../src/changes/changelistStore");
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        // A large first migration can take seconds; activation and its views must not wait for it.
+        const connect = vi
+            .spyOn(CurrentStore.prototype, "connect")
+            .mockReturnValue(new Promise<void>(() => undefined));
+        const resumePendingRecovery = vi
+            .spyOn(ShelfService.prototype, "resumePendingRecovery")
+            .mockResolvedValue({ rolledBackIds: [], retainedIds: [] } as never);
+        const cleanUpExpiredGhosts = vi
+            .spyOn(ShelfService.prototype, "cleanUpExpiredGhosts")
+            .mockResolvedValue({ status: "ok" } as never);
+        const listShelves = vi.spyOn(ShelfService.prototype, "listShelves").mockResolvedValue({
+            shelfIds: [],
+            corruptShelfIds: [],
+            catalogGeneration: 0,
+            shelves: [],
+        });
+        try {
+            const activation = activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    globalStorageUri: vscodeMock.Uri.file(globalStoragePath),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    secrets: {},
+                } as never,
+                [{ root: repositoryRoot, label: "Shelf repository" }],
+            ).then(() => "activated");
+
+            await expect(
+                Promise.race([
+                    activation,
+                    new Promise((resolve) => setTimeout(() => resolve("blocked"), 5_000)),
+                ]),
+            ).resolves.toBe("activated");
+            expect(connect).toHaveBeenCalledWith(repositoryRoot, path.join(repositoryRoot, ".git"));
+            await vi.waitFor(() => expect(listShelves).toHaveBeenCalled());
+        } finally {
+            connect.mockRestore();
+            resumePendingRecovery.mockRestore();
+            cleanUpExpiredGhosts.mockRestore();
+            listShelves.mockRestore();
             await removeScratchDirectories(repositoryRoot, globalStoragePath);
         }
     });

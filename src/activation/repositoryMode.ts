@@ -147,7 +147,14 @@ export async function activateRepositoryMode(
             repositories.map(async (repository) => {
                 const shelfExecutor = new GitExecutor(repository.root, mutationGate);
                 const directories = await new GitOps(shelfExecutor).getGitDirectories();
-                await changelists.connect(repository.root, directories.gitDir);
+                // Connecting can migrate large metadata, so it must not hold activation and the views.
+                // It is queued before any store write or target lease, so those still run after it;
+                // the commit panel's own connect reports a failure to the user.
+                void changelists
+                    .connect(repository.root, directories.gitDir)
+                    .catch((error: unknown) =>
+                        logShelfWarning(`changelist connection for ${repository.root}`, error),
+                    );
                 const shelfPaths = await resolveShelfPaths({
                     repositoryRoot: repository.root,
                     globalStoragePath,

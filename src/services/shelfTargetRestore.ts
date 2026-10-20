@@ -126,6 +126,8 @@ export async function resolveTargetedShelfConflict(
     resolution: TargetConflictResolution,
     dependencies: RestoreDependencies,
 ): Promise<TargetShelfMutationResult> {
+    // Activation connects in the background; read the durable record only after it has loaded.
+    await dependencies.changelists.writesSettled();
     const state = dependencies.changelists.get(dependencies.repositoryRoot);
     const pending = state.pendingTargetOperation;
     if (
