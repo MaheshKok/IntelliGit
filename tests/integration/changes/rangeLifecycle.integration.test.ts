@@ -76,6 +76,29 @@ afterEach(async () => {
 });
 
 describe("range ownership across real Git lifecycle operations", () => {
+    it("re-reads only the file whose own index entry changed when another file is staged", async () => {
+        await writeFile(path.join(root, "other.txt"), "other edit\n");
+        await refresh();
+        const open = vi.spyOn(partial, "open");
+        git("add", "other.txt");
+        await refresh();
+        expect(open.mock.calls.map(([file]) => file)).toEqual(["other.txt"]);
+    });
+
+    it("re-reads a file once its own index entry changes", async () => {
+        const open = vi.spyOn(partial, "open");
+        git("add", "text.txt");
+        await refresh();
+        expect(open.mock.calls.map(([file]) => file)).toEqual(["text.txt"]);
+    });
+
+    it("re-reads a file once it is marked assume-unchanged, which keeps its stage entry", async () => {
+        const open = vi.spyOn(partial, "open");
+        git("update-index", "--assume-unchanged", "text.txt");
+        await refresh();
+        expect(open.mock.calls.map(([file]) => file)).toEqual(["text.txt"]);
+    });
+
     it("surfaces damaged range evidence without reporting a successful observation", async () => {
         const before = store.get(root);
         const filename = path.join(

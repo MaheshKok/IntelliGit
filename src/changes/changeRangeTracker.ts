@@ -44,6 +44,8 @@ export class ChangeRangeTracker {
         let observation = this.directories
             ? await rangeObservation(this.directories.gitDir, this.directories.commonDir)
             : undefined;
+        // Read before any snapshot, so an entry that changes mid-pass misses the cache next pass.
+        const entries = await this.partial.indexEntries();
         const attributesChanged = files.some(
             (file) => path.basename(file.path) === ".gitattributes",
         );
@@ -64,7 +66,7 @@ export class ChangeRangeTracker {
                 const stat = await lstat(target);
                 if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 2 * 1024 * 1024)
                     throw new PartialChangesUnsupportedError("Unsupported tracked range content.");
-                const hash = changeFingerprint(await readFile(target));
+                const hash = `${changeFingerprint(await readFile(target))}:${entries.get(file) ?? ""}`;
                 if (
                     observation &&
                     !attributesChanged &&

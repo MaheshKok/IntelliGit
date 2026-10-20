@@ -71,6 +71,18 @@ export class PartialChanges {
         return snapshot;
     }
 
+    /** Each path's stage entries and flag tag, the per-file index state a snapshot reads, in one Git call. */
+    async indexEntries(): Promise<Map<string, string>> {
+        const entries = new Map<string, string>();
+        const output = await this.executor.run(["ls-files", "--stage", "-v", "-z"]);
+        for (const record of output.split("\0")) {
+            if (!record) continue;
+            const file = record.slice(record.indexOf("\t") + 1);
+            entries.set(file, (entries.get(file) ?? "") + record);
+        }
+        return entries;
+    }
+
     /** Revalidates host-owned selection identities and repository state under the mutation gate. */
     async validate(selection: SelectedFileChanges, guard: DirtyBufferGuard): Promise<void> {
         const snapshot = this.snapshot(selection.snapshotId);
