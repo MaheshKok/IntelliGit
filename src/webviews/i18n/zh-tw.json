@@ -485,5 +485,6 @@
     "changes.reviewRequired": "需要複查",
     "changes.exportPatch": "匯出補丁",
     "changes.saveAndRemoveSelection": "儲存並移除",
-    "changes.rollbackSelection": "回復所選變更"
+    "changes.rollbackSelection": "回復所選變更",
+    "changes.statsUnavailable": "行數無法使用"
 }

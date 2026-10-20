@@ -515,5 +515,6 @@
     "changes.reviewRequired": "Wymaga przeglądu",
     "changes.exportPatch": "Eksportuj poprawkę",
     "changes.saveAndRemoveSelection": "Zapisz i usuń",
-    "changes.rollbackSelection": "Wycofaj wybrane zmiany"
+    "changes.rollbackSelection": "Wycofaj wybrane zmiany",
+    "changes.statsUnavailable": "Liczba wierszy niedostępna"
 }

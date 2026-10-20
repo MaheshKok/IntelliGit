@@ -157,6 +157,22 @@ describe("changelist states carry text, not only a mixed checkbox", () => {
         expect(whole.container.textContent).not.toContain(en["changes.partialInclusion"]);
         unmount(whole.root, whole.container);
     });
+
+    it("a file row whose line counts failed names that in words, not as a catalog key", () => {
+        const row = mount(
+            <TreeFileRow
+                file={{ path: "a.txt", status: "M", statsState: "unavailable" } as WorkingFile}
+                depth={0}
+                rowVariant="commit-panel"
+                wiring={{ isSelected: false, onSelect: vi.fn() }}
+            />,
+        );
+        expect(row.container.innerHTML, "the unavailable label is translated").toContain(
+            en["changes.statsUnavailable"],
+        );
+        expect(row.container.innerHTML).not.toContain("changes.statsUnavailable");
+        unmount(row.root, row.container);
+    });
 });
 
 describe("focus after a host prompt", () => {
@@ -244,6 +260,20 @@ describe("focus after a host prompt", () => {
         expect(save.disabled, "the host's answer was received").toBe(false);
         expect(document.activeElement, "focus the user moved stays put").toBe(elsewhere);
         elsewhere.remove();
+    });
+
+    it("a save the host fails before handling it does not leave the tab busy after a refresh", () => {
+        render(base);
+        const save = () =>
+            [...mounted!.container.querySelectorAll("button")].find(
+                (element) => element.textContent === en["changes.saveSelectedWholeFiles"],
+            )!;
+        act(() => save().click());
+        expect(save().disabled, "precondition: the save is pending").toBe(true);
+        // The host's generic catch answers a request that never reached its save handler.
+        receive({ type: "error", repositoryRoot: root, message: "Changelist action failed: x" });
+        receive({ type: "setChangelists", repositoryRoot: root, state: { ...base, revision: 4 } });
+        expect(save().disabled, "the next refresh does not bring back the busy state").toBe(false);
     });
 });
 

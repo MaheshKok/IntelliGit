@@ -505,5 +505,6 @@
     "changes.reviewRequired": "Revisão necessária",
     "changes.exportPatch": "Exportar Patch",
     "changes.saveAndRemoveSelection": "Guardar e remover",
-    "changes.rollbackSelection": "Reverter alterações selecionadas"
+    "changes.rollbackSelection": "Reverter alterações selecionadas",
+    "changes.statsUnavailable": "Contagem de linhas indisponível"
 }

@@ -485,5 +485,6 @@
     "changes.reviewRequired": "검토 필요",
     "changes.exportPatch": "패치 내보내기",
     "changes.saveAndRemoveSelection": "저장 후 제거",
-    "changes.rollbackSelection": "선택한 변경 사항 롤백"
+    "changes.rollbackSelection": "선택한 변경 사항 롤백",
+    "changes.statsUnavailable": "줄 수를 사용할 수 없음"
 }

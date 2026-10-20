@@ -495,5 +495,6 @@
     "changes.reviewRequired": "Prüfung erforderlich",
     "changes.exportPatch": "Patch exportieren",
     "changes.saveAndRemoveSelection": "Speichern und entfernen",
-    "changes.rollbackSelection": "Ausgewählte Änderungen zurücksetzen"
+    "changes.rollbackSelection": "Ausgewählte Änderungen zurücksetzen",
+    "changes.statsUnavailable": "Zeilenanzahl nicht verfügbar"
 }

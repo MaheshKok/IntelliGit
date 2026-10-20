@@ -505,5 +505,6 @@
     "changes.reviewRequired": "Vérification requise",
     "changes.exportPatch": "Exporter le correctif",
     "changes.saveAndRemoveSelection": "Enregistrer et supprimer",
-    "changes.rollbackSelection": "Annuler les modifications sélectionnées"
+    "changes.rollbackSelection": "Annuler les modifications sélectionnées",
+    "changes.statsUnavailable": "Nombre de lignes indisponible"
 }

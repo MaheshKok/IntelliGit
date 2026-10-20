@@ -515,5 +515,6 @@
     "changes.reviewRequired": "Требуется проверка",
     "changes.exportPatch": "Экспортировать патч",
     "changes.saveAndRemoveSelection": "Сохранить и удалить",
-    "changes.rollbackSelection": "Откатить выбранные изменения"
+    "changes.rollbackSelection": "Откатить выбранные изменения",
+    "changes.statsUnavailable": "Количество строк недоступно"
 }

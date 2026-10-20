@@ -150,6 +150,8 @@ export function useChangelists(props: CommitTabProps) {
                 }));
             } else if (message.type === "error") {
                 received = true;
+                // A save that failed before its handler ran gets only this reply, so stop waiting for its result.
+                pendingSave.current = undefined;
                 setState((previous) => ({
                     ...previous,
                     root,

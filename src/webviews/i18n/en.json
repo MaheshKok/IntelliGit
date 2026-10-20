@@ -495,5 +495,6 @@
     "changes.reviewRequired": "Review required",
     "changes.exportPatch": "Export Patch",
     "changes.saveAndRemoveSelection": "Save and Remove",
-    "changes.rollbackSelection": "Rollback Selected Changes"
+    "changes.rollbackSelection": "Rollback Selected Changes",
+    "changes.statsUnavailable": "Line counts unavailable"
 }
