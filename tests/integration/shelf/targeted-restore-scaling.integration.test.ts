@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import { ChangelistPersistence } from "../../../src/changes/changelistPersistence";
 import { GitExecutor } from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
@@ -88,6 +89,33 @@ async function restoreCommands(files: number): Promise<number> {
         expect(await readFile(path.join(root, name), "utf8"), name).toBe("incoming\n");
     return commands;
 }
+
+/** Restores `files` shelved files and counts how many saved evidence files the restore reads back. */
+async function restoreEvidenceReads(files: number): Promise<number> {
+    const { restore } = await shelvedFiles(files);
+    const reads = vi.spyOn(
+        ChangelistPersistence.prototype as unknown as {
+            readImmutableBytesWithIdentity(file: string): Promise<unknown>;
+        },
+        "readImmutableBytesWithIdentity",
+    );
+    const result = await restore();
+    const count = reads.mock.calls.length;
+    reads.mockRestore();
+    expect(result.status).toBe("applied");
+    return count;
+}
+
+// Saving each step re-read and re-hashed every earlier step's saved evidence, which kept a
+// 20-file restore near 40 s; each further file must add a fixed number of evidence reads.
+it("each further restored file reads back the same amount of saved evidence", async () => {
+    const two = await restoreEvidenceReads(2);
+    const four = await restoreEvidenceReads(4);
+    const six = await restoreEvidenceReads(6);
+    expect(six - four, `Evidence reads: 2 files ${two}, 4 files ${four}, 6 files ${six}`).toBe(
+        four - two,
+    );
+}, 120_000);
 
 // A 20-file restore in a 1000-file repository took over two minutes when every step re-checked
 // and re-snapshotted every file restored before it; each further file must add a fixed cost.
