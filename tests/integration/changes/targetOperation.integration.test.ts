@@ -352,6 +352,96 @@ describe("target operation durable attribution", () => {
             expect(first.get(root)).toEqual(unchanged);
         },
     );
+
+    // An attribution object already accepted for one file must not be accepted for another file.
+    it("refuses attribution accepted for one path when a later checkpoint names another path", async () => {
+        const { persistence, before, request } = await transactionFixture();
+        const payload = attributionPayload();
+        const bytes = Buffer.from(JSON.stringify(payload));
+        const object = {
+            hash: await persistence.storeTargetOperationObject(bytes),
+            size: bytes.byteLength,
+        };
+        const after = {
+            ...before,
+            checkpoint: "after" as const,
+            previousEvidenceHash: request.evidenceHash,
+            paths: [...before.paths, { ...before.paths[0]!, path: "src/other.ts" }],
+            entries: [
+                { changeId: "change-1", path: "src/file.ts", outcome: "applied" as const },
+                { changeId: "change-2", path: "src/other.ts", outcome: "applied" as const },
+            ],
+            attribution: [{ path: payload.path, changeIds: ["change-1"], object }],
+        };
+        const afterHash = await persistence.storeTargetOperationEvidence(after);
+        // The same reference shape with a fresh object for the other path is accepted, so the
+        // refusal below can only come from the payload naming a different path.
+        const otherBytes = Buffer.from(JSON.stringify({ ...payload, path: "src/other.ts" }));
+        const otherObject = {
+            hash: await persistence.storeTargetOperationObject(otherBytes),
+            size: otherBytes.byteLength,
+        };
+        const otherHash = await persistence.storeTargetOperationEvidence({
+            ...after,
+            previousEvidenceHash: afterHash,
+            attribution: [{ path: "src/other.ts", changeIds: ["change-2"], object: otherObject }],
+        });
+
+        await expect(
+            persistence.storeTargetOperationEvidence({
+                ...after,
+                previousEvidenceHash: otherHash,
+                attribution: [{ path: "src/other.ts", changeIds: ["change-2"], object }],
+            }),
+        ).rejects.toBeInstanceOf(ChangelistEvidenceError);
+    });
+
+    // An attribution object already accepted for one operation must not be accepted for another.
+    it("refuses attribution accepted for one operation when another operation names it", async () => {
+        const { persistence, before, request } = await transactionFixture();
+        const payload = attributionPayload();
+        const bytes = Buffer.from(JSON.stringify(payload));
+        const object = {
+            hash: await persistence.storeTargetOperationObject(bytes),
+            size: bytes.byteLength,
+        };
+        const entries = before.entries.map((entry) => ({ ...entry, outcome: "applied" as const }));
+        await persistence.storeTargetOperationEvidence({
+            ...before,
+            checkpoint: "after",
+            previousEvidenceHash: request.evidenceHash,
+            entries,
+            attribution: [{ path: payload.path, changeIds: ["change-1"], object }],
+        });
+        const other = {
+            ...before,
+            operationId: receiptId,
+            checkpoint: "after" as const,
+            previousEvidenceHash: await persistence.storeTargetOperationEvidence({
+                ...before,
+                operationId: receiptId,
+            }),
+            entries,
+        };
+        // The other operation's own payload is accepted, so the refusal below can only come from
+        // the payload naming the first operation.
+        const ownBytes = Buffer.from(JSON.stringify({ ...payload, operationId: receiptId }));
+        const ownObject = {
+            hash: await persistence.storeTargetOperationObject(ownBytes),
+            size: ownBytes.byteLength,
+        };
+        await persistence.storeTargetOperationEvidence({
+            ...other,
+            attribution: [{ path: payload.path, changeIds: ["change-1"], object: ownObject }],
+        });
+
+        await expect(
+            persistence.storeTargetOperationEvidence({
+                ...other,
+                attribution: [{ path: payload.path, changeIds: ["change-1"], object }],
+            }),
+        ).rejects.toBeInstanceOf(ChangelistEvidenceError);
+    });
 });
 
 /** Read the real one-path text fixture, including every index stage and the native marker changed by these tests. */
@@ -3072,6 +3162,110 @@ describe("durable target operation foundation", () => {
             expect(await readFile(persistence.filename, "utf8")).toBe(before);
         },
     );
+
+    // Loading a chain remembers which files it was checked from, so a later load or a later step on
+    // the same open persistence must still notice when one of those files changed or disappeared.
+    it.each([
+        ["an earlier checkpoint is overwritten", "earlier checkpoint", "overwrite"],
+        ["an earlier checkpoint is removed", "earlier checkpoint", "remove"],
+        ["an earlier checkpoint's object is overwritten", "earlier object", "overwrite"],
+        ["an earlier checkpoint's object is removed", "earlier object", "remove"],
+        ["the latest checkpoint's object is overwritten", "latest object", "overwrite"],
+        ["the latest checkpoint's object is removed", "latest object", "remove"],
+    ] as const)("evidence already loaded is refused once %s", async (_case, target, change) => {
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        const earlierObject = await persistence.storeTargetOperationObject(Buffer.from("data"));
+        const latestObject = await persistence.storeTargetOperationObject(Buffer.from("next"));
+        const earlier = await persistence.storeTargetOperationEvidence(
+            evidence(operationId, earlierObject),
+        );
+        const latest = await persistence.storeTargetOperationEvidence({
+            ...evidence(operationId, latestObject),
+            checkpoint: "after",
+            previousEvidenceHash: earlier,
+        });
+        await persistence.loadTargetOperationEvidenceChain(latest);
+        const file = path.join(
+            persistence.evidenceDirectory,
+            target === "earlier checkpoint"
+                ? `${earlier}.operation.json`
+                : `${target === "earlier object" ? earlierObject : latestObject}.bin`,
+        );
+        if (change === "remove") await fs.rm(file);
+        else if (target === "earlier checkpoint") {
+            const checkpoint = JSON.parse(await readFile(file, "utf8"));
+            checkpoint.indexFingerprint = hash("f");
+            await writeFile(file, JSON.stringify(checkpoint));
+        } else await writeFile(file, "xxxx");
+        // These rewrites keep the size, and a coarse filesystem clock can give them the old
+        // timestamp; the identity rule only promises to notice a write that moves it.
+        if (change === "overwrite")
+            await fs.utimes(file, new Date(2001, 0, 1), new Date(2001, 0, 1));
+
+        await expect(persistence.loadTargetOperationEvidenceChain(latest)).rejects.toThrow(
+            ChangelistEvidenceError,
+        );
+        await expect(
+            persistence.storeTargetOperationEvidence({
+                ...evidence(operationId, latestObject),
+                checkpoint: "after",
+                previousEvidenceHash: latest,
+                indexFingerprint: hash("e"),
+            }),
+        ).rejects.toThrow(ChangelistEvidenceError);
+    });
+
+    it("refuses a later checkpoint that gives an already checked object another size", async () => {
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        const content = await persistence.storeTargetOperationObject(Buffer.from("data"));
+        await persistence.storeTargetOperationEvidence(evidence(operationId, content));
+
+        await expect(
+            persistence.storeTargetOperationEvidence(evidence(operationId, content, 5)),
+        ).rejects.toThrow(ChangelistEvidenceError);
+    });
+
+    it("gives each load of a chain its own copy of the root checkpoint", async () => {
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        const content = await persistence.storeTargetOperationObject(Buffer.from("data"));
+        const earlier = await persistence.storeTargetOperationEvidence(
+            evidence(operationId, content),
+        );
+        const latest = await persistence.storeTargetOperationEvidence({
+            ...evidence(operationId, content),
+            checkpoint: "after",
+            previousEvidenceHash: earlier,
+        });
+        const first = await persistence.loadTargetOperationEvidenceChain(latest);
+        (first.root.evidence as { indexFingerprint: string }).indexFingerprint = hash("f");
+
+        const second = await persistence.loadTargetOperationEvidenceChain(latest);
+        expect(second.root.evidence.indexFingerprint).toBe(hash("d"));
+    });
+
+    it("refuses a checkpoint that continues another operation's chain even after loading it", async () => {
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        const content = await persistence.storeTargetOperationObject(Buffer.from("data"));
+        const earlier = await persistence.storeTargetOperationEvidence(
+            evidence(operationId, content),
+        );
+        await persistence.loadTargetOperationEvidenceChain(earlier);
+        // Publishing refuses this checkpoint, so it is written the way a foreign process could.
+        const foreign = JSON.stringify({
+            ...evidence(receiptId, content),
+            checkpoint: "after",
+            previousEvidenceHash: earlier,
+        });
+        const foreignHash = changeFingerprint(foreign);
+        await writeFile(
+            path.join(persistence.evidenceDirectory, `${foreignHash}.operation.json`),
+            foreign,
+        );
+
+        await expect(persistence.loadTargetOperationEvidenceChain(foreignHash)).rejects.toThrow(
+            ChangelistEvidenceError,
+        );
+    });
 
     it("upgrades schema 4 exactly once without rewriting range sidecars", async () => {
         const persistence = await ChangelistPersistence.open(root, gitDir);

@@ -38,6 +38,31 @@ export interface TargetOperationEvidenceChain {
     readonly root: { readonly hash: string; readonly evidence: TargetOperationEvidence };
 }
 
+/** A validated checkpoint chain: its root and the identity of every file it was validated from. */
+interface OperationChain {
+    readonly operationId: string;
+    readonly root: TargetOperationEvidenceChain["root"];
+    readonly files: Map<string, string>;
+}
+
+/** Chains kept per operation; a restore step loads its previous checkpoint and the one before. */
+const RECENT_OPERATION_CHAINS = 4;
+
+/** A content object whose size and digest held under `identity`, and the checks it passed there. */
+interface VerifiedObject {
+    readonly identity: string;
+    readonly size: number;
+    readonly checks: Set<string>;
+}
+
+/** One validation pass's view of an object; `bytes` is read only when a check still needs them. */
+interface PassObject {
+    readonly name: string;
+    readonly hash: string;
+    verified: VerifiedObject;
+    bytes?: Buffer;
+}
+
 /** Authoritative metadata is scoped to a canonical worktree and its own Git directory. */
 interface Envelope {
     schemaVersion: 5;
@@ -63,7 +88,10 @@ export class ChangelistPersistence {
     private evidenceDirectoryDurable = false;
     /** True only inside `storeSnapshotBatch`, whose final barrier replaces per-payload directory syncs. */
     private deferEvidenceDirectorySync = false;
-    private readonly operationEvidenceCache = new Map<string, Map<string, string>>();
+    /** Validated chains by their newest checkpoint's hash, oldest first. */
+    private readonly operationChains = new Map<string, OperationChain>();
+    /** Content objects by file name, with the identity they were verified under and checks passed. */
+    private readonly verifiedObjects = new Map<string, VerifiedObject>();
 
     /** Binds paths already canonicalized by open; metadata locking remains separate from Git's index lock. */
     private constructor(
@@ -327,9 +355,7 @@ export class ChangelistPersistence {
             if (evidence.previousEvidenceHash)
                 await this.readOperationEvidence(
                     evidence.previousEvidenceHash,
-                    new Set(),
                     evidence.operationId,
-                    undefined,
                     algorithm,
                 );
             const bytes = JSON.stringify(evidence);
@@ -353,8 +379,9 @@ export class ChangelistPersistence {
     /** Retains the root from the same full validation pass; callers need not reread ancestor suffixes. */
     async loadTargetOperationEvidenceChain(hash: string): Promise<TargetOperationEvidenceChain> {
         try {
-            const { evidence, root } = await this.readOperationEvidence(hash, new Set());
-            return { evidence, root };
+            const { evidence, root } = await this.readOperationEvidence(hash);
+            // The root is cached for later steps, so a caller must never hold the cached object.
+            return structuredClone({ evidence, root });
         } catch (error) {
             throw new ChangelistEvidenceError(error);
         }
@@ -443,6 +470,11 @@ export class ChangelistPersistence {
                       ]),
                   ]
                 : await readdir(this.evidenceDirectory);
+            // Evidence no live record names, including what another window collected, needs no cache.
+            for (const hash of this.operationChains.keys())
+                if (!live.has(`${hash}.operation.json`)) this.operationChains.delete(hash);
+            for (const name of this.verifiedObjects.keys())
+                if (!live.has(name)) this.verifiedObjects.delete(name);
             for (const name of candidates) {
                 if (
                     live.has(name) ||
@@ -568,10 +600,10 @@ export class ChangelistPersistence {
     /** Resolves the full immutable evidence chain and content objects for GC and validation. */
     private async readOperationEvidence(
         hash: string,
-        seen: Set<string>,
         operationId?: string,
-        files = new Map<string, string>(),
         algorithm = this.onceGitObjectAlgorithm(),
+        fresh = false,
+        seen = new Set<string>(),
     ): Promise<TargetOperationEvidenceChain & { files: Map<string, string> }> {
         if (!/^[a-f0-9]{64}$/.test(hash) || seen.has(hash)) throw new ChangelistEvidenceError();
         seen.add(hash);
@@ -585,47 +617,85 @@ export class ChangelistPersistence {
         const evidence = parseTargetOperationEvidence(JSON.parse(bytes), this.root, this.gitDir);
         if (!evidence || (operationId !== undefined && evidence.operationId !== operationId))
             throw new ChangelistEvidenceError();
-        files.set(filename, saved.identity);
-        for (const [name, identity] of await this.validateOperationObjects(evidence, algorithm))
-            files.set(name, identity);
+        const files = new Map([
+            [filename, saved.identity],
+            ...(await this.validateOperationObjects(evidence, algorithm, fresh)),
+        ]);
         let root = { hash, evidence };
         if (evidence.previousEvidenceHash) {
-            const previous = await this.readOperationEvidence(
+            const previous = await this.earlierOperationChain(
                 evidence.previousEvidenceHash,
-                seen,
                 evidence.operationId,
-                files,
                 algorithm,
+                fresh,
+                seen,
             );
             root = previous.root;
+            for (const [name, identity] of previous.files) files.set(name, identity);
         }
+        this.rememberOperationChain(hash, { operationId: evidence.operationId, root, files });
         return { evidence, root, files };
+    }
+
+    /** The chain below a checkpoint, re-read only when a file it was validated from has changed. */
+    private async earlierOperationChain(
+        hash: string,
+        operationId: string,
+        algorithm: () => Promise<"sha1" | "sha256">,
+        fresh: boolean,
+        seen: Set<string>,
+    ): Promise<OperationChain> {
+        const cached = fresh ? undefined : this.operationChains.get(hash);
+        if (
+            cached &&
+            cached.operationId === operationId &&
+            (await this.cachedOperationEvidenceIsCurrent(cached.files))
+        )
+            return cached;
+        const { root, files } = await this.readOperationEvidence(
+            hash,
+            operationId,
+            algorithm,
+            fresh,
+            seen,
+        );
+        return { operationId, root, files };
+    }
+
+    /** Keeps the newest chains of each operation; one restore step loads at most a few of them. */
+    private rememberOperationChain(hash: string, chain: OperationChain): void {
+        this.operationChains.delete(hash);
+        this.operationChains.set(hash, chain);
+        const heads = [...this.operationChains].filter(
+            ([, other]) => other.operationId === chain.operationId,
+        );
+        for (const [old] of heads.slice(0, -RECENT_OPERATION_CHAINS))
+            this.operationChains.delete(old);
     }
 
     /** Content references are exact checksums and sizes, never arbitrary evidence paths. */
     private async validateOperationObjects(
         evidence: TargetOperationEvidence,
         algorithm: () => Promise<"sha1" | "sha256">,
+        fresh = false,
     ): Promise<Map<string, string>> {
         const files = new Map<string, string>();
-        const sizes = new Map<string, number>();
-        const contents = new Map<string, Buffer>();
+        const objects = new Map<string, PassObject>();
         for (const reference of targetOperationObjectReferences(evidence)) {
-            const name = `${reference.hash}.bin`;
-            const knownSize = sizes.get(reference.hash);
-            if (knownSize !== undefined) {
-                if (knownSize !== reference.size) throw new ChangelistEvidenceError();
+            const known = objects.get(reference.hash);
+            if (known) {
+                if (known.verified.size !== reference.size) throw new ChangelistEvidenceError();
                 continue;
             }
-            const saved = await this.readImmutableBytesWithIdentity(
-                path.join(this.evidenceDirectory, name),
-            );
-            const bytes = saved.bytes;
-            if (bytes.byteLength !== reference.size || changeFingerprint(bytes) !== reference.hash)
-                throw new ChangelistEvidenceError();
-            sizes.set(reference.hash, bytes.byteLength);
-            contents.set(reference.hash, bytes);
-            files.set(name, saved.identity);
+            const name = `${reference.hash}.bin`;
+            const cached = fresh ? undefined : this.verifiedObjects.get(name);
+            const object: PassObject =
+                cached &&
+                cached.size === reference.size &&
+                (await this.cachedOperationEvidenceIsCurrent(new Map([[name, cached.identity]])))
+                    ? { name, hash: reference.hash, verified: cached }
+                    : await this.readVerifiedObject(name, reference.hash, reference.size);
+            objects.set(reference.hash, object);
         }
         const gitEntries = [
             ...evidence.index,
@@ -635,25 +705,73 @@ export class ChangelistPersistence {
         ];
         const format = gitEntries.length ? await algorithm() : undefined;
         for (const entry of gitEntries) {
-            const bytes = contents.get(entry.object.hash);
-            if (!bytes || !format || !matchesGitObject(entry.oid, entry.mode, bytes, format))
-                throw new ChangelistEvidenceError();
+            const object = objects.get(entry.object.hash);
+            if (!object || !format) throw new ChangelistEvidenceError();
+            await this.passObjectCheck(
+                object,
+                `git\0${format}\0${entry.oid}\0${entry.mode}`,
+                (bytes) => matchesGitObject(entry.oid, entry.mode, bytes, format),
+            );
         }
         for (const reference of evidence.attribution ?? []) {
-            const bytes = contents.get(reference.object.hash);
-            if (
-                !bytes ||
-                !parseTargetOperationAttribution(
-                    JSON.parse(bytes.toString("utf8")),
-                    this.root,
-                    this.gitDir,
-                    evidence.operationId,
-                    reference.path,
-                )
-            )
-                throw new ChangelistEvidenceError();
+            const object = objects.get(reference.object.hash);
+            if (!object) throw new ChangelistEvidenceError();
+            await this.passObjectCheck(
+                object,
+                `attribution\0${evidence.operationId}\0${reference.path}`,
+                (bytes) =>
+                    Boolean(
+                        parseTargetOperationAttribution(
+                            JSON.parse(bytes.toString("utf8")),
+                            this.root,
+                            this.gitDir,
+                            evidence.operationId,
+                            reference.path,
+                        ),
+                    ),
+            );
         }
+        for (const object of objects.values()) files.set(object.name, object.verified.identity);
         return files;
+    }
+
+    /** Reads one content object, checks its size and digest, and remembers it with no checks passed. */
+    private async readVerifiedObject(
+        name: string,
+        hash: string,
+        size: number,
+    ): Promise<PassObject & { bytes: Buffer }> {
+        this.verifiedObjects.delete(name);
+        const saved = await this.readImmutableBytesWithIdentity(
+            path.join(this.evidenceDirectory, name),
+        );
+        if (saved.bytes.byteLength !== size || changeFingerprint(saved.bytes) !== hash)
+            throw new ChangelistEvidenceError();
+        const verified = { identity: saved.identity, size, checks: new Set<string>() };
+        this.verifiedObjects.set(name, verified);
+        return { name, hash, verified, bytes: saved.bytes };
+    }
+
+    /** A check an object passed under its current identity is not repeated; its bytes cannot differ. */
+    private async passObjectCheck(
+        object: PassObject,
+        check: string,
+        passes: (bytes: Buffer) => boolean,
+    ): Promise<void> {
+        if (object.verified.checks.has(check)) return;
+        let bytes = object.bytes;
+        if (!bytes) {
+            // Re-verify rather than refuse: another window may have collected and republished it.
+            const reread = await this.readVerifiedObject(
+                object.name,
+                object.hash,
+                object.verified.size,
+            );
+            object.verified = reread.verified;
+            bytes = object.bytes = reread.bytes;
+        }
+        if (!passes(bytes)) throw new ChangelistEvidenceError();
+        object.verified.checks.add(check);
     }
 
     /** One object-format lookup shared by every checkpoint a single validation pass reads. */
@@ -694,24 +812,13 @@ export class ChangelistPersistence {
             ),
         ];
         for (const root of roots) {
-            const key = `${root.id}\0${root.hash}`;
-            if (forceValidation) this.operationEvidenceCache.delete(key);
-            let resolved = this.operationEvidenceCache.get(key);
-            if (resolved && !(await this.cachedOperationEvidenceIsCurrent(resolved))) {
-                this.operationEvidenceCache.delete(key);
-                resolved = undefined;
-            }
-            if (!resolved) {
-                try {
-                    resolved = (await this.readOperationEvidence(root.hash, new Set(), root.id))
-                        .files;
-                    this.operationEvidenceCache.set(key, new Map(resolved));
-                } catch (error) {
-                    this.operationEvidenceCache.delete(key);
-                    throw error;
-                }
-            }
-            for (const name of resolved.keys()) files.add(name);
+            const resolved = await this.readOperationEvidence(
+                root.hash,
+                root.id,
+                undefined,
+                forceValidation,
+            );
+            for (const name of resolved.files.keys()) files.add(name);
         }
         return files;
     }
