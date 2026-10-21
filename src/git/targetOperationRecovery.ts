@@ -35,6 +35,8 @@ import { RepositoryMutationCoordinator } from "./mutationCoordinator";
 import { RepositoryLock } from "./repositoryLock";
 
 type IndexTuple = Omit<TargetIndexEntry, "object">;
+/** Index blobs read per Git process; bounds memory when many large files are captured together. */
+const BLOB_BATCH = 32;
 const nativeRecoveryGate = new RepositoryMutationGate(
     new RepositoryMutationCoordinator(),
     new RepositoryLock(),
@@ -48,7 +50,7 @@ export async function captureTargetNativeEvidence(
     affectedPaths: readonly string[],
 ): Promise<TargetOperationEvidence> {
     const { root, gitDir } = persistence;
-    await assertNativeRepository(executor, persistence);
+    const head = await assertNativeRepository(executor, persistence, true);
     const paths = [...affectedPaths].sort();
     if (
         new Set(paths).size !== paths.length ||
@@ -60,22 +62,29 @@ export async function captureTargetNativeEvidence(
         )
     )
         throw new Error("Unsupported recovery path.");
-    const head = (await executor.run(["rev-parse", "--verify", "HEAD"])).trim();
     const indexFingerprint = changeFingerprint(await readRegularBytes(path.join(gitDir, "index")));
     const native = await readNative(gitDir);
-    const tuples = await readIndex(executor);
+    const entries = (await readIndex(executor)).filter((entry) => paths.includes(entry.path));
+    if (entries.some((entry) => entry.mode === "160000" || entry.intentToAdd))
+        throw new Error("Unsupported native recovery index representation.");
     const index: TargetIndexEntry[] = [];
-    for (const entry of tuples.filter((entry) => paths.includes(entry.path))) {
-        if (entry.mode === "160000" || entry.intentToAdd)
-            throw new Error("Unsupported native recovery index representation.");
-        const bytes = (await executor.runBinary(["cat-file", "blob", entry.oid])).stdout;
-        index.push({
-            ...entry,
-            object: {
-                hash: await persistence.storeTargetOperationObject(bytes),
-                size: bytes.length,
-            },
-        });
+    // Each batch is stored before the next is read, so at most BLOB_BATCH blobs are held at once.
+    for (let first = 0; first < entries.length; first += BLOB_BATCH) {
+        const batch = entries.slice(first, first + BLOB_BATCH);
+        const blobs = await readBlobs(
+            executor,
+            batch.map((entry) => entry.oid),
+        );
+        for (const [position, entry] of batch.entries()) {
+            const bytes = blobs[position];
+            index.push({
+                ...entry,
+                object: {
+                    hash: await persistence.storeTargetOperationObject(bytes),
+                    size: bytes.length,
+                },
+            });
+        }
     }
     // Equal contents share a digest path; serialize publication across temporary-link cleanup.
     const pathStates: { path: string; state: TargetPathState }[] = [];
@@ -253,19 +262,56 @@ export async function abortTargetNativeOperation(
     });
 }
 
-/** Bind the executor before any Git-object write or repository-gate acquisition. */
+/**
+ * Bind the executor before any Git-object write or repository-gate acquisition. With `readHead`,
+ * the same Git process also reads HEAD and returns it; otherwise it returns an empty string.
+ */
 async function assertNativeRepository(
     executor: GitExecutor,
     persistence: ChangelistPersistence,
-): Promise<void> {
-    const observedRoot = await realpath(
-        (await executor.run(["rev-parse", "--show-toplevel"])).trim(),
-    );
-    const observedGit = await realpath(
-        (await executor.run(["rev-parse", "--absolute-git-dir"])).trim(),
-    );
-    if (observedRoot !== persistence.root || observedGit !== persistence.gitDir)
+    readHead = false,
+): Promise<string> {
+    const lines = (
+        await executor.run([
+            "rev-parse",
+            "--show-toplevel",
+            "--absolute-git-dir",
+            ...(readHead ? ["--verify", "HEAD"] : []),
+        ])
+    )
+        .trim()
+        .split("\n");
+    if (
+        lines.length !== (readHead ? 3 : 2) ||
+        (await realpath(lines[0])) !== persistence.root ||
+        (await realpath(lines[1])) !== persistence.gitDir
+    )
         throw new Error("Recovery repository identity changed.");
+    return lines[2] ?? "";
+}
+
+/** Reads the given blobs through one `cat-file --batch` process instead of one process per object. */
+async function readBlobs(executor: GitExecutor, oids: readonly string[]): Promise<Buffer[]> {
+    const output = (
+        await executor.runBinary(["cat-file", "--batch"], {
+            input: Buffer.from(oids.map((oid) => `${oid}\n`).join("")),
+        })
+    ).stdout;
+    const blobs: Buffer[] = [];
+    let position = 0;
+    for (const oid of oids) {
+        const newline = output.indexOf(10, position);
+        const header = /^([a-f0-9]+) blob (\d+)$/.exec(
+            output.subarray(position, newline < 0 ? position : newline).toString("utf8"),
+        );
+        const end = newline + 1 + Number(header?.[2]);
+        if (!header || header[1] !== oid || output[end] !== 10)
+            throw new Error("Unsupported native recovery object.");
+        blobs.push(output.subarray(newline + 1, end));
+        position = end + 1;
+    }
+    if (position !== output.length) throw new Error("Unsupported native recovery object.");
+    return blobs;
 }
 
 /** Restore paths in order, durably acknowledging each move before any installation. */
@@ -858,40 +904,35 @@ async function readPath(
 /** Read all logical index tuples so candidate publication can prove unrelated stages and flags survived. */
 async function readIndex(executor: GitExecutor, indexPath?: string): Promise<IndexTuple[]> {
     const env = indexPath ? { GIT_INDEX_FILE: indexPath } : undefined;
+    // One read: each `-v` stage line ends in NUL and is followed by its `--debug` block.
     const output = (
-        await executor.runBinary(["ls-files", "--stage", "-v", "-z"], { env })
+        await executor.runBinary(["ls-files", "--stage", "-v", "--debug", "-z"], { env })
     ).stdout.toString("utf8");
-    const debug = (
-        await executor.runBinary(["ls-files", "--debug", "-z"], { env })
-    ).stdout.toString("utf8");
-    const flags = new Map<string, number>();
+    const debug = /  ctime:[\s\S]*?\tflags: ([a-f0-9]+)\n/y;
+    const tuples: IndexTuple[] = [];
     let position = 0;
-    while (position < debug.length) {
-        const end = debug.indexOf("\0", position);
-        const match = /^  ctime:[\s\S]*?\tflags: ([a-f0-9]+)\n/.exec(debug.slice(end + 1));
-        if (end < position || !match) throw new Error("Unsupported index debug representation.");
-        flags.set(debug.slice(position, end), Number.parseInt(match[1], 16));
-        position = end + 1 + match[0].length;
-    }
-    return output
-        .split("\0")
-        .filter(Boolean)
-        .map((line) => {
-            const match =
-                /^([A-Za-z?]) (100644|100755|120000|160000) ([a-f0-9]+) ([0-3])\t([\s\S]+)$/.exec(
-                    line,
-                );
-            if (!match) throw new Error("Unsupported index entry.");
-            return {
-                path: match[5],
-                stage: Number(match[4]) as IndexTuple["stage"],
-                mode: match[2] as IndexTuple["mode"],
-                oid: match[3],
-                assumeUnchanged: match[1] === match[1].toLowerCase(),
-                skipWorktree: match[1].toUpperCase() === "S",
-                intentToAdd: ((flags.get(match[5]) ?? 0) & 0x20000000) !== 0,
-            };
+    while (position < output.length) {
+        const end = output.indexOf("\0", position);
+        debug.lastIndex = end + 1;
+        const flags = debug.exec(output);
+        if (end < position || !flags) throw new Error("Unsupported index debug representation.");
+        const match =
+            /^([A-Za-z?]) (100644|100755|120000|160000) ([a-f0-9]+) ([0-3])\t([\s\S]+)$/.exec(
+                output.slice(position, end),
+            );
+        if (!match) throw new Error("Unsupported index entry.");
+        tuples.push({
+            path: match[5],
+            stage: Number(match[4]) as IndexTuple["stage"],
+            mode: match[2] as IndexTuple["mode"],
+            oid: match[3],
+            assumeUnchanged: match[1] === match[1].toLowerCase(),
+            skipWorktree: match[1].toUpperCase() === "S",
+            intentToAdd: (Number.parseInt(flags[1], 16) & 0x20000000) !== 0,
         });
+        position = debug.lastIndex;
+    }
+    return tuples;
 }
 
 /** Native control fingerprints include sequencer names and bytes; symlinks and special files refuse. */

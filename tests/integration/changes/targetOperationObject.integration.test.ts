@@ -12,6 +12,50 @@ afterEach(async () => {
     await removeScratchDirectories(...roots);
 });
 
+/** A committed repository with each file's own staged bytes. */
+async function stagedRepository(files: Record<string, string>) {
+    const root = await realpath(await mkdtemp(path.join(tmpdir(), "target-index-")));
+    roots.push(root);
+    const git = new GitExecutor(root);
+    await git.run(["init", "-q"]);
+    await git.run([
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "--allow-empty",
+        "-qm",
+        "base",
+    ]);
+    for (const [file, text] of Object.entries(files)) await writeFile(path.join(root, file), text);
+    const persistence = await ChangelistPersistence.open(root, path.join(root, ".git"));
+    return { root, git, persistence };
+}
+
+// One Git process reads a whole batch of index blobs, so each entry must still get its own bytes,
+// including across the boundary between two batches.
+it("captures each affected path's own index blob", async () => {
+    const sizes = Array.from({ length: 33 }, (_, index) => index + 1);
+    const names = sizes.map((size) => `file-${String(size).padStart(2, "0")}`);
+    const { git, persistence } = await stagedRepository(
+        Object.fromEntries(names.map((name, index) => [name, "x".repeat(sizes[index])])),
+    );
+    await git.run(["add", "."]);
+    const evidence = await captureTargetNativeEvidence(git, persistence, "index-blobs", names);
+    expect(evidence.index.map((entry) => [entry.path, entry.object.size])).toEqual(
+        names.map((name, index) => [name, sizes[index]]),
+    );
+});
+
+it("refuses to capture an intent-to-add index entry", async () => {
+    const { git, persistence } = await stagedRepository({ affected: "new\n" });
+    await git.run(["add", "-N", "affected"]);
+    await expect(
+        captureTargetNativeEvidence(git, persistence, "intent", ["affected"]),
+    ).rejects.toThrow("Unsupported native recovery index representation.");
+});
+
 it.each(["real", "injected-overlap"] as const)(
     "%s dependency: durably captures identical changed path bytes across fresh immutable publications",
     async (dependency) => {
