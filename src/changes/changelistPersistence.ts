@@ -93,7 +93,7 @@ export class ChangelistPersistence {
     /** Content objects by file name, with the identity they were verified under and checks passed. */
     private readonly verifiedObjects = new Map<string, VerifiedObject>();
     /** A repository's object format is fixed when it is created; a failed lookup is not kept. */
-    private objectAlgorithm?: Promise<"sha1" | "sha256">;
+    private objectAlgorithm?: { directory: string; format: Promise<"sha1" | "sha256"> };
 
     /** Binds paths already canonicalized by open; metadata locking remains separate from Git's index lock. */
     private constructor(
@@ -776,13 +776,22 @@ export class ChangelistPersistence {
         object.verified.checks.add(check);
     }
 
-    /** One object-format lookup shared by every checkpoint this repository binding validates. */
+    /** One object-format lookup per Git directory, so a repository re-created at this path is asked again. */
     private onceGitObjectAlgorithm(): () => Promise<"sha1" | "sha256"> {
-        return () =>
-            (this.objectAlgorithm ??= this.gitObjectAlgorithm().catch((error: unknown) => {
-                this.objectAlgorithm = undefined;
-                throw error;
-            }));
+        return async () => {
+            // Creation time, not modification time: Git adds and removes entries here constantly.
+            const details = await lstat(this.gitDir, { bigint: true });
+            const directory = `${details.dev}:${details.ino}:${details.birthtimeNs}`;
+            if (this.objectAlgorithm?.directory !== directory) {
+                const format = this.gitObjectAlgorithm();
+                this.objectAlgorithm = { directory, format };
+                format.catch(() => {
+                    if (this.objectAlgorithm?.format === format) this.objectAlgorithm = undefined;
+                });
+                return format;
+            }
+            return this.objectAlgorithm.format;
+        };
     }
 
     /** Ask the repository-bound Git runtime for the object format; unknown output fails closed. */

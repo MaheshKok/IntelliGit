@@ -2972,6 +2972,46 @@ describe("durable target operation foundation", () => {
         ).rejects.toThrow("requires review");
     });
 
+    it("asks a repository replaced at the same path for its own object format", async (context) => {
+        execFileSync("git", ["init", "-q"], { cwd: root });
+        gitDir = await realpath(path.join(root, ".git"));
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        const contents = Buffer.from("indexed bytes\n");
+        const objectHash = await persistence.storeTargetOperationObject(contents);
+        const checkpoint = (format: "sha1" | "sha256"): TargetOperationEvidence => ({
+            ...evidence(operationId, objectHash, contents.byteLength),
+            index: [
+                {
+                    path: "src/file.ts",
+                    stage: 0,
+                    mode: "100644",
+                    oid: gitObjectOid(contents, "blob", format),
+                    object: { hash: objectHash, size: contents.byteLength },
+                    assumeUnchanged: false,
+                    skipWorktree: false,
+                    intentToAdd: false,
+                },
+            ],
+        });
+        await persistence.storeTargetOperationEvidence(checkpoint("sha1"));
+        // The old directory stays alive so the replacement cannot reuse its inode.
+        await rename(gitDir, `${gitDir}-replaced`);
+        try {
+            execFileSync("git", ["init", "-q", "--object-format=sha256"], { cwd: root });
+        } catch {
+            context.skip();
+            return;
+        }
+        await rename(
+            path.join(`${gitDir}-replaced`, "intelligit"),
+            path.join(gitDir, "intelligit"),
+        );
+        await expect(
+            persistence.storeTargetOperationEvidence(checkpoint("sha256")),
+            "a re-cloned SHA-256 repository must not be judged by the old SHA-1 format",
+        ).resolves.toMatch(/^[a-f0-9]{64}$/);
+    });
+
     it("binds saved index bytes to real SHA-256 Git object identifiers", async (context) => {
         try {
             execFileSync("git", ["init", "-q", "--object-format=sha256"], { cwd: root });
