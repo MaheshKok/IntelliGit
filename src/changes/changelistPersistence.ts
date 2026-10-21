@@ -92,6 +92,8 @@ export class ChangelistPersistence {
     private readonly operationChains = new Map<string, OperationChain>();
     /** Content objects by file name, with the identity they were verified under and checks passed. */
     private readonly verifiedObjects = new Map<string, VerifiedObject>();
+    /** A repository's object format is fixed when it is created; a failed lookup is not kept. */
+    private objectAlgorithm?: Promise<"sha1" | "sha256">;
 
     /** Binds paths already canonicalized by open; metadata locking remains separate from Git's index lock. */
     private constructor(
@@ -774,10 +776,13 @@ export class ChangelistPersistence {
         object.verified.checks.add(check);
     }
 
-    /** One object-format lookup shared by every checkpoint a single validation pass reads. */
+    /** One object-format lookup shared by every checkpoint this repository binding validates. */
     private onceGitObjectAlgorithm(): () => Promise<"sha1" | "sha256"> {
-        let pending: Promise<"sha1" | "sha256"> | undefined;
-        return () => (pending ??= this.gitObjectAlgorithm());
+        return () =>
+            (this.objectAlgorithm ??= this.gitObjectAlgorithm().catch((error: unknown) => {
+                this.objectAlgorithm = undefined;
+                throw error;
+            }));
     }
 
     /** Ask the repository-bound Git runtime for the object format; unknown output fails closed. */

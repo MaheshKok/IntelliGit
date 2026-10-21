@@ -3059,27 +3059,32 @@ describe("durable target operation foundation", () => {
                 exitCode: 0,
                 truncated: false,
             });
+            const checkpoint: TargetOperationEvidence = {
+                ...evidence(operationId, objectHash, contents.byteLength),
+                index: [
+                    {
+                        path: "src/file.ts",
+                        stage: 0,
+                        mode: "100644",
+                        oid: gitObjectOid(contents, "blob"),
+                        object: { hash: objectHash, size: contents.byteLength },
+                        assumeUnchanged: false,
+                        skipWorktree: false,
+                        intentToAdd: false,
+                    },
+                ],
+            };
 
-            await expect(
-                persistence.storeTargetOperationEvidence({
-                    ...evidence(operationId, objectHash, contents.byteLength),
-                    index: [
-                        {
-                            path: "src/file.ts",
-                            stage: 0,
-                            mode: "100644",
-                            oid: gitObjectOid(contents, "blob"),
-                            object: { hash: objectHash, size: contents.byteLength },
-                            assumeUnchanged: false,
-                            skipWorktree: false,
-                            intentToAdd: false,
-                        },
-                    ],
-                }),
-            ).rejects.toThrow("requires review");
+            await expect(persistence.storeTargetOperationEvidence(checkpoint)).rejects.toThrow(
+                "requires review",
+            );
             expect(run).toHaveBeenCalledWith(["rev-parse", "--show-object-format"], {
                 maxOutputBytes: 16,
             });
+            await expect(
+                persistence.storeTargetOperationEvidence(checkpoint),
+                "a rejected lookup must be asked again, not remembered",
+            ).resolves.toMatch(/^[a-f0-9]{64}$/);
         },
     );
 
