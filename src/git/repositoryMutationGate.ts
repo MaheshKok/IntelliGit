@@ -4,6 +4,9 @@ import { RepositoryMutationCoordinator } from "./mutationCoordinator";
 import { acquireWithBoundedWait } from "./boundedLockRetry";
 import { RepositoryLock } from "./repositoryLock";
 
+/** How long a user-asked mutation waits on a busy cross-process lock before reporting busy. */
+export const REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS = 5_000;
+
 /** Tuning for how long a mutation briefly waits on a busy cross-process lock. */
 export interface RepositoryMutationGateOptions {
     acquireTimeoutMs?: number;
@@ -25,7 +28,7 @@ export class RepositoryMutationGate {
         private readonly lock: RepositoryLock,
         options: RepositoryMutationGateOptions = {},
     ) {
-        this.acquireTimeoutMs = options.acquireTimeoutMs ?? 5_000;
+        this.acquireTimeoutMs = options.acquireTimeoutMs ?? REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS;
         this.acquireRetryDelayMs = options.acquireRetryDelayMs ?? 150;
         this.resolveRepositoryRoot = options.resolveRepositoryRoot ?? realpath;
     }

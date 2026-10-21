@@ -36,6 +36,8 @@ vi.mock("vscode", () => ({
 }));
 
 import { registerShelfCommands, SHELF_COMMAND_IDS } from "../../../src/activation/shelfCommands";
+import { RepositoryLockBusyError } from "../../../src/git/repositoryLock";
+import { REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS } from "../../../src/git/repositoryMutationGate";
 
 const successfulMutation = { status: "ok" as const, entries: [] };
 const CHECKSUM = "c".repeat(64);
@@ -232,6 +234,49 @@ describe("registerShelfCommands", () => {
             expect.objectContaining({ shelf: expect.objectContaining({ id: "earlier" }) }),
             expect.objectContaining({ shelf: expect.objectContaining({ id: "legacy" }) }),
         ]);
+    });
+
+    it("waits for a briefly busy shelf lock before listing shelves to unshelve", async () => {
+        const service = makeService();
+        const listed = await service.listShelves();
+        service.listShelves
+            .mockRejectedValueOnce(new RepositoryLockBusyError())
+            .mockRejectedValueOnce(new RepositoryLockBusyError())
+            .mockResolvedValueOnce(listed);
+        register(new Map([["/one", service]]));
+        mocks.showQuickPick.mockResolvedValue(undefined);
+
+        await mocks.commands.get("intelligit.unshelve")?.();
+
+        expect(mocks.showErrorMessage).not.toHaveBeenCalled();
+        expect(mocks.showQuickPick).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports a shelf lock still busy only after the repository gate's wait", async () => {
+        vi.useFakeTimers();
+        try {
+            const service = makeService();
+            service.listShelves.mockRejectedValue(new RepositoryLockBusyError());
+            register(new Map([["/one", service]]));
+
+            const done = mocks.commands.get("intelligit.unshelve")?.() as Promise<void>;
+            await vi.advanceTimersByTimeAsync(REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS - 100);
+            expect(
+                mocks.showErrorMessage,
+                "still waiting inside the gate window",
+            ).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(200);
+
+            // Asserted before awaiting the command, so a wait that never ends fails here, not as a hang.
+            expect(
+                mocks.showErrorMessage,
+                "busy reported once the gate window is spent",
+            ).toHaveBeenCalledWith(`Unshelve failed: ${new RepositoryLockBusyError().message}`);
+            await done;
+            expect(mocks.showQuickPick).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("picks a repository only when ambiguous and stops before service work when a picker is cancelled", async () => {

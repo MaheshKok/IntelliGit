@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import type { ChangelistStore } from "../changes/changelistStore";
 import { prepareShelfRestore } from "../commands/shelfRestoreTarget";
+import { acquireWithBoundedWait } from "../git/boundedLockRetry";
+import { REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS } from "../git/repositoryMutationGate";
 import {
     ShelfStaleShelfError,
     type ShelfMutationResult,
@@ -158,7 +160,12 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
         const service = await selectService();
         if (!service) return;
         try {
-            const shelves = (await service.listShelves()).shelves
+            // A user-asked restore waits as long as the repository gate; the store's own 1 s wait suits panel refreshes.
+            const listed = await acquireWithBoundedWait(() => service.listShelves(), {
+                timeoutMs: REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS,
+                retryDelayMs: 150,
+            });
+            const shelves = listed.shelves
                 .filter((shelf) => shelf.metadata.lifecycle !== "applied")
                 .sort((left, right) => {
                     const leftCreatedAt = left.metadata.createdAt;
