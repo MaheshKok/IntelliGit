@@ -82,7 +82,12 @@ export interface TargetShelfMutationResult {
     readonly shelfId: string;
     readonly newGeneration?: number;
     readonly status:
-        "applied" | "notApplied" | "appliedNeedsReview" | "conflicted" | "stale" | "busy";
+        | "applied"
+        | "notApplied"
+        | "appliedNeedsReview"
+        | "conflicted"
+        | "stale"
+        | "busy";
     readonly operationId: string;
 }
 
@@ -454,29 +459,65 @@ class TargetShelfRestore {
         this.durable = true;
         let latest = initial;
         for (const entry of selected) {
+            // Each step re-reads only its own paths, so the restore stays linear in its size. The
+            // index fingerprint covers the whole index, and the full check after the loop covers
+            // every path carried forward from an earlier step.
+            const touched = this.paths([entry]);
             assertSameObservation(
-                latest,
+                narrowObservation(latest, touched),
                 await captureTargetNativeEvidence(
                     this.deps.executor,
                     this.persistence,
                     this.intent.id,
-                    paths,
+                    touched,
                 ),
             );
             const result = await this.deps.applyEntry(this.input.id, entry, this.input.mode);
             this.entries.push(result);
-            const observed = await captureTargetNativeEvidence(
+            const fresh = await captureTargetNativeEvidence(
                 this.deps.executor,
                 this.persistence,
                 this.intent.id,
-                paths,
+                touched,
             );
+            const indexKept = fresh.indexFingerprint === latest.indexFingerprint;
+            let observed: TargetOperationEvidence;
+            if (indexKept) observed = mergeObservation(latest, fresh);
+            else {
+                observed = await captureTargetNativeEvidence(
+                    this.deps.executor,
+                    this.persistence,
+                    this.intent.id,
+                    paths,
+                );
+                // A step may change only its own files' index entries; every other file must
+                // still match the saved record, or an outside edit would be recorded as restored.
+                const others = paths.filter((file) => !touched.includes(file));
+                assertSameObservation(
+                    {
+                        ...narrowObservation(latest, others),
+                        indexFingerprint: observed.indexFingerprint,
+                    },
+                    narrowObservation(observed, others),
+                );
+            }
+            // Attribution depends on Git attributes, so restoring an attributes file re-checks all.
+            // Case-insensitive file systems open `.GitAttributes` as the attributes file too.
+            const reusable =
+                indexKept &&
+                !touched.some((file) => file.split("/").pop()!.toLowerCase() === ".gitattributes");
             if (
                 this.input.mode === "flattened" &&
                 observed.indexFingerprint !== before.indexFingerprint
             )
                 throw new Error("Flattened restore changed the index.");
-            latest = await this.after(initial, observed, snapshots, ownership);
+            latest = await this.after(
+                initial,
+                observed,
+                snapshots,
+                ownership,
+                reusable ? { touched, previous: latest } : undefined,
+            );
             const pending = this.state().pendingTargetOperation!;
             const afterHash = await this.persistence.storeTargetOperationEvidence({
                 ...latest,
@@ -490,6 +531,15 @@ class TargetShelfRestore {
                 evidenceHash: afterHash,
             });
         }
+        assertSameObservation(
+            latest,
+            await captureTargetNativeEvidence(
+                this.deps.executor,
+                this.persistence,
+                this.intent.id,
+                paths,
+            ),
+        );
         const pending = this.state().pendingTargetOperation!;
         const conflicted = latest.entries.some((entry) => entry.outcome === "conflicted");
         const afterHash = await this.persistence.storeTargetOperationEvidence({
@@ -538,12 +588,17 @@ class TargetShelfRestore {
         };
     }
 
-    /** Stores actual before/after Git text attribution for only successful paths. */
+    /**
+     * Stores actual before/after Git text attribution for only successful paths. With `reuse`, the
+     * index is unchanged since `previous`, so files outside `touched` keep their saved attribution
+     * and only `touched` is re-checked.
+     */
     private async after(
         before: TargetOperationEvidence,
         observed: TargetOperationEvidence,
         snapshots: ReadonlyMap<string, PartialFileSnapshot>,
         ownership: Readonly<Record<string, HydratedChangeOwnership | undefined>>,
+        reuse?: { readonly touched: readonly string[]; readonly previous: TargetOperationEvidence },
     ): Promise<TargetOperationEvidence> {
         const entries = before.entries.map((entry) => {
             const result = this.entries.find((result) => result.changeId === entry.changeId);
@@ -568,6 +623,14 @@ class TargetShelfRestore {
                 wholeFileAttribution.push({ path: file, changeIds });
                 continue;
             }
+            const kept =
+                reuse && !reuse.touched.includes(file)
+                    ? reuse.previous.attribution?.find((value) => value.path === file)
+                    : undefined;
+            if (kept) {
+                attribution.push(kept);
+                continue;
+            }
             const after = await readPartialSnapshot(
                 this.deps.executor,
                 this.intent.root,
@@ -579,12 +642,12 @@ class TargetShelfRestore {
             );
         }
         assertSameObservation(
-            observed,
+            reuse ? narrowObservation(observed, reuse.touched) : observed,
             await captureTargetNativeEvidence(
                 this.deps.executor,
                 this.persistence,
                 this.intent.id,
-                before.paths.map((entry) => entry.path),
+                reuse ? reuse.touched : before.paths.map((entry) => entry.path),
             ),
         );
         return { ...observed, checkpoint: "after", entries, attribution, wholeFileAttribution };
@@ -946,6 +1009,34 @@ function evidenceResults(evidence: TargetOperationEvidence): PerEntryResult[] {
                   reason: entry.reason ?? "Target operation requires review.",
               },
     );
+}
+
+/** The saved observation limited to `paths`, comparable with a capture of only those paths. */
+function narrowObservation(
+    saved: TargetOperationEvidence,
+    paths: readonly string[],
+): TargetOperationEvidence {
+    return {
+        ...saved,
+        paths: saved.paths.filter((entry) => paths.includes(entry.path)),
+        index: saved.index.filter((entry) => paths.includes(entry.path)),
+    };
+}
+
+/**
+ * `previous` with the freshly captured paths replaced. Valid only while the index file is
+ * byte-identical, because the carried index entries are not re-read.
+ */
+function mergeObservation(
+    previous: TargetOperationEvidence,
+    fresh: TargetOperationEvidence,
+): TargetOperationEvidence {
+    const captured = new Map(fresh.paths.map((entry) => [entry.path, entry]));
+    return {
+        ...fresh,
+        paths: previous.paths.map((entry) => captured.get(entry.path) ?? entry),
+        index: previous.index,
+    };
 }
 
 /** External changes to affected Git state stop mutation even while extension locks remain held. */

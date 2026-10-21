@@ -322,12 +322,15 @@ export class ChangelistPersistence {
         try {
             const evidence = parseTargetOperationEvidence(_evidence, this.root, this.gitDir);
             if (!evidence) throw new ChangelistEvidenceError();
-            await this.validateOperationObjects(evidence);
+            const algorithm = this.onceGitObjectAlgorithm();
+            await this.validateOperationObjects(evidence, algorithm);
             if (evidence.previousEvidenceHash)
                 await this.readOperationEvidence(
                     evidence.previousEvidenceHash,
                     new Set(),
                     evidence.operationId,
+                    undefined,
+                    algorithm,
                 );
             const bytes = JSON.stringify(evidence);
             const hash = changeFingerprint(bytes);
@@ -568,6 +571,7 @@ export class ChangelistPersistence {
         seen: Set<string>,
         operationId?: string,
         files = new Map<string, string>(),
+        algorithm = this.onceGitObjectAlgorithm(),
     ): Promise<TargetOperationEvidenceChain & { files: Map<string, string> }> {
         if (!/^[a-f0-9]{64}$/.test(hash) || seen.has(hash)) throw new ChangelistEvidenceError();
         seen.add(hash);
@@ -582,7 +586,7 @@ export class ChangelistPersistence {
         if (!evidence || (operationId !== undefined && evidence.operationId !== operationId))
             throw new ChangelistEvidenceError();
         files.set(filename, saved.identity);
-        for (const [name, identity] of await this.validateOperationObjects(evidence))
+        for (const [name, identity] of await this.validateOperationObjects(evidence, algorithm))
             files.set(name, identity);
         let root = { hash, evidence };
         if (evidence.previousEvidenceHash) {
@@ -591,6 +595,7 @@ export class ChangelistPersistence {
                 seen,
                 evidence.operationId,
                 files,
+                algorithm,
             );
             root = previous.root;
         }
@@ -600,6 +605,7 @@ export class ChangelistPersistence {
     /** Content references are exact checksums and sizes, never arbitrary evidence paths. */
     private async validateOperationObjects(
         evidence: TargetOperationEvidence,
+        algorithm: () => Promise<"sha1" | "sha256">,
     ): Promise<Map<string, string>> {
         const files = new Map<string, string>();
         const sizes = new Map<string, number>();
@@ -627,10 +633,10 @@ export class ChangelistPersistence {
                 entry.head.kind === "present" ? [entry.head] : [],
             ),
         ];
-        const algorithm = gitEntries.length ? await this.gitObjectAlgorithm() : undefined;
+        const format = gitEntries.length ? await algorithm() : undefined;
         for (const entry of gitEntries) {
             const bytes = contents.get(entry.object.hash);
-            if (!bytes || !algorithm || !matchesGitObject(entry.oid, entry.mode, bytes, algorithm))
+            if (!bytes || !format || !matchesGitObject(entry.oid, entry.mode, bytes, format))
                 throw new ChangelistEvidenceError();
         }
         for (const reference of evidence.attribution ?? []) {
@@ -648,6 +654,12 @@ export class ChangelistPersistence {
                 throw new ChangelistEvidenceError();
         }
         return files;
+    }
+
+    /** One object-format lookup shared by every checkpoint a single validation pass reads. */
+    private onceGitObjectAlgorithm(): () => Promise<"sha1" | "sha256"> {
+        let pending: Promise<"sha1" | "sha256"> | undefined;
+        return () => (pending ??= this.gitObjectAlgorithm());
     }
 
     /** Ask the repository-bound Git runtime for the object format; unknown output fails closed. */
