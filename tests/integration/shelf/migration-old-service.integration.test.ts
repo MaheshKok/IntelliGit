@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ShelfMutationAdmissionError, ShelfStore } from "../../../src/shelf/store";
+import { resolveShelfPaths } from "../../../src/shelf/paths";
 import { ShelfService, type ShelfServiceOptions } from "../../../src/services/shelfService";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { ChangelistPersistence } from "../../../src/changes/changelistPersistence";
@@ -341,6 +342,42 @@ describe("migration service admission", () => {
         expect(await store.readCurrentManifest(id)).toEqual(before);
         migrate.mockRejectedValueOnce(new Error("upgrade IO failure"));
         await expect(service.resumePendingRecovery()).rejects.toThrow("upgrade IO failure");
+    });
+
+    it("startup recovery in a repository that never shelved writes no shelf store files", async () => {
+        const directory = await mkdtemp(path.join(tmpdir(), "fresh-shelf-store-"));
+        directories.push(directory);
+        const root = path.join(directory, "repository");
+        await mkdir(root);
+        execFileSync("git", ["init"], { cwd: root, stdio: "ignore" });
+        const paths = await resolveShelfPaths({
+            repositoryRoot: root,
+            globalStoragePath: path.join(directory, "storage"),
+        });
+        const changelists = new ChangelistStore();
+        await changelists.connect(root, path.join(root, ".git"));
+        const service = new ShelfService({
+            repositoryRoot: root,
+            store: new ShelfStore(paths),
+            executor: new GitExecutor(root),
+            gate: new RepositoryMutationGate(
+                new RepositoryMutationCoordinator(),
+                new RepositoryLock(),
+            ),
+            changelists,
+        });
+        const recovered = await service.resumePendingRecovery();
+        // The store lock is transient; anything else would be left in every repository opened.
+        const entries = await readdir(paths.root, { recursive: true }).catch(() => []);
+        const files: string[] = [];
+        for (const entry of entries)
+            if (
+                !entry.startsWith(".store-lock") &&
+                (await stat(path.join(paths.root, entry))).isFile()
+            )
+                files.push(entry);
+        expect(files, "shelf store files after startup recovery").toEqual([]);
+        expect(recovered).toEqual({ rolledBackIds: [], retainedIds: [], upgraded: false });
     });
 });
 

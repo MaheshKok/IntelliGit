@@ -938,17 +938,19 @@ export class ShelfService {
                 }
             }
             const result = await this.reverter.resumePendingWithHeldLocks();
-            const upgraded = await this.options.store
-                .migrateWithHeldLocks()
-                .catch((error: unknown) => {
-                    // Upgrading at startup lets panels list post-upgrade generations; a refused upgrade waits for the next write.
-                    if (
-                        result.rolledBackIds.length === 0 &&
-                        error instanceof ShelfMutationAdmissionError
-                    )
-                        return false;
-                    throw error;
-                });
+            // A repository that never shelved has nothing to upgrade; upgrading it would leave store files in every repository opened.
+            const upgraded =
+                result.rolledBackIds.length > 0 || (await this.options.store.hasCatalog())
+                    ? await this.options.store.migrateWithHeldLocks().catch((error: unknown) => {
+                          // Upgrading at startup lets panels list post-upgrade generations; a refused upgrade waits for the next write.
+                          if (
+                              result.rolledBackIds.length === 0 &&
+                              error instanceof ShelfMutationAdmissionError
+                          )
+                              return false;
+                          throw error;
+                      })
+                    : false;
             for (const id of result.rolledBackIds) {
                 const shelf = links.get(id);
                 if (!shelf) continue;

@@ -377,6 +377,17 @@ export class ShelfStore {
         return true;
     }
 
+    /** Whether this store has a catalog on disk; without one there are no shelves to upgrade. */
+    async hasCatalog(): Promise<boolean> {
+        try {
+            await lstat(await this.readableTarget(this.catalogPath()));
+            return true;
+        } catch (error) {
+            if (isNotFound(error)) return false;
+            throw error;
+        }
+    }
+
     /** Validates all live schemas once per uninterrupted lock hold, after durable completion. */
     async assertMutationReady(): Promise<void> {
         await this.assertMigrationReady();

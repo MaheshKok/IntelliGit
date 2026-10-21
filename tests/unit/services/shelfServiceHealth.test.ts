@@ -33,6 +33,7 @@ async function createHealthService(overrides?: {
     const changelists = new ChangelistStore();
     await changelists.connect(root, gitDir);
     const store = {
+        hasCatalog: async () => true,
         migrateWithHeldLocks: async () => {},
         readCurrentManifest: async () => ({ generation: 1 }),
         withLock: async <T>(operation: () => Promise<T>): Promise<T> => {
