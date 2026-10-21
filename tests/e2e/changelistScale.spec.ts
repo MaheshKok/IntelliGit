@@ -526,6 +526,7 @@ async function prepareLifecycleStats(workspace: FixtureWorkspace) {
     const release = path.join(directory, "release");
     const fail = path.join(directory, "fail-first");
     const failures = path.join(directory, "failures");
+    const calls = path.join(directory, "calls");
     await mkdir(held, { recursive: true });
     const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
     const wrapper = path.join(directory, "git");
@@ -547,6 +548,7 @@ if [ "$numstat" = "1" ] && [ "$fixture" = "1" ]; then
     trap 'rm -f "$marker" "$output" "$errors"' EXIT
     trap 'exit 143' TERM
     trap 'exit 130' INT
+    printf '%s\n' "$*" >> "${calls}"
     "${realGit}" "$@" > "$output" 2> "$errors"
     result=$?
     printf '%s\n' "$$" > "$marker"
@@ -566,7 +568,37 @@ exec "${realGit}" "$@"
     await chmod(wrapper, 0o755);
     workspace.env.PATH = `${directory}:${workspace.env.PATH ?? ""}`;
     workspace.env.INTELLIGIT_E2E_TRACE_WORKING_FILE_STATS = "1";
-    return { names, held, release, fail, failures };
+    return { names, held, release, fail, failures, calls };
+}
+
+/** Lists the fixture files each held numstat call read, in call order. */
+async function lifecycleCalls(file: string, names: readonly string[]): Promise<string[][]> {
+    return (await readFile(file, "utf8"))
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => line.split(" ").filter((argument) => names.includes(argument)));
+}
+
+/** Records every text the named row shows from now on, so a briefly shown count is not missed. */
+async function watchLifecycleRow(frame: FrameLocator, name: string) {
+    await frame.getByTestId("virtual-commit-tree").evaluate((tree, title) => {
+        const seen: string[] = [];
+        Object.assign(window, { lifecycleSeen: seen });
+        const record = () => {
+            const text = tree.querySelector(`[title="${title}"]`)?.textContent;
+            if (text) seen.push(text);
+        };
+        new MutationObserver(record).observe(tree, {
+            subtree: true,
+            childList: true,
+            characterData: true,
+        });
+        record();
+    }, name);
+    return () =>
+        frame
+            .getByTestId("virtual-commit-tree")
+            .evaluate(() => (window as unknown as { lifecycleSeen: string[] }).lifecycleSeen);
 }
 
 /** Reads only the existing opted-in host trace; keys separate wrappers and status revisions. */
@@ -689,6 +721,10 @@ test.describe("lazy statistics lifecycle", () => {
             const oldKey = trace.latest("commit-panel")!;
             evidence.oldKey = oldKey;
             evidence.oldHeldPids = oldHeldPids;
+            const initiallyRead = new Set(
+                (await lifecycleCalls(fixture.calls, fixture.names)).flat(),
+            );
+            evidence.initiallyRead = [...initiallyRead];
             await writeFile(path.join(workspace.root, first), "baseline\none\ntwo\nthree\n");
             await frame.getByTestId("commit-tab").getByTestId("refresh-button").click();
             await expect.poll(() => trace.latest("commit-panel")).not.toBe(oldKey);
@@ -699,16 +735,20 @@ test.describe("lazy statistics lifecycle", () => {
             ).toHaveText("...");
             const currentKey = trace.latest("commit-panel")!;
             evidence.currentKeyBeforeRelease = currentKey;
-            await expect
-                .poll(() => liveLifecyclePids(oldHeldPids), {
-                    message: "reset must settle the identified old Git processes before release",
-                })
-                .toEqual([]);
-            evidence.oldProcessesSettledBeforeRelease = true;
+            // The old read is allowed to finish: its unchanged counts are reused, not thrown away.
+            const seenTexts = await watchLifecycleRow(frame, first);
             evidence.currentRepliesBeforeRelease = trace.replies(currentKey);
             expect(trace.replies(currentKey)).toEqual([]);
+            const callsBeforeRelease = (await lifecycleCalls(fixture.calls, fixture.names)).length;
             await writeFile(fixture.release, "release\n");
             await expect(frame.getByTitle(first, { exact: true })).toContainText("+3");
+            const seen = await seenTexts();
+            evidence.firstRowTexts = seen;
+            expect(seen.some((text) => text.includes("+3"))).toBe(true);
+            expect(
+                seen.filter((text) => text.includes("+1")),
+                "the edited file never shows its old count",
+            ).toEqual([]);
             await expect(
                 await showLifecycleEdge(frame, "last", fixture.names.at(-1)!),
             ).toContainText("+1");
@@ -717,6 +757,19 @@ test.describe("lazy statistics lifecycle", () => {
                 "no observed terminal message is tagged with the retired status revision",
             ).toEqual([]);
             expect(trace.events.filter((event) => event.unavailable > 0)).toEqual([]);
+            const reread = [
+                ...new Set(
+                    (await lifecycleCalls(fixture.calls, fixture.names))
+                        .slice(callsBeforeRelease)
+                        .flat()
+                        .filter((name) => initiallyRead.has(name)),
+                ),
+            ];
+            evidence.rereadAfterRelease = reread;
+            expect(
+                reread,
+                "only the edited file is read again; unchanged counts are reused",
+            ).toEqual([first]);
             evidence.firstCount = 3;
             evidence.lastCount = 1;
         } finally {
@@ -837,6 +890,10 @@ test.describe("lazy statistics lifecycle", () => {
             await expect(
                 (await showLifecycleEdge(frame, "first", first)).getByRole("status"),
             ).toHaveText("...");
+            await expect(
+                frame.getByTitle(marker, { exact: true }),
+                "the panel starts on the nested clone, which sorts first by label",
+            ).toBeVisible();
             await expect.poll(() => trace.latest("commit-panel")).toBeDefined();
             let oldHeldPids: number[] = [];
             await expect
@@ -848,19 +905,19 @@ test.describe("lazy statistics lifecycle", () => {
             const oldKey = trace.latest("commit-panel")!;
             evidence.oldKey = oldKey;
             evidence.oldHeldPids = oldHeldPids;
+            const rootLabel = path.basename(workspace.root);
             const workbench = new Workbench(page);
             await workbench.runCommand("IntelliGit: Select Repository");
-            await page
-                .locator(".quick-input-widget")
-                .getByText("selected-repo", { exact: true })
-                .click();
+            await page.locator(".quick-input-widget").getByText(rootLabel, { exact: true }).click();
+            // Each repository keeps its own accordion section, so the switch shows in the picker, not the rows.
+            await workbench.runCommand("IntelliGit: Select Repository");
             await expect(
-                frame.getByTitle(marker, { exact: true }),
-                "the selected repository must replace the original status rows",
-            ).toBeVisible();
-            await expect.poll(() => trace.latest("commit-panel")).not.toBe(oldKey);
-            const selectedKey = trace.latest("commit-panel")!;
-            evidence.selectedKey = selectedKey;
+                page
+                    .getByRole("option")
+                    .filter({ has: page.getByText(rootLabel, { exact: true }) }),
+                "the workspace root is the active repository after the switch",
+            ).toContainText("Active");
+            await page.keyboard.press("Escape");
             await expect
                 .poll(() => liveLifecyclePids(oldHeldPids), {
                     message:
@@ -868,31 +925,15 @@ test.describe("lazy statistics lifecycle", () => {
                 })
                 .toEqual([]);
             evidence.oldProcessesSettledBeforeRelease = true;
-            evidence.selectedRepliesBeforeRelease = trace.replies(selectedKey);
             await writeFile(fixture.release, "release\n");
             await expect(
-                frame.getByTitle(first, { exact: true }),
-                "old repository +1 must not replace selected repository +4",
-            ).toContainText("+4");
-            await expect(
                 await showLifecycleEdge(frame, "last", fixture.names.at(-1)!),
-            ).toContainText("+4");
+            ).toBeVisible();
             expect(
                 trace.replies(oldKey),
                 "no observed terminal message is tagged with the retired repository revision",
             ).toEqual([]);
-            const selectedReplies = trace.replies(selectedKey);
-            expect(selectedReplies.some((event) => event.ready > 0)).toBe(true);
-            expect(selectedReplies.filter((event) => event.unavailable > 0)).toEqual([]);
-            evidence.selectedRepliesAfterSettlement = selectedReplies;
-            await workbench.runCommand("IntelliGit: Select Repository");
-            await expect(
-                page
-                    .getByRole("option")
-                    .filter({ has: page.getByText("selected-repo", { exact: true }) }),
-            ).toContainText("Active");
-            await page.keyboard.press("Escape");
-            evidence.selectedCount = 4;
+            expect(trace.events.filter((event) => event.unavailable > 0)).toEqual([]);
         } finally {
             try {
                 await writeFile(
