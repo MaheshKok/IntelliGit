@@ -11,6 +11,9 @@ import { ShelfService } from "../../../src/services/shelfService";
 import { connectedChangelists } from "../../helpers/connectedChangelists";
 import { cleanTemporaryRepositories, createShelfFixture } from "./shelfTestHarness";
 
+/** Each restored file's safety re-reads still need their own Git processes, but no more than this. */
+const MAX_GIT_PROCESSES_PER_FILE = 40;
+
 afterEach(async () => {
     vi.restoreAllMocks();
     await cleanTemporaryRepositories();
@@ -90,6 +93,18 @@ async function restoreCommands(files: number): Promise<number> {
     return commands;
 }
 
+/** Restores `files` shelved files and counts the Git processes the restore starts. */
+async function restoreProcesses(files: number): Promise<number> {
+    const { restore } = await shelvedFiles(files);
+    // `run` starts its process through `runBinary`, so counting `runBinary` alone counts each once.
+    const binary = vi.spyOn(GitExecutor.prototype, "runBinary");
+    const result = await restore();
+    const processes = binary.mock.calls.length;
+    binary.mockRestore();
+    expect(result.status).toBe("applied");
+    return processes;
+}
+
 /** Restores `files` shelved files and counts how many saved evidence files the restore reads back. */
 async function restoreEvidenceReads(files: number): Promise<number> {
     const { restore } = await shelvedFiles(files);
@@ -125,6 +140,16 @@ it("each further restored file costs the same Git work however many files came b
     const six = await restoreCommands(6);
     expect(six - four, `Git commands: 2 files ${two}, 4 files ${four}, 6 files ${six}`).toBe(
         four - two,
+    );
+}, 120_000);
+
+// Each Git process costs ~15 ms to start on macOS, and a restore once started ~77 of them per file,
+// so a 20-file restore took 25 s; each further file must start far fewer.
+it("each further restored file starts at most a fixed number of Git processes", async () => {
+    const two = await restoreProcesses(2);
+    const six = await restoreProcesses(6);
+    expect((six - two) / 4, `Git processes: 2 files ${two}, 6 files ${six}`).toBeLessThanOrEqual(
+        MAX_GIT_PROCESSES_PER_FILE,
     );
 }, 120_000);
 
