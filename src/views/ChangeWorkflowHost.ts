@@ -190,19 +190,18 @@ export class ChangeWorkflowHost {
         return this.observeFiles(files, this.store.observerEpoch(this.deps.root));
     }
 
-    /** Keeps actions busy through overlapping range observations and membership updates. */
+    /** Keeps actions busy through connection and membership updates, never through the range scan. */
     private async observeFiles(files: readonly WorkingFile[], epoch: number): Promise<void> {
-        this.reconciling++;
+        const paths = files.filter((file) => file.status !== "!").map((file) => file.path);
         try {
-            await this.connect();
-            this.post();
+            await this.busyDuring(() => this.connect());
             if (this.store.isCommitting(this.deps.root)) return;
+            // The scan opens each modified file in turn, which takes minutes in large repositories,
+            // so new files are listed first. Commits and targeted operations keep their own
+            // content, revision and hold fences; the second pass prunes what the scan consumed.
+            await this.busyDuring(() => this.store.reconcileFiles(this.deps.root, paths, epoch));
             await this.tracker.reconcile(files, epoch);
-            await this.store.reconcileFiles(
-                this.deps.root,
-                files.filter((file) => file.status !== "!").map((file) => file.path),
-                epoch,
-            );
+            await this.busyDuring(() => this.store.reconcileFiles(this.deps.root, paths, epoch));
         } catch (error) {
             if (!(error instanceof TargetOperationLeaseHeldError)) throw error;
             // A target hold or lease discarded this observation; re-read status once both end.
@@ -225,6 +224,15 @@ export class ChangeWorkflowHost {
                         }),
                     }),
                 );
+        } finally {
+            this.post();
+        }
+    }
+
+    private async busyDuring<T>(work: () => Promise<T>): Promise<T> {
+        this.reconciling++;
+        try {
+            return await work();
         } finally {
             this.reconciling--;
             this.post();
@@ -251,7 +259,7 @@ export class ChangeWorkflowHost {
     ): Promise<void> {
         if (raw.repositoryRoot !== this.deps.root)
             throw new Error("Unknown changelist repository.");
-        const loading = raw.type === "loadChangelists";
+        let loading = raw.type === "loadChangelists";
         const prompting =
             raw.type === "saveChangelistShelf" ||
             (raw.type === "changelistAction" &&
@@ -264,6 +272,9 @@ export class ChangeWorkflowHost {
             switch (message.type) {
                 case "loadChangelists": {
                     const recovered = await recovering;
+                    // Recovery must finish before actions; the range scan below need not.
+                    loading = false;
+                    this.reconciling--;
                     const files = this.deps.files();
                     await this.reconcile(
                         files.length

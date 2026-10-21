@@ -1630,7 +1630,7 @@ describe("root-bound selected-change host", () => {
         expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
     });
 
-    it("keeps actions busy until every overlapping range reconciliation finishes", async () => {
+    it("keeps actions usable while overlapping range reconciliations are pending", async () => {
         let finishFirst!: () => void;
         let finishSecond!: () => void;
         const first = new Promise<void>((resolve) => {
@@ -1648,21 +1648,21 @@ describe("root-bound selected-change host", () => {
         const secondRefresh = host.reconcile(files);
         try {
             await vi.waitFor(() => expect(reconcile).toHaveBeenCalledTimes(2));
-            expect(
-                posted.at(-1),
-                "actions must remain disabled while ranges are loading",
-            ).toMatchObject({ type: "setChangelists", busy: true });
+            expect(posted.at(-1), "queued range scans must not disable actions").toMatchObject({
+                type: "setChangelists",
+                busy: false,
+            });
             await store.saveDraft(root, "all", "", "another pane's draft");
             expect(
                 posted.at(-1),
-                "intermediate metadata delivery must preserve busy state",
-            ).toMatchObject({ type: "setChangelists", busy: true });
+                "intermediate metadata delivery must keep actions usable",
+            ).toMatchObject({ type: "setChangelists", busy: false });
             finishFirst();
             await firstRefresh;
             expect(
                 posted.at(-1),
-                "one completed refresh must not enable a pending refresh",
-            ).toMatchObject({ type: "setChangelists", busy: true });
+                "a finished refresh's membership update must release busy",
+            ).toMatchObject({ type: "setChangelists", busy: false });
             finishSecond();
             await secondRefresh;
             expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
@@ -1707,6 +1707,7 @@ describe("root-bound selected-change host", () => {
         const load = host.handle({ type: "loadChangelists", repositoryRoot: root });
         try {
             await vi.waitFor(() => expect(opened).toHaveBeenCalledOnce());
+            await store.saveDraft(root, "all", "", "metadata arriving during the scan");
             expect(
                 posted.at(-1),
                 "a running range scan must not disable changelist actions",
@@ -1722,7 +1723,10 @@ describe("root-bound selected-change host", () => {
                 revision: store.get(root).revision,
             });
             expect(
-                posted.filter((message) => (message as { type: string }).type === "error"),
+                posted
+                    .filter((message) => (message as { type: string }).type === "error")
+                    .map((message) => (message as { message: string }).message),
+                "a mid-scan move must not be refused",
             ).toEqual([]);
             expect(store.get(root).files[names[1]], "a whole-file move must apply mid-scan").toBe(
                 later,
@@ -1736,6 +1740,68 @@ describe("root-bound selected-change host", () => {
             await load;
         }
         expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
+    });
+
+    it("refuses a partial commit whose ranges the running scan has not re-read", async () => {
+        const original = store.get(root).activeId;
+        const later = (await store.create(root, store.get(root).revision, "Later")).lists[1].id;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "activate",
+            listId: later,
+            revision: store.get(root).revision,
+        });
+        await writeFile(path.join(root, "file.txt"), `later edit\n${working}`);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        expect(store.get(root).files["file.txt"]).toBe(original);
+        expect(Object.values(store.get(root).changes["file.txt"].lines)).toContain(later);
+        await writeFile(path.join(root, "file.txt"), `later edit\n${working}unobserved edit\n`);
+        host.dispose();
+        let resume!: () => void;
+        const scanning = new Promise<void>((resolve) => {
+            resume = resolve;
+        });
+        const open = PartialChanges.prototype.open;
+        let parked = false;
+        const opened = vi
+            .spyOn(PartialChanges.prototype, "open")
+            .mockImplementation(async function (this: PartialChanges, ...args) {
+                if (!parked) {
+                    parked = true;
+                    await scanning;
+                }
+                return open.apply(this, args);
+            });
+        host = new ChangeWorkflowHost({
+            ...hostDeps,
+            files: () => [{ path: "file.txt", status: "M" }] as never,
+        });
+        const load = host.handle({ type: "loadChangelists", repositoryRoot: root });
+        try {
+            await vi.waitFor(() => expect(opened).toHaveBeenCalledOnce());
+            posted.length = 0;
+            await host.handle({
+                type: "commitChangelist",
+                repositoryRoot: root,
+                revision: store.get(root).revision,
+                listId: original,
+                paths: ["file.txt"],
+                message: "must wait for fresh ranges",
+            });
+            expect(posted, "stale ranges must refuse the partial commit").toContainEqual(
+                expect.objectContaining({
+                    type: "error",
+                    message: expect.stringContaining("Change assignments need review"),
+                }),
+            );
+            expect(git(["rev-parse", "HEAD"]), "a refused commit must keep HEAD").toBe(
+                baselineHead,
+            );
+        } finally {
+            resume();
+            await load;
+        }
     });
 
     it("captures pending edits under the old active list before switching future attribution", async () => {
