@@ -1681,6 +1681,63 @@ describe("root-bound selected-change host", () => {
         expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
     });
 
+    it("keeps changelist actions usable while the cold range scan walks a large file set", async () => {
+        host.dispose();
+        const names = Array.from(
+            { length: 40 },
+            (_, i) => `bench-${String(i).padStart(5, "0")}.txt`,
+        );
+        await Promise.all(names.map((name) => writeFile(path.join(root, name), base)));
+        git(["add", "--", ...names]);
+        git(["commit", "-qm", "many"]);
+        await Promise.all(names.map((name) => writeFile(path.join(root, name), working)));
+        const files = await gitOps.getStatus({ withStats: false });
+        let resume!: () => void;
+        const scanning = new Promise<void>((resolve) => {
+            resume = resolve;
+        });
+        const open = PartialChanges.prototype.open;
+        const opened = vi
+            .spyOn(PartialChanges.prototype, "open")
+            .mockImplementation(async function (this: PartialChanges, ...args) {
+                await scanning;
+                return open.apply(this, args);
+            });
+        host = new ChangeWorkflowHost({ ...hostDeps, files: () => files });
+        const load = host.handle({ type: "loadChangelists", repositoryRoot: root });
+        try {
+            await vi.waitFor(() => expect(opened).toHaveBeenCalledOnce());
+            expect(
+                posted.at(-1),
+                "a running range scan must not disable changelist actions",
+            ).toMatchObject({ type: "setChangelists", busy: false });
+            const later = (await store.create(root, store.get(root).revision, "Later")).lists[1].id;
+            posted.length = 0;
+            await host.handle({
+                type: "changelistAction",
+                repositoryRoot: root,
+                action: "move",
+                listId: later,
+                paths: [names[1]],
+                revision: store.get(root).revision,
+            });
+            expect(
+                posted.filter((message) => (message as { type: string }).type === "error"),
+            ).toEqual([]);
+            expect(store.get(root).files[names[1]], "a whole-file move must apply mid-scan").toBe(
+                later,
+            );
+            expect(
+                opened,
+                "the scan must still be parked on its first file",
+            ).toHaveBeenCalledOnce();
+        } finally {
+            resume();
+            await load;
+        }
+        expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
+    });
+
     it("captures pending edits under the old active list before switching future attribution", async () => {
         const created = await store.create(root, store.get(root).revision, "Later");
         const id = created.lists[1].id;
