@@ -82,12 +82,7 @@ export interface TargetShelfMutationResult {
     readonly shelfId: string;
     readonly newGeneration?: number;
     readonly status:
-        | "applied"
-        | "notApplied"
-        | "appliedNeedsReview"
-        | "conflicted"
-        | "stale"
-        | "busy";
+        "applied" | "notApplied" | "appliedNeedsReview" | "conflicted" | "stale" | "busy";
     readonly operationId: string;
 }
 
