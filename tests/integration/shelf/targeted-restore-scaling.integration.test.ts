@@ -128,6 +128,60 @@ it("each further restored file costs the same Git work however many files came b
     );
 }, 120_000);
 
+// Every saved state re-validated each earlier restore's receipt with its own Git object-format
+// lookup, so restores slowed down for as long as the repository kept being used.
+it("a restore costs the same Git work however many restores came before it", async () => {
+    const raw = await createShelfFixture({
+        initialFiles: { "a.txt": "base\n", "b.txt": "base\n" },
+    });
+    const root = await realpath(raw.root);
+    const changelists = await connectedChangelists(root);
+    const service = new ShelfService({
+        repositoryRoot: root,
+        executor: raw.executor,
+        store: raw.store,
+        changelists,
+        gate: new RepositoryMutationGate(new RepositoryMutationCoordinator(), new RepositoryLock()),
+    });
+    const counts: number[] = [];
+    for (let round = 0; round < 3; round++) {
+        for (const name of ["a.txt", "b.txt"])
+            await writeFile(path.join(root, name), `incoming ${round}\n`);
+        const saved = await service.shelve({
+            name: `S${round}`,
+            paths: ["a.txt", "b.txt"],
+            silent: true,
+            keepLocal: false,
+        });
+        const shelf = await raw.store.readCurrentShelfManifest(saved.shelfId!);
+        const run = vi.spyOn(GitExecutor.prototype, "run");
+        const binary = vi.spyOn(GitExecutor.prototype, "runBinary");
+        const result = await service.unshelve({
+            id: saved.shelfId!,
+            mode: "flattened",
+            removeFromShelf: true,
+            expectedShelfGeneration: shelf.generation,
+            targetOperation: {
+                id: randomUUID(),
+                root,
+                target: {
+                    kind: "existing",
+                    id: changelists.get(root).activeId,
+                    revision: changelists.revision(root),
+                },
+                sourceChecksum: shelf.checksum,
+            },
+        });
+        counts.push(run.mock.calls.length + binary.mock.calls.length);
+        run.mockRestore();
+        binary.mockRestore();
+        expect(result.status).toBe("applied");
+    }
+    expect(counts[2], `Git commands per restore, oldest first: ${counts.join(", ")}`).toBe(
+        counts[1],
+    );
+}, 120_000);
+
 // Each step re-reads only its own files, so an edit to a file an earlier step restored is left to
 // the full check after the last step, which must still refuse to record the restore as clean.
 it("an outside edit to an already restored file during a later step stops the restore for review", async () => {
