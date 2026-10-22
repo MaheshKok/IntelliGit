@@ -49,20 +49,36 @@ export const BENCHMARK_CAPTURE_TAIL = 10;
 
 /**
  * In-memory, append-only record of every `postMessage` a captured webview has sent, in call order.
- * Nothing persists this to disk today; it is held in memory only, and never logs payload contents
- * on its own -- a captured message can carry real repository data.
+ * In benchmark mode (`INTELLIGIT_E2E_BENCHMARK=1`) only the newest
+ * {@link BENCHMARK_CAPTURE_TAIL} are kept. Nothing persists this to disk today; it is held in memory
+ * only, and never logs payload contents on its own -- a captured message can carry real repository
+ * data.
  */
 export class WebviewCaptureSink {
     private readonly messages: CapturedWebviewMessage[] = [];
+    private readonly countsByType = new Map<string, number>();
 
     /** Appends one captured message. Called synchronously from the wrapped `postMessage`. */
     record(contextId: WebviewContextId, message: unknown): void {
         this.messages.push({ contextId, message });
+        const type = (message as { type?: unknown } | null)?.type;
+        const key = typeof type === "string" ? type : "(untyped)";
+        this.countsByType.set(key, (this.countsByType.get(key) ?? 0) + 1);
+        if (
+            process.env.INTELLIGIT_E2E_BENCHMARK === "1" &&
+            this.messages.length > BENCHMARK_CAPTURE_TAIL
+        )
+            this.messages.shift();
     }
 
-    /** Returns every message captured so far, oldest first. */
+    /** Returns the messages still held, oldest first: all of them outside benchmark mode. */
     getMessages(): readonly CapturedWebviewMessage[] {
         return this.messages;
+    }
+
+    /** Returns how many messages of each `type` were ever recorded, including dropped ones. */
+    getCountsByType(): Record<string, number> {
+        return Object.fromEntries(this.countsByType);
     }
 }
 
