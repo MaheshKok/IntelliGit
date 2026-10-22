@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -30,11 +30,11 @@ export async function attachHostInspector(port: number, extensionPath: string, o
         socket.onerror = () => reject(new Error("Extension host inspector socket failed."));
     });
     const replies = new Map<number, (message: { result?: unknown; error?: { message: string } }) => void>();
-    const scripts: { scriptId: string; url: string }[] = [];
+    const resolved: object[] = [];
     socket.onmessage = (event) => {
         const message = JSON.parse(String(event.data));
         if (message.id !== undefined) replies.get(message.id)?.(message);
-        else if (message.method === "Debugger.scriptParsed") scripts.push(message.params);
+        else if (message.method === "Debugger.breakpointResolved") resolved.push(message.params);
     };
     let nextId = 0;
     const send = <T>(method: string, params: object = {}, timeoutMs = 15_000) =>
@@ -55,13 +55,12 @@ export async function attachHostInspector(port: number, extensionPath: string, o
 
     // Counters through conditions that always return false: the host never pauses.
     // queued - passes = range-scan passes waiting behind the running one.
+    // The host opens its inspector before it loads this extension, so breakpoints are set by URL
+    // (they bind when the bundle loads) at lines read from the same bundle file on disk.
     await send("Debugger.enable");
     const bundlePath = path.join(extensionPath, "dist", "extension.js");
-    const bundle = scripts.find((script) => script.url.endsWith(bundlePath));
-    if (!bundle) throw new Error(`Inspector saw no script for ${bundlePath}.`);
-    const { scriptSource } = await send<{ scriptSource: string }>("Debugger.getScriptSource", {
-        scriptId: bundle.scriptId,
-    });
+    const scriptSource = await readFile(bundlePath, "utf8");
+    const urlRegex = `${bundlePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`;
     const markers = [
         ["queued", "this.pending.then(() => this.refresh("],
         ["passes", "const entries = await this.partial.indexEntries()"],
@@ -76,15 +75,12 @@ export async function attachHostInspector(port: number, extensionPath: string, o
         from = at;
         // The bundle is not minified: each marker is a statement starting its own line.
         const lineNumber = scriptSource.slice(0, at).split("\n").length - 1;
-        const placed = await send<{ actualLocation: { lineNumber: number } }>(
-            "Debugger.setBreakpoint",
-            {
-                location: { scriptId: bundle.scriptId, lineNumber, columnNumber: 0 },
-                condition: `((globalThis.__intelligitBench ??= { queued: 0, passes: 0, opens: 0 }).${name}++, false)`,
-            },
-        );
-        if (placed.actualLocation.lineNumber !== lineNumber)
-            throw new Error(`Marker "${name}" bound to line ${placed.actualLocation.lineNumber}, not ${lineNumber}.`);
+        await send("Debugger.setBreakpointByUrl", {
+            urlRegex,
+            lineNumber,
+            columnNumber: 0,
+            condition: `((globalThis.__intelligitBench ??= { queued: 0, passes: 0, opens: 0 }).${name}++, false)`,
+        });
         breakpoints[name] = { lineNumber };
     }
 
@@ -94,7 +90,7 @@ export async function attachHostInspector(port: number, extensionPath: string, o
     const record = () =>
         writeFile(
             path.join(output, "host-inspector.json"),
-            JSON.stringify({ port, startedAtMs, breakpoints, samples, profiles }),
+            JSON.stringify({ port, startedAtMs, breakpoints, resolved, samples, profiles }),
         );
     let profileIndex = 0;
     let profileStartedAtMs = Date.now();
