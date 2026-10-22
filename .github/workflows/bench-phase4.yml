@@ -1,12 +1,13 @@
 name: Phase 4 operation benchmark (temporary)
 
-# Lives only on the throwaway bench/phase4-10k branch and is never merged. Each job runs one
-# shard (6 samples + 3 warmups) of one dataset for BOTH builds on the same runner, so candidate
-# and baseline always share hardware; five shards per dataset give the 30 samples.
+# Lives only on the throwaway bench/phase4-10k-r2 branch and is never merged. Each job runs one
+# shard (6 samples + 3 warmups) of one dataset for ONE build; five shards per dataset and build
+# give the 30 samples. Builds get separate jobs because at 10000 files one build's warm
+# scenarios (capture alone ~10x the 1000-file 934 s) no longer fit beside the other in 6 hours.
 on:
     push:
         branches:
-            - bench/phase4-10k
+            - bench/phase4-10k-r2
 
 permissions:
     contents: read
@@ -20,15 +21,16 @@ env:
 
 jobs:
     shard:
-        name: ${{ matrix.files }} files / ${{ matrix.lists }} lists, shard ${{ matrix.shard }}
+        name: ${{ matrix.build }} ${{ matrix.files }} files / ${{ matrix.lists }} lists, shard ${{ matrix.shard }}
         runs-on: ubuntu-latest
-        timeout-minutes: 340
+        timeout-minutes: 355
         strategy:
             fail-fast: false
             matrix:
                 files: [10000]
                 lists: [20, 100]
                 shard: [1, 2, 3, 4, 5]
+                build: [candidate, baseline]
 
         steps:
             - name: Checkout candidate
@@ -87,18 +89,18 @@ jobs:
                   sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
                   { uname -a; nproc; free -g; lscpu; df -h /bench; } > bench-out/machine.txt
 
-            # Odd shards run candidate first, even shards baseline first, so run order cancels out.
-            - name: Run both builds
+            # Ends before the job limit so the upload below still runs; partial.json keeps finished scenarios.
+            - name: Run one build
+              timeout-minutes: 335
               env:
                   FILES: ${{ matrix.files }}
                   LISTS: ${{ matrix.lists }}
                   SHARD: ${{ matrix.shard }}
+                  BUILD: ${{ matrix.build }}
               run: |
                   set +e
-                  order="candidate baseline"
-                  [ $((SHARD % 2)) -eq 0 ] && order="baseline candidate"
                   status=0
-                  for build in $order; do
+                  for build in $BUILD; do
                       ext="$GITHUB_WORKSPACE"
                       [ "$build" = baseline ] && ext="$GITHUB_WORKSPACE/baseline"
                       mkdir -p "/bench/tmp-$build"
@@ -127,7 +129,7 @@ jobs:
               if: always()
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
               with:
-                  name: bench-${{ matrix.files }}-${{ matrix.lists }}-shard${{ matrix.shard }}
+                  name: bench-${{ matrix.build }}-${{ matrix.files }}-${{ matrix.lists }}-shard${{ matrix.shard }}
                   path: bench-out/
                   if-no-files-found: error
                   retention-days: 14

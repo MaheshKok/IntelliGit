@@ -469,7 +469,10 @@ async function openSession(
     baseEnv: NodeJS.ProcessEnv,
     primaryRoot: string,
     session: Session,
+    firstRowsSeenMs: readonly number[],
 ) {
+    // Scale from this build's measured first rows (one job saw 14-39 s); before any sample, the reveal budget.
+    const firstRowsTimeout = firstRowsSeenMs.length ? 4 * Math.max(...firstRowsSeenMs) : 180_000;
     const sessionWorkspace = { ...workspace, env: { ...baseEnv } };
     const channelDir = path.join(path.dirname(workspace.profileDir), "benchmark-channel");
     await mkdir(channelDir, { recursive: true });
@@ -500,7 +503,7 @@ async function openSession(
             timeout: 2_000,
         });
     }).toPass({ timeout: 60_000 });
-    await frame.locator('[title^="bench-"]').first().waitFor();
+    await frame.locator('[title^="bench-"]').first().waitFor({ timeout: firstRowsTimeout });
     const firstRowsMs = performance.now() - start;
     await expandPane(page, frame);
     await settle(frame);
@@ -678,6 +681,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                     baseEnv,
                     primaryRoot,
                     session,
+                    [...firstRowsWarmups, ...firstRows],
                 );
                 await observeDisk();
                 const warmup = iteration < options.warmups;
@@ -713,6 +717,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                 baseEnv,
                 primaryRoot,
                 session,
+                [...firstRowsWarmups, ...firstRows],
             );
             result.warmSessionOpen = { cloneMs, ...record };
             result.runtime = record.runtime;
@@ -738,6 +743,11 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                     renderer: { before: renderer, after: await rendererHeap(frame) },
                 };
                 await observeDisk();
+                // runtime.json is written only in `finally`; a CI job timeout would lose every scenario.
+                await writeFile(
+                    path.join(options.output, "partial.json"),
+                    JSON.stringify({ scenarios, coldRecords, listGate: result.listGate }),
+                );
             };
 
             result.listGate = await showAllLists(page, frame, primaryRoot, options.lists);
