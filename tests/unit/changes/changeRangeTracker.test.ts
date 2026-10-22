@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +7,10 @@ import type { ChangelistStore } from "../../../src/changes/changelistStore";
 import type { PartialChanges } from "../../../src/git/partialChanges";
 import type { WorkingFile } from "../../../src/types";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+
+vi.mock("../../../src/changes/rangeObservation", () => ({
+    rangeObservation: async () => "observation",
+}));
 
 describe("ChangeRangeTracker", () => {
     let root: string;
@@ -73,5 +77,48 @@ describe("ChangeRangeTracker", () => {
             "first.txt@1",
             "poll4.txt@4",
         ]);
+    });
+
+    it("saves a pass's modified files in one store write", async () => {
+        const files = ["a.txt", "b.txt", "c.txt"];
+        await Promise.all(files.map((file) => writeFile(path.join(root, file), `${file}\n`)));
+        const writes: string[][] = [];
+        const store = {
+            get: () => ({ revision: 7, activeId: "a", files: {}, changes: {} }),
+            track: vi.fn(async (_root: string, file: string) => {
+                writes.push([file]);
+            }),
+            trackBatch: vi.fn(async (_root: string, entries: { file: string }[]) => {
+                writes.push(entries.map((entry) => entry.file));
+            }),
+            requireReview: vi.fn().mockResolvedValue(undefined),
+        } as unknown as ChangelistStore;
+        const partial = {
+            indexEntries: async () => new Map(),
+            open: async (file: string) => ({ snapshotId: file }),
+            snapshot: (id: string) => ({
+                contentId: id,
+                gitDir: root,
+                commonDir: root,
+                view: { base: "", blocks: [] },
+                working: `${id}\n`,
+                head: "head",
+                indexHash: "index",
+            }),
+        } as unknown as PartialChanges;
+        const modified = files.map((file): WorkingFile => ({
+            path: file,
+            status: "M",
+            staged: false,
+            additions: 1,
+            deletions: 0,
+        }));
+
+        await new ChangeRangeTracker(root, partial, store).reconcile(modified);
+
+        expect(writes, "a pass must save its files in one store write, not one per file").toEqual([
+            files,
+        ]);
+        expect(store.requireReview).not.toHaveBeenCalled();
     });
 });

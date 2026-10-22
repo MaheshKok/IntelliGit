@@ -1,5 +1,74 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
+import { changeFingerprint } from "../../../src/changes/parseDiff";
+import { rangeSnapshot } from "../../../src/changes/rangeMapping";
+
+function snapshotOf(file: string) {
+    return rangeSnapshot({
+        view: { base: "", blocks: [] },
+        working: `${file}\n`,
+        contentId: changeFingerprint(file),
+        head: "a".repeat(40),
+        indexHash: changeFingerprint("index"),
+    } as unknown as Parameters<typeof rangeSnapshot>[0]);
+}
+
+describe("range tracking writes", () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it("never serializes the whole state to detect an unchanged range write", async () => {
+        const store = new ChangelistStore();
+        await store.track("/one", "seed.txt", snapshotOf("seed.txt"));
+        const stringify = vi.spyOn(JSON, "stringify");
+
+        const changed = await store.track("/one", "a.txt", snapshotOf("a.txt"));
+        const unchanged = await store.track("/one", "a.txt", snapshotOf("a.txt"));
+
+        const wholeState = stringify.mock.calls.filter(
+            ([value]) =>
+                typeof value === "object" &&
+                value !== null &&
+                "changes" in value &&
+                "revision" in value,
+        );
+        expect(
+            wholeState.length,
+            "a range write must not serialize the whole changelist state",
+        ).toBe(0);
+        expect(unchanged.revision, "re-tracking an identical snapshot must not bump").toBe(
+            changed.revision,
+        );
+    });
+
+    it("tracks a batch in one revision and one notification", async () => {
+        const store = new ChangelistStore();
+        for (const file of ["seed1.txt", "seed2.txt"])
+            await store.track("/one", file, snapshotOf(file));
+        const notified: number[] = [];
+        store.subscribe((_root, state) => notified.push(state.revision));
+        const start = store.revision("/one");
+
+        const batch = ["a.txt", "b.txt", "c.txt"].map((file) => ({
+            file,
+            snapshot: snapshotOf(file),
+        }));
+        const tracked = await store.trackBatch("/one", batch, start);
+        const unchanged = await store.trackBatch("/one", batch, tracked.revision);
+
+        expect(tracked.revision, "one batch is one revision").toBe(start + 1);
+        expect(Object.keys(tracked.changes).sort()).toEqual([
+            "a.txt",
+            "b.txt",
+            "c.txt",
+            "seed1.txt",
+            "seed2.txt",
+        ]);
+        expect(unchanged.revision, "re-tracking identical snapshots must not bump").toBe(
+            tracked.revision,
+        );
+        expect(notified, "one batch notifies once").toEqual([start + 1]);
+    });
+});
 
 describe("worktree changelist metadata", () => {
     it("prepares only the staging scope with revision CAS under a shared lease", async () => {
