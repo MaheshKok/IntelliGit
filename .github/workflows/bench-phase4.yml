@@ -1,13 +1,13 @@
 name: Phase 4 operation benchmark (temporary)
 
-# Lives only on the throwaway bench/phase4-10k-r4 branch and is never merged. Each job runs one
+# Lives only on the throwaway bench/phase4-10k-r6 branch and is never merged. Each job runs one
 # shard (6 samples + 3 warmups) of one dataset for ONE build; five shards per dataset and build
 # give the 30 samples. Builds get separate jobs because at 10000 files one build's warm
 # scenarios (capture alone ~10x the 1000-file 934 s) no longer fit beside the other in 6 hours.
 on:
     push:
         branches:
-            - bench/phase4-10k-r4
+            - bench/phase4-10k-r6
 
 permissions:
     contents: read
@@ -28,7 +28,7 @@ jobs:
             fail-fast: false
             matrix:
                 files: [10000]
-                # Diagnostic run: why the extension host freezes during the 20-list Expand All sweep.
+                # Does the 20-list Expand All sweep finish with a bounded capture sink and one prune per pass?
                 lists: [20]
                 shard: [1, 2, 3]
                 build: [candidate]

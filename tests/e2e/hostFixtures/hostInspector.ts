@@ -12,9 +12,9 @@ export async function attachHostInspector(port: number, extensionPath: string, o
     let url: string | undefined;
     while (!url) {
         try {
-            const targets = (await (
-                await fetch(`http://127.0.0.1:${port}/json/list`)
-            ).json()) as { webSocketDebuggerUrl?: string }[];
+            const targets = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as {
+                webSocketDebuggerUrl?: string;
+            }[];
             url = targets.find((target) => target.webSocketDebuggerUrl)?.webSocketDebuggerUrl;
         } catch {
             // The extension host has not opened its inspector yet.
@@ -29,7 +29,10 @@ export async function attachHostInspector(port: number, extensionPath: string, o
         socket.onopen = () => resolve();
         socket.onerror = () => reject(new Error("Extension host inspector socket failed."));
     });
-    const replies = new Map<number, (message: { result?: unknown; error?: { message: string } }) => void>();
+    const replies = new Map<
+        number,
+        (message: { result?: unknown; error?: { message: string } }) => void
+    >();
     const resolved: object[] = [];
     socket.onmessage = (event) => {
         const message = JSON.parse(String(event.data));
@@ -105,13 +108,20 @@ export async function attachHostInspector(port: number, extensionPath: string, o
             const { profile } = await send<{ profile: unknown }>("Profiler.stop", {}, 45_000);
             const filename = `host-cpu-${String(index).padStart(2, "0")}.cpuprofile`;
             await writeFile(path.join(output, filename), JSON.stringify(profile));
-            profiles.push({ filename, fromMs: from - startedAtMs, toMs: requestedAtMs - startedAtMs, answeredAfterMs: Date.now() - requestedAtMs });
+            profiles.push({
+                filename,
+                fromMs: from - startedAtMs,
+                toMs: requestedAtMs - startedAtMs,
+                answeredAfterMs: Date.now() - requestedAtMs,
+            });
         } catch (error) {
             profiles.push({ index, fromMs: from - startedAtMs, error: String(error) });
         }
         if (restart) {
             profileStartedAtMs = Date.now();
-            await send("Profiler.start").catch((error) => profiles.push({ restartError: String(error) }));
+            await send("Profiler.start").catch((error) =>
+                profiles.push({ restartError: String(error) }),
+            );
         }
         await record();
     };
@@ -128,13 +138,19 @@ export async function attachHostInspector(port: number, extensionPath: string, o
                     { expression, returnByValue: true },
                     8_000,
                 );
-                samples.push({ elapsedMs: atMs - startedAtMs, answeredAfterMs: Date.now() - atMs, ...JSON.parse(result.value) });
+                samples.push({
+                    elapsedMs: atMs - startedAtMs,
+                    answeredAfterMs: Date.now() - atMs,
+                    ...JSON.parse(result.value),
+                });
             } catch (error) {
                 samples.push({ elapsedMs: atMs - startedAtMs, error: String(error) });
             }
             if (Date.now() - profileStartedAtMs >= 60_000) await rotate(true);
             else await record();
-            await new Promise((resolve) => setTimeout(resolve, Math.max(0, 10_000 - (Date.now() - atMs))));
+            await new Promise((resolve) =>
+                setTimeout(resolve, Math.max(0, 10_000 - (Date.now() - atMs))),
+            );
         }
     };
     sampling = sampleLoop();
