@@ -28,9 +28,10 @@ jobs:
             fail-fast: false
             matrix:
                 files: [10000]
-                lists: [20, 100]
-                shard: [1, 2, 3, 4, 5]
-                build: [candidate, baseline]
+                # Diagnostic run: why the extension host freezes during the 20-list Expand All sweep.
+                lists: [20]
+                shard: [1, 2, 3]
+                build: [candidate]
 
         steps:
             - name: Checkout candidate
@@ -106,8 +107,9 @@ jobs:
                       mkdir -p "/bench/tmp-$build"
                       start=$(date +%s)
                       TMPDIR="/bench/tmp-$build" INTELLIGIT_OPERATION_BENCHMARK=1 \
-                          INTELLIGIT_BENCHMARK_MODE=thin INTELLIGIT_BENCHMARK_SAMPLES=6 \
-                          INTELLIGIT_BENCHMARK_WARMUPS=3 INTELLIGIT_BENCHMARK_FILES="$FILES" \
+                          INTELLIGIT_BENCHMARK_MODE=thin INTELLIGIT_BENCHMARK_SAMPLES=2 \
+                          INTELLIGIT_BENCHMARK_WARMUPS=1 INTELLIGIT_BENCHMARK_FILES="$FILES" \
+                          INTELLIGIT_BENCHMARK_INSPECT_PORT=9339 \
                           INTELLIGIT_BENCHMARK_LISTS="$LISTS" \
                           INTELLIGIT_BENCHMARK_OUTPUT="$GITHUB_WORKSPACE/bench-out/$build" \
                           INTELLIGIT_BENCHMARK_EXTENSION_PATH="$ext" \
