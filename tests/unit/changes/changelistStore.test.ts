@@ -68,6 +68,27 @@ describe("range tracking writes", () => {
         );
         expect(notified, "one batch notifies once").toEqual([start + 1]);
     });
+
+    it("saves a batch whose last file is unchanged", async () => {
+        const store = new ChangelistStore();
+        const first = await store.trackBatch(
+            "/one",
+            ["a.txt", "b.txt"].map((file) => ({ file, snapshot: snapshotOf(file) })),
+        );
+
+        const next = await store.trackBatch(
+            "/one",
+            [
+                { file: "a.txt", snapshot: snapshotOf("a.txt edited") },
+                { file: "b.txt", snapshot: snapshotOf("b.txt") },
+            ],
+            first.revision,
+        );
+
+        expect(next.revision, "an earlier file's change must survive an unchanged last file").toBe(
+            first.revision + 1,
+        );
+    });
 });
 
 describe("worktree changelist metadata", () => {

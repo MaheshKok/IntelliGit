@@ -107,7 +107,7 @@ describe("ChangeRangeTracker", () => {
     });
 
     it("retries a batch together after the pass's own review mark moves the revision", async () => {
-        // missing.txt is reported modified but absent, so its review mark lands mid-batch.
+        // missing.txt is reported modified but absent, so its review mark lands after the batch is captured.
         await Promise.all(
             ["a.txt", "c.txt"].map((file) => writeFile(path.join(root, file), `${file}\n`)),
         );
@@ -132,12 +132,97 @@ describe("ChangeRangeTracker", () => {
         } as unknown as ChangelistStore;
 
         await new ChangeRangeTracker(root, fakePartial(root), store).reconcile(
-            modified(["a.txt", "missing.txt", "c.txt"]),
+            modified(["a.txt", "c.txt", "missing.txt"]),
         );
 
         expect(attempts, "unchanged files must retry as one batch, not one write each").toEqual([
             "batch a.txt,c.txt@7",
             "batch a.txt,c.txt@8",
+        ]);
+    });
+
+    it("reads a file's ownership after a review mark earlier in the pass moved it", async () => {
+        await Promise.all(
+            ["a.txt", "c.txt"].map((file) => writeFile(path.join(root, file), `${file}\n`)),
+        );
+        let revision = 7;
+        let changes: Record<string, unknown> = {};
+        const attempts: string[] = [];
+        const store = {
+            get: () => ({ revision, activeId: "a", files: {}, changes }),
+            revision: () => revision,
+            track: vi.fn(async (_root: string, file: string) => {
+                attempts.push(`track ${file}`);
+            }),
+            trackBatch: vi.fn(
+                async (_root: string, entries: { file: string }[], expected?: number) => {
+                    attempts.push(
+                        `batch ${entries.map((entry) => entry.file).join(",")}@${expected}`,
+                    );
+                    if (expected !== revision) throw new ChangelistRevisionError();
+                },
+            ),
+            requireReview: vi.fn(async (_root: string, file: string) => {
+                attempts.push(`review ${file}`);
+                revision++;
+                // Another window moves c.txt's ranges while this pass marks missing.txt.
+                if (file === "missing.txt") changes = { "c.txt": { contentId: "elsewhere" } };
+            }),
+        } as unknown as ChangelistStore;
+
+        await new ChangeRangeTracker(root, fakePartial(root), store).reconcile(
+            modified(["a.txt", "missing.txt", "c.txt"]),
+        );
+
+        expect(attempts, "a file captured after the move must save, not need review").toEqual([
+            "review missing.txt",
+            "batch a.txt@7",
+            "batch a.txt@8",
+            "batch c.txt@8",
+        ]);
+    });
+
+    it("refuses a retry for a file whose ownership moved while review marks were written", async () => {
+        const files = ["a.txt", "b.txt", "c.txt"];
+        await Promise.all(files.map((file) => writeFile(path.join(root, file), `${file}\n`)));
+        let revision = 7;
+        let changes: Record<string, unknown> = {};
+        const attempts: string[] = [];
+        const store = {
+            get: () => ({ revision, activeId: "a", files: {}, changes }),
+            revision: () => revision,
+            track: vi.fn(async (_root: string, file: string) => {
+                attempts.push(`track ${file}`);
+                throw new ChangelistRevisionError();
+            }),
+            trackBatch: vi.fn(
+                async (_root: string, entries: { file: string }[], expected?: number) => {
+                    attempts.push(
+                        `batch ${entries.map((entry) => entry.file).join(",")}@${expected}`,
+                    );
+                    if (attempts.length === 1) {
+                        // Another window moves b.txt's ranges just before the first write.
+                        changes = { "b.txt": { contentId: "elsewhere" } };
+                        revision++;
+                    }
+                    if (expected !== revision) throw new ChangelistRevisionError();
+                },
+            ),
+            requireReview: vi.fn(async (_root: string, file: string) => {
+                attempts.push(`review ${file}`);
+                revision++;
+                // ...and moves c.txt's while b.txt's review mark is being written.
+                if (file === "b.txt") changes = { ...changes, "c.txt": { contentId: "elsewhere" } };
+            }),
+        } as unknown as ChangelistStore;
+
+        await new ChangeRangeTracker(root, fakePartial(root), store).reconcile(modified(files));
+
+        expect(attempts, "the retry must recheck every file at the revision it fences").toEqual([
+            "batch a.txt,b.txt,c.txt@7",
+            "review b.txt",
+            "review c.txt",
+            "batch a.txt@10",
         ]);
     });
 
