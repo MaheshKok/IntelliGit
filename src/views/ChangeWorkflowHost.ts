@@ -101,6 +101,12 @@ export class ChangeWorkflowHost {
     private readonly tracker: ChangeRangeTracker;
     private connected?: Promise<void>;
     private retry?: Promise<void>;
+    private prune?: {
+        scan: Promise<void>;
+        paths: readonly string[];
+        epoch: number;
+        done: Promise<void>;
+    };
     private readonly poll: ReturnType<typeof setInterval>;
     private lastRevision = -1;
     private lastPollError?: string;
@@ -207,42 +213,73 @@ export class ChangeWorkflowHost {
     }
 
     /** Keeps actions busy through connection and membership updates, never through the range scan. */
-    private async observeFiles(files: readonly WorkingFile[], epoch: number): Promise<void> {
-        const paths = files.filter((file) => file.status !== "!").map((file) => file.path);
-        try {
-            await this.busyDuring(() => this.connect());
-            if (this.store.isCommitting(this.deps.root)) return;
-            // The scan opens each modified file in turn, which takes minutes in large repositories,
-            // so new files are listed first. Commits and targeted operations keep their own
-            // content, revision and hold fences; the second pass prunes what the scan consumed.
-            await this.busyDuring(() => this.store.reconcileFiles(this.deps.root, paths, epoch));
-            await this.tracker.reconcile(files, epoch);
-            await this.busyDuring(() => this.store.reconcileFiles(this.deps.root, paths, epoch));
-        } catch (error) {
-            if (!(error instanceof TargetOperationLeaseHeldError)) throw error;
-            // A target hold or lease discarded this observation; re-read status once both end.
-            // Every refusal before that shares one retry; it clears first so a new hold schedules anew.
-            this.retry ??= this.store
-                .targetOperationReleased(this.deps.root)
-                .then(() => {
-                    this.retry = undefined;
-                    const fresh = this.store.observerEpoch(this.deps.root);
-                    return this.deps.gitOps
-                        .getStatus({ withStats: false })
-                        .then((latest) => this.observeFiles(latest, fresh));
-                })
-                .catch((retry: unknown) =>
-                    this.deps.post({
-                        type: "error",
-                        repositoryRoot: this.deps.root,
-                        message: vscode.l10n.t("Changelist action failed: {message}", {
-                            message: getErrorMessage(retry),
+    private observeFiles(files: readonly WorkingFile[], epoch: number): Promise<void> {
+        return this.startObservation(files, epoch)
+            .catch((error: unknown) => {
+                if (!(error instanceof TargetOperationLeaseHeldError)) throw error;
+                // A target hold or lease discarded this observation; re-read status once both end.
+                // Every refusal before that shares one retry; it clears first so a new hold schedules anew.
+                this.retry ??= this.store
+                    .targetOperationReleased(this.deps.root)
+                    .then(() => {
+                        this.retry = undefined;
+                        const fresh = this.store.observerEpoch(this.deps.root);
+                        return this.deps.gitOps
+                            .getStatus({ withStats: false })
+                            .then((latest) => this.observeFiles(latest, fresh));
+                    })
+                    .catch((retry: unknown) =>
+                        this.deps.post({
+                            type: "error",
+                            repositoryRoot: this.deps.root,
+                            message: vscode.l10n.t("Changelist action failed: {message}", {
+                                message: getErrorMessage(retry),
+                            }),
                         }),
-                    }),
-                );
-        } finally {
-            this.post();
+                    );
+            })
+            .finally(() => this.post());
+    }
+
+    /**
+     * Returns the range pass's prune rather than awaiting it: a suspended call would hold its whole
+     * `files` array until the pass ends, and at 10k files every status refresh adds one.
+     */
+    private async startObservation(files: readonly WorkingFile[], epoch: number): Promise<void> {
+        const paths = files.filter((file) => file.status !== "!").map((file) => file.path);
+        await this.busyDuring(() => this.connect());
+        if (this.store.isCommitting(this.deps.root)) return;
+        // The scan opens each modified file in turn, which takes minutes in large repositories,
+        // so new files are listed first. Commits and targeted operations keep their own
+        // content, revision and hold fences; the second pass prunes what the scan consumed.
+        await this.busyDuring(() => this.store.reconcileFiles(this.deps.root, paths, epoch));
+        return this.pruneAfter(this.tracker.reconcile(files, epoch), paths, epoch);
+    }
+
+    /**
+     * Refreshes that join one pass share its single prune, run with the paths and epoch of the
+     * last refresh that joined that pass. The tracker starts a pass with its last caller's files,
+     * so a refresh that lands in the next queued pass never changes this one's prune.
+     */
+    private pruneAfter(
+        scan: Promise<void>,
+        paths: readonly string[],
+        epoch: number,
+    ): Promise<void> {
+        const joined = this.prune;
+        if (joined?.scan === scan) {
+            joined.paths = paths;
+            joined.epoch = epoch;
+            return joined.done;
         }
+        const entry = { scan, paths, epoch, done: Promise.resolve() };
+        entry.done = scan.then(async () => {
+            await this.busyDuring(() =>
+                this.store.reconcileFiles(this.deps.root, entry.paths, entry.epoch),
+            );
+        });
+        this.prune = entry;
+        return entry.done;
     }
 
     private async busyDuring<T>(work: () => Promise<T>): Promise<T> {
