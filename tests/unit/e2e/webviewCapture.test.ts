@@ -780,10 +780,7 @@ describe("benchmark IPC accounting", () => {
                 (_, k) => total - captureModule.BENCHMARK_CAPTURE_TAIL + k,
             ),
         );
-        const counts = (
-            sink as unknown as { getCountsByType?: () => Record<string, number> }
-        ).getCountsByType?.();
-        expect(counts).toEqual({ even: total / 2, odd: total / 2 });
+        expect(sink.getCountsByType()).toEqual({ even: total / 2, odd: total / 2 });
     });
     it("keeps every message outside benchmark mode", () => {
         vi.stubEnv("INTELLIGIT_E2E_BENCHMARK", "0");
