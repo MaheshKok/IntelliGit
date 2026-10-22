@@ -1824,6 +1824,46 @@ describe("root-bound selected-change host", () => {
         ).toEqual([epoch]);
     });
 
+    it("settles each refresh before the shared prune, so its caller's handlers drop their files", async () => {
+        setFlagsFromString("--expose-gc");
+        const gc = runInNewContext("gc") as unknown;
+        if (typeof gc !== "function") throw new Error("--expose-gc did not provide gc()");
+        let finishPass!: () => void;
+        const pass = new Promise<void>((resolve) => {
+            finishPass = resolve;
+        });
+        const scan = vi.spyOn(ChangeRangeTracker.prototype, "reconcile").mockReturnValue(pass);
+        const membership = vi.spyOn(store, "reconcileFiles").mockResolvedValue(undefined);
+        const status = await gitOps.getStatus({ withStats: false });
+        const held: WeakRef<object>[] = [];
+        // Like the commit panel, each caller's error handler shares a scope that holds its files.
+        const refresh = () => {
+            const files = status.map((file) => ({ ...file }));
+            held.push(new WeakRef(files));
+            return host.reconcile(files).catch(() => files.length);
+        };
+        const refreshes: Promise<unknown>[] = [];
+        for (let i = 1; i <= 5; i++) {
+            refreshes.push(refresh());
+            await vi.waitFor(() => expect(scan).toHaveBeenCalledTimes(i));
+        }
+        scan.mockClear();
+        try {
+            for (let round = 0; round < 3; round++) {
+                gc();
+                await new Promise((resolve) => setImmediate(resolve));
+            }
+            expect(
+                held.filter((ref) => ref.deref() !== undefined),
+                "a caller's handler on a refresh must not keep its files while the shared pass runs",
+            ).toHaveLength(0);
+        } finally {
+            finishPass();
+            await Promise.all(refreshes);
+        }
+        await vi.waitFor(() => expect(membership).toHaveBeenCalledTimes(6));
+    });
+
     it("prunes each range pass with the last refresh that joined it, not one queued behind it", async () => {
         let finishFirst!: () => void;
         let finishSecond!: () => void;
@@ -1869,7 +1909,7 @@ describe("root-bound selected-change host", () => {
         ).toEqual([pathsOf(files), pathsOf(last)]);
     });
 
-    it("rejects every refresh sharing a pass when its prune fails", async () => {
+    it("reports a failed shared prune once, without rejecting the refreshes that joined it", async () => {
         let finishPass!: () => void;
         const pass = new Promise<void>((resolve) => {
             finishPass = resolve;
@@ -1883,13 +1923,22 @@ describe("root-bound selected-change host", () => {
         finishPass();
         const settled = await Promise.allSettled(refreshes);
         expect(
-            settled.map((result) =>
-                result.status === "rejected" ? (result.reason as Error).message : result.status,
-            ),
-            "every refresh sharing the failed prune must reject with its error",
-        ).toEqual(["injected prune failure", "injected prune failure"]);
+            settled.map((result) => result.status),
+            "a failed prune belongs to the host, not to the refreshes that joined it",
+        ).toEqual(["fulfilled", "fulfilled"]);
+        const errors = () =>
+            (posted as { type?: string; message?: string }[])
+                .filter((message) => message.type === "error")
+                .map((message) => message.message);
+        await vi.waitFor(() =>
+            expect(errors(), "the host reports the failed prune exactly once").toEqual([
+                "Changelist action failed: injected prune failure",
+            ]),
+        );
         expect(membership).toHaveBeenCalledTimes(3);
-        expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
+        await vi.waitFor(() =>
+            expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false }),
+        );
     });
 
     it("keeps changelist actions busy while a shared prune runs", async () => {
