@@ -137,15 +137,22 @@ export class ChangeRangeTracker {
                     if (!(error instanceof ChangelistRevisionError) || attempt > 0) break;
                     // Usually this pass's own review marks moved the revision: files whose ownership
                     // context is unchanged retry together, the rest take the per-file revision path.
-                    const latest = this.store.get(this.root);
-                    const moved = items.filter(
+                    // Marking moved files can move others, so the retry fences the state last checked.
+                    let latest = this.store.get(this.root);
+                    let moved = items.filter(
                         (item) => !sameContext(latest, item.file, item.before),
                     );
-                    items = items.filter((item) => !moved.includes(item));
-                    for (const item of moved)
-                        // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Review marks are ordered metadata transactions.
-                        await fail(item.file, error, item.capturedContentId);
-                    revision = this.store.revision(this.root);
+                    while (moved.length > 0) {
+                        items = items.filter((item) => !moved.includes(item));
+                        for (const item of moved)
+                            // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Review marks are ordered metadata transactions.
+                            await fail(item.file, error, item.capturedContentId);
+                        latest = this.store.get(this.root);
+                        moved = items.filter(
+                            (item) => !sameContext(latest, item.file, item.before),
+                        );
+                    }
+                    revision = latest.revision;
                 }
             }
             // A race or one bad file must not cost the batch: replay each file's own write and handling.
@@ -180,6 +187,10 @@ export class ChangeRangeTracker {
                     this.observed.get(file) === `${hash}:${observation}`
                 )
                     return;
+                // Each file's ownership context must be current when it is captured, so a moved
+                // revision saves the files captured before it first.
+                if (batchState && this.store.revision(this.root) !== batchState.revision)
+                    await flush();
                 batchState ??= this.store.get(this.root);
                 const before = {
                     revision: batchState.revision,

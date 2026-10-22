@@ -89,6 +89,7 @@ describe("ChangeRangeTracker", () => {
         const writes: string[][] = [];
         const store = {
             get: () => ({ revision: 7, activeId: "a", files: {}, changes: {} }),
+            revision: () => 7,
             track: vi.fn(async (_root: string, file: string) => {
                 writes.push([file]);
             }),
@@ -233,6 +234,7 @@ describe("ChangeRangeTracker", () => {
         const fences: string[] = [];
         const store = {
             get: () => ({ revision, activeId: "a", files: {}, changes: {} }),
+            revision: () => revision,
             trackBatch: vi.fn(
                 async (_root: string, entries: { file: string }[], expected?: number) => {
                     fences.push(`${entries.length}@${expected}`);
@@ -256,6 +258,7 @@ describe("ChangeRangeTracker", () => {
         const attempts: string[] = [];
         const store = {
             get: () => ({ revision: 7, activeId: "a", files: {}, changes: {} }),
+            revision: () => 7,
             trackBatch: vi.fn(async (_root: string, entries: { file: string }[]) => {
                 attempts.push(`batch ${entries.map((entry) => entry.file).join(",")}`);
                 throw new ChangelistEvidenceError("damaged");
