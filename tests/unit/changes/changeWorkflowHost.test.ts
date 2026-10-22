@@ -431,8 +431,11 @@ describe("scoped list and file save", () => {
         );
     });
 
-    /** A list save whose `git status` read runs `during` first; `other.txt` is changed but not yet scanned. */
-    async function saveWithStatusRead(during: (f: Awaited<ReturnType<typeof fixture>>) => unknown) {
+    /** A list save whose `git status` read (or name prompt) runs `during` first; `other.txt` is changed but not yet scanned. */
+    async function saveWithStatusRead(
+        during: (f: Awaited<ReturnType<typeof fixture>>) => unknown,
+        window: "status" | "prompt" = "status",
+    ) {
         await writeFile(path.join(root, "other.txt"), "other\n");
         git(["add", "--", "other.txt"]);
         git(["commit", "-qm", "other"]);
@@ -448,12 +451,19 @@ describe("scoped list and file save", () => {
         );
         const status = gitOps.getStatus.bind(gitOps);
         let duringRevision = 0;
-        vi.spyOn(gitOps, "getStatus").mockImplementationOnce(async (options) => {
-            const files = await status(options);
-            await during(f);
-            duringRevision = store.revision(root);
-            return files;
-        });
+        if (window === "prompt")
+            vi.mocked(vscode.window.showInputBox).mockImplementationOnce(async () => {
+                await during(f);
+                duringRevision = store.revision(root);
+                return "selected shelf";
+            });
+        else
+            vi.spyOn(gitOps, "getStatus").mockImplementationOnce(async (options) => {
+                const files = await status(options);
+                await during(f);
+                duringRevision = store.revision(root);
+                return files;
+            });
         posted.length = 0;
         await host.handle(f.request);
         expect(duringRevision, "a metadata write lands during the save").toBeGreaterThan(
@@ -485,6 +495,38 @@ describe("scoped list and file save", () => {
         );
         expect((await f.shelves.listShelves()).shelfIds).toEqual([]);
     });
+
+    it("list save survives a range scan write landing during its name prompt", async () => {
+        const f = await saveWithStatusRead(
+            async () => host.reconcile(await gitOps.getStatus({ withStats: false })),
+            "prompt",
+        );
+        expect(
+            posted.flatMap((message) => (message as { error?: string }).error ?? []),
+            "a range scan observing a file during the name prompt must not refuse the save",
+        ).toEqual([]);
+        expect((await f.shelves.listShelves()).shelfIds).toHaveLength(1);
+    });
+
+    it.each(["rename", "move"] as const)(
+        "list save refuses a list %s during its name prompt",
+        async (change) => {
+            const f = await saveWithStatusRead(
+                (fixture) =>
+                    change === "rename"
+                        ? store.rename(root, store.revision(root), "default", "Renamed")
+                        : store.moveFiles(root, store.revision(root), fixture.other, ["other.txt"]),
+                "prompt",
+            );
+            expect(posted, "the prompt check must refuse an intent change").toContainEqual(
+                expect.objectContaining({
+                    type: "changelistShelfResult",
+                    error: expect.stringMatching(/during the save prompt/),
+                }),
+            );
+            expect((await f.shelves.listShelves()).shelfIds).toEqual([]);
+        },
+    );
 
     it("concurrent duplicate intent is refused while one captured prompt is outstanding", async () => {
         const f = await fixture();
