@@ -7,7 +7,7 @@ name: Phase 4 operation benchmark (temporary)
 on:
     push:
         branches:
-            - bench/phase4-10k-r2
+            - bench/phase4-10k-r3
 
 permissions:
     contents: read
