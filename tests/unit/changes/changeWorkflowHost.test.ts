@@ -1842,9 +1842,17 @@ describe("root-bound selected-change host", () => {
         let epoch = 200;
         vi.spyOn(store, "observerEpoch").mockImplementation(() => ++epoch);
         const files = await gitOps.getStatus({ withStats: false });
+        // The last refresh to join the queued pass lists a file the earlier ones lack.
+        const last = [
+            ...files,
+            ...files.slice(0, 1).map((file) => ({ ...file, path: "joined-last.txt", status: "M" })),
+        ];
+        const pathsOf = (list: typeof files) =>
+            list.filter((file) => file.status !== "!").map((file) => file.path);
+        expect(pathsOf(last)).not.toEqual(pathsOf(files));
         const refreshes: Promise<void>[] = [];
         for (let i = 1; i <= 3; i++) {
-            refreshes.push(host.reconcile(files));
+            refreshes.push(host.reconcile(i === 3 ? last : files));
             await vi.waitFor(() => expect(scan).toHaveBeenCalledTimes(i));
         }
         finishFirst();
@@ -1855,6 +1863,10 @@ describe("root-bound selected-change host", () => {
             membership.mock.calls.slice(3).map((call) => call[2]),
             "each pass prunes with its own last refresh's epoch",
         ).toEqual([201, 203]);
+        expect(
+            membership.mock.calls.slice(3).map((call) => call[1]),
+            "each pass prunes with its own last refresh's files",
+        ).toEqual([pathsOf(files), pathsOf(last)]);
     });
 
     it("rejects every refresh sharing a pass when its prune fails", async () => {
