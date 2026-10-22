@@ -583,10 +583,11 @@ describe("observer hold during a targeted prompt", () => {
         unpark();
         await reconciling;
 
+        // New files are listed before the range scan, so during.txt was admitted before the hold.
         expect(
-            f.changelists.get(f.root).files["during.txt"],
+            f.changelists.get(f.root).changes,
             "an observation interrupted by a hold must not resume with its pre-restore snapshot",
-        ).toBeUndefined();
+        ).toEqual(restored.changes);
         await vi.waitFor(
             () =>
                 expect(
@@ -595,6 +596,10 @@ describe("observer hold during a targeted prompt", () => {
                 ).toBeDefined(),
             { timeout: 10_000 },
         );
+        expect(
+            f.changelists.get(f.root).files["during.txt"],
+            "the re-run drops a file deleted during the restore",
+        ).toBeUndefined();
         expect(
             f.changelists.get(f.root).changes["shared.txt"]?.lines,
             "the restored lines keep their destination list",
