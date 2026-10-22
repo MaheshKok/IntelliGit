@@ -11,7 +11,13 @@ import { ShelfService } from "../../../src/services/shelfService";
 import { connectedChangelists } from "../../helpers/connectedChangelists";
 import { cleanTemporaryRepositories, createShelfFixture } from "./shelfTestHarness";
 
-/** Each restored file's safety re-reads still need their own Git processes, but no more than this. */
+/**
+ * Each restored file's safety re-reads still need their own Git processes, but no more than this.
+ * It stays at 40: the remaining cost was cut per process (spawning the real Git binary instead of
+ * the macOS xcrun shim), not by count. Reading the initial snapshots for all files at once would
+ * save about 10 more per file, but needs a multi-file snapshot reader that isolates each file's
+ * failure, and was left for later.
+ */
 const MAX_GIT_PROCESSES_PER_FILE = 40;
 
 afterEach(async () => {
