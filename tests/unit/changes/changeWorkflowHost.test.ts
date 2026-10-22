@@ -3,6 +3,8 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, writeFile, chmod, readdir, mkdir, link } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import {
     createCommitInfoVscodeDouble,
     createFakeExtensionUri,
@@ -1776,6 +1778,45 @@ describe("root-bound selected-change host", () => {
         );
         await expect(host.reconcile([])).rejects.toThrow("injected range observation failure");
         expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
+    });
+
+    it("holds no refresh's files while one range pass runs, then prunes once with the newest epoch", async () => {
+        setFlagsFromString("--expose-gc");
+        const gc = runInNewContext("gc") as () => void;
+        let finishPass!: () => void;
+        const pass = new Promise<void>((resolve) => {
+            finishPass = resolve;
+        });
+        // Every refresh during a running pass shares one queued pass, as the real tracker does.
+        const scan = vi.spyOn(ChangeRangeTracker.prototype, "reconcile").mockReturnValue(pass);
+        const membership = vi.spyOn(store, "reconcileFiles").mockResolvedValue(undefined);
+        let epoch = 100;
+        vi.spyOn(store, "observerEpoch").mockImplementation(() => ++epoch);
+        const status = await gitOps.getStatus({ withStats: false });
+        const held: WeakRef<object>[] = [];
+        const refreshes: Promise<void>[] = [];
+        for (let i = 1; i <= 5; i++) {
+            const files = status.map((file) => ({ ...file }));
+            held.push(new WeakRef(files));
+            refreshes.push(host.reconcile(files));
+            await vi.waitFor(() => expect(scan).toHaveBeenCalledTimes(i));
+        }
+        // The spy's own call log would otherwise keep every array alive.
+        scan.mockClear();
+        for (let round = 0; round < 3; round++) {
+            gc();
+            await new Promise((resolve) => setImmediate(resolve));
+        }
+        expect(
+            held.filter((ref) => ref.deref() !== undefined),
+            "a refresh waiting on the shared pass must not keep its files array",
+        ).toHaveLength(0);
+        finishPass();
+        await Promise.all(refreshes);
+        expect(
+            membership.mock.calls.slice(5).map((call) => call[2]),
+            "one prune per finished pass, with the newest refresh's epoch",
+        ).toEqual([epoch]);
     });
 
     it("keeps changelist actions usable while the cold range scan walks a large file set", async () => {
