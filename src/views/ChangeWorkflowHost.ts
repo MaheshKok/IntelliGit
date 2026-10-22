@@ -213,8 +213,9 @@ export class ChangeWorkflowHost {
     }
 
     /**
-     * Resolves once the latest range pass's prune has run, and never rejects. Only tests wait on
-     * it: a refresh that waited would keep its file list alive for the whole pass.
+     * Resolves once the latest range pass's prune has run, or has scheduled its retry after a hold
+     * refused it. Only tests wait on it: a refresh that waited would keep its file list alive for
+     * the whole pass.
      */
     settled(): Promise<void> {
         return this.prune?.done ?? Promise.resolve();
