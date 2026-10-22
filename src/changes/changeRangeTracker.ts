@@ -14,7 +14,11 @@ import { rangeObservation } from "./rangeObservation";
 import { ChangelistRevisionError, type ChangelistStore } from "./changelistStore";
 import type { ChangelistState, RangeSnapshot } from "../webviews/protocol/changeSelection";
 
-/** Files opened per store write; each write clones and saves the whole changelist state. */
+/**
+ * Files opened per store write; each write clones and saves the whole changelist state.
+ * A tuning choice, not a measured limit: 64 turns a 10,000-file pass into 157 writes instead of
+ * 10,000, while a failed batch replays at most 64 per-file writes and holds at most 64 snapshots.
+ */
 const TRACK_BATCH = 64;
 
 type TrackContext = {
