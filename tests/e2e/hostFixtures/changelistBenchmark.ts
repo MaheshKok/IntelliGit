@@ -34,6 +34,7 @@ import {
 import { E2eControlChannelClient } from "../controlChannelClient";
 import { IntelliGitView } from "../pageObjects/intelliGitView";
 import { dismissFirstRunDialogs, launchFixtureWorkspace } from "./electronLaunchHelpers";
+import { attachHostInspector } from "./hostInspector";
 import { resolveVSCodeExecutable } from "./resolveVSCodeExecutable";
 
 interface BenchmarkOptions {
@@ -459,6 +460,7 @@ type GitTiming = Awaited<ReturnType<typeof instrumentGit>>;
 interface Session {
     app?: ElectronApplication;
     timing?: GitTiming;
+    inspector?: Awaited<ReturnType<typeof attachHostInspector>>;
 }
 
 /** Launches one isolated session and measures its open; `session` keeps handles for teardown. */
@@ -470,6 +472,7 @@ async function openSession(
     primaryRoot: string,
     session: Session,
     firstRowsSeenMs: readonly number[],
+    inspectPort?: number,
 ) {
     // Scale from this build's measured first rows (one job saw 14-39 s); before any sample, the reveal budget.
     const firstRowsTimeout = firstRowsSeenMs.length ? 4 * Math.max(...firstRowsSeenMs) : 180_000;
@@ -485,9 +488,16 @@ async function openSession(
         workspace: sessionWorkspace,
         channelDir,
         timeout: 90_000,
+        extraArgs: inspectPort ? [`--inspect-extensions=${inspectPort}`] : [],
     });
     session.app = app;
     const page = await app.firstWindow();
+    if (inspectPort)
+        session.inspector = await attachHostInspector(
+            inspectPort,
+            options.extensionPath,
+            options.output,
+        );
     const client = new E2eControlChannelClient(channelDir);
     const hostBeforeReveal = await hostMetrics(client);
     // DOM snapshots of a 1000-row list made a single trace exceed 512 MB; screenshots suffice.
@@ -718,6 +728,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                 primaryRoot,
                 session,
                 [...firstRowsWarmups, ...firstRows],
+                Number(process.env.INTELLIGIT_BENCHMARK_INSPECT_PORT) || undefined,
             );
             result.warmSessionOpen = { cloneMs, ...record };
             result.runtime = record.runtime;
@@ -1084,6 +1095,7 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                 result.failedFrames = await captureFailure(session.app, options.output, "warm");
             throw error;
         } finally {
+            await session.inspector?.stop();
             await closeSession(session, "warm.zip");
         }
     } catch (error) {
