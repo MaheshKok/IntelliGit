@@ -1804,6 +1804,84 @@ describe("root-bound selected-change host", () => {
         }
     });
 
+    /** Answers the create prompts, running `during` while the name prompt is open. */
+    function createPrompts(during: () => Promise<unknown>) {
+        Object.defineProperty(vscode.window, "showInputBox", {
+            configurable: true,
+            value: vi
+                .fn()
+                .mockImplementationOnce(async () => {
+                    await during();
+                    return "Mid-scan";
+                })
+                .mockResolvedValueOnce(""),
+        });
+        Object.defineProperty(vscode.window, "showQuickPick", {
+            configurable: true,
+            value: vi.fn(async (items: readonly unknown[]) => items[0]),
+        });
+    }
+
+    it("creates a list whose prompts stayed open while the range scan wrote", async () => {
+        const revision = store.get(root).revision;
+        await writeFile(path.join(root, "file.txt"), `scan edit\n${working}`);
+        let scanned = revision;
+        createPrompts(async () => {
+            await host.reconcile(await gitOps.getStatus({ withStats: false }));
+            scanned = store.get(root).revision;
+        });
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "create",
+            revision,
+        });
+        expect(scanned, "the scan must write while the prompt is open").toBeGreaterThan(revision);
+        expect(
+            posted
+                .filter((message) => (message as { type: string }).type === "error")
+                .map((message) => (message as { message: string }).message),
+            "a range write during the prompts must not refuse the new list",
+        ).toEqual([]);
+        expect(store.get(root).lists.map((list) => list.name)).toContain("Mid-scan");
+    });
+
+    it.each([
+        ["another list is created", () => store.create(root, store.revision(root), "Elsewhere")],
+        [
+            "the active list changes",
+            async () =>
+                store.activate(
+                    root,
+                    (await store.create(root, store.revision(root), "Elsewhere")).revision,
+                    store.get(root).lists[1].id,
+                ),
+        ],
+    ])("refuses a new list when %s while its prompts are open", async (_, interfere) => {
+        const revision = store.get(root).revision;
+        const lists = () => store.get(root).lists.map((list) => list.name);
+        let seen: string[] = [];
+        createPrompts(async () => {
+            await interfere();
+            seen = lists();
+        });
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "create",
+            revision,
+        });
+        expect(posted, "an intervening list change must refuse the create").toContainEqual(
+            expect.objectContaining({
+                type: "error",
+                message: expect.stringContaining("Changelists changed"),
+            }),
+        );
+        expect(lists(), "a refused create must write nothing").toEqual(seen);
+    });
+
     it("captures pending edits under the old active list before switching future attribution", async () => {
         const created = await store.create(root, store.get(root).revision, "Later");
         const id = created.lists[1].id;
