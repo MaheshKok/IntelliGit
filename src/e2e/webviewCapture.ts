@@ -42,6 +42,12 @@ export interface CapturedWebviewMessage {
 }
 
 /**
+ * Messages a benchmark-mode sink keeps. Each one can carry the whole 10k-file list, and keeping
+ * every message held 714 MB of a 1104 MB host heap in bench r5 -- the heap the benchmark measures.
+ */
+export const BENCHMARK_CAPTURE_TAIL = 10;
+
+/**
  * In-memory, append-only record of every `postMessage` a captured webview has sent, in call order.
  * Nothing persists this to disk today; it is held in memory only, and never logs payload contents
  * on its own -- a captured message can carry real repository data.
