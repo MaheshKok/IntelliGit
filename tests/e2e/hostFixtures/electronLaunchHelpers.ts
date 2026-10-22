@@ -250,8 +250,9 @@ export async function launchFixtureWorkspace(options: {
     readonly workspace: FixtureWorkspace;
     readonly channelDir: string;
     readonly timeout?: number;
+    readonly extraArgs?: readonly string[];
 }): Promise<ElectronApplication> {
-    const { executablePath, repoRoot, workspace, channelDir, timeout } = options;
+    const { executablePath, repoRoot, workspace, channelDir, timeout, extraArgs = [] } = options;
     const extensionsDir = path.join(path.dirname(workspace.profileDir), "extensions");
     await mkdir(extensionsDir, { recursive: true });
     const shelfStoragePath =
@@ -269,6 +270,7 @@ export async function launchFixtureWorkspace(options: {
                 extensionsDir,
                 workspacePath: workspace.root,
             }),
+            ...extraArgs,
         ],
         // `NodeJS.ProcessEnv` permits undefined values, but Electron's env contract does not;
         // this shared narrowing also prevents an absent inherited variable from being forwarded
