@@ -75,6 +75,22 @@ function assertRequestId(value: unknown): string {
     return requestId;
 }
 
+/** The metadata a save plan reads; a range record that names no line owner adds nothing to it. */
+function saveIntent(state: ChangelistState): string {
+    const files = Object.keys({ ...state.files, ...state.changes }).sort();
+    return JSON.stringify([
+        state.lists,
+        state.activeId,
+        state.allDraft ?? "",
+        files.map((file) => [
+            file,
+            state.files[file] ?? state.activeId,
+            Object.entries(state.changes[file]?.lines ?? {}).sort(),
+            state.changes[file]?.stale === true,
+        ]),
+    ]);
+}
+
 /** Coordinates metadata and a captured-root Git service for one provider runtime. */
 export class ChangeWorkflowHost {
     private readonly store: ChangelistStore;
@@ -918,13 +934,7 @@ export class ChangeWorkflowHost {
                 if (this.store.revision(this.deps.root) !== state.revision)
                     throw new Error("Changelists changed during the save prompt.");
                 const plan = await this.scopedShelfPlan(state, message.listId, paths, name);
-                await this.runScopedShelfOperation(
-                    operation,
-                    plan,
-                    message.listId,
-                    state.revision,
-                    reply,
-                );
+                await this.runScopedShelfOperation(operation, plan, message.listId, state, reply);
             }
         } catch (error) {
             // A failure after Save (for example the preview dialog) must still name the saved shelf.
@@ -1049,7 +1059,7 @@ export class ChangeWorkflowHost {
     /** Revalidates under the actual lease and preserves the saved identity across cleanup errors. */
     private async publishScopedShelf(
         plan: SelectedShelfInput,
-        revision: number,
+        before: ChangelistState,
         scope: string,
     ): Promise<string> {
         const service = this.deps.shelfService;
@@ -1059,10 +1069,15 @@ export class ChangeWorkflowHost {
         let savedId: string | undefined;
         let primary: Error | undefined;
         try {
+            // The range scan may record ranges while the plan's Git reads run. The lease now blocks
+            // every other write, so save against the latest revision only if the plan's view held.
+            const latest = this.store.get(this.deps.root);
+            if (saveIntent(latest) !== saveIntent(before))
+                throw new Error("Changelists changed. Reopen the selected changes.");
             const result = await service.saveSelectedChanges(
                 plan,
                 lease,
-                revision,
+                latest.revision,
                 scope,
                 (files) => assertChangeBuffersSaved(this.deps.root, files),
             );
@@ -1391,14 +1406,15 @@ export class ChangeWorkflowHost {
         operation: "save" | "saveAndRemove" | "rollback",
         plan: SelectedShelfInput,
         scope: string,
-        revision: number,
+        before: ChangelistState,
         reply: Extract<ChangelistReply, { type: "changelistShelfResult" }>,
     ): Promise<void> {
+        const revision = before.revision;
         if (operation === "rollback" && !(await this.confirmSelectedRemoval(plan, true))) {
             reply.message = vscode.l10n.t("Rollback cancelled. Nothing was saved or removed.");
             return;
         }
-        reply.shelfId = await this.publishScopedShelf(plan, revision, scope);
+        reply.shelfId = await this.publishScopedShelf(plan, before, scope);
         reply.message = vscode.l10n.t("Shelf {shelfId} was saved. Local changes are unchanged.", {
             shelfId: reply.shelfId,
         });
