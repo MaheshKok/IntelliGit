@@ -1892,6 +1892,36 @@ describe("root-bound selected-change host", () => {
         expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
     });
 
+    it("keeps changelist actions busy while a shared prune runs", async () => {
+        let finishPass!: () => void;
+        const pass = new Promise<void>((resolve) => {
+            finishPass = resolve;
+        });
+        let finishPrune!: () => void;
+        const prune = new Promise<void>((resolve) => {
+            finishPrune = resolve;
+        });
+        vi.spyOn(ChangeRangeTracker.prototype, "reconcile").mockReturnValue(pass);
+        const membership = vi.spyOn(store, "reconcileFiles").mockResolvedValue(undefined);
+        const files = await gitOps.getStatus({ withStats: false });
+        const refreshes = [host.reconcile(files), host.reconcile(files)];
+        await vi.waitFor(() => expect(membership).toHaveBeenCalledTimes(2));
+        membership.mockImplementationOnce(() => prune);
+        finishPass();
+        try {
+            await vi.waitFor(() => expect(membership).toHaveBeenCalledTimes(3));
+            await store.saveDraft(root, "all", "", "metadata arriving during the shared prune");
+            expect(posted.at(-1), "a pending prune must not enable actions").toMatchObject({
+                type: "setChangelists",
+                busy: true,
+            });
+        } finally {
+            finishPrune();
+            await Promise.all(refreshes);
+        }
+        expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
+    });
+
     it("keeps changelist actions usable while the cold range scan walks a large file set", async () => {
         host.dispose();
         const names = Array.from(
