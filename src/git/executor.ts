@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { createWriteStream, existsSync } from "node:fs";
+import { accessSync, constants, createWriteStream, existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
@@ -19,10 +19,16 @@ let gitBinaryLookup: Promise<string> | undefined;
  * `cmd\git.exe` launcher sets up the environment Git expects. When the lookup fails, plain `git`
  * keeps today's behaviour and its spawn reports the real error. The answer is cached for the
  * life of the process, so switching `xcode-select` mid-session takes effect after a reload.
+ * Only the shim is skipped: when the first `git` on PATH is anything else (a user's wrapper, a
+ * Homebrew install), it is spawned as-is so whatever it does still happens.
  */
-export function resolveGitBinary(platform: NodeJS.Platform = process.platform): Promise<string> {
+export function resolveGitBinary(
+    platform: NodeJS.Platform = process.platform,
+    pathEnv: string = process.env.PATH ?? "",
+): Promise<string> {
     if (platform !== "darwin") return Promise.resolve("git");
     gitBinaryLookup ??= (async () => {
+        if (firstGitOnPath(pathEnv) !== "/usr/bin/git") return "git";
         const { stdout } = await promisify(execFile)("git", ["--exec-path"]);
         const binary = path.join(stdout.trim(), "git");
         return existsSync(binary) ? binary : "git";
@@ -30,6 +36,20 @@ export function resolveGitBinary(platform: NodeJS.Platform = process.platform): 
         .catch(() => "git")
         .then((binary) => (gitBinary = binary));
     return gitBinaryLookup;
+}
+
+function firstGitOnPath(pathEnv: string): string | undefined {
+    for (const dir of pathEnv.split(path.delimiter)) {
+        if (!dir) continue;
+        const candidate = path.join(dir, "git");
+        try {
+            accessSync(candidate, constants.X_OK);
+            return realpathSync(candidate);
+        } catch {
+            // Not here; keep walking PATH the way the shell would.
+        }
+    }
+    return undefined;
 }
 
 /** Options for a binary Git process invocation. */
