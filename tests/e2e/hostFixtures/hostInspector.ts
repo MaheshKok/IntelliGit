@@ -1,0 +1,210 @@
+import { createWriteStream } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { finished } from "node:stream/promises";
+import { createGzip } from "node:zlib";
+
+/**
+ * Bench-only probe of the extension host through its inspector (`--inspect-extensions`), so the
+ * extension under test carries no probe code. Every 10 s it records heap, RSS and range-scan
+ * counters; every 60 s it rotates a CPU profile; at 10, 25 and 40 min it saves a gzipped heap
+ * snapshot, so two snapshots far apart show what the host keeps growing. A request the host
+ * cannot answer is recorded as an error with its timeout, which is itself the stall evidence.
+ */
+export async function attachHostInspector(port: number, extensionPath: string, output: string) {
+    const deadline = Date.now() + 90_000;
+    let url: string | undefined;
+    while (!url) {
+        try {
+            const targets = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as {
+                webSocketDebuggerUrl?: string;
+            }[];
+            url = targets.find((target) => target.webSocketDebuggerUrl)?.webSocketDebuggerUrl;
+        } catch {
+            // The extension host has not opened its inspector yet.
+        }
+        if (url) break;
+        if (Date.now() > deadline)
+            throw new Error(`Extension host inspector on port ${port} never answered.`);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    const socket = new WebSocket(url);
+    await new Promise<void>((resolve, reject) => {
+        socket.onopen = () => resolve();
+        socket.onerror = () => reject(new Error("Extension host inspector socket failed."));
+    });
+    const replies = new Map<
+        number,
+        (message: { result?: unknown; error?: { message: string } }) => void
+    >();
+    const resolved: object[] = [];
+    let snapshotChunk: ((chunk: string) => void) | undefined;
+    socket.onmessage = (event) => {
+        const message = JSON.parse(String(event.data));
+        if (message.id !== undefined) replies.get(message.id)?.(message);
+        else if (message.method === "Debugger.breakpointResolved") resolved.push(message.params);
+        else if (message.method === "HeapProfiler.addHeapSnapshotChunk")
+            snapshotChunk?.(message.params.chunk);
+    };
+    let nextId = 0;
+    const send = <T>(method: string, params: object = {}, timeoutMs = 15_000) =>
+        new Promise<T>((resolve, reject) => {
+            const id = ++nextId;
+            const timer = setTimeout(() => {
+                replies.delete(id);
+                reject(new Error(`${method} got no answer within ${timeoutMs} ms`));
+            }, timeoutMs);
+            replies.set(id, (message) => {
+                clearTimeout(timer);
+                replies.delete(id);
+                if (message.error) reject(new Error(`${method}: ${message.error.message}`));
+                else resolve(message.result as T);
+            });
+            socket.send(JSON.stringify({ id, method, params }));
+        });
+
+    // Counters through conditions that always return false: the host never pauses.
+    // calls = reconcile calls; queued - passes = range-scan passes waiting behind the running one.
+    // The host opens its inspector before it loads this extension, so breakpoints are set by URL
+    // (they bind when the bundle loads) at lines read from the same bundle file on disk.
+    await send("Debugger.enable");
+    const bundlePath = path.join(extensionPath, "dist", "extension.js");
+    const scriptSource = await readFile(bundlePath, "utf8");
+    const urlRegex = `${bundlePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`;
+    const markers = [
+        ["calls", "this.next = { files, epoch };"],
+        ["queued", "const operation = this.pending.then(() => {"],
+        ["passes", "const entries = await this.partial.indexEntries()"],
+        ["opens", "const view = await this.partial.open(file)"],
+    ] as const;
+    let from = scriptSource.indexOf("reconcile(files, epoch) {");
+    if (from < 0) throw new Error("ChangeRangeTracker.reconcile is not in the bundle.");
+    const breakpoints: Record<string, { lineNumber: number }> = {};
+    for (const [name, text] of markers) {
+        const at = scriptSource.indexOf(text, from);
+        if (at < 0) throw new Error(`Range-scan marker "${text}" is not in the bundle.`);
+        from = at;
+        // The bundle is not minified: each marker is a statement starting its own line.
+        const lineNumber = scriptSource.slice(0, at).split("\n").length - 1;
+        await send("Debugger.setBreakpointByUrl", {
+            urlRegex,
+            lineNumber,
+            columnNumber: 0,
+            condition: `((globalThis.__intelligitBench ??= { calls: 0, queued: 0, passes: 0, opens: 0 }).${name}++, false)`,
+        });
+        breakpoints[name] = { lineNumber };
+    }
+
+    const startedAtMs = Date.now();
+    const samples: object[] = [];
+    const profiles: object[] = [];
+    const snapshots: object[] = [];
+    const record = () =>
+        writeFile(
+            path.join(output, "host-inspector.json"),
+            JSON.stringify({
+                port,
+                startedAtMs,
+                breakpoints,
+                resolved,
+                samples,
+                profiles,
+                snapshots,
+            }),
+        );
+    // Streams the snapshot through gzip so a ~2 GB heap does not sit in this process as one string.
+    const snapshotDueMs = [600_000, 1_500_000, 2_400_000];
+    const takeHeapSnapshot = async () => {
+        const requestedAtMs = Date.now();
+        const filename = `host-heap-${Math.round((requestedAtMs - startedAtMs) / 1000)}s.heapsnapshot.gz`;
+        const gzip = createGzip();
+        const written = finished(gzip.pipe(createWriteStream(path.join(output, filename))));
+        snapshotChunk = (chunk) => gzip.write(chunk);
+        try {
+            await send("HeapProfiler.takeHeapSnapshot", { reportProgress: false }, 900_000);
+            snapshots.push({
+                filename,
+                atMs: requestedAtMs - startedAtMs,
+                tookMs: Date.now() - requestedAtMs,
+            });
+        } catch (error) {
+            snapshots.push({ filename, atMs: requestedAtMs - startedAtMs, error: String(error) });
+        } finally {
+            snapshotChunk = undefined;
+            gzip.end();
+            await written.catch((error) => snapshots.push({ filename, writeError: String(error) }));
+        }
+    };
+    let profileIndex = 0;
+    let profileStartedAtMs = Date.now();
+    await send("Profiler.enable");
+    await send("Profiler.start");
+    const rotate = async (restart: boolean) => {
+        const index = profileIndex++;
+        const from = profileStartedAtMs;
+        const requestedAtMs = Date.now();
+        try {
+            const { profile } = await send<{ profile: unknown }>("Profiler.stop", {}, 45_000);
+            const filename = `host-cpu-${String(index).padStart(2, "0")}.cpuprofile`;
+            await writeFile(path.join(output, filename), JSON.stringify(profile));
+            profiles.push({
+                filename,
+                fromMs: from - startedAtMs,
+                toMs: requestedAtMs - startedAtMs,
+                answeredAfterMs: Date.now() - requestedAtMs,
+            });
+        } catch (error) {
+            profiles.push({ index, fromMs: from - startedAtMs, error: String(error) });
+        }
+        if (restart) {
+            profileStartedAtMs = Date.now();
+            await send("Profiler.start").catch((error) =>
+                profiles.push({ restartError: String(error) }),
+            );
+        }
+        await record();
+    };
+    const expression =
+        "JSON.stringify({ counters: globalThis.__intelligitBench ?? null, memory: process.memoryUsage() })";
+    let stopped = false;
+    let sampling: Promise<void> = Promise.resolve();
+    const sampleLoop = async () => {
+        while (!stopped) {
+            const atMs = Date.now();
+            try {
+                const { result } = await send<{ result: { value: string } }>(
+                    "Runtime.evaluate",
+                    { expression, returnByValue: true },
+                    8_000,
+                );
+                samples.push({
+                    elapsedMs: atMs - startedAtMs,
+                    answeredAfterMs: Date.now() - atMs,
+                    ...JSON.parse(result.value),
+                });
+            } catch (error) {
+                samples.push({ elapsedMs: atMs - startedAtMs, error: String(error) });
+            }
+            if (snapshotDueMs.length > 0 && Date.now() - startedAtMs >= snapshotDueMs[0]) {
+                snapshotDueMs.shift();
+                await takeHeapSnapshot();
+            }
+            if (Date.now() - profileStartedAtMs >= 60_000) await rotate(true);
+            else await record();
+            await new Promise((resolve) =>
+                setTimeout(resolve, Math.max(0, 10_000 - (Date.now() - atMs))),
+            );
+        }
+    };
+    sampling = sampleLoop();
+
+    return {
+        /** Ends sampling and saves the last profile window; never throws. */
+        stop: async () => {
+            stopped = true;
+            await sampling.catch(() => undefined);
+            await rotate(false).catch(() => undefined);
+            socket.close();
+        },
+    };
+}
