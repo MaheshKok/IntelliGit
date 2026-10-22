@@ -767,6 +767,31 @@ describe("benchmark IPC accounting", () => {
         });
         expect(snapshot()).toBeUndefined();
     });
+    it("keeps only a bounded tail plus per-type counts in benchmark mode", () => {
+        vi.stubEnv("INTELLIGIT_E2E_BENCHMARK", "1");
+        const sink = new WebviewCaptureSink();
+        const total = captureModule.BENCHMARK_CAPTURE_TAIL * 3;
+        for (let i = 0; i < total; i++)
+            sink.record("commit-panel", { type: i % 2 === 0 ? "even" : "odd", i });
+        const tail = sink.getMessages().map((entry) => (entry.message as { i: number }).i);
+        expect(tail).toEqual(
+            Array.from(
+                { length: captureModule.BENCHMARK_CAPTURE_TAIL },
+                (_, k) => total - captureModule.BENCHMARK_CAPTURE_TAIL + k,
+            ),
+        );
+        const counts = (
+            sink as unknown as { getCountsByType?: () => Record<string, number> }
+        ).getCountsByType?.();
+        expect(counts).toEqual({ even: total / 2, odd: total / 2 });
+    });
+    it("keeps every message outside benchmark mode", () => {
+        vi.stubEnv("INTELLIGIT_E2E_BENCHMARK", "0");
+        const sink = new WebviewCaptureSink();
+        const total = captureModule.BENCHMARK_CAPTURE_TAIL * 3;
+        for (let i = 0; i < total; i++) sink.record("commit-panel", { type: "fixture", i });
+        expect(sink.getMessages()).toHaveLength(total);
+    });
     it("reports unmeasurable serialization without changing transport delivery", () => {
         vi.stubEnv("INTELLIGIT_E2E_BENCHMARK", "1");
         setE2eControlChannelActive(true);
