@@ -18,6 +18,8 @@ import type { ChangelistState, RangeSnapshot } from "../webviews/protocol/change
 export class ChangeRangeTracker {
     private readonly observed = new Map<string, string>();
     private pending = Promise.resolve();
+    private queued?: Promise<void>;
+    private next?: { files: readonly WorkingFile[]; epoch?: number };
     private directories?: { gitDir: string; commonDir: string };
 
     /** Both services are bound to the same validated worktree by the workflow host. */
@@ -30,9 +32,19 @@ export class ChangeRangeTracker {
     /**
      * Serialize status observations so an older scan cannot overwrite a newer ownership decision.
      * `epoch` makes the store refuse this pass's writes once a target hold has interrupted it.
+     * A call made before the queued pass starts replaces its files and epoch and shares its result,
+     * so a slow pass has at most one full pass waiting behind it however often status refreshes.
      */
     reconcile(files: readonly WorkingFile[], epoch?: number): Promise<void> {
-        const operation = this.pending.then(() => this.refresh(files, epoch));
+        this.next = { files, epoch };
+        if (this.queued) return this.queued;
+        const operation = this.pending.then(() => {
+            const next = this.next!;
+            this.next = undefined;
+            this.queued = undefined;
+            return this.refresh(next.files, next.epoch);
+        });
+        this.queued = operation;
         this.pending = operation.catch(() => undefined);
         return operation;
     }
