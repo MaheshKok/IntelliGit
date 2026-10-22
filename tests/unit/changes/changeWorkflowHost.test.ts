@@ -1782,7 +1782,8 @@ describe("root-bound selected-change host", () => {
 
     it("holds no refresh's files while one range pass runs, then prunes once with the newest epoch", async () => {
         setFlagsFromString("--expose-gc");
-        const gc = runInNewContext("gc") as () => void;
+        const gc = runInNewContext("gc") as unknown;
+        if (typeof gc !== "function") throw new Error("--expose-gc did not provide gc()");
         let finishPass!: () => void;
         const pass = new Promise<void>((resolve) => {
             finishPass = resolve;
@@ -1794,11 +1795,15 @@ describe("root-bound selected-change host", () => {
         vi.spyOn(store, "observerEpoch").mockImplementation(() => ++epoch);
         const status = await gitOps.getStatus({ withStats: false });
         const held: WeakRef<object>[] = [];
-        const refreshes: Promise<void>[] = [];
-        for (let i = 1; i <= 5; i++) {
+        // A sync helper owns each array: a local in this async test would stay in its own frame.
+        const refresh = () => {
             const files = status.map((file) => ({ ...file }));
             held.push(new WeakRef(files));
-            refreshes.push(host.reconcile(files));
+            return host.reconcile(files);
+        };
+        const refreshes: Promise<void>[] = [];
+        for (let i = 1; i <= 5; i++) {
+            refreshes.push(refresh());
             await vi.waitFor(() => expect(scan).toHaveBeenCalledTimes(i));
         }
         // The spy's own call log would otherwise keep every array alive.
@@ -1817,6 +1822,62 @@ describe("root-bound selected-change host", () => {
             membership.mock.calls.slice(5).map((call) => call[2]),
             "one prune per finished pass, with the newest refresh's epoch",
         ).toEqual([epoch]);
+    });
+
+    it("prunes each range pass with the last refresh that joined it, not one queued behind it", async () => {
+        let finishFirst!: () => void;
+        let finishSecond!: () => void;
+        const firstPass = new Promise<void>((resolve) => {
+            finishFirst = resolve;
+        });
+        const secondPass = new Promise<void>((resolve) => {
+            finishSecond = resolve;
+        });
+        // The first refresh starts a pass; later ones join the pass queued behind it.
+        const scan = vi
+            .spyOn(ChangeRangeTracker.prototype, "reconcile")
+            .mockReturnValueOnce(firstPass)
+            .mockReturnValue(secondPass);
+        const membership = vi.spyOn(store, "reconcileFiles").mockResolvedValue(undefined);
+        let epoch = 200;
+        vi.spyOn(store, "observerEpoch").mockImplementation(() => ++epoch);
+        const files = await gitOps.getStatus({ withStats: false });
+        const refreshes: Promise<void>[] = [];
+        for (let i = 1; i <= 3; i++) {
+            refreshes.push(host.reconcile(files));
+            await vi.waitFor(() => expect(scan).toHaveBeenCalledTimes(i));
+        }
+        finishFirst();
+        await refreshes[0];
+        finishSecond();
+        await Promise.all(refreshes);
+        expect(
+            membership.mock.calls.slice(3).map((call) => call[2]),
+            "each pass prunes with its own last refresh's epoch",
+        ).toEqual([201, 203]);
+    });
+
+    it("rejects every refresh sharing a pass when its prune fails", async () => {
+        let finishPass!: () => void;
+        const pass = new Promise<void>((resolve) => {
+            finishPass = resolve;
+        });
+        vi.spyOn(ChangeRangeTracker.prototype, "reconcile").mockReturnValue(pass);
+        const membership = vi.spyOn(store, "reconcileFiles").mockResolvedValue(undefined);
+        const files = await gitOps.getStatus({ withStats: false });
+        const refreshes = [host.reconcile(files), host.reconcile(files)];
+        await vi.waitFor(() => expect(membership).toHaveBeenCalledTimes(2));
+        membership.mockRejectedValueOnce(new Error("injected prune failure"));
+        finishPass();
+        const settled = await Promise.allSettled(refreshes);
+        expect(
+            settled.map((result) =>
+                result.status === "rejected" ? (result.reason as Error).message : result.status,
+            ),
+            "every refresh sharing the failed prune must reject with its error",
+        ).toEqual(["injected prune failure", "injected prune failure"]);
+        expect(membership).toHaveBeenCalledTimes(3);
+        expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
     });
 
     it("keeps changelist actions usable while the cold range scan walks a large file set", async () => {
