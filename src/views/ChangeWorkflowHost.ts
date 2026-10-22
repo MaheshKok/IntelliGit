@@ -931,7 +931,7 @@ export class ChangeWorkflowHost {
                     : vscode.l10n.t("Selected files");
             const name = await scopedShelfName(operation, source);
             if (name !== undefined) {
-                if (this.store.revision(this.deps.root) !== state.revision)
+                if (saveIntent(this.store.get(this.deps.root)) !== saveIntent(state))
                     throw new Error("Changelists changed during the save prompt.");
                 const plan = await this.scopedShelfPlan(state, message.listId, paths, name);
                 await this.runScopedShelfOperation(operation, plan, message.listId, state, reply);
