@@ -872,17 +872,40 @@ export class ChangelistStore {
         revision?: number,
         epoch?: number,
     ): Promise<ChangelistState> {
-        const safe = assertRepoRelativePath(file);
+        return this.trackBatch(root, [{ file, snapshot }], revision, epoch);
+    }
+
+    /** Reconciles several host-captured snapshots in one write: one revision, save and notification. */
+    trackBatch(
+        root: string,
+        entries: readonly { file: string; snapshot: RangeSnapshot }[],
+        revision?: number,
+        epoch?: number,
+    ): Promise<ChangelistState> {
+        const safe = entries.map(({ file, snapshot }) => ({
+            file: assertRepoRelativePath(file),
+            snapshot,
+        }));
         this.admitObserver(root, epoch);
         return this.write(root, revision, async (state) => {
-            const fallback = state.files[safe] ?? state.activeId;
-            state.files[safe] = fallback;
-            const previous = await this.hydrate(root, safe, state.changes[safe]);
-            state.changes[safe] = await this.compact(
-                root,
-                safe,
-                reconcileRanges(previous, snapshot, fallback, state.activeId),
-            );
+            let changed = false;
+            for (const { file, snapshot } of safe) {
+                const owner = state.files[file];
+                const ownership = JSON.stringify(state.changes[file]);
+                const fallback = owner ?? state.activeId;
+                state.files[file] = fallback;
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Evidence is hydrated and stored one file at a time under the lease.
+                const previous = await this.hydrate(root, file, state.changes[file]);
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Evidence is hydrated and stored one file at a time under the lease.
+                state.changes[file] = await this.compact(
+                    root,
+                    file,
+                    reconcileRanges(previous, snapshot, fallback, state.activeId),
+                );
+                // Only these two entries change, so comparing them matches a whole-state comparison.
+                changed ||= owner !== fallback || JSON.stringify(state.changes[file]) !== ownership;
+            }
+            return changed;
         });
     }
 
@@ -2327,7 +2350,8 @@ export class ChangelistStore {
     private async write(
         root: string,
         revision: number | undefined,
-        mutate: (state: ChangelistState) => void | Promise<void>,
+        // A mutation that knows whether it changed anything returns it; the rest are compared whole.
+        mutate: (state: ChangelistState) => void | boolean | Promise<void | boolean>,
         userMutation = true,
         pendingWrite?: "draft",
         targetLease?: TargetOperationLease,
@@ -2359,9 +2383,11 @@ export class ChangelistStore {
                         string,
                         ChangeOwnership
                     >;
-                    await mutate(next);
+                    const changed = await mutate(next);
                     if (
-                        JSON.stringify(before) === JSON.stringify(next) &&
+                        (changed === false ||
+                            (changed === undefined &&
+                                JSON.stringify(before) === JSON.stringify(next))) &&
                         this.migrationSource === undefined &&
                         this.roots.has(root)
                     )
