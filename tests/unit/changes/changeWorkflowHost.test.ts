@@ -431,6 +431,61 @@ describe("scoped list and file save", () => {
         );
     });
 
+    /** A list save whose `git status` read runs `during` first; `other.txt` is changed but not yet scanned. */
+    async function saveWithStatusRead(during: (f: Awaited<ReturnType<typeof fixture>>) => unknown) {
+        await writeFile(path.join(root, "other.txt"), "other\n");
+        git(["add", "--", "other.txt"]);
+        git(["commit", "-qm", "other"]);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        const f = await fixture();
+        await writeFile(path.join(root, "other.txt"), "other edited\n");
+        // Membership runs before the range scan, so the file is listed without a range record yet.
+        await store.reconcileFiles(root, ["file.txt", "other.txt"]);
+        f.request.revision = store.revision(root);
+        expect(store.get(root).files["other.txt"]).toBe("default");
+        expect(store.get(root).changes["other.txt"], "the scan has not seen the edit").toBe(
+            undefined,
+        );
+        const status = gitOps.getStatus.bind(gitOps);
+        let duringRevision = 0;
+        vi.spyOn(gitOps, "getStatus").mockImplementationOnce(async (options) => {
+            const files = await status(options);
+            await during(f);
+            duringRevision = store.revision(root);
+            return files;
+        });
+        posted.length = 0;
+        await host.handle(f.request);
+        expect(duringRevision, "a metadata write lands during the save").toBeGreaterThan(
+            f.request.revision,
+        );
+        return f;
+    }
+
+    it("list save survives a range scan write landing during its Git reads", async () => {
+        const f = await saveWithStatusRead(async () =>
+            host.reconcile(await gitOps.getStatus({ withStats: false })),
+        );
+        expect(
+            posted.flatMap((message) => (message as { error?: string }).error ?? []),
+            "a range scan observing a file must not refuse the save",
+        ).toEqual([]);
+        expect((await f.shelves.listShelves()).shelfIds).toHaveLength(1);
+    });
+
+    it("list save refuses a file moved to another list during its Git reads", async () => {
+        const f = await saveWithStatusRead((fixture) =>
+            store.moveFiles(root, store.revision(root), fixture.other, ["other.txt"]),
+        );
+        expect(posted, "an ownership change during the save must refuse it").toContainEqual(
+            expect.objectContaining({
+                type: "changelistShelfResult",
+                error: expect.stringMatching(/changed/i),
+            }),
+        );
+        expect((await f.shelves.listShelves()).shelfIds).toEqual([]);
+    });
+
     it("concurrent duplicate intent is refused while one captured prompt is outstanding", async () => {
         const f = await fixture();
         let finish!: (name: string) => void;
