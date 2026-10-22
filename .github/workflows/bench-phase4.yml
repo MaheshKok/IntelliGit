@@ -1,13 +1,13 @@
 name: Phase 4 operation benchmark (temporary)
 
-# Lives only on the throwaway bench/phase4-10k-r6 branch and is never merged. Each job runs one
+# Lives only on the throwaway bench/phase4-10k-r7 branch and is never merged. Each job runs one
 # shard (6 samples + 3 warmups) of one dataset for ONE build; five shards per dataset and build
 # give the 30 samples. Builds get separate jobs because at 10000 files one build's warm
 # scenarios (capture alone ~10x the 1000-file 934 s) no longer fit beside the other in 6 hours.
 on:
     push:
         branches:
-            - bench/phase4-10k-r6
+            - bench/phase4-10k-r7
 
 permissions:
     contents: read
@@ -28,9 +28,9 @@ jobs:
             fail-fast: false
             matrix:
                 files: [10000]
-                # Does the 20-list Expand All sweep finish with a bounded capture sink and one prune per pass?
+                # Diagnostic run: what the host heap keeps growing (snapshots at 10, 25 and 40 min, diffed below).
                 lists: [20]
-                shard: [1, 2, 3]
+                shard: [1]
                 build: [candidate]
 
         steps:
@@ -126,6 +126,18 @@ jobs:
                       rm -rf "/bench/tmp-$build"
                   done
                   exit "$status"
+
+            # Runs after VS Code has exited, so parsing the snapshots never competes with the host.
+            - name: Diff heap snapshots
+              if: always()
+              continue-on-error: true
+              run: |
+                  free -m | tee bench-out/memory-before-diff.txt
+                  node --max-old-space-size=8192 .github/bench/heapdiff.cjs \
+                      "bench-out/candidate/$FILES-$LISTS" 2>&1 | tee bench-out/heapdiff.txt
+              env:
+                  FILES: ${{ matrix.files }}
+                  LISTS: ${{ matrix.lists }}
 
             - name: Upload shard results
               if: always()

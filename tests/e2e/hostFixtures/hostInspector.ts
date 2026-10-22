@@ -1,11 +1,15 @@
+import { createWriteStream } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { finished } from "node:stream/promises";
+import { createGzip } from "node:zlib";
 
 /**
  * Bench-only probe of the extension host through its inspector (`--inspect-extensions`), so the
  * extension under test carries no probe code. Every 10 s it records heap, RSS and range-scan
- * counters; every 60 s it rotates a CPU profile. A request the host cannot answer is recorded as
- * an error with its timeout, which is itself the stall evidence.
+ * counters; every 60 s it rotates a CPU profile; at 10, 25 and 40 min it saves a gzipped heap
+ * snapshot, so two snapshots far apart show what the host keeps growing. A request the host
+ * cannot answer is recorded as an error with its timeout, which is itself the stall evidence.
  */
 export async function attachHostInspector(port: number, extensionPath: string, output: string) {
     const deadline = Date.now() + 90_000;
@@ -34,10 +38,13 @@ export async function attachHostInspector(port: number, extensionPath: string, o
         (message: { result?: unknown; error?: { message: string } }) => void
     >();
     const resolved: object[] = [];
+    let snapshotChunk: ((chunk: string) => void) | undefined;
     socket.onmessage = (event) => {
         const message = JSON.parse(String(event.data));
         if (message.id !== undefined) replies.get(message.id)?.(message);
         else if (message.method === "Debugger.breakpointResolved") resolved.push(message.params);
+        else if (message.method === "HeapProfiler.addHeapSnapshotChunk")
+            snapshotChunk?.(message.params.chunk);
     };
     let nextId = 0;
     const send = <T>(method: string, params: object = {}, timeoutMs = 15_000) =>
@@ -91,11 +98,43 @@ export async function attachHostInspector(port: number, extensionPath: string, o
     const startedAtMs = Date.now();
     const samples: object[] = [];
     const profiles: object[] = [];
+    const snapshots: object[] = [];
     const record = () =>
         writeFile(
             path.join(output, "host-inspector.json"),
-            JSON.stringify({ port, startedAtMs, breakpoints, resolved, samples, profiles }),
+            JSON.stringify({
+                port,
+                startedAtMs,
+                breakpoints,
+                resolved,
+                samples,
+                profiles,
+                snapshots,
+            }),
         );
+    // Streams the snapshot through gzip so a ~2 GB heap does not sit in this process as one string.
+    const snapshotDueMs = [600_000, 1_500_000, 2_400_000];
+    const takeHeapSnapshot = async () => {
+        const requestedAtMs = Date.now();
+        const filename = `host-heap-${Math.round((requestedAtMs - startedAtMs) / 1000)}s.heapsnapshot.gz`;
+        const gzip = createGzip();
+        const written = finished(gzip.pipe(createWriteStream(path.join(output, filename))));
+        snapshotChunk = (chunk) => gzip.write(chunk);
+        try {
+            await send("HeapProfiler.takeHeapSnapshot", { reportProgress: false }, 900_000);
+            snapshots.push({
+                filename,
+                atMs: requestedAtMs - startedAtMs,
+                tookMs: Date.now() - requestedAtMs,
+            });
+        } catch (error) {
+            snapshots.push({ filename, atMs: requestedAtMs - startedAtMs, error: String(error) });
+        } finally {
+            snapshotChunk = undefined;
+            gzip.end();
+            await written.catch((error) => snapshots.push({ filename, writeError: String(error) }));
+        }
+    };
     let profileIndex = 0;
     let profileStartedAtMs = Date.now();
     await send("Profiler.enable");
@@ -145,6 +184,10 @@ export async function attachHostInspector(port: number, extensionPath: string, o
                 });
             } catch (error) {
                 samples.push({ elapsedMs: atMs - startedAtMs, error: String(error) });
+            }
+            if (snapshotDueMs.length > 0 && Date.now() - startedAtMs >= snapshotDueMs[0]) {
+                snapshotDueMs.shift();
+                await takeHeapSnapshot();
             }
             if (Date.now() - profileStartedAtMs >= 60_000) await rotate(true);
             else await record();
