@@ -14,6 +14,33 @@ import { rangeObservation } from "./rangeObservation";
 import { ChangelistRevisionError, type ChangelistStore } from "./changelistStore";
 import type { ChangelistState, RangeSnapshot } from "../webviews/protocol/changeSelection";
 
+/** Files opened per store write; each write clones and saves the whole changelist state. */
+const TRACK_BATCH = 64;
+
+type TrackContext = {
+    revision: number;
+    activeId: string;
+    fileOwner?: string;
+    ownership?: ChangelistState["changes"][string];
+};
+
+/** A draft-only race cannot change attribution, so only an identical ownership context may retry. */
+function sameContext(latest: ChangelistState, file: string, before: TrackContext): boolean {
+    return (
+        latest.activeId === before.activeId &&
+        latest.files[file] === before.fileOwner &&
+        JSON.stringify(latest.changes[file]) === JSON.stringify(before.ownership)
+    );
+}
+
+type PendingTrack = {
+    file: string;
+    snapshot: RangeSnapshot;
+    before: TrackContext;
+    capturedContentId: string;
+    key: string;
+};
+
 /** Refreshes changed text from host snapshots; cached evidence is invalidated by Git or file bytes. */
 export class ChangeRangeTracker {
     private readonly observed = new Map<string, string>();
@@ -65,6 +92,70 @@ export class ChangeRangeTracker {
             files.filter((file) => file.status === "M").map((file) => file.path),
         );
         for (const file of Object.keys(state.changes)) candidates.add(file);
+        const fail = async (file: string, error: unknown, capturedContentId?: string) => {
+            this.observed.delete(file);
+            if (
+                error instanceof RepositoryLockBusyError ||
+                error instanceof ChangelistEvidenceError
+            )
+                throw error;
+            if (error instanceof ChangelistRevisionError) {
+                if (this.store.get(this.root).changes[file]?.contentId !== capturedContentId)
+                    await this.store.requireReview(this.root, file, true, epoch);
+                return;
+            }
+            await this.store.requireReview(
+                this.root,
+                file,
+                !(error instanceof PartialChangesUnsupportedError),
+                epoch,
+            );
+        };
+        // Each store write costs the whole state, so opened files are saved TRACK_BATCH at a time.
+        let batchState: ChangelistState | undefined;
+        const batch: PendingTrack[] = [];
+        const flush = async () => {
+            let items = batch.splice(0);
+            let revision = batchState?.revision;
+            batchState = undefined;
+            for (let attempt = 0; items.length > 0; attempt++) {
+                try {
+                    // react-doctor-disable-next-line react-doctor/async-await-in-loop -- The retry depends on this write's outcome.
+                    await this.store.trackBatch(this.root, items, revision, epoch);
+                    for (const item of items) this.observed.set(item.file, item.key);
+                    return;
+                } catch (error) {
+                    // An exhausted lease ends the pass; damaged evidence is replayed so earlier files still save.
+                    if (error instanceof RepositoryLockBusyError) {
+                        for (const item of items) this.observed.delete(item.file);
+                        throw error;
+                    }
+                    if (!(error instanceof ChangelistRevisionError) || attempt > 0) break;
+                    // Usually this pass's own review marks moved the revision: files whose ownership
+                    // context is unchanged retry together, the rest take the per-file revision path.
+                    const latest = this.store.get(this.root);
+                    const moved = items.filter(
+                        (item) => !sameContext(latest, item.file, item.before),
+                    );
+                    items = items.filter((item) => !moved.includes(item));
+                    for (const item of moved)
+                        // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Review marks are ordered metadata transactions.
+                        await fail(item.file, error, item.capturedContentId);
+                    revision = this.store.revision(this.root);
+                }
+            }
+            // A race or one bad file must not cost the batch: replay each file's own write and handling.
+            for (const item of items) {
+                try {
+                    // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Replayed writes keep the pass's file order.
+                    await this.track(item.file, item.snapshot, item.before, epoch);
+                    this.observed.set(item.file, item.key);
+                } catch (error) {
+                    // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Replayed writes keep the pass's file order.
+                    await fail(item.file, error, item.capturedContentId);
+                }
+            }
+        };
         await mapWithConcurrency([...candidates], 1, async (file) => {
             let capturedContentId: string | undefined;
             try {
@@ -85,40 +176,31 @@ export class ChangeRangeTracker {
                     this.observed.get(file) === `${hash}:${observation}`
                 )
                     return;
-                const currentState = this.store.get(this.root);
+                batchState ??= this.store.get(this.root);
                 const before = {
-                    revision: currentState.revision,
-                    activeId: currentState.activeId,
-                    fileOwner: currentState.files[file],
-                    ownership: currentState.changes[file],
+                    revision: batchState.revision,
+                    activeId: batchState.activeId,
+                    fileOwner: batchState.files[file],
+                    ownership: batchState.changes[file],
                 };
                 const view = await this.partial.open(file);
                 const snapshot = this.partial.snapshot(view.snapshotId);
                 capturedContentId = snapshot.contentId;
                 this.directories = { gitDir: snapshot.gitDir, commonDir: snapshot.commonDir };
                 observation ??= await rangeObservation(snapshot.gitDir, snapshot.commonDir);
-                await this.track(file, rangeSnapshot(snapshot), before, epoch);
-                this.observed.set(file, `${hash}:${observation}`);
-            } catch (error) {
-                this.observed.delete(file);
-                if (
-                    error instanceof RepositoryLockBusyError ||
-                    error instanceof ChangelistEvidenceError
-                )
-                    throw error;
-                if (error instanceof ChangelistRevisionError) {
-                    if (this.store.get(this.root).changes[file]?.contentId !== capturedContentId)
-                        await this.store.requireReview(this.root, file, true, epoch);
-                    return;
-                }
-                await this.store.requireReview(
-                    this.root,
+                batch.push({
                     file,
-                    !(error instanceof PartialChangesUnsupportedError),
-                    epoch,
-                );
+                    snapshot: rangeSnapshot(snapshot),
+                    before,
+                    capturedContentId,
+                    key: `${hash}:${observation}`,
+                });
+            } catch (error) {
+                await fail(file, error, capturedContentId);
             }
+            if (batch.length >= TRACK_BATCH) await flush();
         });
+        await flush();
         for (const file of files) {
             if (file.sourcePath && state.changes[file.sourcePath]) {
                 // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Rename review markers are ordered metadata transactions.
@@ -131,24 +213,14 @@ export class ChangeRangeTracker {
     private async track(
         file: string,
         snapshot: RangeSnapshot,
-        before: {
-            revision: number;
-            activeId: string;
-            fileOwner?: string;
-            ownership?: ChangelistState["changes"][string];
-        },
+        before: TrackContext,
         epoch: number | undefined,
     ): Promise<void> {
         try {
             await this.store.track(this.root, file, snapshot, before.revision, epoch);
         } catch (error) {
             const latest = this.store.get(this.root);
-            if (
-                !(error instanceof ChangelistRevisionError) ||
-                latest.activeId !== before.activeId ||
-                latest.files[file] !== before.fileOwner ||
-                JSON.stringify(latest.changes[file]) !== JSON.stringify(before.ownership)
-            )
+            if (!(error instanceof ChangelistRevisionError) || !sameContext(latest, file, before))
                 throw error;
             await this.store.track(this.root, file, snapshot, latest.revision, epoch);
         }

@@ -2,8 +2,12 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ChangelistEvidenceError } from "../../../src/changes/changelistPersistence";
 import { ChangeRangeTracker } from "../../../src/changes/changeRangeTracker";
-import type { ChangelistStore } from "../../../src/changes/changelistStore";
+import {
+    ChangelistRevisionError,
+    type ChangelistStore,
+} from "../../../src/changes/changelistStore";
 import type { PartialChanges } from "../../../src/git/partialChanges";
 import type { WorkingFile } from "../../../src/types";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
@@ -93,32 +97,125 @@ describe("ChangeRangeTracker", () => {
             }),
             requireReview: vi.fn().mockResolvedValue(undefined),
         } as unknown as ChangelistStore;
-        const partial = {
-            indexEntries: async () => new Map(),
-            open: async (file: string) => ({ snapshotId: file }),
-            snapshot: (id: string) => ({
-                contentId: id,
-                gitDir: root,
-                commonDir: root,
-                view: { base: "", blocks: [] },
-                working: `${id}\n`,
-                head: "head",
-                indexHash: "index",
-            }),
-        } as unknown as PartialChanges;
-        const modified = files.map((file): WorkingFile => ({
-            path: file,
-            status: "M",
-            staged: false,
-            additions: 1,
-            deletions: 0,
-        }));
 
-        await new ChangeRangeTracker(root, partial, store).reconcile(modified);
+        await new ChangeRangeTracker(root, fakePartial(root), store).reconcile(modified(files));
 
         expect(writes, "a pass must save its files in one store write, not one per file").toEqual([
             files,
         ]);
         expect(store.requireReview).not.toHaveBeenCalled();
     });
+
+    it("retries a batch together after the pass's own review mark moves the revision", async () => {
+        // missing.txt is reported modified but absent, so its review mark lands mid-batch.
+        await Promise.all(
+            ["a.txt", "c.txt"].map((file) => writeFile(path.join(root, file), `${file}\n`)),
+        );
+        let revision = 7;
+        const attempts: string[] = [];
+        const store = {
+            get: () => ({ revision, activeId: "a", files: {}, changes: {} }),
+            revision: () => revision,
+            track: vi.fn(async (_root: string, file: string) => {
+                attempts.push(`track ${file}`);
+            }),
+            trackBatch: vi.fn(
+                async (_root: string, entries: { file: string }[], expected?: number) => {
+                    const files = entries.map((entry) => entry.file).join(",");
+                    attempts.push(`batch ${files}@${expected}`);
+                    if (expected !== revision) throw new ChangelistRevisionError();
+                },
+            ),
+            requireReview: vi.fn(async () => {
+                revision++;
+            }),
+        } as unknown as ChangelistStore;
+
+        await new ChangeRangeTracker(root, fakePartial(root), store).reconcile(
+            modified(["a.txt", "missing.txt", "c.txt"]),
+        );
+
+        expect(attempts, "unchanged files must retry as one batch, not one write each").toEqual([
+            "batch a.txt,c.txt@7",
+            "batch a.txt,c.txt@8",
+        ]);
+    });
+
+    it("fences each batch with the revision its own files were read at", async () => {
+        const files = Array.from({ length: 65 }, (_, index) => `f${index}.txt`);
+        await Promise.all(files.map((file) => writeFile(path.join(root, file), `${file}\n`)));
+        let revision = 7;
+        const fences: string[] = [];
+        const store = {
+            get: () => ({ revision, activeId: "a", files: {}, changes: {} }),
+            trackBatch: vi.fn(
+                async (_root: string, entries: { file: string }[], expected?: number) => {
+                    fences.push(`${entries.length}@${expected}`);
+                    revision++;
+                },
+            ),
+            requireReview: vi.fn().mockResolvedValue(undefined),
+        } as unknown as ChangelistStore;
+
+        await new ChangeRangeTracker(root, fakePartial(root), store).reconcile(modified(files));
+
+        expect(fences, "a later batch must not reuse the first batch's revision").toEqual([
+            "64@7",
+            "1@8",
+        ]);
+    });
+
+    it("replays a batch with damaged evidence file by file so earlier files still save", async () => {
+        const files = ["a.txt", "b.txt", "c.txt"];
+        await Promise.all(files.map((file) => writeFile(path.join(root, file), `${file}\n`)));
+        const attempts: string[] = [];
+        const store = {
+            get: () => ({ revision: 7, activeId: "a", files: {}, changes: {} }),
+            trackBatch: vi.fn(async (_root: string, entries: { file: string }[]) => {
+                attempts.push(`batch ${entries.map((entry) => entry.file).join(",")}`);
+                throw new ChangelistEvidenceError("damaged");
+            }),
+            track: vi.fn(async (_root: string, file: string) => {
+                attempts.push(`track ${file}`);
+                if (file === "b.txt") throw new ChangelistEvidenceError("damaged");
+            }),
+            requireReview: vi.fn().mockResolvedValue(undefined),
+        } as unknown as ChangelistStore;
+
+        await expect(
+            new ChangeRangeTracker(root, fakePartial(root), store).reconcile(modified(files)),
+        ).rejects.toBeInstanceOf(ChangelistEvidenceError);
+
+        expect(attempts, "damaged evidence must stop at its own file, as before batching").toEqual([
+            "batch a.txt,b.txt,c.txt",
+            "track a.txt",
+            "track b.txt",
+        ]);
+    });
 });
+
+function fakePartial(root: string): PartialChanges {
+    return {
+        indexEntries: async () => new Map(),
+        open: async (file: string) => ({ snapshotId: file }),
+        snapshot: (id: string) => ({
+            contentId: id,
+            gitDir: root,
+            commonDir: root,
+            view: { base: "", blocks: [] },
+            working: `${id}\n`,
+            head: "head",
+            indexHash: "index",
+        }),
+    } as unknown as PartialChanges;
+}
+
+function modified(files: readonly string[]): WorkingFile[] {
+    return files.map((file) => ({
+        path: file,
+        status: "M",
+        staged: false,
+        additions: 1,
+        deletions: 0,
+    }));
+}

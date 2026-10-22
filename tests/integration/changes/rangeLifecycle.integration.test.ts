@@ -127,7 +127,7 @@ describe("range ownership across real Git lifecycle operations", () => {
     it("surfaces an exhausted metadata lease without making ownership stale and retries the observation", async () => {
         const before = store.get(root);
         await writeFile(path.join(root, "text.txt"), `new header\n${both}`);
-        vi.spyOn(store, "track").mockRejectedValueOnce(new RepositoryLockBusyError());
+        vi.spyOn(store, "trackBatch").mockRejectedValueOnce(new RepositoryLockBusyError());
         await expect(refresh()).rejects.toBeInstanceOf(RepositoryLockBusyError);
         expect(store.get(root)).toEqual(before);
         await refresh();
