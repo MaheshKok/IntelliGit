@@ -1851,14 +1851,11 @@ describe("root-bound selected-change host", () => {
         ["another list is created", () => store.create(root, store.revision(root), "Elsewhere")],
         [
             "the active list changes",
-            async () =>
-                store.activate(
-                    root,
-                    (await store.create(root, store.revision(root), "Elsewhere")).revision,
-                    store.get(root).lists[1].id,
-                ),
+            () => store.activate(root, store.revision(root), store.get(root).lists[1].id),
         ],
     ])("refuses a new list when %s while its prompts are open", async (_, interfere) => {
+        // Exists before the click, so the active-list case changes nothing but the active list.
+        await store.create(root, store.revision(root), "Existing");
         const revision = store.get(root).revision;
         const lists = () => store.get(root).lists.map((list) => list.name);
         let seen: string[] = [];

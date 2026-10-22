@@ -499,6 +499,16 @@ export class ChangeWorkflowHost {
         id: string,
         movePaths: readonly string[] = [],
     ): Promise<void> {
+        // The range scan may advance ownership revisions while the prompts are open. Preserve
+        // those writes, but never apply over an intervening list, active-list or moved-file change.
+        const intent = (state: ChangelistState) =>
+            JSON.stringify([
+                state.lists,
+                state.activeId,
+                movePaths.map((file) => [state.files[file], state.changes[file]]),
+            ]);
+        const before = this.store.get(this.deps.root);
+        if (before.revision !== revision) throw new ChangelistRevisionError();
         const name = await vscode.window.showInputBox({
             title:
                 action === "create"
@@ -525,6 +535,11 @@ export class ChangeWorkflowHost {
                 value.length > 4000 ? vscode.l10n.t("Enter at most 4000 characters.") : undefined,
         });
         if (description === undefined) return;
+        const latest = () => {
+            const state = this.store.get(this.deps.root);
+            if (intent(state) !== intent(before)) throw new ChangelistRevisionError();
+            return state.revision;
+        };
         if (action === "create") {
             const active = await vscode.window.showQuickPick(
                 [
@@ -542,13 +557,13 @@ export class ChangeWorkflowHost {
             if (!active) return;
             await this.store.create(
                 this.deps.root,
-                revision,
+                latest(),
                 name,
                 description,
                 active.active,
                 movePaths,
             );
-        } else await this.store.edit(this.deps.root, revision, id, name, description);
+        } else await this.store.edit(this.deps.root, latest(), id, name, description);
     }
 
     /** Names a surviving destination and resolves draft conflicts before removing any metadata. */
