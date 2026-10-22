@@ -254,6 +254,7 @@ describe("targeted restore destination prompt", () => {
         const f = await startup();
         const workflow = startHost(f, f.gitOps);
         await workflow.reconcile(await f.gitOps.getStatus({ withStats: false }));
+        await workflow.settled();
         chooseD();
         let during: string | undefined;
         let settledDuring: string | undefined;
@@ -419,6 +420,7 @@ describe("observer hold during a targeted prompt", () => {
         const f = await startup();
         const workflow = startHost(f, f.gitOps);
         await workflow.reconcile(await f.gitOps.getStatus({ withStats: false }));
+        await workflow.settled();
         let during: string | undefined;
         let atPrompt = -1;
         let afterWrite = -1;
@@ -470,6 +472,7 @@ describe("observer hold during a targeted prompt", () => {
         const f = await startup();
         const workflow = startHost(f, f.gitOps);
         await workflow.reconcile(await f.gitOps.getStatus({ withStats: false }));
+        await workflow.settled();
         const status = vi.spyOn(f.gitOps, "getStatus");
         let refused: string[] = [];
         showQuickPick.mockImplementation(async (items: readonly { label: string }[]) => {
@@ -509,8 +512,10 @@ describe("observer hold during a targeted prompt", () => {
         const f = await startup();
         const workflow = startHost(f, f.gitOps);
         await workflow.reconcile(await f.gitOps.getStatus({ withStats: false }));
+        await workflow.settled();
         const first = await f.changelists.holdObservers(f.root);
         await workflow.reconcile(await f.gitOps.getStatus({ withStats: false }));
+        await workflow.settled();
         let second: (() => void) | undefined;
         const status = f.gitOps.getStatus.bind(f.gitOps);
         // The shared retry's status read starts a new hold, so its re-observation is refused too.
@@ -556,6 +561,7 @@ describe("observer hold during a targeted prompt", () => {
         });
         const workflow = startHost(f, hostGit);
         await workflow.reconcile(await f.gitOps.getStatus({ withStats: false }));
+        await workflow.settled();
         await writeFile(path.join(f.root, "during.txt"), "during\n");
         // New bytes defeat the tracker cache, so this pass parks in its snapshot read.
         await writeFile(path.join(f.root, "mutable.txt"), "edited again\n");
@@ -626,6 +632,7 @@ describe("observer hold during a targeted prompt", () => {
         // The host records the shelved edit, then the file is cleaned outside the UI.
         await writeFile(path.join(f.root, "shared.txt"), "incoming\n");
         await workflow.reconcile(await f.gitOps.getStatus({ withStats: false }));
+        await workflow.settled();
         expect(f.changelists.get(f.root).changes["shared.txt"]).toBeDefined();
         await git(f.root, ["checkout", "--", "shared.txt"]);
         // The observation of the clean file is still in flight when the restore holds observers.
@@ -671,6 +678,7 @@ describe("observer hold during a targeted prompt", () => {
         );
         const workflow = startHost(f, hostGit);
         await workflow.reconcile(await f.gitOps.getStatus({ withStats: false }));
+        await workflow.settled();
         let during: string | undefined;
         let atPrompt = -1;
         let afterReview = -1;
@@ -700,6 +708,7 @@ describe("observer hold during a targeted prompt", () => {
         const f = await startup();
         const workflow = startHost(f, f.gitOps);
         await workflow.reconcile(await f.gitOps.getStatus({ withStats: false }));
+        await workflow.settled();
         showQuickPick.mockResolvedValue(undefined);
 
         const cancelled = await prepareShelfRestore(f.service, f.changelists, request(f), (input) =>
@@ -713,6 +722,7 @@ describe("observer hold during a targeted prompt", () => {
         ).toBe("resolved");
         await writeFile(path.join(f.root, "after.txt"), "after\n");
         await workflow.reconcile(await f.gitOps.getStatus({ withStats: false }));
+        await workflow.settled();
         expect(
             f.changelists.get(f.root).files["after.txt"],
             "observer writes after a cancelled prompt go through at once",

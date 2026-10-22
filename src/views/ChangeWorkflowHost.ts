@@ -212,38 +212,51 @@ export class ChangeWorkflowHost {
         return this.observeFiles(files, this.store.observerEpoch(this.deps.root));
     }
 
+    /**
+     * Resolves once the latest range pass's prune has run, and never rejects. Only tests wait on
+     * it: a refresh that waited would keep its file list alive for the whole pass.
+     */
+    settled(): Promise<void> {
+        return this.prune?.done ?? Promise.resolve();
+    }
+
     /** Keeps actions busy through connection and membership updates, never through the range scan. */
     private observeFiles(files: readonly WorkingFile[], epoch: number): Promise<void> {
         return this.startObservation(files, epoch)
-            .catch((error: unknown) => {
-                if (!(error instanceof TargetOperationLeaseHeldError)) throw error;
-                // A target hold or lease discarded this observation; re-read status once both end.
-                // Every refusal before that shares one retry; it clears first so a new hold schedules anew.
-                this.retry ??= this.store
-                    .targetOperationReleased(this.deps.root)
-                    .then(() => {
-                        this.retry = undefined;
-                        const fresh = this.store.observerEpoch(this.deps.root);
-                        return this.deps.gitOps
-                            .getStatus({ withStats: false })
-                            .then((latest) => this.observeFiles(latest, fresh));
-                    })
-                    .catch((retry: unknown) =>
-                        this.deps.post({
-                            type: "error",
-                            repositoryRoot: this.deps.root,
-                            message: vscode.l10n.t("Changelist action failed: {message}", {
-                                message: getErrorMessage(retry),
-                            }),
-                        }),
-                    );
-            })
+            .catch((error: unknown) => this.retryAfterRefusal(error))
             .finally(() => this.post());
     }
 
+    private retryAfterRefusal(error: unknown): void {
+        if (!(error instanceof TargetOperationLeaseHeldError)) throw error;
+        // A target hold or lease discarded this observation; re-read status once both end.
+        // Every refusal before that shares one retry; it clears first so a new hold schedules anew.
+        this.retry ??= this.store
+            .targetOperationReleased(this.deps.root)
+            .then(() => {
+                this.retry = undefined;
+                const fresh = this.store.observerEpoch(this.deps.root);
+                return this.deps.gitOps
+                    .getStatus({ withStats: false })
+                    .then((latest) => this.observeFiles(latest, fresh));
+            })
+            .catch((retry: unknown) => this.postFailure(retry));
+    }
+
+    private postFailure(error: unknown): void {
+        this.deps.post({
+            type: "error",
+            repositoryRoot: this.deps.root,
+            message: vscode.l10n.t("Changelist action failed: {message}", {
+                message: getErrorMessage(error),
+            }),
+        });
+    }
+
     /**
-     * Returns the range pass's prune rather than awaiting it: a suspended call would hold its whole
-     * `files` array until the pass ends, and at 10k files every status refresh adds one.
+     * Starts the range pass's prune without returning it: a caller waiting on it would keep its
+     * whole file list alive through its handlers' scope until the pass ends, and at 10k files
+     * every status refresh adds one.
      */
     private async startObservation(files: readonly WorkingFile[], epoch: number): Promise<void> {
         const paths = files.filter((file) => file.status !== "!").map((file) => file.path);
@@ -253,33 +266,32 @@ export class ChangeWorkflowHost {
         // so new files are listed first. Commits and targeted operations keep their own
         // content, revision and hold fences; the second pass prunes what the scan consumed.
         await this.busyDuring(() => this.store.reconcileFiles(this.deps.root, paths, epoch));
-        return this.pruneAfter(this.tracker.reconcile(files, epoch), paths, epoch);
+        this.pruneAfter(this.tracker.reconcile(files, epoch), paths, epoch);
     }
 
     /**
      * Refreshes that join one pass share its single prune, run with the paths and epoch of the
      * last refresh that joined that pass. The tracker starts a pass with its last caller's files,
      * so a refresh that lands in the next queued pass never changes this one's prune.
+     * No refresh waits on the prune, so the host reports its failure once.
      */
-    private pruneAfter(
-        scan: Promise<void>,
-        paths: readonly string[],
-        epoch: number,
-    ): Promise<void> {
+    private pruneAfter(scan: Promise<void>, paths: readonly string[], epoch: number): void {
         const joined = this.prune;
         if (joined?.scan === scan) {
             joined.paths = paths;
             joined.epoch = epoch;
-            return joined.done;
+            return;
         }
         const entry = { scan, paths, epoch, done: Promise.resolve() };
-        entry.done = scan.then(async () => {
-            await this.busyDuring(() =>
-                this.store.reconcileFiles(this.deps.root, entry.paths, entry.epoch),
-            );
-        });
         this.prune = entry;
-        return entry.done;
+        entry.done = scan
+            .then(async () => {
+                await this.busyDuring(() =>
+                    this.store.reconcileFiles(this.deps.root, entry.paths, entry.epoch),
+                );
+            })
+            .catch((error: unknown) => this.retryAfterRefusal(error))
+            .catch((error: unknown) => this.postFailure(error));
     }
 
     private async busyDuring<T>(work: () => Promise<T>): Promise<T> {

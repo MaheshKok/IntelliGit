@@ -141,6 +141,7 @@ beforeEach(async () => {
     };
     host = new ChangeWorkflowHost(hostDeps);
     await host.reconcile(files);
+    await host.settled();
 });
 afterEach(async () => {
     vi.restoreAllMocks();
@@ -442,6 +443,7 @@ describe("scoped list and file save", () => {
         git(["add", "--", "other.txt"]);
         git(["commit", "-qm", "other"]);
         await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
         const f = await fixture();
         await writeFile(path.join(root, "other.txt"), "other edited\n");
         // Membership runs before the range scan, so the file is listed without a range record yet.
@@ -475,9 +477,10 @@ describe("scoped list and file save", () => {
     }
 
     it("list save survives a range scan write landing during its Git reads", async () => {
-        const f = await saveWithStatusRead(async () =>
-            host.reconcile(await gitOps.getStatus({ withStats: false })),
-        );
+        const f = await saveWithStatusRead(async () => {
+            await host.reconcile(await gitOps.getStatus({ withStats: false }));
+            await host.settled();
+        });
         expect(
             posted.flatMap((message) => (message as { error?: string }).error ?? []),
             "a range scan observing a file must not refuse the save",
@@ -499,10 +502,10 @@ describe("scoped list and file save", () => {
     });
 
     it("list save survives a range scan write landing during its name prompt", async () => {
-        const f = await saveWithStatusRead(
-            async () => host.reconcile(await gitOps.getStatus({ withStats: false })),
-            "prompt",
-        );
+        const f = await saveWithStatusRead(async () => {
+            await host.reconcile(await gitOps.getStatus({ withStats: false }));
+            await host.settled();
+        }, "prompt");
         expect(
             posted.flatMap((message) => (message as { error?: string }).error ?? []),
             "a range scan observing a file during the name prompt must not refuse the save",
@@ -1238,6 +1241,7 @@ describe("root-bound selected-change host", () => {
         try {
             host = new ChangeWorkflowHost(hostDeps);
             await host.reconcile(hostDeps.files());
+            await host.settled();
             vi.advanceTimersByTime(1000);
             posted.length = 0;
             let failure: string | undefined;
@@ -1433,6 +1437,7 @@ describe("root-bound selected-change host", () => {
             const file = operation === "rename" ? "renamed.txt" : "file.txt";
             git(operation === "rename" ? ["mv", "file.txt", file] : ["rm", "-f", "file.txt"]);
             await host.reconcile(await gitOps.getStatus({ withStats: false }));
+            await host.settled();
             expect(store.get(root).changes[file].stale).toBe(true);
             const open = vi.spyOn(PartialChanges.prototype, "open");
             const warning = vi.mocked(vscode.window.showWarningMessage);
@@ -1494,6 +1499,7 @@ describe("root-bound selected-change host", () => {
             const file = operation === "rename" ? "renamed.txt" : "file.txt";
             git(operation === "rename" ? ["mv", "file.txt", file] : ["rm", "-f", "file.txt"]);
             await host.reconcile(await gitOps.getStatus({ withStats: false }));
+            await host.settled();
             const before = store.get(root);
             const index = git(["ls-files", "--stage"]);
             vi.mocked(vscode.window.showWarningMessage).mockClear();
@@ -1529,6 +1535,7 @@ describe("root-bound selected-change host", () => {
     it("preserves Git and stale metadata when whole-file review is cancelled", async () => {
         git(["rm", "-f", "file.txt"]);
         await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
         const before = store.get(root);
         const index = git(["ls-files", "--stage"]);
         const open = vi.spyOn(PartialChanges.prototype, "open");
@@ -1555,6 +1562,7 @@ describe("root-bound selected-change host", () => {
         await store.recordSelection(root, "file.txt", ownership.contentId, "all", [], 4);
         git(["mv", "file.txt", "renamed.txt"]);
         await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
         const before = store.get(root);
         const index = git(["ls-files", "--stage"]);
         vi.mocked(vscode.window.showWarningMessage).mockClear();
@@ -1583,6 +1591,7 @@ describe("root-bound selected-change host", () => {
     it("refuses a structural change that changes again while whole-file review is open", async () => {
         git(["rm", "-f", "file.txt"]);
         await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
         const before = store.get(root);
         const index = git(["ls-files", "--stage"]);
         vi.mocked(vscode.window.showWarningMessage).mockImplementationOnce(async () => {
@@ -1616,8 +1625,10 @@ describe("root-bound selected-change host", () => {
         git(["commit", "-qm", "other file"]);
         await writeFile(path.join(root, "other.txt"), working);
         await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
         git(["rm", "-f", "file.txt"]);
         await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
         const before = store.get(root);
         const head = git(["rev-parse", "HEAD"]);
         const index = git(["ls-files", "--stage"]);
@@ -1776,8 +1787,18 @@ describe("root-bound selected-change host", () => {
         vi.spyOn(ChangeRangeTracker.prototype, "reconcile").mockRejectedValueOnce(
             new Error("injected range observation failure"),
         );
-        await expect(host.reconcile([])).rejects.toThrow("injected range observation failure");
-        expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
+        await host.reconcile([]);
+        await host.settled();
+        expect(posted, "the host reports the failed range pass").toContainEqual({
+            type: "error",
+            repositoryRoot: root,
+            message: "Changelist action failed: injected range observation failure",
+        });
+        expect(
+            posted
+                .filter((message) => (message as { type?: string }).type === "setChangelists")
+                .at(-1),
+        ).toMatchObject({ busy: false });
     });
 
     it("holds no refresh's files while one range pass runs, then prunes once with the newest epoch", async () => {
@@ -2044,6 +2065,7 @@ describe("root-bound selected-change host", () => {
         });
         await writeFile(path.join(root, "file.txt"), `later edit\n${working}`);
         await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
         expect(store.get(root).files["file.txt"]).toBe(original);
         expect(Object.values(store.get(root).changes["file.txt"].lines)).toContain(later);
         await writeFile(path.join(root, "file.txt"), `later edit\n${working}unobserved edit\n`);
@@ -2118,6 +2140,7 @@ describe("root-bound selected-change host", () => {
         let scanned = revision;
         createPrompts(async () => {
             await host.reconcile(await gitOps.getStatus({ withStats: false }));
+            await host.settled();
             scanned = store.get(root).revision;
         });
         posted.length = 0;
@@ -2202,6 +2225,7 @@ describe("root-bound selected-change host", () => {
             revision: created.revision,
         });
         await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
         const state = store.get(root);
         expect(state.activeId).toBe(id);
         expect(
@@ -2718,6 +2742,7 @@ it(
         await store.activate(root, store.get(root).revision, id);
         for (const file of paths) await writeFile(path.join(root, file), ownedWorking);
         await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
         const state = store.get(root);
         for (const file of paths) {
             expect(state.files[file], "file fallback belongs to the requested list").toBe(id);

@@ -122,6 +122,7 @@ beforeEach(async () => {
         shelfService: service,
     });
     await host.reconcile(files);
+    await host.settled();
     other = (await store.create(root, store.revision(root), "Other")).lists[1].id;
     // Without this, the untracked-by-range file falls back to the active list and is list-owned.
     await store.moveFiles(root, store.revision(root), other, ["unrelated.txt"]);
@@ -351,6 +352,7 @@ describe("list and file Save and Remove", () => {
         await writeFile(path.join(root, "first.txt"), `${working}working layer\n`);
         const files = await new GitOps(new GitExecutor(root)).getStatus({ withStats: false });
         await host.reconcile(files);
+        await host.settled();
         const unrelatedIndex = git(["show", ":unrelated.txt"]);
         warn().mockImplementationOnce(async (_message, options) => {
             expect((options as { detail: string }).detail).toContain("first.txt: whole file");
@@ -378,6 +380,7 @@ describe("list and file Save and Remove", () => {
         await host.reconcile(
             await new GitOps(new GitExecutor(root)).getStatus({ withStats: false }),
         );
+        await host.settled();
         const original = PartialChanges.prototype.snapshot;
         vi.spyOn(PartialChanges.prototype, "snapshot").mockImplementation(function (
             this: PartialChanges,
