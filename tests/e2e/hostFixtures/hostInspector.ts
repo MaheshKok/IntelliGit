@@ -1,20 +1,24 @@
+import { createWriteStream } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { finished } from "node:stream/promises";
+import { createGzip } from "node:zlib";
 
 /**
  * Bench-only probe of the extension host through its inspector (`--inspect-extensions`), so the
- * extension under test carries no probe code. Every 10 s it records heap, RSS and range-scan
- * counters; every 60 s it rotates a CPU profile. A request the host cannot answer is recorded as
- * an error with its timeout, which is itself the stall evidence.
+ * extension under test carries no probe code. Every 10 s it records heap, RSS, range-scan
+ * counters and Git spawns per subcommand; every 60 s it rotates a CPU profile; at 150 s and 300 s
+ * it saves a gzipped heap snapshot (early, while the host still has room to take one). A request
+ * the host cannot answer is recorded as an error with its timeout, which is itself the stall evidence.
  */
 export async function attachHostInspector(port: number, extensionPath: string, output: string) {
     const deadline = Date.now() + 90_000;
     let url: string | undefined;
     while (!url) {
         try {
-            const targets = (await (
-                await fetch(`http://127.0.0.1:${port}/json/list`)
-            ).json()) as { webSocketDebuggerUrl?: string }[];
+            const targets = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as {
+                webSocketDebuggerUrl?: string;
+            }[];
             url = targets.find((target) => target.webSocketDebuggerUrl)?.webSocketDebuggerUrl;
         } catch {
             // The extension host has not opened its inspector yet.
@@ -29,12 +33,18 @@ export async function attachHostInspector(port: number, extensionPath: string, o
         socket.onopen = () => resolve();
         socket.onerror = () => reject(new Error("Extension host inspector socket failed."));
     });
-    const replies = new Map<number, (message: { result?: unknown; error?: { message: string } }) => void>();
+    const replies = new Map<
+        number,
+        (message: { result?: unknown; error?: { message: string } }) => void
+    >();
     const resolved: object[] = [];
+    let snapshotChunk: ((chunk: string) => void) | undefined;
     socket.onmessage = (event) => {
         const message = JSON.parse(String(event.data));
         if (message.id !== undefined) replies.get(message.id)?.(message);
         else if (message.method === "Debugger.breakpointResolved") resolved.push(message.params);
+        else if (message.method === "HeapProfiler.addHeapSnapshotChunk")
+            snapshotChunk?.(message.params.chunk);
     };
     let nextId = 0;
     const send = <T>(method: string, params: object = {}, timeoutMs = 15_000) =>
@@ -84,15 +94,60 @@ export async function attachHostInspector(port: number, extensionPath: string, o
         });
         breakpoints[name] = { lineNumber };
     }
+    // Every Git process the host starts, keyed by subcommand; with `opens` this gives spawns per open.
+    const spawnMarker = 'if (resolveSubcommand(args) === "status") {';
+    const spawnAt = scriptSource.indexOf(spawnMarker);
+    if (spawnAt < 0 || spawnAt !== scriptSource.lastIndexOf(spawnMarker))
+        throw new Error(`Git spawn marker "${spawnMarker}" is not in the bundle exactly once.`);
+    const spawnLine = scriptSource.slice(0, spawnAt).split("\n").length - 1;
+    await send("Debugger.setBreakpointByUrl", {
+        urlRegex,
+        lineNumber: spawnLine,
+        columnNumber: 0,
+        condition: `(() => { const b = (globalThis.__intelligitBench ??= { calls: 0, queued: 0, passes: 0, opens: 0 }); const git = (b.git ??= {}); try { const key = resolveSubcommand(args) ?? "?"; git[key] = (git[key] ?? 0) + 1; } catch { git.probeError = (git.probeError ?? 0) + 1; } return false; })()`,
+    });
+    breakpoints.git = { lineNumber: spawnLine };
 
     const startedAtMs = Date.now();
     const samples: object[] = [];
     const profiles: object[] = [];
+    const snapshots: object[] = [];
     const record = () =>
         writeFile(
             path.join(output, "host-inspector.json"),
-            JSON.stringify({ port, startedAtMs, breakpoints, resolved, samples, profiles }),
+            JSON.stringify({
+                port,
+                startedAtMs,
+                breakpoints,
+                resolved,
+                samples,
+                profiles,
+                snapshots,
+            }),
         );
+    // Streams the snapshot through gzip so a ~1 GB heap does not sit in this process as one string.
+    const snapshotDueMs = [150_000, 300_000];
+    const takeHeapSnapshot = async () => {
+        const requestedAtMs = Date.now();
+        const filename = `host-heap-${Math.round((requestedAtMs - startedAtMs) / 1000)}s.heapsnapshot.gz`;
+        const gzip = createGzip();
+        const written = finished(gzip.pipe(createWriteStream(path.join(output, filename))));
+        snapshotChunk = (chunk) => gzip.write(chunk);
+        try {
+            await send("HeapProfiler.takeHeapSnapshot", { reportProgress: false }, 600_000);
+            snapshots.push({
+                filename,
+                atMs: requestedAtMs - startedAtMs,
+                tookMs: Date.now() - requestedAtMs,
+            });
+        } catch (error) {
+            snapshots.push({ filename, atMs: requestedAtMs - startedAtMs, error: String(error) });
+        } finally {
+            snapshotChunk = undefined;
+            gzip.end();
+            await written.catch((error) => snapshots.push({ filename, writeError: String(error) }));
+        }
+    };
     let profileIndex = 0;
     let profileStartedAtMs = Date.now();
     await send("Profiler.enable");
@@ -105,13 +160,20 @@ export async function attachHostInspector(port: number, extensionPath: string, o
             const { profile } = await send<{ profile: unknown }>("Profiler.stop", {}, 45_000);
             const filename = `host-cpu-${String(index).padStart(2, "0")}.cpuprofile`;
             await writeFile(path.join(output, filename), JSON.stringify(profile));
-            profiles.push({ filename, fromMs: from - startedAtMs, toMs: requestedAtMs - startedAtMs, answeredAfterMs: Date.now() - requestedAtMs });
+            profiles.push({
+                filename,
+                fromMs: from - startedAtMs,
+                toMs: requestedAtMs - startedAtMs,
+                answeredAfterMs: Date.now() - requestedAtMs,
+            });
         } catch (error) {
             profiles.push({ index, fromMs: from - startedAtMs, error: String(error) });
         }
         if (restart) {
             profileStartedAtMs = Date.now();
-            await send("Profiler.start").catch((error) => profiles.push({ restartError: String(error) }));
+            await send("Profiler.start").catch((error) =>
+                profiles.push({ restartError: String(error) }),
+            );
         }
         await record();
     };
@@ -128,13 +190,23 @@ export async function attachHostInspector(port: number, extensionPath: string, o
                     { expression, returnByValue: true },
                     8_000,
                 );
-                samples.push({ elapsedMs: atMs - startedAtMs, answeredAfterMs: Date.now() - atMs, ...JSON.parse(result.value) });
+                samples.push({
+                    elapsedMs: atMs - startedAtMs,
+                    answeredAfterMs: Date.now() - atMs,
+                    ...JSON.parse(result.value),
+                });
             } catch (error) {
                 samples.push({ elapsedMs: atMs - startedAtMs, error: String(error) });
             }
+            if (snapshotDueMs.length > 0 && Date.now() - startedAtMs >= snapshotDueMs[0]) {
+                snapshotDueMs.shift();
+                await takeHeapSnapshot();
+            }
             if (Date.now() - profileStartedAtMs >= 60_000) await rotate(true);
             else await record();
-            await new Promise((resolve) => setTimeout(resolve, Math.max(0, 10_000 - (Date.now() - atMs))));
+            await new Promise((resolve) =>
+                setTimeout(resolve, Math.max(0, 10_000 - (Date.now() - atMs))),
+            );
         }
     };
     sampling = sampleLoop();
