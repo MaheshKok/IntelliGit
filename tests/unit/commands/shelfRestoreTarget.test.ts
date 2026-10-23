@@ -582,8 +582,9 @@ describe("observer hold during a targeted prompt", () => {
         const restored = f.changelists.get(f.root);
         const d = restored.lists.find((list) => list.name === "D")!.id;
         const restoredLines = restored.changes["shared.txt"]?.lines ?? {};
-        expect(Object.values(restoredLines).length).toBeGreaterThan(0);
-        expect(new Set(Object.values(restoredLines))).toEqual(new Set([d]));
+        expect(restored.changes["shared.txt"]).toBeDefined();
+        expect(restored.files["shared.txt"], "the restored file belongs to D").toBe(d);
+        expect(restoredLines, "no restored line is owned apart from its file").toEqual({});
         await rm(path.join(f.root, "during.txt"));
         await writeFile(path.join(f.root, "later.txt"), "later\n");
         unpark();
@@ -610,6 +611,9 @@ describe("observer hold during a targeted prompt", () => {
             f.changelists.get(f.root).changes["shared.txt"]?.lines,
             "the restored lines keep their destination list",
         ).toEqual(restoredLines);
+        expect(f.changelists.get(f.root).files["shared.txt"], "the restored file stays in D").toBe(
+            d,
+        );
     }, 60_000);
 
     it("a file cleaned after the host saw it edited restores into the destination while that observation is held", async () => {
@@ -645,8 +649,15 @@ describe("observer hold during a targeted prompt", () => {
             f.service.unshelve(input),
         );
         const d = f.changelists.get(f.root).lists.find((list) => list.name === "D")!.id;
-        const owners = () =>
-            new Set(Object.values(f.changelists.get(f.root).changes["shared.txt"]?.lines ?? {}));
+        // The file's owner and every line owned apart from it.
+        const owners = () => {
+            const state = f.changelists.get(f.root);
+            expect(state.changes["shared.txt"], "shared.txt is tracked").toBeDefined();
+            return new Set([
+                state.files["shared.txt"],
+                ...Object.values(state.changes["shared.txt"].lines),
+            ]);
+        };
 
         expect(
             result?.status,

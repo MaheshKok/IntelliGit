@@ -298,10 +298,11 @@ it.each(["cherryPick", "revert"] as const)(
         const state = f.store.get(f.root);
         const destination = state.lists.find((list) => list.name === "Destination")!;
         expect(state.files.unrelated, "existing unrelated owner survives").toBe(f.owner);
-        expect(
-            new Set(Object.values(state.changes.affected.lines)),
-            "only introduced anchors belong to explicit destination",
-        ).toEqual(new Set([destination.id]));
+        // affected was clean before the operation, so the destination owns all of it.
+        expect(state.files.affected, "introduced changes belong to the destination").toBe(
+            destination.id,
+        );
+        expect(state.changes.affected.lines, "no line is owned apart from its file").toEqual({});
         expect(
             state.pendingTargetOperation,
             "terminal receipt closes the operation",

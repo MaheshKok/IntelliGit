@@ -567,6 +567,29 @@ function validWholeFileOwnership(
 }
 
 /** Publish all validated structural owners, including a rename's removed source, in the caller's metadata CAS. */
+interface OwnershipPublication {
+    readonly ownership: HydratedChangeOwnership;
+    /** The file had no change before the operation, so every change in it is the destination's. */
+    readonly whole: boolean;
+}
+
+function publishFileOwner(
+    state: ChangelistState,
+    file: string,
+    publication: OwnershipPublication,
+    destinationId: string,
+): HydratedChangeOwnership {
+    if (publication.whole) state.files[file] = destinationId;
+    else state.files[file] ??= state.activeId;
+    const owner = state.files[file];
+    // Like reconcileRanges, keep only lines owned apart from the file; any stored line owner shows
+    // the file as Partial.
+    const lines = Object.fromEntries(
+        Object.entries(publication.ownership.lines).filter(([, id]) => id !== owner),
+    );
+    return { ...publication.ownership, lines };
+}
+
 function publishWholeFileOwners(
     state: ChangelistState,
     entries: NonNullable<TargetOperationEvidence["wholeFileAttribution"]>,
@@ -1250,7 +1273,7 @@ export class ChangelistStore {
                     review();
                     return;
                 }
-                const updates = new Map<string, HydratedChangeOwnership>();
+                const updates = new Map<string, OwnershipPublication>();
                 if (!validWholeFileOwnership(state, before, after)) {
                     review();
                     return;
@@ -1295,15 +1318,23 @@ export class ChangelistStore {
                         review();
                         return;
                     }
-                    updates.set(reference.path, attributed.ownership);
+                    updates.set(reference.path, {
+                        ownership: attributed.ownership,
+                        whole: !payload.before.anchors.length,
+                    });
                 }
                 const destination = requireList(state, pending.destinationId);
                 if (!targetDraftMatches(pending, destination.draft, captured.reviewedDraft)) {
                     review();
                     return;
                 }
-                for (const [file, ownership] of updates) {
-                    state.files[file] ??= state.activeId;
+                for (const [file, publication] of updates) {
+                    const ownership = publishFileOwner(
+                        state,
+                        file,
+                        publication,
+                        pending.destinationId,
+                    );
                     state.changes[file] = await this.compact(root, file, ownership);
                 }
                 publishWholeFileOwners(state, wholeFiles, pending.destinationId);
