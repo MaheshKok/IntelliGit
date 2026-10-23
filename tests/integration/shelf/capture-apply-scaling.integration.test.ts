@@ -2,6 +2,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { GitExecutor } from "../../../src/git/executor";
+import type { ShelfCaptureDependencies } from "../../../src/services/shelfServiceCapture";
 import { cleanTemporaryRepositories, createShelfFixture, git } from "./shelfTestHarness";
 
 afterEach(async () => {
@@ -111,4 +112,58 @@ it("keeps every other file's raw fidelity when one file's patch does not apply",
     // The file whose patch was refused is still shelved, only without raw artefacts.
     expect(entries.get(bad), bad).toMatchObject({ exactReconstruction: true });
     expect(entries.get(bad)?.worktreeBlock?.rawAfterObjectHash, bad).toBeUndefined();
+});
+
+it("layers a file's staged and unstaged patches inside the batch", async () => {
+    const lines = Array.from({ length: 60 }, (_, index) => `line ${index}`);
+    const text = (edited: readonly string[]) => `${edited.join("\n")}\n`;
+    const fixture = await createShelfFixture({
+        initialFiles: { "layered.txt": text(lines), "plain.txt": "base\n" },
+    });
+    const staged = lines.map((line, index) => (index === 0 ? "staged" : line));
+    await writeFile(path.join(fixture.root, "layered.txt"), text(staged));
+    await git(fixture.root, ["add", "layered.txt"]);
+    // Far from the staged hunk, so the worktree patch alone would still apply to the bare base.
+    const both = staged.map((line, index) => (index === 50 ? "unstaged" : line));
+    await writeFile(path.join(fixture.root, "layered.txt"), text(both));
+    await writeFile(path.join(fixture.root, "plain.txt"), "incoming\n");
+    const binary = vi.spyOn(GitExecutor.prototype, "runBinary");
+    const saved = await fixture.service.shelve({
+        name: "S",
+        paths: ["layered.txt", "plain.txt"],
+        silent: true,
+        keepLocal: true,
+    });
+    const applies = binary.mock.calls.filter(([args]) => args.includes("apply")).length;
+    binary.mockRestore();
+    const layered = (await fixture.service.getShelfFiles(saved.shelfId!)).find(
+        (entry) => entry.worktreeBlock?.path === "layered.txt",
+    );
+    expect(layered).toMatchObject({
+        exactReconstruction: true,
+        indexBlock: { status: "M" },
+        worktreeBlock: { status: "M" },
+    });
+    expect(applies).toBeLessThanOrEqual(2);
+});
+
+it("materializes a base whose path is already taken in the batch folder on its own", async () => {
+    // Case-folding filesystems map two repository paths onto one temp file; reusing a path
+    // reproduces that collision on any filesystem.
+    const fixture = await createShelfFixture();
+    const materializeEntries = (
+        fixture.service as unknown as {
+            materializeEntries: ShelfCaptureDependencies["materializeEntries"];
+        }
+    ).materializeEntries.bind(fixture.service);
+    const patch = (from: string, to: string) =>
+        Buffer.from(
+            `diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-${from}\n+${to}\n`,
+        );
+    // The second patch applies only on top of the first, so one shared file would answer "two" twice.
+    const results = await materializeEntries([
+        { relativePath: "a.txt", base: Buffer.from("base\n"), worktreePatch: patch("base", "one") },
+        { relativePath: "a.txt", base: Buffer.from("base\n"), worktreePatch: patch("one", "two") },
+    ]);
+    expect(results).toEqual([Buffer.from("one\n"), undefined]);
 });

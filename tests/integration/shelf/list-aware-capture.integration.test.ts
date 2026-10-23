@@ -192,7 +192,7 @@ describe("nondestructive list-aware capture", () => {
                         executor: fixture.executor,
                         store: fixture.store,
                         recordBaseRevisions: true,
-                        materializeEntry: async () => undefined,
+                        materializeEntries: async (requests) => requests.map(() => undefined),
                     },
                 ),
             ),
@@ -219,7 +219,7 @@ describe("nondestructive list-aware capture", () => {
                     executor: fixture.executor,
                     store: fixture.store,
                     recordBaseRevisions: true,
-                    materializeEntry: async () => undefined,
+                    materializeEntries: async (requests) => requests.map(() => undefined),
                 }),
             ),
         ).rejects.toThrow("file, index or branch changed");
@@ -251,7 +251,7 @@ describe("nondestructive list-aware capture", () => {
                 executor: fixture.executor,
                 store: fixture.store,
                 recordBaseRevisions: true,
-                materializeEntry: async () => undefined,
+                materializeEntries: async (requests) => requests.map(() => undefined),
             }),
         );
         const manifest = await fixture.store.readCurrentShelfManifest(result.shelfId);
@@ -331,7 +331,7 @@ describe("nondestructive list-aware capture", () => {
                     executor: fixture.executor,
                     store: fixture.store,
                     recordBaseRevisions: true,
-                    materializeEntry: async () => undefined,
+                    materializeEntries: async (requests) => requests.map(() => undefined),
                 }),
             ),
         ).rejects.toThrow(
@@ -356,7 +356,7 @@ describe("nondestructive list-aware capture", () => {
                     executor: fixture.executor,
                     store: fixture.store,
                     recordBaseRevisions,
-                    materializeEntry: async () => undefined,
+                    materializeEntries: async (requests) => requests.map(() => undefined),
                 }),
             );
             const manifest = await fixture.store.readCurrentShelfManifest(result.shelfId);
@@ -431,7 +431,7 @@ describe("nondestructive list-aware capture", () => {
                     executor: fixture.executor,
                     store: fixture.store,
                     recordBaseRevisions: true,
-                    materializeEntry: async () => undefined,
+                    materializeEntries: async (requests) => requests.map(() => undefined),
                 },
             ),
         );
@@ -478,7 +478,7 @@ describe("nondestructive list-aware capture", () => {
                     executor: fixture.executor,
                     store: fixture.store,
                     recordBaseRevisions: true,
-                    materializeEntry: async () => undefined,
+                    materializeEntries: async (requests) => requests.map(() => undefined),
                 },
             ),
         );
@@ -501,7 +501,7 @@ describe("nondestructive list-aware capture", () => {
                 executor: fixture.executor,
                 store: fixture.store,
                 recordBaseRevisions: true,
-                materializeEntry: async () => undefined,
+                materializeEntries: async (requests) => requests.map(() => undefined),
             }),
         );
         const original = await fixture.store.readCurrentShelfManifest(result.shelfId);
@@ -546,7 +546,7 @@ describe("nondestructive list-aware capture", () => {
                 executor: fixture.executor,
                 store: fixture.store,
                 recordBaseRevisions: true,
-                materializeEntry: async () => undefined,
+                materializeEntries: async (requests) => requests.map(() => undefined),
             }),
         );
         const reopened = await createSecondService(fixture.root, fixture.storageRoot);
@@ -710,13 +710,13 @@ describe("whole capture source freshness", () => {
                             executor: fixture.executor,
                             store: fixture.store,
                             recordBaseRevisions: true,
-                            materializeEntry: materialize
+                            materializeEntries: materialize
                                 ? (
                                       fixture.service as unknown as {
-                                          materializeEntry: ShelfCaptureDependencies["materializeEntry"];
+                                          materializeEntries: ShelfCaptureDependencies["materializeEntries"];
                                       }
-                                  ).materializeEntry.bind(fixture.service)
-                                : async () => undefined,
+                                  ).materializeEntries.bind(fixture.service)
+                                : async (requests) => requests.map(() => undefined),
                         },
                     ),
                 ),
@@ -767,7 +767,7 @@ describe("whole capture source freshness", () => {
                         executor: fixture.executor,
                         store: fixture.store,
                         recordBaseRevisions: true,
-                        materializeEntry: async () => undefined,
+                        materializeEntries: async (requests) => requests.map(() => undefined),
                     },
                 ),
             ),
@@ -800,7 +800,8 @@ describe("whole capture source freshness", () => {
                     executor: fixture.executor,
                     store: fixture.store,
                     recordBaseRevisions: true,
-                    materializeEntry: async () => Buffer.from("captured\n"),
+                    materializeEntries: async (requests) =>
+                        requests.map(() => Buffer.from("captured\n")),
                 },
             ),
         );
