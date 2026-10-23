@@ -14,6 +14,7 @@ import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
 import { resolveShelfPaths } from "../../../src/shelf/paths";
 import { ShelfStore, type ShelfStoreOptions } from "../../../src/shelf/store";
+import { ABSENT_GIT_CONFIG_GLOBAL } from "../../helpers/gitConfigIsolation";
 
 export const operationId = "00000000-0000-4000-8000-000000000071";
 const files = ["one.txt", "two.txt"];
@@ -38,7 +39,11 @@ export async function openCompletionFixture(root: string, shelfOptions: ShelfSto
             cwd: root,
             input,
             timeout: 10_000,
-            env: { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: "1" },
+            env: {
+                ...process.env,
+                GIT_CONFIG_GLOBAL: ABSENT_GIT_CONFIG_GLOBAL,
+                GIT_CONFIG_NOSYSTEM: "1",
+            },
         });
     const objectWrites = new Map<string, Promise<{ hash: string; size: number }>>();
     const object = (bytes: Buffer) => {

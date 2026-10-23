@@ -384,7 +384,7 @@ describe("target operation structural attribution", () => {
             await lease.release();
         }
     });
-    it.each([
+    it.for([
         "staged deletion",
         "staged addition",
         "staged edit",
@@ -400,7 +400,11 @@ describe("target operation structural attribution", () => {
         "type",
         "missing success",
         "missing attribution",
-    ])("retains review for real preexisting %s", async (scenario) => {
+    ])("retains review for real preexisting %s", async (scenario, { skip }) => {
+        skip(
+            process.platform === "win32" && (scenario === "mode" || scenario === "rename mode"),
+            "chmod cannot set an execute bit on Windows, so there is no mode change to review",
+        );
         const f = await structuralFixture(scenario);
         const lease = await f.store.acquireTargetOperationLease(f.root);
         try {

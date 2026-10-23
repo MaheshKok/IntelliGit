@@ -2730,7 +2730,9 @@ describe("durable target operation foundation", () => {
         );
         expect(await readFile(recoveryFilename)).toEqual(currentBytes);
         expect(await readFile(filename)).toEqual(desiredBytes);
-        expect(Number((await lstat(recoveryFilename)).mode & 0o111)).not.toBe(0);
+        // Windows has no execute bit, so lstat never reports one there.
+        if (process.platform !== "win32")
+            expect(Number((await lstat(recoveryFilename)).mode & 0o111)).not.toBe(0);
         expect(Number((await lstat(filename)).mode & 0o111)).toBe(0);
 
         const checkpoint: TargetOperationEvidence = {

@@ -610,7 +610,7 @@ describe("nondestructive list-aware capture", () => {
 });
 
 describe("whole capture source freshness", () => {
-    it.each([
+    it.for([
         ["working", "first", true],
         ["HEAD", "first", true],
         ["index", "first", true],
@@ -622,7 +622,11 @@ describe("whole capture source freshness", () => {
         ["rename source", "first", false],
     ] as const)(
         "refuses whole-only %s drift after %s object (materialize=%s)",
-        async (change, timing, materialize) => {
+        async ([change, timing, materialize], { skip }) => {
+            skip(
+                process.platform === "win32" && change === "mode",
+                "chmod cannot set an execute bit on Windows, so there is no mode drift to refuse",
+            );
             const fixture = await createShelfFixture({
                 initialFiles: { "tracked.txt": "base\n", "other.txt": "other\n" },
             });

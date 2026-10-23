@@ -145,6 +145,7 @@ vi.mock("../../../src/utils/notifications", () => ({
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
+import { areSameRepositoryRoot } from "../../../src/utils/repositoryRoot";
 import {
     MergeEditorPanel,
     type MergeEditorPanelOptions,
@@ -990,11 +991,17 @@ describe("MergeEditorPanel end-to-end merge flow", () => {
                     );
                 native.mockClear();
                 await fireMessage(lastPanel(), { type: "abortMerge" });
+                const sessionRoot = await fs.realpath(repoRoot);
                 expect(
                     control,
                     "both conflict hosts must consult targeted pending state",
                 ).toHaveBeenCalledWith(
-                    host === "session" ? await fs.realpath(repoRoot) : repoRoot,
+                    // The session host passes Git's own spelling, which uses `/` on Windows.
+                    host === "session"
+                        ? expect.toSatisfy((root: string) =>
+                              areSameRepositoryRoot(root, sessionRoot),
+                          )
+                        : repoRoot,
                     expect.any(ChangelistStore),
                     "abort",
                     expect.any(Function),

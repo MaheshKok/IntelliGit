@@ -11,8 +11,9 @@ import {
     symlink,
     writeFile,
 } from "node:fs/promises";
-import { tmpdir, devNull } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { ABSENT_GIT_CONFIG_GLOBAL } from "../../helpers/gitConfigIsolation";
 import { ChangelistPersistence } from "../../../src/changes/changelistPersistence";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { GitExecutor } from "../../../src/git/executor";
@@ -236,7 +237,7 @@ async function fixture(
     const git = new GitExecutor(
         root,
         new RepositoryMutationGate(new RepositoryMutationCoordinator(), new RepositoryLock()),
-        { GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" },
+        { GIT_CONFIG_GLOBAL: ABSENT_GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM: "1" },
     );
     await git.run(["init", "-q"]);
     await git.run(["config", "user.name", "Fixture"]);
