@@ -1246,4 +1246,6 @@ it.each([
             }
         }
     },
+    // Two 20-file shelve and restore rounds take about 24 s alone, past the default under a full run.
+    120_000,
 );
