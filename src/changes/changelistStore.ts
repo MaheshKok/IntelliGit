@@ -357,7 +357,10 @@ function assertCheckpointEvidence(
         );
 }
 
-/** Compare concrete adapter observations, including markerless conflicts and path identities. */
+/**
+ * Compare concrete adapter observations, including markerless conflicts and path identities. The
+ * whole-index fingerprint is left out: an outside `git status` rewrites it with stat data alone.
+ */
 function sameTargetObservation(
     saved: TargetOperationEvidence,
     observed: TargetOperationEvidence,
@@ -365,7 +368,6 @@ function sameTargetObservation(
     return (
         saved.operationId === observed.operationId &&
         saved.head === observed.head &&
-        saved.indexFingerprint === observed.indexFingerprint &&
         isDeepStrictEqual(saved.index, observed.index) &&
         isDeepStrictEqual(saved.paths, observed.paths) &&
         isDeepStrictEqual(saved.native, observed.native)

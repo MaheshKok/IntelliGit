@@ -1224,7 +1224,10 @@ describe("target operation ownership publication", () => {
             if (mismatch === "observed state")
                 observedEvidenceHash = await persistence.storeTargetOperationEvidence({
                     ...after,
-                    indexFingerprint: hash("e"),
+                    paths: after.paths.map((entry) => ({
+                        ...entry,
+                        state: { kind: "absent" as const },
+                    })),
                 });
             else {
                 const evidenceHash = await persistence.storeTargetOperationEvidence({
@@ -1474,6 +1477,7 @@ describe("target operation ownership publication", () => {
     it.each([
         "shelf checksum",
         "observed paths",
+        "observed index entry",
         "captured ownership",
         "missing attribution",
         "before root",
@@ -1486,7 +1490,22 @@ describe("target operation ownership publication", () => {
         if (mismatch === "observed paths") {
             observedEvidenceHash = await persistence.storeTargetOperationEvidence({
                 ...after,
-                indexFingerprint: hash("e"),
+                paths: after.paths.map((entry) => ({
+                    ...entry,
+                    state: { kind: "absent" as const },
+                })),
+            });
+        }
+        if (mismatch === "observed index entry") {
+            expect(after.index.length, "fixture observes an affected index entry").toBeGreaterThan(
+                0,
+            );
+            observedEvidenceHash = await persistence.storeTargetOperationEvidence({
+                ...after,
+                index: after.index.map((entry) => ({
+                    ...entry,
+                    mode: entry.mode === "100755" ? ("100644" as const) : ("100755" as const),
+                })),
             });
         }
         if (
