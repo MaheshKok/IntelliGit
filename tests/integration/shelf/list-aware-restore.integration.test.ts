@@ -1026,6 +1026,46 @@ it("a file clean before the restore is owned whole by the destination, not parti
     expect(state.activeId).toBe(f.c);
 });
 
+it("restoring into the list that already owns a changed file keeps it whole, not Partial", async () => {
+    const f = await restoreFixture();
+    const committed = Array.from({ length: 10 }, (_, index) => `row-${index + 1}\n`).join("");
+    const file = path.join(f.root, "owned.txt");
+    await writeFile(file, committed);
+    await git(f.root, ["add", "owned.txt"]);
+    await git(f.root, ["commit", "-m", "owned fixture"]);
+    await writeFile(file, committed.replace("row-9\n", "shelved-9\n"));
+    const saved = await f.service.shelve({
+        name: "Owned",
+        paths: ["owned.txt"],
+        silent: true,
+        keepLocal: false,
+    });
+    const local = committed.replace("row-2\n", "local-2\n");
+    await writeFile(file, local);
+    const edited = await readPartialSnapshot(f.executor, f.root, "owned.txt", "working");
+    await f.changelists.track(f.root, "owned.txt", rangeSnapshot(edited));
+    await f.changelists.moveFiles(f.root, f.changelists.revision(f.root), f.d, ["owned.txt"]);
+    const shelf = await f.store.readCurrentShelfManifest(saved.shelfId!);
+    const input = {
+        ...f.input,
+        id: saved.shelfId!,
+        expectedShelfGeneration: shelf.generation,
+        targetOperation: {
+            ...f.input.targetOperation,
+            target: { ...f.input.targetOperation.target, revision: f.changelists.revision(f.root) },
+            sourceChecksum: shelf.checksum,
+        },
+    };
+    expect((await f.service.unshelve(input)).status).toBe("applied");
+    expect(await readFile(file, "utf8")).toBe(local.replace("row-9\n", "shelved-9\n"));
+    const state = f.changelists.get(f.root);
+    expect(state.files["owned.txt"], "whole-file owner of owned.txt").toBe(f.d);
+    expect(
+        Object.keys(state.changes["owned.txt"]?.lines ?? {}),
+        "line owners of owned.txt",
+    ).toEqual([]);
+});
+
 it("ownership read returns detached snapshots and rejects same-lease revision drift", async () => {
     const f = await restoreFixture();
     const lease = await f.changelists.acquireTargetOperationLease(f.root);
