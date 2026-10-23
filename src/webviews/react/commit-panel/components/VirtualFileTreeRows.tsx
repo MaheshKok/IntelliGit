@@ -11,7 +11,7 @@ import { JETBRAINS_UI } from "../../shared/tokens";
 
 const ROW_HEIGHT = JETBRAINS_UI.size.treeRowHeight;
 const OVERSCAN = 10;
-const VIRTUAL_THRESHOLD = 200;
+export const VIRTUAL_THRESHOLD = 200;
 
 interface VisibleRow {
     entry: TreeEntry<WorkingFile>;
@@ -55,15 +55,21 @@ function fileCount(folder: TreeFolder<WorkingFile>): number {
     );
 }
 
-/** Bounds large commit trees; small trees retain the original DOM and pixel layout. */
-export function VirtualFileTreeRows(props: FileTreeRowsProps<WorkingFile>): React.ReactElement {
+/**
+ * Bounds large commit trees; small trees retain the original DOM and pixel layout unless
+ * `virtualize` says the panel around them is large.
+ */
+export function VirtualFileTreeRows({
+    virtualize = false,
+    ...props
+}: FileTreeRowsProps<WorkingFile> & { virtualize?: boolean }): React.ReactElement {
     const root = useRef<HTMLDivElement>(null);
     const rows = useMemo(
         () => visibleCommitRows(props.entries, props.isDirectoryExpanded, props.depth),
         [props.depth, props.entries, props.isDirectoryExpanded],
     );
     const [windowRange, setWindowRange] = useState({ start: 0, end: 40 });
-    const virtual = rows.length > VIRTUAL_THRESHOLD;
+    const virtual = virtualize || rows.length > VIRTUAL_THRESHOLD;
 
     useLayoutEffect(() => {
         const element = root.current;
