@@ -4,6 +4,8 @@ import { RepositoryLockBusyError } from "./repositoryLock";
 export interface BoundedLockRetryOptions {
     readonly timeoutMs: number;
     readonly retryDelayMs: number;
+    /** Which failures mean "busy"; defaults to `RepositoryLockBusyError`. */
+    readonly isBusy?: (error: unknown) => boolean;
 }
 
 /**
@@ -29,7 +31,8 @@ export async function acquireWithBoundedWait<T>(
             // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Ordered retries prevent a later acquire from overtaking an earlier request.
             return await acquire();
         } catch (error) {
-            if (!(error instanceof RepositoryLockBusyError)) throw error;
+            const busy = options.isBusy ?? ((value) => value instanceof RepositoryLockBusyError);
+            if (!busy(error)) throw error;
             const remainingMs = deadline - Date.now();
             if (remainingMs <= 0) throw error;
             await new Promise<void>((resolve) =>
