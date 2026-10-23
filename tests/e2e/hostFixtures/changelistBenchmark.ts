@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, cp, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import os from "node:os";
 import path from "node:path";
@@ -133,6 +133,12 @@ async function rendererHeap(frame: FrameLocator) {
     });
 }
 
+/**
+ * Lists under the 200-row virtualization cutoff mount every row, so at 100 lists the webview can
+ * stay silent far past the 30 s default after Expand All and during the sweep that follows.
+ */
+const SILENT_WEBVIEW_TIMEOUT_MS = 600_000;
+
 /** Returns clipped visible file geometry and terminal states, excluding virtualizer overscan. */
 async function viewport(frame: FrameLocator, offset?: number, timeout?: number) {
     return frame.getByTestId("commit-tab").evaluate(
@@ -196,7 +202,7 @@ async function settle(
     await expect
         .poll(
             async () => {
-                const view = await viewport(frame);
+                const view = await viewport(frame, undefined, SILENT_WEBVIEW_TIMEOUT_MS);
                 await observe?.(view);
                 return view.rows.length > 0 && view.rows.every((row) => !row.pending);
             },
@@ -290,9 +296,9 @@ async function sweep(
     const windows = [];
     let next = 0;
     for (;;) {
-        await observe(await viewport(frame, next));
+        await observe(await viewport(frame, next, SILENT_WEBVIEW_TIMEOUT_MS));
         await settle(frame, observe);
-        const view = await viewport(frame);
+        const view = await viewport(frame, undefined, SILENT_WEBVIEW_TIMEOUT_MS);
         windows.push(view);
         for (const row of view.rows) offsets.set(row.path, row.offset);
         if (view.offset >= view.maximum) break;
@@ -360,6 +366,8 @@ const TOASTS = ".notifications-toasts .notification-list-item-message";
 /** Success texts both builds show once a shelf mutation has finished on disk. */
 const SAVED_TOAST = "Changes saved to shelf.";
 const UNSHELVED_TOAST = "Shelf unshelved.";
+/** The webview's Shelf status line after a failed panel shelve; the host shows no toast for it. */
+const SHELF_MUTATION_FAILED = "Shelf mutation failed.";
 /** Files the restore scenario shelves and restores per sample. */
 const RESTORE_FILES = 20;
 /** How long a finished mutation may take to appear in the view before it is recorded as not shown. */
@@ -374,27 +382,37 @@ async function clearToasts(page: Page) {
 /** The host never confirmed a shelf mutation within the bound: a measured outcome, not a harness fault. */
 class HostConfirmationTimeout extends Error {}
 
-/** Waits for the host's own success toast, failing at once on a failure toast. */
-async function waitForToast(page: Page, success: string) {
+/** How long a shelf mutation may take to confirm before it is recorded as not confirmed. */
+const SHELF_TOAST_TIMEOUT_MS = 600_000;
+/** A line-count warning is not the shelf's result. */
+const STATS_WARNING = /change stats may be unavailable/i;
+/** Shelf outcomes that end a wait at once: errors, and every unshelve warning (shelfCommands.ts). */
+const SHELF_FAILURE =
+    /fail|error|unavailable|no git|needs review|nothing was unshelved|no shelf changes were applied|stopped with conflicts/i;
+
+/** Visible toasts that report a shelf failure, ignoring line-count warnings. */
+function shelfFailures(texts: readonly string[]) {
+    return texts.filter((text) => !STATS_WARNING.test(text) && SHELF_FAILURE.test(text));
+}
+
+/** Waits for the host's own success toast, failing at once on a failure or needs-review toast. */
+async function waitForToast(page: Page, success: string, timeoutMs = SHELF_TOAST_TIMEOUT_MS) {
     const toasts = page.locator(TOASTS);
-    const deadline = Date.now() + 600_000;
+    const deadline = Date.now() + timeoutMs;
     const logged = new Set<string>();
     for (;;) {
         const texts = await toasts.allTextContents();
         if (texts.includes(success)) return;
-        // A line-count warning is not the shelf's result: log it once and keep waiting for the shelf toast.
-        const statsWarnings = texts.filter((text) => /change stats may be unavailable/i.test(text));
-        for (const text of statsWarnings) {
+        // Log a line-count warning once and keep waiting for the shelf toast.
+        for (const text of texts.filter((text) => STATS_WARNING.test(text))) {
             if (!logged.has(text)) console.log(`[benchmark] ${success} wait saw: ${text}`);
             logged.add(text);
         }
-        const failures = texts.filter(
-            (text) => !statsWarnings.includes(text) && /fail|error|unavailable|no git/i.test(text),
-        );
+        const failures = shelfFailures(texts);
         if (failures.length > 0) throw new Error(`Shelf command failed: ${failures.join(" | ")}`);
         if (Date.now() > deadline)
             throw new HostConfirmationTimeout(
-                `No "${success}" within 600 s; visible notifications: ${texts.join(" | ") || "none"}`,
+                `No "${success}" within ${Math.round(timeoutMs / 1000)} s; visible notifications: ${texts.join(" | ") || "none"}`,
             );
         await new Promise((resolve) => setTimeout(resolve, 10));
     }
@@ -771,9 +789,8 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                 .getByTestId("commit-tab")
                 .getByRole("button", { name: "Expand All", exact: true })
                 .click();
-            // Lists under the 200-row virtualization cutoff mount every row, so at 100 lists Expand
-            // All can keep the webview silent far past the 30 s default; how long is the result.
-            await viewport(frame, undefined, 600_000);
+            // How long Expand All keeps the webview silent is the result.
+            await viewport(frame, undefined, SILENT_WEBVIEW_TIMEOUT_MS);
             result.expandAllFirstAnswerMs = performance.now() - coverageStarted;
             const diagnostic = await sweep(
                 frame,
@@ -877,6 +894,30 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                     .split("\n")
                     .filter(Boolean).length;
             let blockedBy: string | undefined;
+            /** Copies the extension's shelf store and the repository's recovery state into failed-logs. */
+            const copyShelfState = async (scenario: string) => {
+                const into = path.join(options.output, "failed-logs", "shelf-state", scenario);
+                const manifest = JSON.parse(
+                    await readFile(path.join(options.extensionPath, "package.json"), "utf8"),
+                ) as { publisher: string; name: string };
+                const storageRoot = path.join(workspace.profileDir, "User", "globalStorage");
+                const id = `${manifest.publisher}.${manifest.name}`.toLowerCase();
+                // VS Code may lowercase the extension id in the folder name.
+                const storage = (await readdir(storageRoot).catch(() => [])).find(
+                    (entry) => entry.toLowerCase() === id,
+                );
+                if (storage)
+                    await cp(path.join(storageRoot, storage), path.join(into, "globalStorage"), {
+                        recursive: true,
+                    }).catch(() => undefined);
+                await cp(
+                    path.join(primaryRoot, ".git", "intelligit"),
+                    path.join(into, "git-intelligit"),
+                    {
+                        recursive: true,
+                    },
+                ).catch(() => undefined);
+            };
             /** Runs one shelf scenario; a host that never confirms is recorded, and later ones skipped. */
             const shelfScenario = async (
                 name: string,
@@ -893,6 +934,8 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                     await run();
                     scenarios[name] = { ...(scenarios[name] as object), ...details() };
                 } catch (error) {
+                    // The shelf store and recovery journal show where the shelve or restore stopped.
+                    await copyShelfState(name).catch(() => undefined);
                     if (!(error instanceof HostConfirmationTimeout)) throw error;
                     blockedBy = error.message;
                     // The host's own log says why it never confirmed; keep the workspace and profile.
@@ -928,7 +971,16 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                             const started = performance.now();
                             await option.click();
                             await acceptPrompt(page, REPOSITORY_PROMPT, repositoryLabel);
-                            await waitForToast(page, SAVED_TOAST);
+                            // A whole-repository capture grows with file count: scale from this
+                            // run's own samples as the first-rows wait does, never below the bound.
+                            await waitForToast(
+                                page,
+                                SAVED_TOAST,
+                                Math.max(
+                                    SHELF_TOAST_TIMEOUT_MS,
+                                    4 * Math.max(0, ...captureDurable),
+                                ),
+                            );
                             const durable = performance.now() - started;
                             captureDurable.push(durable);
                             const shown = await visibleWithin(
@@ -1050,6 +1102,14 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                                 (await worktreeChanges()) > shelved ||
                                 (await shelfCount(frame, primaryRoot)) <= shelves
                             ) {
+                                // No toast either way: a failure shows only on the (mounted, hidden) Shelf tab.
+                                const status = await accordion
+                                    .getByTestId("shelf-mutation-status")
+                                    .allTextContents();
+                                if (status.some((text) => text.includes(SHELF_MUTATION_FAILED)))
+                                    throw new Error(
+                                        `Shelve Silently failed: ${status.join(" | ")}`,
+                                    );
                                 if (Date.now() > deadline)
                                     throw new HostConfirmationTimeout(
                                         `Shelve Silently of ${RESTORE_FILES} checked files did not reach ${shelved} changes and a new shelf within 600 s`,
