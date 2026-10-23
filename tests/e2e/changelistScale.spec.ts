@@ -205,15 +205,7 @@ exec "${realGit.replaceAll('"', '\\"')}" "$@"
             const frame = await new IntelliGitView(page).reveal();
             const tree = frame.getByTestId("virtual-commit-tree");
             await expect(tree).toBeVisible();
-
-            // Collapse the real Graph view so the Commit pane gets the available sidebar height.
-            const graphHeader = page.locator(".pane-header").filter({
-                has: page.getByText("Graph", { exact: true }),
-            });
-            if ((await graphHeader.getAttribute("aria-expanded")) === "true")
-                await graphHeader.click();
-            const resizeHandle = frame.getByRole("separator", { exact: true });
-            for (let press = 0; press < 8; press += 1) await resizeHandle.press("ArrowDown");
+            await expandLifecyclePane(page, frame);
 
             await expect.poll(() => latestRevision, { timeout: 5_000 }).toBeDefined();
             sweepRevision = latestRevision;
@@ -289,6 +281,10 @@ exec "${realGit.replaceAll('"', '\\"')}" "$@"
                     ...viewport,
                     rows: viewport.rows.map((row, index) => ({ ...row, path: hashes[index] })),
                 });
+                expect(
+                    viewport.rowHeight,
+                    "a visible file row must have a measured height before the fit check",
+                ).toBeGreaterThan(0);
                 expect(
                     viewport.bottom - viewport.top,
                     "real clipped viewport must fit several rows",
@@ -663,7 +659,13 @@ async function expandLifecyclePane(page: Page, frame: FrameLocator) {
     const graph = page
         .locator(".pane-header")
         .filter({ has: page.getByText("Graph", { exact: true }) });
-    if ((await graph.getAttribute("aria-expanded")) === "true") await graph.click();
+    // The header's centre is its first toolbar action, so toggle through the title text instead.
+    if ((await graph.getAttribute("aria-expanded")) === "true")
+        await graph.getByText("Graph", { exact: true }).click();
+    await expect(
+        graph,
+        "Graph pane must collapse so the Commit pane gets the sidebar height",
+    ).toHaveAttribute("aria-expanded", "false");
     for (let index = 0; index < 8; index++)
         await frame.getByRole("separator", { exact: true }).press("ArrowDown");
 }

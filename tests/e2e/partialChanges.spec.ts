@@ -424,10 +424,24 @@ test.describe("Selected changes and changelists", () => {
             await expect
                 .poll(() => runGit(workspace.root, ["log", "-1", "--format=%s"], workspace.env))
                 .toBe("Reviewed message-only amend\n");
+            // The subject lands before the amend's progress and index refresh finish.
+            await expect(
+                page.locator(".notifications-toasts .notification-toast").filter({
+                    hasText: "Committing...",
+                }),
+            ).toHaveCount(0);
             expect(await runGit(workspace.root, ["rev-parse", "HEAD^{tree}"], workspace.env)).toBe(
                 tree,
             );
-            expect(await runGit(workspace.root, ["write-tree"], workspace.env)).toBe(indexTree);
+            await expect
+                .poll(() =>
+                    runGit(workspace.root, ["write-tree"], workspace.env).catch((error: Error) => {
+                        // Git still holds index.lock until the amend's refresh ends.
+                        if (/index\.lock': File exists/.test(error.message)) return undefined;
+                        throw error;
+                    }),
+                )
+                .toBe(indexTree);
             expect(await readFile(path.join(workspace.root, FILE), "utf8")).toBe(working);
             expect(await readFile(path.join(workspace.root, OTHER), "utf8")).toBe("user staged\n");
         } finally {
