@@ -454,9 +454,9 @@ class TargetShelfRestore {
         this.durable = true;
         let latest = initial;
         for (const entry of selected) {
-            // Each step re-reads only its own paths, so the restore stays linear in its size. The
-            // index fingerprint covers the whole index, and the full check after the loop covers
-            // every path carried forward from an earlier step.
+            // Each step re-reads only its own paths, so the restore stays linear in its size. A
+            // changed index fingerprint makes the step re-read every path, and the full check
+            // after the loop covers every path carried forward from an earlier step.
             const touched = this.paths([entry]);
             assertSameObservation(
                 narrowObservation(latest, touched),
@@ -489,10 +489,7 @@ class TargetShelfRestore {
                 // still match the saved record, or an outside edit would be recorded as restored.
                 const others = paths.filter((file) => !touched.includes(file));
                 assertSameObservation(
-                    {
-                        ...narrowObservation(latest, others),
-                        indexFingerprint: observed.indexFingerprint,
-                    },
+                    narrowObservation(latest, others),
                     narrowObservation(observed, others),
                 );
             }
@@ -503,7 +500,10 @@ class TargetShelfRestore {
                 !touched.some((file) => file.split("/").pop()!.toLowerCase() === ".gitattributes");
             if (
                 this.input.mode === "flattened" &&
-                observed.indexFingerprint !== before.indexFingerprint
+                !isDeepStrictEqual(
+                    narrowObservation(observed, touched).index,
+                    narrowObservation(before, touched).index,
+                )
             )
                 throw new Error("Flattened restore changed the index.");
             latest = await this.after(
@@ -1034,14 +1034,17 @@ function mergeObservation(
     };
 }
 
-/** External changes to affected Git state stop mutation even while extension locks remain held. */
+/**
+ * External changes to affected Git state stop mutation even while extension locks remain held.
+ * The whole-index fingerprint is not compared: an outside `git status` rewrites it with refreshed
+ * stat data alone, while the affected entries' content is what the restore depends on.
+ */
 function assertSameObservation(
     saved: TargetOperationEvidence,
     observed: TargetOperationEvidence,
 ): void {
     if (
         saved.head !== observed.head ||
-        saved.indexFingerprint !== observed.indexFingerprint ||
         !isDeepStrictEqual(saved.paths, observed.paths) ||
         !isDeepStrictEqual(saved.index, observed.index) ||
         !isDeepStrictEqual(saved.native, observed.native)
