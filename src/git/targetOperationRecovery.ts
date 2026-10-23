@@ -570,6 +570,9 @@ async function installBefore(
 
 /** Sync directory entries after each rename or exclusive installation. */
 async function syncParent(filename: string): Promise<void> {
+    // Windows opens a directory handle but fails FlushFileBuffers on it with EPERM, and has no
+    // directory-fsync equivalent; gated by platform so a genuine POSIX I/O failure still throws.
+    if (process.platform === "win32") return;
     const handle = await open(path.dirname(filename), constants.O_RDONLY);
     try {
         await handle.sync();
@@ -676,7 +679,9 @@ async function restoreIndex(
                 "Candidate index changed unrelated entries or failed affected restoration.",
             );
         const bytes = await readFile(candidate);
-        const candidateSync = await open(candidate, "r");
+        // Read-write although nothing is written: Windows flushes a file only through a handle
+        // with write access, and refuses a read-only one with EPERM.
+        const candidateSync = await open(candidate, "r+");
         try {
             await candidateSync.sync();
         } finally {
