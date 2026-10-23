@@ -80,6 +80,7 @@ export async function applyTargetHistoryOperation(
             const known = knownHistoryRequest(state, intent);
             if (known) return known;
             const { paths, whole, parent } = await admittedPaths(git, intent);
+            if (!paths.length) throw new Error("The selected commit contains no changes.");
             const snapshots = await readHistorySnapshots(git, persistence.root, paths, whole);
             const owners = await store.readTargetOperationOwnership(
                 persistence.root,
@@ -284,16 +285,20 @@ interface WholeFileRefusal {
 
 /**
  * Undo Commit's route, decided before any destination prompt. `plainReset` means the targeted
- * rules refuse `path`, so the previous release's soft reset has already run instead.
+ * rules refuse `path`, or the undo has no net change, so the previous release's soft reset has
+ * already run instead.
  */
 export type UndoCommitPreflight =
-    { readonly route: "targeted" | "busy" } | ({ readonly route: "plainReset" } & WholeFileRefusal);
+    | { readonly route: "targeted" | "busy" }
+    | ({ readonly route: "plainReset" } & WholeFileRefusal)
+    | { readonly route: "plainReset"; readonly reason: "noChanges" };
 
 /**
  * Under the metadata lease and mutation gate, apply the targeted admission rules to the undone
  * paths. A pending target operation or held lease is `busy`. When the rules refuse a path for its
- * owner or local changes, the plain `reset --soft` runs under the same lease so nothing interleaves
- * between decision and reset. Anything else is left to the targeted path's own checks.
+ * owner or local changes, or no path changes at all, the plain `reset --soft` runs under the same
+ * lease so nothing interleaves between decision and reset. Anything else is left to the targeted
+ * path's own checks.
  */
 export async function preflightUndoCommit(
     executor: GitExecutor,
@@ -320,7 +325,9 @@ export async function preflightUndoCommit(
             const whole: TargetWholeFileBefore[] = [];
             for (const file of paths)
                 whole.push(await wholeBefore(git, persistence, state, file, request.head));
-            const refusal = wholeFileRefusal(captured, whole);
+            const refusal = paths.length
+                ? wholeFileRefusal(captured, whole)
+                : { reason: "noChanges" as const };
             if (!refusal) return { route: "targeted" };
             await run(["reset", "--soft", parent]);
             return { route: "plainReset", ...refusal };
@@ -455,7 +462,6 @@ function historyPathRecords(
         if (kind === "undoCommit" || meta[3] !== "M" || meta[1] !== meta[2] || meta[1] === "120000")
             whole.add(file);
     }
-    if (!paths.size) throw new Error("The selected commit contains no changes.");
     return { paths: [...paths].sort(), whole };
 }
 
