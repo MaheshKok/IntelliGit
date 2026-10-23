@@ -1,7 +1,10 @@
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PartialChanges } from "../git/partialChanges";
-import { PartialChangesUnsupportedError } from "../git/partialSnapshot";
+import {
+    PartialChangesUnsupportedError,
+    PartialSnapshotChangedError,
+} from "../git/partialSnapshot";
 import { RepositoryLockBusyError } from "../git/repositoryLock";
 import type { WorkingFile } from "../types";
 import { assertContainedParent } from "../shelf/recoveryPaths";
@@ -103,6 +106,8 @@ export class ChangeRangeTracker {
                 error instanceof ChangelistEvidenceError
             )
                 throw error;
+            // An overtaken capture observed nothing, so no ownership is lost; the next pass rereads it.
+            if (error instanceof PartialSnapshotChangedError) return;
             if (error instanceof ChangelistRevisionError) {
                 if (this.store.get(this.root).changes[file]?.contentId !== capturedContentId)
                     await this.store.requireReview(this.root, file, true, epoch);

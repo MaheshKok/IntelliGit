@@ -17,6 +17,9 @@ const MARKERS = ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge"
 /** Known eligibility refusal; unlike an I/O or stale-snapshot failure, whole-file handling is defined. */
 export class PartialChangesUnsupportedError extends Error {}
 
+/** The file, index or branch moved during a capture, as an outside `git status` index rewrite does. */
+export class PartialSnapshotChangedError extends Error {}
+
 /** Host-only fences never travel through a browser message. */
 export interface PartialFileSnapshot {
     view: ChangeFileView;
@@ -211,7 +214,7 @@ export async function assertPartialSnapshotCurrent(
         attributes !== snapshot.attributes ||
         (await canonicalWorktree(executor, snapshot.view.path, raw)) !== snapshot.working
     ) {
-        throw new Error(
+        throw new PartialSnapshotChangedError(
             "The file, index or branch changed. Your selection is retained; reopen its changes.",
         );
     }
