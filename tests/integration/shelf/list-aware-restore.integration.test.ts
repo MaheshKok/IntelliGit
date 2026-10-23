@@ -496,6 +496,23 @@ describe("targeted restore durability and admission", () => {
         expect(appliedCalls(spy)).toBe(1);
     });
 
+    it("failure kept for review after Git writes its error to the Shelf log", async () => {
+        const f = await restoreFixture();
+        const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        vi.spyOn(f.changelists, "publishTargetOwnership").mockRejectedValueOnce(
+            new Error("ownership write refused"),
+        );
+        expect((await f.service.unshelve(f.input)).status).toBe("appliedNeedsReview");
+        expect(f.changelists.get(f.root).pendingTargetOperation?.phase).toBe("gitApplied");
+        expect(warning).toHaveBeenCalledWith(
+            expect.stringMatching(
+                new RegExp(
+                    `^\\[Shelf\\] .*${f.input.targetOperation.id}.*: ownership write refused$`,
+                ),
+            ),
+        );
+    });
+
     it("stale shelf after ownership never recopies draft or reapplies Git", async () => {
         const f = await restoreFixture();
         const spy = vi.spyOn(f.executor, "runBinary");
