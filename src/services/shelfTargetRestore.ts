@@ -42,6 +42,7 @@ import type { ShelfPersistenceManifest } from "../shelf/store";
 import type { ChangelistTarget } from "../webviews/protocol/changelists";
 import type { ShelfDraftChoice } from "../webviews/protocol/targetOperation";
 import { isStructural, selectEntries } from "./shelfServiceHelpers";
+import { logShelfWarning } from "./shelfObservability";
 
 /** One public per-entry outcome; later protocol code maps these without string parsing. */
 export type PerEntryResult =
@@ -263,7 +264,10 @@ class TargetShelfRestore {
                 await this.lease.release();
             }
         } catch (error) {
-            if (this.durable) return this.result("appliedNeedsReview");
+            if (this.durable) {
+                logShelfWarning(`restore ${this.intent.id} needs review`, error);
+                return this.result("appliedNeedsReview");
+            }
             if (error instanceof RepositoryLockBusyError) return this.result("busy");
             if (error instanceof ChangelistRevisionError) return this.result("stale");
             throw error;
