@@ -134,54 +134,58 @@ async function rendererHeap(frame: FrameLocator) {
 }
 
 /** Returns clipped visible file geometry and terminal states, excluding virtualizer overscan. */
-async function viewport(frame: FrameLocator, offset?: number) {
-    return frame.getByTestId("commit-tab").evaluate(async (element, next) => {
-        let parent = element.querySelector<HTMLElement>('[title^="bench-"]')?.parentElement;
-        while (parent && !/auto|scroll/.test(getComputedStyle(parent).overflowY))
-            parent = parent.parentElement;
-        if (!parent) throw new Error("Commit viewport is unavailable");
-        if (next !== undefined) {
-            parent.scrollTop = next;
-            parent.dispatchEvent(new Event("scroll"));
-            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        }
-        let top = 0,
-            bottom = innerHeight;
-        for (
-            let ancestor: HTMLElement | null = parent;
-            ancestor;
-            ancestor = ancestor.parentElement
-        ) {
-            const rect = ancestor.getBoundingClientRect();
-            if (/auto|scroll|hidden|clip/.test(getComputedStyle(ancestor).overflowY)) {
-                top = Math.max(top, rect.top);
-                bottom = Math.min(bottom, rect.bottom);
+async function viewport(frame: FrameLocator, offset?: number, timeout?: number) {
+    return frame.getByTestId("commit-tab").evaluate(
+        async (element, next) => {
+            let parent = element.querySelector<HTMLElement>('[title^="bench-"]')?.parentElement;
+            while (parent && !/auto|scroll/.test(getComputedStyle(parent).overflowY))
+                parent = parent.parentElement;
+            if (!parent) throw new Error("Commit viewport is unavailable");
+            if (next !== undefined) {
+                parent.scrollTop = next;
+                parent.dispatchEvent(new Event("scroll"));
+                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
             }
-        }
-        const parentTop = parent.getBoundingClientRect().top;
-        const rows = [...parent.querySelectorAll<HTMLElement>('[title^="bench-"]')].flatMap(
-            (row) => {
-                const rect = row.getBoundingClientRect();
-                return rect.bottom > top && rect.top < bottom
-                    ? [
-                          {
-                              path: row.title,
-                              offset: rect.top - parentTop + parent!.scrollTop,
-                              pending: [...row.querySelectorAll('[role="status"]')].some(
-                                  (status) => status.textContent?.trim() === "...",
-                              ),
-                          },
-                      ]
-                    : [];
-            },
-        );
-        return {
-            offset: parent.scrollTop,
-            maximum: parent.scrollHeight - parent.clientHeight,
-            height: bottom - top,
-            rows,
-        };
-    }, offset);
+            let top = 0,
+                bottom = innerHeight;
+            for (
+                let ancestor: HTMLElement | null = parent;
+                ancestor;
+                ancestor = ancestor.parentElement
+            ) {
+                const rect = ancestor.getBoundingClientRect();
+                if (/auto|scroll|hidden|clip/.test(getComputedStyle(ancestor).overflowY)) {
+                    top = Math.max(top, rect.top);
+                    bottom = Math.min(bottom, rect.bottom);
+                }
+            }
+            const parentTop = parent.getBoundingClientRect().top;
+            const rows = [...parent.querySelectorAll<HTMLElement>('[title^="bench-"]')].flatMap(
+                (row) => {
+                    const rect = row.getBoundingClientRect();
+                    return rect.bottom > top && rect.top < bottom
+                        ? [
+                              {
+                                  path: row.title,
+                                  offset: rect.top - parentTop + parent!.scrollTop,
+                                  pending: [...row.querySelectorAll('[role="status"]')].some(
+                                      (status) => status.textContent?.trim() === "...",
+                                  ),
+                              },
+                          ]
+                        : [];
+                },
+            );
+            return {
+                offset: parent.scrollTop,
+                maximum: parent.scrollHeight - parent.clientHeight,
+                height: bottom - top,
+                rows,
+            };
+        },
+        offset,
+        { timeout },
+    );
 }
 
 /** Waits for every actually visible row to reach a terminal statistic, including unavailable results. */
@@ -767,6 +771,10 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
                 .getByTestId("commit-tab")
                 .getByRole("button", { name: "Expand All", exact: true })
                 .click();
+            // Lists under the 200-row virtualization cutoff mount every row, so at 100 lists Expand
+            // All can keep the webview silent far past the 30 s default; how long is the result.
+            await viewport(frame, undefined, 600_000);
+            result.expandAllFirstAnswerMs = performance.now() - coverageStarted;
             const diagnostic = await sweep(
                 frame,
                 fixture.rows.map((row) => row.path),
@@ -1101,17 +1109,19 @@ export async function runChangelistBenchmark(options: BenchmarkOptions) {
     } catch (error) {
         keepFiles = true;
         result.failedWorkspace = { root: workspace.root, profile: workspace.profileDir, template };
-        // Host logs (IntelliGit output, exthost) survive TMPDIR cleanup only inside the output.
-        await cp(
-            path.join(workspace.profileDir, "logs"),
-            path.join(options.output, "failed-logs"),
-            {
-                recursive: true,
-            },
-        ).catch(() => undefined);
         result.failure = error instanceof Error ? error.message : String(error);
         throw error;
     } finally {
+        // Host logs (IntelliGit output, exthost) survive TMPDIR cleanup only inside the output;
+        // a shelf scenario that never confirmed keeps them too, though the run passes.
+        if (keepFiles)
+            await cp(
+                path.join(workspace.profileDir, "logs"),
+                path.join(options.output, "failed-logs"),
+                {
+                    recursive: true,
+                },
+            ).catch(() => undefined);
         await observeDisk();
         result.disk = {
             volume: diskRoot,
