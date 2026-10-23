@@ -517,7 +517,9 @@ export class ShelfReverter {
         state: RevertState,
     ): Promise<void> {
         await this.verifyGitPreconditions(state.originalHead, state.expectedIndex);
-        await this.git.writeIndexEntry(entry.relativePath, baseEntry);
+        await this.git.writeIndexEntry(entry.relativePath, baseEntry, () =>
+            this.verifyGitPreconditions(state.originalHead, state.expectedIndex),
+        );
         entry.writtenIndexEntry = await this.git.getIndexEntry(entry.relativePath);
         entry.writtenIndexFingerprint = await this.git.getIndexPathFingerprint(entry.relativePath);
         if (!sameIndexEntry(entry.writtenIndexEntry, baseEntry)) {
@@ -731,7 +733,16 @@ async function rollbackMovedPaths(
                 entry.writtenIndexFingerprint !== entry.originalIndexFingerprint ||
                 !sameIndexEntry(entry.writtenIndexEntry, entry.originalIndexEntry)
             )
-                await git.writeIndexEntry(entry.relativePath, entry.originalIndexEntry);
+                await git.writeIndexEntry(
+                    entry.relativePath,
+                    entry.originalIndexEntry,
+                    async () => {
+                        if (!(await matchesWrittenIndexState(entry, git, expectedIndexFingerprint)))
+                            throw new RecoverySafetyError(
+                                "A rolled-back path changed in the index.",
+                            );
+                    },
+                );
             if (!(await matchesOriginalIndexState(entry, git))) {
                 retained.push(entry.relativePath);
                 continue;
