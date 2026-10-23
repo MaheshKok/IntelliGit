@@ -7,7 +7,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, realpath, unlink, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ChangeRangeTracker } from "../../../src/changes/changeRangeTracker";
 import { rangeSnapshot } from "../../../src/changes/rangeMapping";
+import { GitOps } from "../../../src/git/operations";
+import { PartialChanges } from "../../../src/git/partialChanges";
 import { readPartialSnapshot } from "../../../src/git/partialSnapshot";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
@@ -1249,3 +1252,67 @@ it.each([
     // Two 20-file shelve and restore rounds take about 24 s alone, past the default under a full run.
     120_000,
 );
+
+// The observer pass after a shelve opens the first shelved file while VS Code's own `git status`
+// rewrites the index; a stale mark set there would follow the file into the next restore.
+it("an outside index stat refresh during the observer's capture of a shelved file leaves its restore applied", async () => {
+    const f = await restoreFixture();
+    const files = Array.from({ length: 20 }, (_, index) => `loop-${index + 1}.txt`);
+    for (const file of files) await writeFile(path.join(f.root, file), "committed\n");
+    await git(f.root, ["add", ...files]);
+    await git(f.root, ["commit", "-m", "loop fixture"]);
+    for (const file of files) {
+        await writeFile(path.join(f.root, file), `changed ${file}\n`);
+        const snapshot = await readPartialSnapshot(f.executor, f.root, file, "working");
+        await f.changelists.track(f.root, file, rangeSnapshot(snapshot));
+    }
+    await f.changelists.moveFiles(f.root, f.changelists.revision(f.root), f.d, files);
+    const saved = await f.service.shelve({
+        name: "Loop",
+        paths: files,
+        silent: true,
+        keepLocal: false,
+    });
+    const shelf = await f.store.readCurrentShelfManifest(saved.shelfId!);
+    // `ls-tree` runs after the capture reads the index and before it rechecks it.
+    const run = f.executor.run.bind(f.executor);
+    let refreshed = false;
+    const capture = vi.spyOn(f.executor, "run").mockImplementation(async (args, options) => {
+        const output = await run(args, options);
+        if (!refreshed && args.includes("ls-tree") && args.at(-1) === files[0]) {
+            refreshed = true;
+            await refreshIndexStat(f.root);
+        }
+        return output;
+    });
+    await new ChangeRangeTracker(
+        f.root,
+        new PartialChanges(f.executor, f.root),
+        f.changelists,
+    ).reconcile(await new GitOps(f.executor).getStatus({ withStats: false }));
+    capture.mockRestore();
+    expect(refreshed, "the refresh lands inside the first shelved file's capture").toBe(true);
+    const stale = f.changelists.get(f.root).changes[files[0]]?.stale;
+    const result = await f.service.unshelve({
+        ...f.input,
+        id: saved.shelfId!,
+        expectedShelfGeneration: shelf.generation,
+        targetOperation: {
+            ...f.input.targetOperation,
+            target: {
+                ...f.input.targetOperation.target,
+                revision: f.changelists.revision(f.root),
+            },
+            sourceChecksum: shelf.checksum,
+        },
+    });
+    expect(result.status, "restore after the observer pass the refresh raced").toBe("applied");
+    expect(stale, "a stat-only index rewrite during capture does not lose ownership").not.toBe(
+        true,
+    );
+    const state = f.changelists.get(f.root);
+    for (const file of files) {
+        expect(await readFile(path.join(f.root, file), "utf8")).toBe(`changed ${file}\n`);
+        expect(state.files[file], `owner of ${file}`).toBe(f.d);
+    }
+}, 120_000);
