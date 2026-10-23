@@ -897,6 +897,41 @@ it("plain undo of a file that belongs to a list keeps its owner", async () => {
     expect(state.lists.some((list) => list.name === "Destination")).toBe(false);
 }, 30_000);
 
+it.each(["an empty commit", "a commit a later commit exactly reverses"] as const)(
+    "undo of %s falls back to the plain soft reset",
+    async (shape) => {
+        const f = await undoFixture();
+        if (shape === "an empty commit")
+            await f.git.run(["commit", "--allow-empty", "--only", "-qm", "empty"]);
+        else {
+            await writeFile(path.join(f.root, "affected"), "base\n");
+            await f.git.run(["commit", "--only", "-qm", "reverse", "--", "affected"]);
+        }
+        const head = (await f.git.run(["rev-parse", "HEAD"])).trim();
+        const commit = shape === "an empty commit" ? head : f.request.commit;
+        const parent = (await f.git.run(["rev-parse", `${commit}^`])).trim();
+        expect(await f.git.run(["diff", "--name-only", parent, head]), "precondition").toBe("");
+        const prior = structuredClone(f.store.get(f.root));
+        const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+        const request = { ...f.request, commit, head };
+        const refused = await applyTargetHistoryOperation(f.git, f.persistence, f.store, request);
+        expect(refused.outcome, "the targeted adapter alone still refuses").toBe("notApplied");
+        expect(refused.reason).toBe("The selected commit contains no changes.");
+        expect(resets(calls), "refused targeted undo must never reset").toHaveLength(0);
+        const route = await preflightUndoCommit(f.git, f.persistence, f.store, request);
+        expect(route, "no net change routes to the previous release's reset").toEqual({
+            route: "plainReset",
+            reason: "noChanges",
+        });
+        expect(resets(calls), "the plain undo soft-resets exactly once").toEqual([
+            ["reset", "--soft", parent],
+        ]);
+        expect((await f.git.run(["rev-parse", "HEAD"])).trim(), "the undo succeeded").toBe(parent);
+        expect(f.store.get(f.root), "no destination list or pending operation").toEqual(prior);
+    },
+    30_000,
+);
+
 it("a clean undo keeps the targeted path and changes nothing before the prompt", async () => {
     const f = await undoFixture();
     const paths = ["affected", "unrelated"];
