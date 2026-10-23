@@ -4,7 +4,7 @@ import type { ShelfFileEntry } from "../../../src/shelf/model";
 import { ShelfStore } from "../../../src/shelf/store";
 import { resolveShelfPaths } from "../../../src/shelf/paths";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, realpath, unlink, writeFile } from "node:fs/promises";
+import { readFile, realpath, unlink, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { rangeSnapshot } from "../../../src/changes/rangeMapping";
@@ -1173,3 +1173,77 @@ it("clean tracked rename retains both endpoints and target through restart", asy
     expect(await f.store.readCurrentShelfManifest(input.id)).toEqual(shelf);
     expect(appliedCalls(spy)).toBe(0);
 });
+
+/** Rewrites `.git/index` with stat data only, as an outside `git status` (VS Code's Git) does. */
+async function refreshIndexStat(root: string) {
+    const index = path.join(root, ".git", "index");
+    const before = await readFile(index);
+    const later = new Date(Date.now() + 60_000);
+    await utimes(path.join(root, "second.txt"), later, later);
+    await git(root, ["status", "--porcelain"]);
+    expect(await readFile(index), "the outside refresh rewrites the index").not.toEqual(before);
+}
+
+// Each seam lands the refresh at a different restore checkpoint: the next entry's pre-check, the
+// flattened index guard after the last entry, and ownership publication after the Git checkpoint.
+it.each([
+    ["between two entries", "checkpointTargetOperation", 1],
+    ["after the last entry applies", "applyEntry", 20],
+    ["before ownership publication", "checkpointTargetOperation", 21],
+] as const)(
+    "an outside index stat refresh %s of a re-shelved restore into the same list finishes applied",
+    async (_when, seam, call) => {
+        const f = await restoreFixture();
+        const files = Array.from({ length: 20 }, (_, index) => `loop-${index + 1}.txt`);
+        for (const file of files) await writeFile(path.join(f.root, file), "committed\n");
+        await git(f.root, ["add", ...files]);
+        await git(f.root, ["commit", "-m", "loop fixture"]);
+        for (const file of files) {
+            await writeFile(path.join(f.root, file), `changed ${file}\n`);
+            const snapshot = await readPartialSnapshot(f.executor, f.root, file, "working");
+            await f.changelists.track(f.root, file, rangeSnapshot(snapshot));
+        }
+        await f.changelists.moveFiles(f.root, f.changelists.revision(f.root), f.d, files);
+        for (const round of [1, 2]) {
+            const saved = await f.service.shelve({
+                name: `Loop ${round}`,
+                paths: files,
+                silent: true,
+                keepLocal: false,
+            });
+            const shelf = await f.store.readCurrentShelfManifest(saved.shelfId!);
+            const owner = (seam === "applyEntry" ? f.service : f.changelists) as unknown as Record<
+                typeof seam,
+                (...args: unknown[]) => Promise<unknown>
+            >;
+            const original = owner[seam].bind(owner);
+            let calls = 0;
+            const apply = vi.spyOn(owner, seam).mockImplementation(async (...args) => {
+                const value = await original(...args);
+                if (round === 2 && ++calls === call) await refreshIndexStat(f.root);
+                return value;
+            });
+            const result = await f.service.unshelve({
+                ...f.input,
+                id: saved.shelfId!,
+                expectedShelfGeneration: shelf.generation,
+                targetOperation: {
+                    ...f.input.targetOperation,
+                    id: randomUUID(),
+                    target: {
+                        ...f.input.targetOperation.target,
+                        revision: f.changelists.revision(f.root),
+                    },
+                    sourceChecksum: shelf.checksum,
+                },
+            });
+            apply.mockRestore();
+            expect(result.status, `restore round ${round}`).toBe("applied");
+            const state = f.changelists.get(f.root);
+            for (const file of files) {
+                expect(await readFile(path.join(f.root, file), "utf8")).toBe(`changed ${file}\n`);
+                expect(state.files[file], `round ${round} owner of ${file}`).toBe(f.d);
+            }
+        }
+    },
+);
