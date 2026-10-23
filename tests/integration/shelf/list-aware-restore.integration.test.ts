@@ -991,6 +991,41 @@ it("clean added file uses actual absent HEAD evidence for whole-file attribution
     expect(await readFile(path.join(f.root, ".git", "index"))).toEqual(f.index);
 });
 
+it("a file clean before the restore is owned whole by the destination, not partially", async () => {
+    const f = await restoreFixture();
+    await writeFile(path.join(f.root, "second.txt"), "base\nshelved second\n");
+    const edited = await readPartialSnapshot(f.executor, f.root, "second.txt", "working");
+    await f.changelists.track(f.root, "second.txt", rangeSnapshot(edited));
+    const saved = await f.service.shelve({
+        name: "Second",
+        paths: ["second.txt"],
+        silent: true,
+        keepLocal: false,
+    });
+    expect(await readFile(path.join(f.root, "second.txt"), "utf8")).toBe("base\n");
+    const shelf = await f.store.readCurrentShelfManifest(saved.shelfId!);
+    const input = {
+        ...f.input,
+        id: saved.shelfId!,
+        expectedShelfGeneration: shelf.generation,
+        targetOperation: {
+            ...f.input.targetOperation,
+            target: { ...f.input.targetOperation.target, revision: f.changelists.revision(f.root) },
+            sourceChecksum: shelf.checksum,
+        },
+    };
+    expect((await f.service.unshelve(input)).status).toBe("applied");
+    expect(await readFile(path.join(f.root, "second.txt"), "utf8")).toBe("base\nshelved second\n");
+    const state = f.changelists.get(f.root);
+    expect(state.files["second.txt"], "whole-file owner of second.txt").toBe(f.d);
+    // Any line owner makes the commit panel mark the file Partial and disable its shelf actions.
+    expect(
+        Object.keys(state.changes["second.txt"]?.lines ?? {}),
+        "line owners of second.txt",
+    ).toEqual([]);
+    expect(state.activeId).toBe(f.c);
+});
+
 it("ownership read returns detached snapshots and rejects same-lease revision drift", async () => {
     const f = await restoreFixture();
     const lease = await f.changelists.acquireTargetOperationLease(f.root);
