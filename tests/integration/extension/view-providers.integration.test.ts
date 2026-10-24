@@ -1930,6 +1930,83 @@ describe("view providers integration", () => {
         },
     );
 
+    it("activates every repository when one repository's changelist metadata fails to connect", async () => {
+        const failingRoot = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-repository-"));
+        const healthyRoot = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-repository-"));
+        await mkdir(path.join(failingRoot, ".git"));
+        await mkdir(path.join(healthyRoot, ".git"));
+        const globalStoragePath = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-storage-"));
+        const { ShelfService } = await import("../../../src/services/shelfService");
+        const { ChangelistStore: CurrentStore } =
+            await import("../../../src/changes/changelistStore");
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const connect = vi
+            .spyOn(CurrentStore.prototype, "connect")
+            .mockImplementation(async (root: string) => {
+                if (root === failingRoot) throw new Error("conflicting changelist metadata");
+            });
+        // Both shelf services start recovery; stubbing it and the catalog keeps real store-lock
+        // writes from racing the scratch cleanup, as in the recovery cases above.
+        const resumePendingRecovery = vi
+            .spyOn(ShelfService.prototype, "resumePendingRecovery")
+            .mockResolvedValue({ rolledBackIds: [], retainedIds: [], upgraded: false } as never);
+        const cleanUp = vi
+            .spyOn(ShelfService.prototype, "cleanUpExpiredGhosts")
+            .mockResolvedValue({ status: "ok" } as never);
+        const listShelves = vi.spyOn(ShelfService.prototype, "listShelves").mockResolvedValue({
+            shelfIds: [],
+            corruptShelfIds: [],
+            catalogGeneration: 0,
+            shelves: [],
+        });
+        const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        try {
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    globalStorageUri: vscodeMock.Uri.file(globalStoragePath),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    secrets: {},
+                } as never,
+                [
+                    { root: failingRoot, label: "Failing repository" },
+                    { root: healthyRoot, label: "Healthy repository" },
+                ],
+            );
+
+            expect(connect).toHaveBeenCalledTimes(2);
+            expect(
+                vscodeMock.window.registerWebviewViewProvider.mock.calls.some(
+                    ([viewType]) => viewType === "intelligit.commitPanel",
+                ),
+                "the Changes view must still register",
+            ).toBe(true);
+            expect(registeredCommands.has("intelligit.fileSaveToShelf")).toBe(true);
+            expect(resumePendingRecovery, "both repositories keep a shelf service").toBeCalledTimes(
+                2,
+            );
+            expect(
+                consoleWarn.mock.calls.some(
+                    ([line]) =>
+                        typeof line === "string" &&
+                        line.includes(failingRoot) &&
+                        line.includes("conflicting changelist metadata"),
+                ),
+                "the warning names the repository and keeps the error message",
+            ).toBe(true);
+            await vi.waitFor(() => expect(cleanUp).toHaveBeenCalledTimes(2));
+            await vi.waitFor(() => expect(listShelves).toHaveBeenCalled());
+        } finally {
+            connect.mockRestore();
+            resumePendingRecovery.mockRestore();
+            cleanUp.mockRestore();
+            listShelves.mockRestore();
+            consoleWarn.mockRestore();
+            await removeScratchDirectories(failingRoot, healthyRoot, globalStoragePath);
+        }
+    });
+
     it("graph active repository follows the active editor without mutating commit accordion expansion", async () => {
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
         const repoA = "/workspace";
