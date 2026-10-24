@@ -371,7 +371,8 @@ export async function preflightUndoCommit(
 
 /**
  * `reset --soft` to `parent` that moves HEAD only while it still names `head`, so a commit another
- * Git process made after HEAD was read is never dropped from the branch. False means HEAD moved.
+ * Git process made after HEAD was read is never dropped from the branch. False means another
+ * process moved HEAD somewhere other than `parent`.
  */
 async function softResetFrom(
     git: GitExecutor,
@@ -393,8 +394,9 @@ async function softResetFrom(
         });
         return true;
     } catch (error) {
-        const current = await git.run(["rev-parse", "--verify", "HEAD"]).catch(() => head);
-        if (current.trim() !== head) return false;
+        const current = (await git.run(["rev-parse", "--verify", "HEAD"]).catch(() => head)).trim();
+        // HEAD at the parent may be this move, finished before Git was stopped: not a refusal.
+        if (current !== head && current !== parent) return false;
         throw error;
     }
 }
