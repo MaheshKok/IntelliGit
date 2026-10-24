@@ -181,7 +181,9 @@ describe("an open changelist names its files once", () => {
             "b.ts",
         );
         expect(
-            api.postMessage.mock.calls.filter(([message]) => message?.type === "openPartialChanges"),
+            api.postMessage.mock.calls.filter(
+                ([message]) => message?.type === "openPartialChanges",
+            ),
             "a row click does not open Selected changes",
         ).toEqual([]);
     });

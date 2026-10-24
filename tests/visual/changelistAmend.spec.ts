@@ -3,10 +3,13 @@ import type { Page } from "@playwright/test";
 import dirtyFixture from "./fixtures/commit-panel/dirty.json";
 
 /** Hydrates the real commit app with metadata and no checked files, preserving its normal controllers. */
-async function hydrateEmpty(page: Page, hasCommits = true): Promise<void> {
+async function hydrateEmpty(page: Page, hasCommits = true, named = false): Promise<void> {
     const update = dirtyFixture.messages.find(({ message }) => message.type === "update")!.message;
+    // The Changelists picker only renders once a second list exists.
+    const lists = [{ id: "default", name: "Changes", draft: "" }];
+    if (named) lists.push({ id: "feature", name: "Feature", draft: "" });
     await page.evaluate(
-        ({ hasCommits, update }) => {
+        ({ hasCommits, lists, update }) => {
             for (const data of [
                 {
                     ...update,
@@ -24,7 +27,7 @@ async function hydrateEmpty(page: Page, hasCommits = true): Promise<void> {
                         revision: 1,
                         activeId: "default",
                         allDraft: "",
-                        lists: [{ id: "default", name: "Changes", draft: "" }],
+                        lists,
                         files: {},
                         changes: {},
                     },
@@ -32,7 +35,7 @@ async function hydrateEmpty(page: Page, hasCommits = true): Promise<void> {
             ])
                 window.dispatchEvent(new MessageEvent("message", { data }));
         },
-        { hasCommits, update },
+        { hasCommits, lists, update },
     );
 }
 
@@ -69,7 +72,7 @@ test("All amend generation sends an empty path request while named lists and unb
     mountHarness,
 }) => {
     const harness = await mountHarness("commit-panel", { webviewFixture: "dirty.json" });
-    await hydrateEmpty(page);
+    await hydrateEmpty(page, true, true);
     await page.getByRole("checkbox", { name: "Amend commit", exact: true }).check();
     await page.getByRole("button", { name: "Generate commit message", exact: true }).click();
     expect(await harness.recordedMessages()).toContainEqual(
@@ -86,7 +89,7 @@ test("All amend generation sends an empty path request while named lists and unb
     ).not.toBeChecked();
     await expect(page.getByRole("button", { name: "Commit", exact: true })).toBeDisabled();
     await page.getByRole("combobox", { name: "Changelists", exact: true }).selectOption("all");
-    await hydrateEmpty(page, false);
+    await hydrateEmpty(page, false, true);
     await expect(page.getByRole("checkbox", { name: "Amend commit", exact: true })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Commit", exact: true })).toBeDisabled();
 });
