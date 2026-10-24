@@ -264,7 +264,8 @@ describe("WorkingFileStatsLoader", () => {
         const first = await refresh();
         await loader.request(first[0].statsRevision, ["a", "b"], root, git, vi.fn());
 
-        write("b", "changed");
+        // A new length: a same-length write inside one timestamp tick keeps the stat key.
+        write("b", "changed!");
         const second = await refresh();
         expect(second[0]).toMatchObject({ path: "a", additions: 9, statsState: "ready" });
         expect(second[1]).toMatchObject({ path: "b", statsState: "pending" });
@@ -323,7 +324,8 @@ describe("WorkingFileStatsLoader", () => {
         expect((await refresh())[0]).toMatchObject({ additions: 100, statsState: "ready" });
 
         // The panel asks again on the new refresh while the slow read runs: no second read.
-        write("a", "changed");
+        // A new length, so the edit is seen even inside one timestamp tick.
+        write("a", "changed!");
         const inFlight = loader.request(
             (await refresh())[0].statsRevision,
             ["a"],
