@@ -632,7 +632,29 @@ it.each(["cherryPick", "revert"] as const)(
                 : { gone: "100644", old: "100644", tool: "100644" },
         );
         if (kind === "cherryPick") {
-            expect(await readlink(path.join(f.root, "link"))).toBe("affected");
+            const link = path.join(f.root, "link");
+            // With core.symlinks=false (Windows CI) Git checks a link out as a plain file holding its target.
+            const symlinks = await f.git.run([
+                "config",
+                "--bool",
+                "--default",
+                "true",
+                "core.symlinks",
+            ]);
+            if (symlinks.trim() === "true")
+                expect(await readlink(link), "the link checks out pointing at its target").toBe(
+                    "affected",
+                );
+            else {
+                expect(
+                    (await lstat(link)).isFile(),
+                    "with core.symlinks=false the link checks out as a plain file",
+                ).toBe(true);
+                expect(
+                    await readFile(link, "utf8"),
+                    "the plain-file link holds exactly its target text",
+                ).toBe("affected");
+            }
             if (POSIX_PERMISSIONS_ENFORCED)
                 expect((await lstat(path.join(f.root, "tool"))).mode & 0o111).not.toBe(0);
             expect(await readFile(path.join(f.root, "renamed"), "utf8")).toBe("renamed text\n");
