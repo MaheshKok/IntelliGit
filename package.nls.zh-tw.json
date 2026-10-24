@@ -38,6 +38,7 @@
     "command.rollback": "復原",
     "command.jumpToSource": "跳轉至原始檔案",
     "command.stashChanges": "儲藏變更",
+    "command.fileSaveToShelf": "將整個檔案儲存到擱置架",
     "command.compareWithRevision": "與修訂版比較",
     "command.compareWithBranch": "與分支或標籤比較",
     "command.compareWithLocal": "與本地版本比較",

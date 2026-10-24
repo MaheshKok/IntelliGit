@@ -38,6 +38,7 @@
     "command.rollback": "Annulation",
     "command.jumpToSource": "Aller à la source",
     "command.stashChanges": "Remiser les modifications",
+    "command.fileSaveToShelf": "Enregistrer le fichier entier dans l'étagère",
     "command.compareWithRevision": "Comparer avec la révision",
     "command.compareWithBranch": "Comparer avec une branche ou une étiquette",
     "command.compareWithLocal": "Comparer avec le local",
