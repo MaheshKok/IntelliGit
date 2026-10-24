@@ -17,7 +17,7 @@ import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
 import { ShelfService } from "../../../src/services/shelfService";
 import { connectedChangelists } from "../../helpers/connectedChangelists";
-import { withWindowsHeadroom } from "../../setup/platformTimeouts";
+import { WINDOWS_BUDGET_MS, withWindowsHeadroom } from "../../setup/platformTimeouts";
 import { cleanTemporaryRepositories, createShelfFixture, git } from "./shelfTestHarness";
 
 afterEach(async () => {
@@ -1327,9 +1327,10 @@ it.each([
             }
         }
     },
-    // Two 20-file shelve and restore rounds take about 24 s alone, past the default under a full run,
-    // and the Windows shard timed them out at 120 s, below its own 180 s floor.
-    withWindowsHeadroom(120_000),
+    // Two 20-file shelve and restore rounds take about 24 s alone, past the default under a full run.
+    // The Windows shard needs more than its 180 s floor: one case passed at 126,919 ms (run
+    // 40057637013) and 175,426 ms (run 40054484807), then timed out at 180,255 ms (run 40080579301).
+    process.platform === "win32" ? 2 * WINDOWS_BUDGET_MS : 120_000,
 );
 
 // The observer pass after a shelve opens the first shelved file while VS Code's own `git status`
