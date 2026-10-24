@@ -140,22 +140,66 @@ export async function resolveTargetedShelfConflict(
             entries: [],
             shelfId: resolution.shelfId,
         };
+    return recordedRestore(pending, pending.shelf, state.revision, dependencies).resolveConflict(
+        resolution,
+    );
+}
+
+/** One structural choice the panel made for a structural-pending entry of a pending restore. */
+export interface TargetStructuralChoice {
+    readonly shelfId: string;
+    readonly changeId: string;
+    readonly expectedShelfGeneration: number;
+    /** Fingerprint of the local path the panel showed; any later file change makes the choice stale. */
+    readonly expectedPathFingerprint: string;
+}
+
+/**
+ * Ends one structural-pending entry of the conflicted restore of this shelf without applying it:
+ * the entry stays on the shelf and the restore continues. Undefined means no such restore is
+ * pending; the caller then applies the choice as an ordinary local structural resolution.
+ */
+export async function abandonTargetedShelfStructural(
+    choice: TargetStructuralChoice,
+    dependencies: RestoreDependencies,
+): Promise<TargetShelfMutationResult | undefined> {
+    const state = dependencies.changelists.get(dependencies.repositoryRoot);
+    const pending = state.pendingTargetOperation;
+    if (
+        pending?.kind !== "shelfRestore" ||
+        pending.phase !== "conflicted" ||
+        pending.shelf?.id !== choice.shelfId ||
+        pending.shelf.generation !== choice.expectedShelfGeneration
+    )
+        return undefined;
+    return recordedRestore(pending, pending.shelf, state.revision, dependencies).abandonStructural(
+        choice,
+    );
+}
+
+/** Rebuilds the restore from its durable record; the caller's values never replace captured identity. */
+function recordedRestore(
+    pending: TargetOperationRecord,
+    shelf: NonNullable<TargetOperationRecord["shelf"]>,
+    revision: number,
+    dependencies: RestoreDependencies,
+): TargetShelfRestore {
     return new TargetShelfRestore(
         {
-            id: pending.shelf.id,
-            changeIds: pending.shelf.changeIds,
-            removeFromShelf: pending.shelf.removeFromShelf,
+            id: shelf.id,
+            changeIds: shelf.changeIds,
+            removeFromShelf: shelf.removeFromShelf,
             mode: "flattened",
-            expectedShelfGeneration: pending.shelf.generation,
+            expectedShelfGeneration: shelf.generation,
             targetOperation: {
                 id: pending.id,
                 root: dependencies.repositoryRoot,
-                target: { kind: "existing", id: pending.destinationId, revision: state.revision },
-                sourceChecksum: pending.shelf.checksum,
+                target: { kind: "existing", id: pending.destinationId, revision },
+                sourceChecksum: shelf.checksum,
             },
         },
         dependencies,
-    ).resolveConflict(resolution);
+    );
 }
 
 /** One repository-bound service invocation owns its lease through the final publication. */
@@ -229,6 +273,17 @@ class TargetShelfRestore {
                 this.resolveLocked(pending, resolution),
             );
             return resolved ? await this.complete() : this.result("stale");
+        });
+    }
+
+    /** Keeps one structural-pending entry on the shelf for this exact pending operation, then continues it. */
+    async abandonStructural(choice: TargetStructuralChoice): Promise<TargetShelfMutationResult> {
+        return this.locked(async () => {
+            const pending = this.state().pendingTargetOperation;
+            if (pending?.id !== this.intent.id || pending.phase !== "conflicted")
+                return this.result("stale");
+            const ended = await this.deps.store.withLock(() => this.abandonLocked(pending, choice));
+            return ended ? await this.complete() : this.result("stale");
         });
     }
 
@@ -811,6 +866,94 @@ class TargetShelfRestore {
         return true;
     }
 
+    /**
+     * Records one structural-pending entry as retained while the captured shelf, every affected
+     * path and the panel's file are unchanged. Git is not touched: the entry was never applied, so
+     * the restore's evidence stays exactly what Git shows, and the shelf keeps the entry.
+     */
+    private async abandonLocked(
+        pending: TargetOperationRecord,
+        choice: TargetStructuralChoice,
+    ): Promise<boolean> {
+        const saved = await this.persistence.loadTargetOperationEvidence(pending.evidenceHash);
+        const manifest = await this.source();
+        const evidence = saved.entries.find((entry) => entry.changeId === choice.changeId);
+        const entry = manifest?.files.find((file) => file.changeId === choice.changeId);
+        if (
+            evidence?.outcome !== "conflicted" ||
+            !entry ||
+            (!isStructural(entry) && entry.exactReconstruction)
+        )
+            return false;
+        const observed = await captureTargetNativeEvidence(
+            this.deps.executor,
+            this.persistence,
+            this.intent.id,
+            saved.paths.map((value) => value.path),
+        );
+        try {
+            assertSameObservation(saved, observed);
+        } catch {
+            return false;
+        }
+        if (
+            (await pathFingerprint(path.join(this.intent.root, structuralLocalPath(entry)))) !==
+            choice.expectedPathFingerprint
+        )
+            return false;
+        const entries = saved.entries.map((value) =>
+            value.changeId === choice.changeId
+                ? {
+                      ...value,
+                      outcome: "retained" as const,
+                      reason: "Kept on the shelf: the structural change was not restored.",
+                  }
+                : value,
+        );
+        this.durable = true;
+        const evidenceHash = await this.persistence.storeTargetOperationEvidence({
+            ...observed,
+            checkpoint: "after",
+            entries,
+            attribution: saved.attribution ?? [],
+            wholeFileAttribution: saved.wholeFileAttribution ?? [],
+            previousEvidenceHash: pending.evidenceHash,
+        });
+        await this.deps.changelists.checkpointTargetOperation(this.lease, {
+            id: pending.id,
+            revision: this.state().revision,
+            expectedPhase: "conflicted",
+            phase: entries.some((value) => value.outcome === "conflicted")
+                ? "conflicted"
+                : "gitApplied",
+            evidenceHash,
+        });
+        this.entries = evidenceResults({ ...saved, entries });
+        return true;
+    }
+
+    /**
+     * True when every unapplied entry was waiting on the user in an earlier checkpoint, so the user
+     * kept it on the shelf rather than Git failing to apply it. Outcomes only move forward, so the
+     * walk stops at the first checkpoint with nothing waiting.
+     */
+    private async unappliedByChoice(evidence: TargetOperationEvidence): Promise<boolean> {
+        const unapplied = new Set(
+            evidence.entries
+                .filter((entry) => entry.outcome !== "applied")
+                .map((entry) => entry.changeId),
+        );
+        let hash = evidence.previousEvidenceHash;
+        while (hash && unapplied.size) {
+            const step = await this.persistence.loadTargetOperationEvidence(hash);
+            const waiting = step.entries.filter((entry) => entry.outcome === "conflicted");
+            if (!waiting.length) break;
+            for (const entry of waiting) unapplied.delete(entry.changeId);
+            hash = step.previousEvidenceHash;
+        }
+        return unapplied.size === 0;
+    }
+
     /** Parses Git's own no-index text diff between two in-memory sides. */
     private async blocks(left: string, right: string) {
         const directory = await mkdtemp(path.join(tmpdir(), "intelligit-restore-delta-"));
@@ -929,8 +1072,7 @@ class TargetShelfRestore {
                         (!isStructural(entry) && entry.exactReconstruction)
                     )
                         return result;
-                    const block = (entry.worktreeBlock ?? entry.indexBlock)!;
-                    const file = block.status === "R" ? block.renamedFrom! : block.path;
+                    const file = structuralLocalPath(entry);
                     return {
                         kind: "structuralPending" as const,
                         changeId: entry.changeId,
@@ -953,10 +1095,12 @@ class TargetShelfRestore {
         if (pending.phase === "reviewRequired") return this.result("appliedNeedsReview");
         const evidence = await this.persistence.loadTargetOperationEvidence(pending.evidenceHash);
         const applied = evidence.entries.filter((entry) => entry.outcome === "applied");
+        // A partial result needs review unless the user chose to keep every missing entry on the shelf.
         if (
             pending.phase === "gitApplied" &&
             applied.length &&
-            applied.length !== evidence.entries.length
+            applied.length !== evidence.entries.length &&
+            !(await this.unappliedByChoice(evidence))
         )
             return this.result("appliedNeedsReview");
         if (pending.phase === "gitApplied" && applied.length) {
@@ -988,6 +1132,12 @@ class TargetShelfRestore {
                   : "notApplied",
         );
     }
+}
+
+/** The local path a structural choice acts on: a rename's source, otherwise the entry's path. */
+function structuralLocalPath(entry: ShelfFileEntry): string {
+    const block = (entry.worktreeBlock ?? entry.indexBlock)!;
+    return block.status === "R" ? block.renamedFrom! : block.path;
 }
 
 /** Structural review is a conflict checkpoint even when Git left the local path untouched. */

@@ -1227,6 +1227,34 @@ it("keeping the local file ends a structural-only restore and keeps the deletion
     expect((await second.service.unshelve(input)).status).toBe("notApplied");
 });
 
+it("a structural choice beside an open text conflict keeps the restore waiting and the file untouched", async () => {
+    const f = await restoreFixture(true, true, true);
+    await writeFile(
+        path.join(f.root, "shared.txt"),
+        f.local.replace("line-25\n", "local conflicting change\n"),
+    );
+    const first = await f.service.unshelve(f.input);
+    expect(first.entries.some((entry) => entry.kind === "conflicted")).toBe(true);
+    const pending = structuralPending(first.entries);
+    const result = await f.service.resolveStructural({
+        id: f.input.id,
+        changeId: pending.changeId,
+        expectedShelfGeneration: f.shelf.generation,
+        expectedPathFingerprint: pending.pathFingerprint,
+        action: "deleteLocal",
+    });
+    expect(result.status).toBe("conflicted");
+    expect(
+        f.changelists.get(f.root).pendingTargetOperation?.phase,
+        "the text conflict still holds the restore",
+    ).toBe("conflicted");
+    expect(
+        await readFile(path.join(f.root, "second.txt"), "utf8"),
+        "no local action runs inside a pending restore",
+    ).toBe("local second\n");
+    expect(await f.store.readCurrentShelfManifest(f.input.id)).toEqual(f.shelf);
+});
+
 it("deleting the local file ends a mixed restore with the deletion still on the shelf", async () => {
     const f = await restoreFixture(true, true, true);
     const first = await f.service.unshelve(f.input);

@@ -1,4 +1,5 @@
 import {
+    abandonTargetedShelfStructural,
     resolveTargetedShelfConflict,
     restoreTargetedShelf,
     type ShelfRestoreTarget,
@@ -713,11 +714,41 @@ export class ShelfService {
             });
         });
     }
-    /** Applies one explicitly chosen structural resolution after fingerprint validation. */
-    async resolveStructural(input: StructuralResolutionInput): Promise<ShelfMutationResult> {
+    /**
+     * Applies one explicitly chosen structural resolution after fingerprint validation. A choice
+     * for an entry of this shelf's pending restore first keeps that entry on the shelf so the
+     * restore can end; the choice then acts on the local file once nothing is pending.
+     */
+    async resolveStructural(
+        input: StructuralResolutionInput,
+    ): Promise<ShelfMutationResult | TargetShelfMutationResult> {
+        let expectedShelfGeneration = input.expectedShelfGeneration;
+        const ended = await abandonTargetedShelfStructural(
+            {
+                shelfId: input.id,
+                changeId: input.changeId,
+                expectedShelfGeneration,
+                expectedPathFingerprint: input.expectedPathFingerprint,
+            },
+            {
+                ...this.options,
+                gitOps: this.gitOps,
+                applyEntry: (shelfId, entry, mode) => this.applyEntry(shelfId, entry, mode),
+            },
+        );
+        if (ended) {
+            if (
+                ended.status === "stale" ||
+                ended.status === "busy" ||
+                this.options.changelists.get(this.repositoryRoot).pendingTargetOperation
+            )
+                return ended;
+            expectedShelfGeneration = (await this.options.store.readCurrentShelfManifest(input.id))
+                .generation;
+        }
         return this.withMutation(async () =>
             this.options.store.withGenerationCas(
-                { shelfId: input.id, expectedShelfGeneration: input.expectedShelfGeneration },
+                { shelfId: input.id, expectedShelfGeneration },
                 async () => {
                     const entry = (
                         await this.options.store.readCurrentShelfManifest(input.id)
