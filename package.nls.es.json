@@ -38,6 +38,7 @@
     "command.rollback": "Revertir",
     "command.jumpToSource": "Ir a la fuente",
     "command.stashChanges": "Guardar cambios en stash",
+    "command.fileSaveToShelf": "Guardar archivo completo en estante",
     "command.compareWithRevision": "Comparar con la revisión",
     "command.compareWithBranch": "Comparar con rama o etiqueta",
     "command.compareWithLocal": "Comparar con lo local",

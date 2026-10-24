@@ -38,6 +38,7 @@
     "command.rollback": "ロールバック",
     "command.jumpToSource": "ソースへジャンプ",
     "command.stashChanges": "変更をスタッシュ",
+    "command.fileSaveToShelf": "ファイル全体をシェルフに保存",
     "command.compareWithRevision": "リビジョンと比較",
     "command.compareWithBranch": "ブランチまたはタグと比較",
     "command.compareWithLocal": "ローカルと比較",

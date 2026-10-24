@@ -277,6 +277,65 @@ describe("list and file Save and Remove", () => {
         },
     );
 
+    it("removes after a range scan advanced the revision between the plan and the save", async () => {
+        await writeFile(path.join(root, "scanned.txt"), "base\n");
+        git(["add", "scanned.txt"]);
+        git(["commit", "-qm", "scanned", "--", "scanned.txt"]);
+        await writeFile(path.join(root, "scanned.txt"), "changed\n");
+        await store.reconcileFiles(root, [
+            "first.txt",
+            "second.txt",
+            "unrelated.txt",
+            "scanned.txt",
+        ]);
+        await store.moveFiles(root, store.revision(root), other, ["scanned.txt"]);
+        const planned = store.revision(root);
+        let scanned = planned;
+        vi.mocked(vscode.window.showInputBox).mockImplementationOnce(async () => {
+            // A file's first range record names no line owner: the revision moves, the plan does not.
+            const partial = new PartialChanges(new GitExecutor(root), root);
+            const view = await partial.open("scanned.txt");
+            await store.track(
+                root,
+                "scanned.txt",
+                rangeSnapshot(partial.snapshot(view.snapshotId)),
+            );
+            scanned = store.revision(root);
+            return "scoped shelf";
+        });
+        warn().mockResolvedValueOnce("Remove Selected Changes" as never);
+        await host.handle(request("saveAndRemove"));
+        expect(scanned, "the scan advanced the revision").toBeGreaterThan(planned);
+        const [id] = await shelfIds();
+        expect(results()[0]).toMatchObject({
+            shelfId: id,
+            message: expect.stringContaining("Removed: first.txt, second.txt."),
+        });
+        expect(results()[0].error).toBeUndefined();
+        expect(await read("first.txt")).toBe(remaining);
+        expect(await read("second.txt")).toBe(remaining);
+        expect(await read("scanned.txt")).toBe("changed\n");
+    });
+
+    it("refuses removal when an assignment changed after the save, keeping the shelf and local bytes", async () => {
+        const indexBytes = await index();
+        warn().mockImplementationOnce(async () => {
+            await store.moveFiles(root, store.revision(root), "default", ["unrelated.txt"]);
+            return "Remove Selected Changes" as never;
+        });
+        await host.handle(request("saveAndRemove"));
+        const [id] = await shelfIds();
+        expect(results()[0]).toMatchObject({
+            shelfId: id,
+            error: expect.stringContaining("Changelists changed. Reopen the selected changes."),
+        });
+        expect(results()[0].error).toContain(id);
+        expect(await read("first.txt")).toBe(working);
+        expect(await read("second.txt")).toBe(working);
+        expect(await index()).toEqual(indexBytes);
+        expect(await shelves.readCurrentShelfManifest(id)).toMatchObject({ generation: 1 });
+    });
+
     it("partial failure reports exact completed and retained paths and reconciles only completed paths", async () => {
         const original = PartialChanges.prototype.rollbackCaptured;
         vi.spyOn(PartialChanges.prototype, "rollbackCaptured").mockImplementation(async function (

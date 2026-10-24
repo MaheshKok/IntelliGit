@@ -1,8 +1,19 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GitExecutor } from "../../../src/git/executor";
-import { REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS } from "../../../src/git/repositoryMutationGate";
+import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
+import { GitOps } from "../../../src/git/operations";
+import { RepositoryLock } from "../../../src/git/repositoryLock";
+import {
+    REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS,
+    RepositoryMutationGate,
+} from "../../../src/git/repositoryMutationGate";
+import {
+    ShelfReverter,
+    ShelfRollbackRetainedError,
+    type RevertCheckpoint,
+} from "../../../src/shelf/recovery";
 import { GitExecutorRecoveryGit } from "../../../src/shelf/recoveryGit";
 import { cleanTemporaryRepositories, createShelfFixture, git } from "./shelfTestHarness";
 
@@ -20,6 +31,71 @@ async function holdIndexLock(root: string) {
 
 function isIndexWrite(args: readonly string[]) {
     return args[0] === "update-index" && args[1] === "-z";
+}
+
+/** Restages tracked.txt the way another Git process does: in its own index file, then renamed in. */
+async function stageForeignEntry(root: string, executor: GitExecutor, oid: string) {
+    const foreign = path.join(root, ".git", "foreign-index");
+    await copyFile(path.join(root, ".git", "index"), foreign);
+    await executor.runBinary(["update-index", "--cacheinfo", `100644,${oid},tracked.txt`], {
+        env: { GIT_INDEX_FILE: foreign },
+    });
+    await rename(foreign, path.join(root, ".git", "index"));
+}
+
+async function stagedEntry(root: string) {
+    return (await git(root, ["ls-files", "--stage", "--", "tracked.txt"])).toString("utf8");
+}
+
+/**
+ * Reverts a staged change while, from the `at` checkpoint on, another Git process holds
+ * index.lock. Right after the write under test is first refused, that process restages
+ * tracked.txt and releases the lock, so the first retry is the only attempt that can see the
+ * change before Git accepts the write.
+ */
+async function contendedReverter(at: RevertCheckpoint, interrupt = false) {
+    const f = await createShelfFixture();
+    await writeFile(path.join(f.root, "tracked.txt"), "local\n");
+    await git(f.root, ["add", "tracked.txt"]);
+    await f.store.withLock(() => f.store.migrateWithHeldLocks());
+    const foreignOid = (
+        await f.executor.runBinary(["hash-object", "-w", "--stdin"], {
+            input: Buffer.from("foreign\n"),
+        })
+    ).stdout
+        .toString("utf8")
+        .trim();
+    let release: (() => Promise<void>) | undefined;
+    let staged = false;
+    const runBinary = f.executor.runBinary.bind(f.executor);
+    vi.spyOn(f.executor, "runBinary").mockImplementation(async (args, options) => {
+        try {
+            return await runBinary(args, options);
+        } catch (error) {
+            if (release && !staged && isIndexWrite(args)) {
+                staged = true;
+                await stageForeignEntry(f.root, f.executor, foreignOid);
+                await release();
+            }
+            throw error;
+        }
+    });
+    const recoveryGit = new GitExecutorRecoveryGit(f.executor);
+    const reverter = new ShelfReverter({
+        repositoryRoot: f.root,
+        gitOps: new GitOps(f.executor),
+        gate: new RepositoryMutationGate(new RepositoryMutationCoordinator(), new RepositoryLock()),
+        store: f.store,
+        git: recoveryGit,
+        checkpoint: async (checkpoint) => {
+            if (checkpoint !== at) return;
+            release = await holdIndexLock(f.root);
+            if (interrupt) throw new Error(`interrupted at ${at}`);
+        },
+    });
+    const revert = () =>
+        reverter.revert({ transactionId: "contended", files: [{ relativePath: "tracked.txt" }] });
+    return { root: f.root, foreignOid, recoveryGit, revert };
 }
 
 describe("shelve save under a concurrent index.lock", () => {
@@ -53,6 +129,31 @@ describe("shelve save under a concurrent index.lock", () => {
         expect(saved.shelfId, "shelve succeeds once the lock is released").toBeDefined();
         expect(await readFile(path.join(f.root, "tracked.txt"), "utf8")).toBe("base\n");
         expect(spy.mock.calls.filter(([args]) => isIndexWrite(args)).length).toBeGreaterThan(1);
+    });
+
+    it("re-checks the index before retrying a restore write, keeping an entry staged meanwhile", async () => {
+        const { root, foreignOid, recoveryGit, revert } = await contendedReverter("base-written");
+        const write = vi.spyOn(recoveryGit, "writeIndexEntry");
+        await expect(revert(), "the restore refuses the restaged path").rejects.toThrow(
+            ShelfRollbackRetainedError,
+        );
+        await expect(
+            write.mock.results[0]?.value,
+            "the retried write stops at the index precondition",
+        ).rejects.toThrow("Index changed during the shelf recovery transaction.");
+        expect(await stagedEntry(root), "the other process's entry survives").toBe(
+            `100644 ${foreignOid} 0\ttracked.txt\n`,
+        );
+    });
+
+    it("re-checks a rolled-back path before retrying its index write, keeping an entry staged meanwhile", async () => {
+        const { root, foreignOid, revert } = await contendedReverter("index-updated", true);
+        await expect(revert(), "rollback retains the restaged path").rejects.toThrow(
+            ShelfRollbackRetainedError,
+        );
+        expect(await stagedEntry(root), "the other process's entry survives").toBe(
+            `100644 ${foreignOid} 0\ttracked.txt\n`,
+        );
     });
 
     it("fails with Git's own message once a held index.lock outlasts the bound", async () => {

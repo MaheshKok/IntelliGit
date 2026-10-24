@@ -38,6 +38,7 @@
     "command.rollback": "Cofnij",
     "command.jumpToSource": "Przejdź do źródła",
     "command.stashChanges": "Schowaj zmiany",
+    "command.fileSaveToShelf": "Zapisz cały plik na półce",
     "command.compareWithRevision": "Porównaj z wersją",
     "command.compareWithBranch": "Porównaj z gałęzią lub tagiem",
     "command.compareWithLocal": "Porównaj z lokalnym",

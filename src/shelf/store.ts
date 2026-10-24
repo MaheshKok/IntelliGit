@@ -1062,10 +1062,16 @@ export class ShelfStore {
                 await this.readableDirectory(this.shelfDirectory(shelfId)),
             )) {
                 const match = /^gen-([1-9]\d*)$/.exec(entry);
-                if (match)
-                    for (const hash of (await this.readManifest(shelfId, Number(match[1])))
-                        .objectHashes)
-                        reachable.add(hash);
+                if (!match) continue;
+                let manifest: ShelfManifest;
+                try {
+                    manifest = await this.readManifest(shelfId, Number(match[1]));
+                } catch (error) {
+                    // A crash between a generation's mkdir and its manifest write leaves it empty.
+                    if (isNotFound(error)) continue;
+                    throw error;
+                }
+                for (const hash of manifest.objectHashes) reachable.add(hash);
             }
             for (const journal of await this.readJournals()) {
                 for (const hash of journal.recoveryObjectHashes ?? []) reachable.add(hash);

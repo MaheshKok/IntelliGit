@@ -11,8 +11,10 @@ import {
     symlink,
     writeFile,
 } from "node:fs/promises";
-import { tmpdir, devNull } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { ABSENT_GIT_CONFIG_GLOBAL } from "../../helpers/gitConfigIsolation";
+import { POSIX_PERMISSIONS_ENFORCED } from "../../helpers/platformCapabilities";
 import { ChangelistPersistence } from "../../../src/changes/changelistPersistence";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { GitExecutor } from "../../../src/git/executor";
@@ -24,6 +26,7 @@ import {
     preflightUndoCommit,
 } from "../../../src/git/targetHistoryOperation";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { failNextLeaseRelease } from "../../helpers/leaseReleaseFailure";
 import { captureTargetNativeEvidence } from "../../../src/git/targetOperationRecovery";
 import {
     captureTargetHistoryReview,
@@ -236,7 +239,7 @@ async function fixture(
     const git = new GitExecutor(
         root,
         new RepositoryMutationGate(new RepositoryMutationCoordinator(), new RepositoryLock()),
-        { GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" },
+        { GIT_CONFIG_GLOBAL: ABSENT_GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM: "1" },
     );
     await git.run(["init", "-q"]);
     await git.run(["config", "user.name", "Fixture"]);
@@ -595,6 +598,8 @@ const structuralChange = async (root: string, git: GitExecutor) => {
     await git.run(["mv", "old", "renamed"]);
     await symlink("affected", path.join(root, "link"));
     await chmod(path.join(root, "tool"), 0o755);
+    // Windows runs with core.filemode=false, where chmod reaches neither the file nor Git.
+    await git.run(["update-index", "--chmod=+x", "tool"]);
 };
 const STRUCTURAL_PATHS = ["added", "gone", "link", "old", "renamed", "tool"];
 
@@ -627,12 +632,36 @@ it.each(["cherryPick", "revert"] as const)(
                 : { gone: "100644", old: "100644", tool: "100644" },
         );
         if (kind === "cherryPick") {
-            expect(await readlink(path.join(f.root, "link"))).toBe("affected");
-            expect((await lstat(path.join(f.root, "tool"))).mode & 0o111).not.toBe(0);
+            const link = path.join(f.root, "link");
+            // With core.symlinks=false (Windows CI) Git checks a link out as a plain file holding its target.
+            const symlinks = await f.git.run([
+                "config",
+                "--bool",
+                "--default",
+                "true",
+                "core.symlinks",
+            ]);
+            if (symlinks.trim() === "true")
+                expect(await readlink(link), "the link checks out pointing at its target").toBe(
+                    "affected",
+                );
+            else {
+                expect(
+                    (await lstat(link)).isFile(),
+                    "with core.symlinks=false the link checks out as a plain file",
+                ).toBe(true);
+                expect(
+                    await readFile(link, "utf8"),
+                    "the plain-file link holds exactly its target text",
+                ).toBe("affected");
+            }
+            if (POSIX_PERMISSIONS_ENFORCED)
+                expect((await lstat(path.join(f.root, "tool"))).mode & 0o111).not.toBe(0);
             expect(await readFile(path.join(f.root, "renamed"), "utf8")).toBe("renamed text\n");
         } else {
             expect(await readFile(path.join(f.root, "old"), "utf8")).toBe("renamed text\n");
-            expect((await lstat(path.join(f.root, "tool"))).mode & 0o111).toBe(0);
+            if (POSIX_PERMISSIONS_ENFORCED)
+                expect((await lstat(path.join(f.root, "tool"))).mode & 0o111).toBe(0);
         }
         const state = f.store.get(f.root);
         const destination = state.lists.find((list) => list.name === "Destination")!;
@@ -897,6 +926,41 @@ it("plain undo of a file that belongs to a list keeps its owner", async () => {
     expect(state.lists.some((list) => list.name === "Destination")).toBe(false);
 }, 30_000);
 
+it.each(["an empty commit", "a commit a later commit exactly reverses"] as const)(
+    "undo of %s falls back to the plain soft reset",
+    async (shape) => {
+        const f = await undoFixture();
+        if (shape === "an empty commit")
+            await f.git.run(["commit", "--allow-empty", "--only", "-qm", "empty"]);
+        else {
+            await writeFile(path.join(f.root, "affected"), "base\n");
+            await f.git.run(["commit", "--only", "-qm", "reverse", "--", "affected"]);
+        }
+        const head = (await f.git.run(["rev-parse", "HEAD"])).trim();
+        const commit = shape === "an empty commit" ? head : f.request.commit;
+        const parent = (await f.git.run(["rev-parse", `${commit}^`])).trim();
+        expect(await f.git.run(["diff", "--name-only", parent, head]), "precondition").toBe("");
+        const prior = structuredClone(f.store.get(f.root));
+        const calls = vi.spyOn(GitExecutor.prototype, "runBinary");
+        const request = { ...f.request, commit, head };
+        const refused = await applyTargetHistoryOperation(f.git, f.persistence, f.store, request);
+        expect(refused.outcome, "the targeted adapter alone still refuses").toBe("notApplied");
+        expect(refused.reason).toBe("The selected commit contains no changes.");
+        expect(resets(calls), "refused targeted undo must never reset").toHaveLength(0);
+        const route = await preflightUndoCommit(f.git, f.persistence, f.store, request);
+        expect(route, "no net change routes to the previous release's reset").toEqual({
+            route: "plainReset",
+            reason: "noChanges",
+        });
+        expect(resets(calls), "the plain undo soft-resets exactly once").toEqual([
+            ["reset", "--soft", parent],
+        ]);
+        expect((await f.git.run(["rev-parse", "HEAD"])).trim(), "the undo succeeded").toBe(parent);
+        expect(f.store.get(f.root), "no destination list or pending operation").toEqual(prior);
+    },
+    30_000,
+);
+
 it("a clean undo keeps the targeted path and changes nothing before the prompt", async () => {
     const f = await undoFixture();
     const paths = ["affected", "unrelated"];
@@ -935,6 +999,39 @@ it("a pending target operation blocks the plain undo before any reset", async ()
     expect(resets(calls), "a fenced undo must never reset").toHaveLength(0);
     expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(head);
     expect(f.store.get(f.root).pendingTargetOperation).toEqual(pending);
+}, 30_000);
+
+it("a failed lease release after the plain undo still reports the completed reset", async () => {
+    const f = await undoFixture();
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    const { failure, logged } = failNextLeaseRelease();
+    await expect(
+        preflightUndoCommit(f.git, f.persistence, f.store, f.request),
+        "a release failure must not replace the completed plain reset",
+    ).resolves.toEqual({ route: "plainReset", path: "affected", reason: "localChanges" });
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim(), "the soft reset moved HEAD").toBe(
+        f.parent,
+    );
+    expect(logged, "the release failure is logged, not lost").toHaveBeenCalledWith(
+        expect.any(String),
+        failure,
+    );
+}, 30_000);
+
+it("a failed lease release never replaces the plain undo's own error", async () => {
+    const f = await undoFixture();
+    const { failure, logged } = failNextLeaseRelease();
+    await expect(
+        preflightUndoCommit(f.git, f.persistence, f.store, {
+            commit: f.parent,
+            head: f.request.head,
+        }),
+        "the undo's own refusal surfaces, not the release failure",
+    ).rejects.toThrow("History action requires a commit parent.");
+    expect(logged, "the release failure is logged, not lost").toHaveBeenCalledWith(
+        expect.any(String),
+        failure,
+    );
 }, 30_000);
 
 it("metadata failure after soft reset never resets again", async () => {

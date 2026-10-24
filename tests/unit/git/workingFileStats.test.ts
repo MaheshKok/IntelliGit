@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -98,7 +98,7 @@ describe("viewport working-file statistics", () => {
         ]);
         expect(run).toHaveBeenCalledTimes(2);
         for (const [args] of run.mock.calls) {
-            expect(args[0]).toBe("--literal-pathspecs");
+            expect(args.slice(0, args.indexOf("diff"))).toContain("--literal-pathspecs");
             expect(args).toContain("-z");
             expect(args.slice(args.indexOf("--") + 1)).toEqual([":(glob)*.txt"]);
         }
@@ -133,6 +133,37 @@ describe("viewport working-file statistics", () => {
             deletions: 0,
             statsState: "ready",
         });
+    });
+
+    it("leaves the index bytes alone when a requested path is only stat-dirty", async () => {
+        const root = await mkdtemp(path.join(tmpdir(), "intelligit-working-stats-"));
+        directories.push(root);
+        await git(root, ["init"]);
+        await git(root, ["config", "--local", "user.name", "Test User"]);
+        await git(root, ["config", "--local", "user.email", "test@example.invalid"]);
+        await git(root, ["config", "--local", "user.useConfigOnly", "true"]);
+        const staged = path.join(root, "staged.txt");
+        await writeFile(staged, "base\n");
+        await git(root, ["add", "--", "staged.txt"]);
+        await git(root, ["commit", "-m", "base"]);
+        await writeFile(staged, "base\nstaged\n");
+        await git(root, ["add", "--", "staged.txt"]);
+
+        const gitOps = new GitOps(new GitExecutor(root));
+        const rows = await gitOps.getStatus({ withStats: false });
+        // Same bytes, new mtime: only the stat data the index caches is out of date.
+        const later = new Date(Date.now() + 60_000);
+        await utimes(staged, later, later);
+        const index = await readFile(path.join(root, ".git", "index"));
+        const result = await gitOps.getWorkingFileStats(rows, ["staged.txt"]);
+
+        expect(result).toMatchObject([
+            { path: "staged.txt", staged: true, additions: 1, deletions: 0, statsState: "ready" },
+        ]);
+        expect(
+            await readFile(path.join(root, ".git", "index")),
+            "a line-count read must not rewrite the index",
+        ).toEqual(index);
     });
 
     it("parses NUL-delimited names and rename destinations without decoding them", async () => {

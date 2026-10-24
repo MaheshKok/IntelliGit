@@ -24,8 +24,9 @@ vi.mock("../../../src/commands/changelistTarget", () => ({ pickChangelistTarget:
 
 import * as vscode from "vscode";
 import { mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
-import { devNull, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { ABSENT_GIT_CONFIG_GLOBAL } from "../../helpers/gitConfigIsolation";
 import {
     cherryPickToChangelist,
     revertToChangelist,
@@ -161,7 +162,7 @@ it("undoCommitRoute connects the captured root and runs the plain undo there", a
     const root = await realpath(await mkdtemp(path.join(tmpdir(), "undo-route-")));
     try {
         const executor = new GitExecutor(root, undefined, {
-            GIT_CONFIG_GLOBAL: devNull,
+            GIT_CONFIG_GLOBAL: ABSENT_GIT_CONFIG_GLOBAL,
             GIT_CONFIG_NOSYSTEM: "1",
         });
         await executor.run(["init", "-q"]);

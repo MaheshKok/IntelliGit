@@ -123,6 +123,54 @@ describe("replaceRegularWorktreeFile", () => {
         expect(await readdir(repositoryRoot)).toEqual(["tracked.txt"]);
     });
 
+    it("runs the last-look hook after the new bytes are written and before the swap", async () => {
+        const repositoryRoot = await createRoot();
+        const target = path.join(repositoryRoot, "tracked.txt");
+        await writeFile(target, "before\n");
+        const seen: { target: string; temporary: string[] }[] = [];
+
+        await replaceRegularWorktreeFile(
+            repositoryRoot,
+            "tracked.txt",
+            Buffer.from("after\n"),
+            async () => {
+                const siblings = (await readdir(repositoryRoot)).filter(
+                    (name) => name !== "tracked.txt",
+                );
+                seen.push({
+                    target: await readFile(target, "utf8"),
+                    temporary: await Promise.all(
+                        siblings.map((name) => readFile(path.join(repositoryRoot, name), "utf8")),
+                    ),
+                });
+            },
+        );
+
+        // A caller re-checks the target here, so it must run as late as possible: the new bytes
+        // already sit in the temporary and the target is still the user's file.
+        expect(seen).toEqual([{ target: "before\n", temporary: ["after\n"] }]);
+        expect(await readFile(target, "utf8")).toBe("after\n");
+    });
+
+    it("keeps the target and leaves no temporary when the last-look hook refuses", async () => {
+        const repositoryRoot = await createRoot();
+        const target = path.join(repositoryRoot, "tracked.txt");
+        await writeFile(target, "before\n");
+
+        await expect(
+            replaceRegularWorktreeFile(
+                repositoryRoot,
+                "tracked.txt",
+                Buffer.from("after\n"),
+                async () => {
+                    throw new Error("target changed");
+                },
+            ),
+        ).rejects.toThrow("target changed");
+        expect(await readFile(target, "utf8")).toBe("before\n");
+        expect(await readdir(repositoryRoot)).toEqual(["tracked.txt"]);
+    });
+
     it("refuses to create a file that does not already exist", async () => {
         const repositoryRoot = await createRoot();
 

@@ -35,7 +35,15 @@ export interface ShelfRecoveryGit {
     ): Promise<ShelfJournalIndexEntry | undefined>;
     getIndexEntry(relativePath: string): Promise<ShelfJournalIndexEntry | undefined>;
     readBlob(oid: string): Promise<Buffer>;
-    writeIndexEntry(relativePath: string, entry: ShelfJournalIndexEntry | undefined): Promise<void>;
+    /**
+     * `beforeRetry` runs before each retry of a write refused by a held index.lock; a rejection
+     * ends the write.
+     */
+    writeIndexEntry(
+        relativePath: string,
+        entry: ShelfJournalIndexEntry | undefined,
+        beforeRetry?: () => Promise<void>,
+    ): Promise<void>;
 }
 
 /** Default direct Git plumbing; callers already own the repository mutation gate. */
@@ -127,17 +135,23 @@ export class GitExecutorRecoveryGit implements ShelfRecoveryGit {
     async writeIndexEntry(
         relativePath: string,
         entry: ShelfJournalIndexEntry | undefined,
+        beforeRetry?: () => Promise<void>,
     ): Promise<void> {
         const record = entry
             ? `${assertMode(entry.mode)} ${assertOid(entry.oid)}\t${relativePath}\0`
             : `0 ${"0".repeat((await this.emptyTreeOid()).length)}\t${relativePath}\0`;
         // Another Git process (VS Code's own refresh) may hold index.lock briefly; Git takes the
-        // lock before writing anything, so the refused write is safe to repeat.
+        // lock before writing anything, so the refused write is safe to repeat. That process may
+        // also have changed the index meanwhile, so the caller re-checks before every repeat.
+        let attempted = false;
         await acquireWithBoundedWait(
-            () =>
-                this.executor.runBinary(["update-index", "-z", "--index-info"], {
+            async () => {
+                if (attempted) await beforeRetry?.();
+                attempted = true;
+                return this.executor.runBinary(["update-index", "-z", "--index-info"], {
                     input: Buffer.from(record),
-                }),
+                });
+            },
             {
                 timeoutMs: REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS,
                 retryDelayMs: 50,

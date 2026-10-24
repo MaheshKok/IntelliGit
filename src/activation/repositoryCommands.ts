@@ -878,7 +878,12 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
         }),
         vscode.commands.registerCommand("intelligit.fileSaveToShelf", async (ctx: unknown) => {
             try {
-                const resolved = await resolveFileCommandContext(ctx, gitOps);
+                const resolved = isFilePathContext(ctx)
+                    ? {
+                          repoRoot: captureContextRepositoryRoot(deps, ctx),
+                          repoRelativePath: assertRepoRelativePath(ctx.filePath),
+                      }
+                    : await resolveFileCommandContext(ctx, gitOps);
                 if (!resolved || !deps.saveWholeFileToShelf)
                     throw new Error(
                         "Save to Shelf is only available for a local file in a known repository.",

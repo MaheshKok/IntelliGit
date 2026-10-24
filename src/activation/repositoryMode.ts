@@ -146,8 +146,13 @@ export async function activateRepositoryMode(
         await Promise.all(
             repositories.map(async (repository) => {
                 const shelfExecutor = new GitExecutor(repository.root, mutationGate);
-                const directories = await new GitOps(shelfExecutor).getGitDirectories();
-                await changelists.connect(repository.root, directories.gitDir);
+                try {
+                    const directories = await new GitOps(shelfExecutor).getGitDirectories();
+                    await changelists.connect(repository.root, directories.gitDir);
+                } catch (error) {
+                    // Targeted operations refuse unconnected metadata; activation goes on.
+                    logShelfWarning(`changelists connect for ${repository.root}`, error);
+                }
                 const shelfPaths = await resolveShelfPaths({
                     repositoryRoot: repository.root,
                     globalStoragePath,

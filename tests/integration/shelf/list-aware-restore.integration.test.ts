@@ -18,6 +18,7 @@ import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate"
 import { ShelfService } from "../../../src/services/shelfService";
 import type { PerEntryResult } from "../../../src/services/shelfTargetRestore";
 import { connectedChangelists } from "../../helpers/connectedChangelists";
+import { withWindowsHeadroom } from "../../setup/platformTimeouts";
 import { cleanTemporaryRepositories, createShelfFixture, git } from "./shelfTestHarness";
 
 afterEach(async () => {
@@ -924,6 +925,66 @@ describe("targeted conflict continuation", () => {
         expect(await f.store.readCurrentShelfManifest(f.input.id)).toEqual(f.shelf);
     });
 
+    it("an edit saved while the resolution reads its evidence is never overwritten", async () => {
+        const f = await restoreFixture(true, true);
+        expect((await f.service.unshelve(f.input)).status).toBe("conflicted");
+        const session = await conflictSession(f);
+        const read = f.changelists.readTargetOperationOwnership.bind(f.changelists);
+        vi.spyOn(f.changelists, "readTargetOperationOwnership").mockImplementationOnce(
+            async (...args) => {
+                // The ownership read is the last await between the editor-fingerprint check and the replace.
+                await writeFile(path.join(f.root, "second.txt"), "saved during resolve\n");
+                return read(...args);
+            },
+        );
+        expect(await session.resolve("reviewed second\n")).toEqual({
+            status: "stale",
+            reason: "operation",
+        });
+        expect(
+            await readFile(path.join(f.root, "second.txt"), "utf8"),
+            "an edit saved after the fingerprint check must survive the resolution",
+        ).toBe("saved during resolve\n");
+        expect(f.changelists.get(f.root).pendingTargetOperation?.phase).toBe("conflicted");
+        expect(await f.store.readCurrentShelfManifest(f.input.id)).toEqual(f.shelf);
+    });
+
+    it("a swap refused for a late save never reports a write when the gate fails afterwards", async () => {
+        const f = await restoreFixture(true, true);
+        expect((await f.service.unshelve(f.input)).status).toBe("conflicted");
+        const gate = new RepositoryMutationGate(
+            new RepositoryMutationCoordinator(),
+            new RepositoryLock(),
+        );
+        const service = new ShelfService({
+            repositoryRoot: f.root,
+            executor: f.executor,
+            store: f.store,
+            changelists: f.changelists,
+            gate,
+        });
+        const session = await conflictSession(f, service);
+        const read = f.changelists.readTargetOperationOwnership.bind(f.changelists);
+        vi.spyOn(f.changelists, "readTargetOperationOwnership").mockImplementationOnce(
+            async (...args) => {
+                await writeFile(path.join(f.root, "second.txt"), "saved during resolve\n");
+                return read(...args);
+            },
+        );
+        const run = gate.run.bind(gate);
+        vi.spyOn(gate, "run").mockImplementationOnce((async (...args: Parameters<typeof run>) => {
+            await run(...args);
+            throw new Error("gate cleanup failed");
+        }) as typeof run);
+
+        // Not "applied, needs review": the refused swap wrote nothing.
+        await expect(session.resolve("reviewed second\n")).rejects.toThrow("gate cleanup failed");
+        expect(await readFile(path.join(f.root, "second.txt"), "utf8")).toBe(
+            "saved during resolve\n",
+        );
+        expect(f.changelists.get(f.root).pendingTargetOperation?.phase).toBe("conflicted");
+    });
+
     it("conflict restart keeps target, resolves once and never recopies the draft", async () => {
         const f = await restoreFixture(true, true);
         const input = await copySource(f);
@@ -1416,70 +1477,75 @@ it.each([
             }
         }
     },
-    // Two 20-file shelve and restore rounds take about 24 s alone, past the default under a full run.
-    120_000,
+    // Two 20-file shelve and restore rounds take about 24 s alone, past the default under a full run,
+    // and the Windows shard timed them out at 120 s, below its own 180 s floor.
+    withWindowsHeadroom(120_000),
 );
 
 // The observer pass after a shelve opens the first shelved file while VS Code's own `git status`
 // rewrites the index; a stale mark set there would follow the file into the next restore.
-it("an outside index stat refresh during the observer's capture of a shelved file leaves its restore applied", async () => {
-    const f = await restoreFixture();
-    const files = Array.from({ length: 20 }, (_, index) => `loop-${index + 1}.txt`);
-    for (const file of files) await writeFile(path.join(f.root, file), "committed\n");
-    await git(f.root, ["add", ...files]);
-    await git(f.root, ["commit", "-m", "loop fixture"]);
-    for (const file of files) {
-        await writeFile(path.join(f.root, file), `changed ${file}\n`);
-        const snapshot = await readPartialSnapshot(f.executor, f.root, file, "working");
-        await f.changelists.track(f.root, file, rangeSnapshot(snapshot));
-    }
-    await f.changelists.moveFiles(f.root, f.changelists.revision(f.root), f.d, files);
-    const saved = await f.service.shelve({
-        name: "Loop",
-        paths: files,
-        silent: true,
-        keepLocal: false,
-    });
-    const shelf = await f.store.readCurrentShelfManifest(saved.shelfId!);
-    // `ls-tree` runs after the capture reads the index and before it rechecks it.
-    const run = f.executor.run.bind(f.executor);
-    let refreshed = false;
-    const capture = vi.spyOn(f.executor, "run").mockImplementation(async (args, options) => {
-        const output = await run(args, options);
-        if (!refreshed && args.includes("ls-tree") && args.at(-1) === files[0]) {
-            refreshed = true;
-            await refreshIndexStat(f.root);
+it(
+    "an outside index stat refresh during the observer's capture of a shelved file leaves its restore applied",
+    async () => {
+        const f = await restoreFixture();
+        const files = Array.from({ length: 20 }, (_, index) => `loop-${index + 1}.txt`);
+        for (const file of files) await writeFile(path.join(f.root, file), "committed\n");
+        await git(f.root, ["add", ...files]);
+        await git(f.root, ["commit", "-m", "loop fixture"]);
+        for (const file of files) {
+            await writeFile(path.join(f.root, file), `changed ${file}\n`);
+            const snapshot = await readPartialSnapshot(f.executor, f.root, file, "working");
+            await f.changelists.track(f.root, file, rangeSnapshot(snapshot));
         }
-        return output;
-    });
-    await new ChangeRangeTracker(
-        f.root,
-        new PartialChanges(f.executor, f.root),
-        f.changelists,
-    ).reconcile(await new GitOps(f.executor).getStatus({ withStats: false }));
-    capture.mockRestore();
-    expect(refreshed, "the refresh lands inside the first shelved file's capture").toBe(true);
-    const stale = f.changelists.get(f.root).changes[files[0]]?.stale;
-    const result = await f.service.unshelve({
-        ...f.input,
-        id: saved.shelfId!,
-        expectedShelfGeneration: shelf.generation,
-        targetOperation: {
-            ...f.input.targetOperation,
-            target: {
-                ...f.input.targetOperation.target,
-                revision: f.changelists.revision(f.root),
+        await f.changelists.moveFiles(f.root, f.changelists.revision(f.root), f.d, files);
+        const saved = await f.service.shelve({
+            name: "Loop",
+            paths: files,
+            silent: true,
+            keepLocal: false,
+        });
+        const shelf = await f.store.readCurrentShelfManifest(saved.shelfId!);
+        // `ls-tree` runs after the capture reads the index and before it rechecks it.
+        const run = f.executor.run.bind(f.executor);
+        let refreshed = false;
+        const capture = vi.spyOn(f.executor, "run").mockImplementation(async (args, options) => {
+            const output = await run(args, options);
+            if (!refreshed && args.includes("ls-tree") && args.at(-1) === files[0]) {
+                refreshed = true;
+                await refreshIndexStat(f.root);
+            }
+            return output;
+        });
+        await new ChangeRangeTracker(
+            f.root,
+            new PartialChanges(f.executor, f.root),
+            f.changelists,
+        ).reconcile(await new GitOps(f.executor).getStatus({ withStats: false }));
+        capture.mockRestore();
+        expect(refreshed, "the refresh lands inside the first shelved file's capture").toBe(true);
+        const stale = f.changelists.get(f.root).changes[files[0]]?.stale;
+        const result = await f.service.unshelve({
+            ...f.input,
+            id: saved.shelfId!,
+            expectedShelfGeneration: shelf.generation,
+            targetOperation: {
+                ...f.input.targetOperation,
+                target: {
+                    ...f.input.targetOperation.target,
+                    revision: f.changelists.revision(f.root),
+                },
+                sourceChecksum: shelf.checksum,
             },
-            sourceChecksum: shelf.checksum,
-        },
-    });
-    expect(result.status, "restore after the observer pass the refresh raced").toBe("applied");
-    expect(stale, "a stat-only index rewrite during capture does not lose ownership").not.toBe(
-        true,
-    );
-    const state = f.changelists.get(f.root);
-    for (const file of files) {
-        expect(await readFile(path.join(f.root, file), "utf8")).toBe(`changed ${file}\n`);
-        expect(state.files[file], `owner of ${file}`).toBe(f.d);
-    }
-}, 120_000);
+        });
+        expect(result.status, "restore after the observer pass the refresh raced").toBe("applied");
+        expect(stale, "a stat-only index rewrite during capture does not lose ownership").not.toBe(
+            true,
+        );
+        const state = f.changelists.get(f.root);
+        for (const file of files) {
+            expect(await readFile(path.join(f.root, file), "utf8")).toBe(`changed ${file}\n`);
+            expect(state.files[file], `owner of ${file}`).toBe(f.d);
+        }
+    },
+    withWindowsHeadroom(120_000),
+);

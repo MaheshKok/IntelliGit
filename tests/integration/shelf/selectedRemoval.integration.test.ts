@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { chmod, lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { build } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PartialChanges } from "../../../src/git/partialChanges";
 import { GitExecutor } from "../../../src/git/executor";
@@ -16,7 +17,10 @@ import {
 import { ShelfStore } from "../../../src/shelf/store";
 import { resolveShelfPaths } from "../../../src/shelf/paths";
 import { changeIds } from "../../../src/changes/selection";
-import { POSIX_PERMISSIONS_ENFORCED } from "../../helpers/platformCapabilities";
+import {
+    FILENAMES_MAY_CONTAIN_RESERVED_CHARACTERS,
+    POSIX_PERMISSIONS_ENFORCED,
+} from "../../helpers/platformCapabilities";
 import { describeAbruptTermination } from "../../helpers/abruptTermination";
 import { cleanTemporaryRepositories, createShelfFixture, git } from "./shelfTestHarness";
 
@@ -188,7 +192,10 @@ describe("selected worktree removal", () => {
                 kept = kept.trimEnd();
             }
             if (kind === "unicode") {
-                name = "literal [é]*.txt";
+                // Without `*` on Windows, the `[é]` class still proves the name reaches Git literally.
+                name = FILENAMES_MAY_CONTAIN_RESERVED_CHARACTERS
+                    ? "literal [é]*.txt"
+                    : "literal [é].txt";
                 await git(f.root, ["mv", "tracked.txt", name]);
             }
             await writeFile(path.join(f.root, name), before);
@@ -314,6 +321,17 @@ describe("selected worktree removal restart", () => {
         "journal-committed",
     ])("recovers a real process crash at %s without changing index bytes", async (point) => {
         const f = await fixture();
+        // Run on Node, the runtime the extension ships on. Under Bun on Windows the worker's
+        // exclusive create of the restored file failed with ENOENT; the same write passes on Node.
+        const worker = path.join(f.root, ".git", "selected-removal-crash-worker.mjs");
+        await build({
+            entryPoints: [path.resolve("tests/integration/shelf/selectedRemovalCrashWorker.ts")],
+            outfile: worker,
+            bundle: true,
+            platform: "node",
+            format: "esm",
+            logLevel: "silent",
+        });
         const index = await readFile(path.join(f.root, ".git/index"));
         const outcome = await new Promise<{
             code: number | null;
@@ -321,16 +339,9 @@ describe("selected worktree removal restart", () => {
             stderr: string;
             pid: number;
         }>((resolve, reject) => {
-            const child = spawn(
-                "bun",
-                [
-                    "tests/integration/shelf/selectedRemovalCrashWorker.ts",
-                    f.root,
-                    f.storageRoot,
-                    point,
-                ],
-                { stdio: ["ignore", "ignore", "pipe"] },
-            );
+            const child = spawn(process.execPath, [worker, f.root, f.storageRoot, point], {
+                stdio: ["ignore", "ignore", "pipe"],
+            });
             const stderr: Buffer[] = [];
             child.stderr.on("data", (b: Buffer) => stderr.push(b));
             child.once("error", reject);
@@ -343,24 +354,32 @@ describe("selected worktree removal restart", () => {
                 }),
             );
         });
-        expect(describeAbruptTermination(outcome).abrupt, outcome.stderr).toBe(true);
+        const verdict = describeAbruptTermination(outcome);
+        expect(
+            verdict.abrupt,
+            `Crash worker did not die abruptly: ${verdict.reason}. stderr:\n${outcome.stderr}`,
+        ).toBe(true);
         expect(await readFile(path.join(f.root, ".git/index"))).toEqual(index);
-        // Expire only locks belonging to the killed fixture process, as in the existing crash suite.
+        // Expire the locks the killed fixture process was holding, as in the existing crash suite.
+        // A lock that is missing was never taken: the worker died before its checkpoint, which on
+        // Windows looks exactly like the kill, so only its stderr can say why.
         const paths = await resolveShelfPaths({
             repositoryRoot: f.root,
             globalStoragePath: f.storageRoot,
         });
         const repositoryLock = path.join(f.root, ".git", "intelligit", "repo.lock");
         for (const lock of [repositoryLock, path.join(paths.root, ".store-lock", "store.lock")]) {
+            let value: { pid: number; heartbeatAt: number };
             try {
-                const value = JSON.parse(await readFile(lock, "utf8"));
-                if (value.pid === outcome.pid) {
-                    value.heartbeatAt = 0;
-                    await writeFile(lock, JSON.stringify(value));
-                }
-            } catch {
-                /* Already released or not this lock format. */
+                value = JSON.parse(await readFile(lock, "utf8"));
+            } catch (error) {
+                throw new Error(
+                    `Crash worker likely exited before holding ${lock}: ${String(error)}\nstderr:\n${outcome.stderr}`,
+                );
             }
+            expect(value.pid, lock).toBe(outcome.pid);
+            value.heartbeatAt = 0;
+            await writeFile(lock, JSON.stringify(value));
         }
         const store = new ShelfStore(paths);
         const executor = new GitExecutor(f.root);

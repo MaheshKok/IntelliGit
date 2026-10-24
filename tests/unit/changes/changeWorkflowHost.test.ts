@@ -1885,7 +1885,7 @@ describe("root-bound selected-change host", () => {
         await vi.waitFor(() => expect(membership).toHaveBeenCalledTimes(6));
     });
 
-    it("prunes each range pass with the last refresh that joined it, not one queued behind it", async () => {
+    it("prunes each range pass once, with the newest refresh's files and epoch", async () => {
         let finishFirst!: () => void;
         let finishSecond!: () => void;
         const firstPass = new Promise<void>((resolve) => {
@@ -1922,12 +1922,88 @@ describe("root-bound selected-change host", () => {
         await Promise.all(refreshes);
         expect(
             membership.mock.calls.slice(3).map((call) => call[2]),
-            "each pass prunes with its own last refresh's epoch",
-        ).toEqual([201, 203]);
+            "each pass prunes once, with the newest refresh's epoch",
+        ).toEqual([203, 203]);
         expect(
             membership.mock.calls.slice(3).map((call) => call[1]),
-            "each pass prunes with its own last refresh's files",
-        ).toEqual([pathsOf(files), pathsOf(last)]);
+            "a running pass prunes with the newest refresh's files, even one queued behind it",
+        ).toEqual([pathsOf(last), pathsOf(last)]);
+    });
+
+    it("keeps a newer refresh's file in the list it was moved to through an earlier pass's prune", async () => {
+        let finishFirst!: () => void;
+        let finishSecond!: () => void;
+        const firstPass = new Promise<void>((resolve) => {
+            finishFirst = resolve;
+        });
+        const secondPass = new Promise<void>((resolve) => {
+            finishSecond = resolve;
+        });
+        const scan = vi
+            .spyOn(ChangeRangeTracker.prototype, "reconcile")
+            .mockReturnValueOnce(firstPass)
+            .mockReturnValue(secondPass);
+        const membership = vi.spyOn(store, "reconcileFiles");
+        const files = await gitOps.getStatus({ withStats: false });
+        const later = [...files, { ...files[0]!, path: "late.txt", status: "?" }];
+        const refreshes = [host.reconcile(files)];
+        await vi.waitFor(() => expect(scan).toHaveBeenCalledTimes(1));
+        // The later refresh joins the queued pass only after its own first pass listed the file.
+        refreshes.push(host.reconcile(later));
+        await vi.waitFor(() => expect(scan).toHaveBeenCalledTimes(2));
+        const made = await store.create(root, store.revision(root), "Later", "", false, [
+            "late.txt",
+        ]);
+        const list = made.lists.find((item) => item.name === "Later")!.id;
+        finishFirst();
+        await vi.waitFor(() => expect(membership).toHaveBeenCalledTimes(3));
+        await membership.mock.results[2]!.value;
+        expect(
+            store.get(root).files["late.txt"],
+            "a pass's prune keeps a newer refresh's file and its move",
+        ).toBe(list);
+        finishSecond();
+        await Promise.all(refreshes);
+        await host.settled();
+        expect(
+            store.get(root).files["late.txt"],
+            "the next pass must not hand the moved file to the active list",
+        ).toBe(list);
+    });
+
+    it("does not re-add a file a newer refresh dropped when an earlier pass prunes", async () => {
+        let finishFirst!: () => void;
+        let finishSecond!: () => void;
+        const firstPass = new Promise<void>((resolve) => {
+            finishFirst = resolve;
+        });
+        const secondPass = new Promise<void>((resolve) => {
+            finishSecond = resolve;
+        });
+        const scan = vi
+            .spyOn(ChangeRangeTracker.prototype, "reconcile")
+            .mockReturnValueOnce(firstPass)
+            .mockReturnValue(secondPass);
+        const membership = vi.spyOn(store, "reconcileFiles");
+        const files = await gitOps.getStatus({ withStats: false });
+        const earlier = [...files, { ...files[0]!, path: "gone.txt", status: "?" }];
+        const refreshes = [host.reconcile(earlier)];
+        await vi.waitFor(() => expect(scan).toHaveBeenCalledTimes(1));
+        refreshes.push(host.reconcile(files));
+        await vi.waitFor(() => expect(scan).toHaveBeenCalledTimes(2));
+        expect(store.get(root).files["gone.txt"], "the newer refresh removed the file").toBe(
+            undefined,
+        );
+        finishFirst();
+        await vi.waitFor(() => expect(membership).toHaveBeenCalledTimes(3));
+        await membership.mock.results[2]!.value;
+        expect(
+            store.get(root).files["gone.txt"],
+            "an earlier pass's prune must not re-add a file the newer refresh dropped",
+        ).toBe(undefined);
+        finishSecond();
+        await Promise.all(refreshes);
+        await host.settled();
     });
 
     it("reports a failed shared prune once, without rejecting the refreshes that joined it", async () => {

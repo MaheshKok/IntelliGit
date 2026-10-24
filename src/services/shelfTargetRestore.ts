@@ -777,11 +777,10 @@ class TargetShelfRestore {
         } catch {
             return false;
         }
-        if (
-            (await pathFingerprint(path.join(this.intent.root, file))) !==
-            resolution.expectedPathFingerprint
-        )
-            return false;
+        const unchanged = async () =>
+            (await pathFingerprint(path.join(this.intent.root, file))) ===
+            resolution.expectedPathFingerprint;
+        if (!(await unchanged())) return false;
         const chain = await this.persistence.loadTargetOperationEvidenceChain(pending.evidenceHash);
         const original = chain.root.evidence.paths.find((value) => value.path === file)?.state;
         if (original?.kind !== "regular") return false;
@@ -807,11 +806,23 @@ class TargetShelfRestore {
             [file],
         );
         this.durable = true;
-        await replaceRegularWorktreeFile(
-            this.intent.root,
-            file,
-            Buffer.from(resolution.content, "utf8"),
-        );
+        // A save during the reads above is refused as stale at the swap, like the check before them.
+        const edited = new Error("The conflicted file changed after review.");
+        try {
+            await replaceRegularWorktreeFile(
+                this.intent.root,
+                file,
+                Buffer.from(resolution.content, "utf8"),
+                async () => {
+                    if (!(await unchanged())) throw edited;
+                },
+            );
+        } catch (error) {
+            if (error !== edited) throw error;
+            // Nothing was written, so a failure on the way out must not report a durable write.
+            this.durable = false;
+            return false;
+        }
         const observed = await captureTargetNativeEvidence(
             this.deps.executor,
             this.persistence,

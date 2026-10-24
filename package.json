@@ -602,7 +602,7 @@
             },
             {
                 "command": "intelligit.fileSaveToShelf",
-                "title": "Save Whole File to Shelf",
+                "title": "%command.fileSaveToShelf%",
                 "category": "%intelligit%"
             },
             {

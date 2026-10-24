@@ -72,6 +72,7 @@
     "command.rollback": "Rollback",
     "command.jumpToSource": "Jump to Source",
     "command.stashChanges": "Stash Changes",
+    "command.fileSaveToShelf": "Save Whole File to Shelf",
     "command.addToVcs": "Add to VCS",
     "command.compareWithRevision": "Compare with Revision",
     "command.compareWithBranch": "Compare with Branch or Tag",

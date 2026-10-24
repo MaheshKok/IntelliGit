@@ -38,6 +38,7 @@
     "command.rollback": "Откатить",
     "command.jumpToSource": "Перейти к источнику",
     "command.stashChanges": "Спрятать изменения",
+    "command.fileSaveToShelf": "Сохранить весь файл на полке",
     "command.compareWithRevision": "Сравнить с ревизией",
     "command.compareWithBranch": "Сравнить с веткой или тегом",
     "command.compareWithLocal": "Сравнить с локальной версией",

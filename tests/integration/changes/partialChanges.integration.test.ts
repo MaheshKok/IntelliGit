@@ -22,6 +22,7 @@ import type {
     SelectedFileChanges,
 } from "../../../src/webviews/protocol/changeSelection";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { FILENAMES_MAY_CONTAIN_RESERVED_CHARACTERS } from "../../helpers/platformCapabilities";
 
 let root: string;
 let workflow: PartialChanges;
@@ -742,7 +743,11 @@ it("recovers whole-owned index publication without creating another commit", asy
 });
 
 describe("selected patch export", () => {
-    it.each(["text.txt", "literal [é]*.txt"])(
+    // Without `*` on Windows, the `[é]` class still proves the name reaches Git literally.
+    const literalName = FILENAMES_MAY_CONTAIN_RESERVED_CHARACTERS
+        ? "literal [é]*.txt"
+        : "literal [é].txt";
+    it.each(["text.txt", literalName])(
         "exports only selected lines for %s without changing repository state",
         async (file) => {
             if (file !== "text.txt") {
