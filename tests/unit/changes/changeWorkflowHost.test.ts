@@ -946,6 +946,86 @@ describe("selected shelf host operations", () => {
         },
     );
 
+    /** Opens the editor with a changed `other.txt` listed but not yet range-scanned. */
+    async function editorWithUnscannedFile() {
+        // Shelf storage lives outside real repositories; here a scan would list a saved shelf as new files.
+        await writeFile(path.join(root, ".git/info/exclude"), "shelf-storage/\n");
+        await writeFile(path.join(root, "other.txt"), "other\n");
+        git(["add", "--", "other.txt"]);
+        git(["commit", "-qm", "other"]);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
+        const editor = await selectedShelfEditor();
+        await writeFile(path.join(root, "other.txt"), "other edited\n");
+        await store.reconcileFiles(root, ["file.txt", "other.txt"]);
+        expect(store.get(root).changes["other.txt"], "the scan has not seen the edit").toBe(
+            undefined,
+        );
+        return editor;
+    }
+
+    it.each([
+        ["shelveSelection", "Remove Selected Changes"],
+        ["rollbackSelection", "Rollback Selected Changes"],
+    ] as const)(
+        "%s survives a range scan write landing during its confirmation",
+        async (type, action) => {
+            const editor = await editorWithUnscannedFile();
+            const revision = store.revision(root);
+            let duringRevision = 0;
+            vi.mocked(vscode.window.showWarningMessage).mockImplementationOnce(async () => {
+                await host.reconcile(await gitOps.getStatus({ withStats: false }));
+                await host.settled();
+                duringRevision = store.revision(root);
+                return action as never;
+            });
+            await editor.panel.receiveMessage({ type, selection: editor.selection });
+            expect(
+                editor.messages.filter((message) => message.type === "partialError"),
+                "a range scan observing another file must not refuse the selected operation",
+            ).toEqual([]);
+            expect(
+                duringRevision,
+                "a metadata write lands during the confirmation",
+            ).toBeGreaterThan(revision);
+            const ids = (await editor.shelves.listShelves()).shelfIds;
+            expect(ids).toHaveLength(1);
+            expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(
+                base.replace("line 80\n", "remaining\n"),
+            );
+            expect(editor.messages).toContainEqual(
+                expect.objectContaining({
+                    type: "partialOperationCompleted",
+                    removed: true,
+                    message: expect.stringContaining(ids[0]),
+                }),
+            );
+        },
+    );
+
+    it("rollback refuses a draft save landing during its confirmation and saves nothing", async () => {
+        const editor = await selectedShelfEditor();
+        vi.mocked(vscode.window.showWarningMessage).mockImplementationOnce(async () => {
+            await store.saveDraft(root, "default", "", "later draft");
+            return "Rollback Selected Changes" as never;
+        });
+        await editor.panel.receiveMessage({
+            type: "rollbackSelection",
+            selection: editor.selection,
+        });
+        expect(
+            (await editor.shelves.listShelves()).shelfIds,
+            "an intent change during the rollback confirmation must refuse its recovery save",
+        ).toEqual([]);
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        expect(editor.messages).toContainEqual(
+            expect.objectContaining({
+                type: "partialError",
+                message: expect.stringContaining("Changelists changed"),
+            }),
+        );
+    });
+
     it("save alone never calls removal and preserves exact source drafts and inclusion", async () => {
         const editor = await selectedShelfEditor();
         await store.saveDraft(root, "default", "", " exact source draft 名前\n");
