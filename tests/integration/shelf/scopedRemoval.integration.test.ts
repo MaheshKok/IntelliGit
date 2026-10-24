@@ -426,4 +426,19 @@ describe("scoped list removal", () => {
             generation: 1,
         });
     });
+
+    it("refuses a partial selection of a file absent from HEAD before any removal can start", async () => {
+        const f = await createShelfFixture({ initialFiles: { "first.txt": base } });
+        const added = path.join(f.root, "added.txt");
+        await writeFile(added, "staged line\n");
+        await git(f.root, ["add", "added.txt"]);
+        await writeFile(added, "staged line\nselected line\nkept line\n");
+        const index = await readFile(path.join(f.root, ".git/index"));
+        // Worktree removal reaches recovery only via a partial snapshot, which needs a HEAD blob.
+        await expect(new PartialChanges(f.executor, f.root).open("added.txt")).rejects.toThrow(
+            "Added, deleted, renamed and mode-changing files require whole-file handling.",
+        );
+        expect(await readFile(added, "utf8")).toBe("staged line\nselected line\nkept line\n");
+        expect(await readFile(path.join(f.root, ".git/index"))).toEqual(index);
+    });
 });
