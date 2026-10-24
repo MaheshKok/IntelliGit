@@ -86,6 +86,8 @@ export interface TargetOwnershipPublication extends TargetOperationObservation {
     readonly reviewedDraft?: { readonly kind: "keep"; readonly expectedDestinationDraft: string };
     /** The adapter's core.fileMode reading; false skips the disk executable bit, omitted compares it. */
     readonly trustExecutableBit?: boolean;
+    /** Whole-file paths the adapter found Git reads as clean through its filters; omitted means none. */
+    readonly gitCleanPaths?: readonly string[];
 }
 
 interface MetadataStorage {
@@ -519,6 +521,7 @@ function cleanWholeFileBefore(
     working: TargetPathState | undefined,
     index: TargetIndexEntry | undefined,
     trustExecutableBit: boolean,
+    gitClean: readonly string[],
 ): boolean {
     if (!captured || !captured.unowned || !working) return false;
     if (captured.head.kind === "absent") return !index && working.kind === "absent";
@@ -540,7 +543,7 @@ function cleanWholeFileBefore(
         (head.mode === "100644" || head.mode === "100755") &&
         working.kind === "regular" &&
         (!trustExecutableBit || working.executable === (head.mode === "100755")) &&
-        isDeepStrictEqual(working.content, head.object)
+        (isDeepStrictEqual(working.content, head.object) || gitClean.includes(captured.path))
     );
 }
 
@@ -550,6 +553,7 @@ function validWholeFileOwnership(
     before: TargetOperationEvidence,
     after: TargetOperationEvidence,
     trustExecutableBit: boolean,
+    gitClean: readonly string[],
 ): boolean {
     const captured = new Map(before.wholeFileBefore?.map((entry) => [entry.path, entry]));
     const beforePaths = new Map(before.paths.map((entry) => [entry.path, entry.state]));
@@ -572,6 +576,7 @@ function validWholeFileOwnership(
                     beforePaths.get(file),
                     index.get(file),
                     trustExecutableBit,
+                    gitClean,
                 ),
         );
     });
@@ -1291,6 +1296,7 @@ export class ChangelistStore {
                         before,
                         after,
                         captured.trustExecutableBit ?? true,
+                        captured.gitCleanPaths ?? [],
                     )
                 ) {
                     review();
