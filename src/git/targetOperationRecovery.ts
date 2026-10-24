@@ -762,9 +762,9 @@ async function settleSavedPublication(
 ): Promise<TargetIndexPublicationEvidence | undefined> {
     const candidate = path.join(persistence.gitDir, publication.candidate.path);
     await safeParent(persistence.gitDir, publication.candidate.path);
-    const candidateBytes = await readRegularBytes(candidate, publication.candidate.identity);
-    if (changeFingerprint(candidateBytes) !== publication.candidate.fingerprint)
-        throw new Error("Recovery candidate index changed.");
+    // A crash between the candidate rebuild and its checkpoint leaves newer candidate bytes, so only
+    // a claimed publication needs the saved candidate; a redirected one still refuses here.
+    await readRegularBytes(candidate);
     const currentBytes = await readFile(live);
     const lock = await lstat(lockPath, { bigint: true }).catch((error) => {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
@@ -777,6 +777,9 @@ async function settleSavedPublication(
         changeFingerprint(currentBytes) === publication.candidate.fingerprint &&
         publication.candidate.fingerprint !== publication.liveIndexFingerprint
     ) {
+        const candidateBytes = await readRegularBytes(candidate, publication.candidate.identity);
+        if (changeFingerprint(candidateBytes) !== publication.candidate.fingerprint)
+            throw new Error("Recovery candidate index changed.");
         const affected = new Set(before.paths.map((entry) => entry.path));
         const restored = (await readIndex(executor, candidate)).filter((entry) =>
             affected.has(entry.path),
