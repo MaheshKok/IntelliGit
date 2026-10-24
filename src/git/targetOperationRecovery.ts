@@ -800,8 +800,15 @@ async function settleSavedPublication(
         return { ...publication, state: "published" };
     }
     if (!lock) return undefined;
+    // A crash after filling our lock but before saving its new identity leaves the same file
+    // holding exactly the candidate bytes; a partial fill stays ambiguous.
+    const filled =
+        lock.isFile() &&
+        String(lock.dev) === publication.lock.identity.device &&
+        String(lock.ino) === publication.lock.identity.inode &&
+        changeFingerprint(await readFile(lockPath)) === publication.candidate.fingerprint;
     if (
-        !isDeepStrictEqual(identity(lock), publication.lock.identity) ||
+        !(filled || isDeepStrictEqual(identity(lock), publication.lock.identity)) ||
         !ownerDead(publication.lock.owner.pid)
     )
         throw new Error("Recovery index lock is busy or ambiguous.");

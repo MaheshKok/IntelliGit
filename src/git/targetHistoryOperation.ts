@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -88,8 +88,7 @@ export async function applyTargetHistoryOperation(
                 paths,
             );
             const captured = await captureTargetNativeEvidence(git, persistence, intent.id, paths);
-            for (const [file, snapshot] of snapshots)
-                assertSnapshotEvidence(snapshot, captured, file);
+            snapshots.forEach((snapshot, file) => assertSnapshotEvidence(snapshot, captured, file));
             if (captured.head !== intent.head || captured.native.some((entry) => entry.present))
                 return { id: intent.id, outcome: "stale" };
             const wholeFileBefore: TargetWholeFileBefore[] = [];
@@ -121,12 +120,35 @@ export async function applyTargetHistoryOperation(
                 return { id: intent.id, outcome: "appliedNeedsReview" };
             prepared = true;
             // Evidence publication performs I/O; external writers are not protected by our lease.
-            const immediate = await captureTargetNativeEvidence(git, persistence, intent.id, paths);
-            assertSameObservation(before, immediate);
+            // Another process moved HEAD before Undo's own move, which Git refuses: nothing applied.
+            const closeStale = async (
+                observed: TargetOperationEvidence,
+            ): Promise<TargetHistoryResult> => {
+                const current = await store.closeStaleTargetOperation(lease!, {
+                    id: intent.id,
+                    revision: store.inspectTargetOperationLease(persistence.root, lease!).revision,
+                    expectedPhase: "prepared",
+                    observedEvidenceHash: await persistence.storeTargetOperationEvidence(observed),
+                });
+                return {
+                    id: intent.id,
+                    outcome: current.pendingTargetOperation ? "appliedNeedsReview" : "stale",
+                };
+            };
             attempted = true;
             const expectedHead = intent.kind === "undoCommit" ? parent : intent.head;
-            const nativeError = await runHistoryCommand(run, intent, parent);
-            let actual = await captureTargetNativeEvidence(git, persistence, intent.id, paths);
+            const native = await observeNative(
+                git,
+                persistence,
+                run,
+                intent,
+                parent,
+                paths,
+                before,
+            );
+            const { nativeError } = native;
+            let actual = native.actual;
+            if (nativeError === false) return await closeStale(actual);
             if (sameObservation(before, actual)) {
                 const observedEvidenceHash = await persistence.storeTargetOperationEvidence(actual);
                 const current = store.inspectTargetOperationLease(persistence.root, lease!);
@@ -330,7 +352,7 @@ export async function preflightUndoCommit(
             const refusal = paths.length
                 ? wholeFileRefusal(captured, whole, await trustsExecutableBit(git))
                 : { reason: "noChanges" as const };
-            if (!refusal || !(await softResetFrom(git, request.head, parent)))
+            if (!refusal || !(await softResetFrom(git, persistence.gitDir, request.head, parent)))
                 return { route: "targeted" };
             return { route: "plainReset", ...refusal };
         });
@@ -351,10 +373,19 @@ export async function preflightUndoCommit(
  * `reset --soft` to `parent` that moves HEAD only while it still names `head`, so a commit another
  * Git process made after HEAD was read is never dropped from the branch. False means HEAD moved.
  */
-async function softResetFrom(git: GitExecutor, head: string, parent: string): Promise<boolean> {
-    // reset --soft refuses this too; the native evidence sees MERGE_HEAD but not unmerged stages.
-    if ((await git.run(["ls-files", "-u", "-z"])).length)
-        throw new Error("Cannot do a soft reset in the middle of a merge.");
+async function softResetFrom(
+    git: GitExecutor,
+    gitDir: string,
+    head: string,
+    parent: string,
+): Promise<boolean> {
+    // reset --soft refuses on unmerged stages or MERGE_HEAD, read just before the move as Git does.
+    const unmerged = (await git.run(["ls-files", "-u", "-z"])).length > 0;
+    const merging = await access(path.join(gitDir, "MERGE_HEAD")).then(
+        () => true,
+        () => false,
+    );
+    if (unmerged || merging) throw new Error("Cannot do a soft reset in the middle of a merge.");
     try {
         // One transaction, so ORIG_HEAD changes only together with HEAD.
         await git.runBinary(["update-ref", "-m", `reset: moving to ${parent}`, "--stdin"], {
@@ -368,24 +399,51 @@ async function softResetFrom(git: GitExecutor, head: string, parent: string): Pr
     }
 }
 
-/** Runs the one native mutation; a failure message is returned so evidence decides what changed. */
-async function runHistoryCommand(
+/**
+ * Runs the one native mutation between two evidence reads. False means Undo never moved HEAD:
+ * another process moved it after Undo captured it, which Git refuses before or during the move.
+ */
+async function observeNative(
+    git: GitExecutor,
+    persistence: ChangelistPersistence,
     run: (args: string[]) => Promise<string>,
     intent: TargetHistoryRequest,
     parent: string,
-): Promise<string | undefined> {
+    paths: readonly string[],
+    before: TargetOperationEvidence,
+): Promise<{ nativeError: string | undefined | false; actual: TargetOperationEvidence }> {
+    const immediate = await captureTargetNativeEvidence(git, persistence, intent.id, paths);
+    if (intent.kind === "undoCommit" && immediate.head !== before.head)
+        return { nativeError: false, actual: immediate };
+    assertSameObservation(before, immediate);
+    const nativeError = await runHistoryCommand(git, persistence.gitDir, run, intent, parent);
+    return {
+        nativeError,
+        actual: await captureTargetNativeEvidence(git, persistence, intent.id, paths),
+    };
+}
+
+/**
+ * Runs the one native mutation; a failure message is returned so evidence decides what changed.
+ * False means Undo's HEAD move was refused because HEAD no longer names the captured commit.
+ */
+async function runHistoryCommand(
+    git: GitExecutor,
+    gitDir: string,
+    run: (args: string[]) => Promise<string>,
+    intent: TargetHistoryRequest,
+    parent: string,
+): Promise<string | undefined | false> {
     const mainline = intent.mainline === undefined ? [] : ["--mainline", String(intent.mainline)];
     try {
-        await run(
-            intent.kind === "undoCommit"
-                ? ["reset", "--soft", parent]
-                : [
-                      intent.kind === "cherryPick" ? "cherry-pick" : "revert",
-                      "--no-commit",
-                      ...mainline,
-                      intent.commit,
-                  ],
-        );
+        if (intent.kind === "undoCommit")
+            return (await softResetFrom(git, gitDir, intent.head, parent)) ? undefined : false;
+        await run([
+            intent.kind === "cherryPick" ? "cherry-pick" : "revert",
+            "--no-commit",
+            ...mainline,
+            intent.commit,
+        ]);
         return undefined;
     } catch (error) {
         return error instanceof Error ? error.message : "Native history apply failed.";

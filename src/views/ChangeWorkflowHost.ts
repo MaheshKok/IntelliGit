@@ -91,6 +91,13 @@ function saveIntent(state: ChangelistState): string {
     ]);
 }
 
+/** A refresh's paths and epoch, plus each file's owner once its own membership write landed. */
+interface Observation {
+    readonly paths: readonly string[];
+    readonly epoch: number;
+    owners?: ReadonlyMap<string, string>;
+}
+
 /** Coordinates metadata and a captured-root Git service for one provider runtime. */
 export class ChangeWorkflowHost {
     private readonly store: ChangelistStore;
@@ -102,7 +109,7 @@ export class ChangeWorkflowHost {
     private connected?: Promise<void>;
     private retry?: Promise<void>;
     private prune?: { scan: Promise<void>; done: Promise<void> };
-    private latest?: { paths: readonly string[]; epoch: number };
+    private latest?: Observation;
     private readonly poll: ReturnType<typeof setInterval>;
     private lastRevision = -1;
     private lastPollError?: string;
@@ -265,8 +272,10 @@ export class ChangeWorkflowHost {
         const membership = this.busyDuring(() =>
             this.store.reconcileFiles(this.deps.root, paths, epoch),
         );
-        this.latest = { paths, epoch };
-        await membership;
+        const latest: Observation = { paths, epoch };
+        this.latest = latest;
+        // The state this write returned, not the store's: a later write is not this observation.
+        latest.owners = new Map(Object.entries((await membership).files));
         this.pruneAfter(this.tracker.reconcile(files, epoch));
     }
 
@@ -280,9 +289,10 @@ export class ChangeWorkflowHost {
         if (this.prune?.scan === scan) return;
         const done = scan
             .then(async () => {
-                const { paths, epoch } = this.latest!;
+                const { paths, epoch, owners } = this.latest!;
+                // Before the newest refresh's own membership lands, nothing it saw can be pruned.
                 await this.busyDuring(() =>
-                    this.store.reconcileFiles(this.deps.root, paths, epoch),
+                    this.store.reconcileFiles(this.deps.root, paths, epoch, owners ?? new Map()),
                 );
             })
             .catch((error: unknown) => this.retryAfterRefusal(error))
