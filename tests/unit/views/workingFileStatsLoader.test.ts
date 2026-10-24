@@ -1,8 +1,11 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
+import { GitExecutor } from "../../../src/git/executor";
+import { GitOps } from "../../../src/git/operations";
 import type { WorkingFile } from "../../../src/types";
 import { WorkingFileStatsLoader } from "../../../src/views/workingFileStatsLoader";
 import { mergeWorkingFileStats } from "../../../src/webviews/protocol/workingFileStats";
@@ -34,6 +37,55 @@ function repository() {
 }
 
 describe("WorkingFileStatsLoader", () => {
+    it("reads real Git counts for a stat-dirty unchanged file without rewriting the index", async () => {
+        const root = mkdtempSync(path.join(tmpdir(), "intelligit-stats-git-"));
+        onTestFinished(() => removeScratchDirectoriesSync(root));
+        const git = (...args: string[]) =>
+            execFileSync("git", args, { cwd: root, encoding: "utf8" });
+        git("init", "-q");
+        git("config", "user.name", "Stats");
+        git("config", "user.email", "stats@example.invalid");
+        git("config", "commit.gpgSign", "false");
+        writeFileSync(path.join(root, "same.txt"), "same\n");
+        writeFileSync(path.join(root, "changed.txt"), "one\n");
+        git("add", ".");
+        git("commit", "-qm", "base");
+        writeFileSync(path.join(root, "changed.txt"), "one\ntwo\n");
+        // Same bytes, later mtime: the index entry is stat-dirty while the content is unchanged.
+        writeFileSync(path.join(root, "same.txt"), "same\n");
+        const later = statSync(path.join(root, "same.txt")).mtimeMs / 1000 + 2;
+        utimesSync(path.join(root, "same.txt"), later, later);
+        const indexBefore = readFileSync(path.join(root, ".git", "index"));
+        const loader = new WorkingFileStatsLoader();
+        const files = loader.reset([pending("same.txt"), pending("changed.txt")]);
+        const deliver = vi.fn();
+
+        await loader.request(
+            files[0].statsRevision,
+            ["same.txt", "changed.txt"],
+            root,
+            new GitOps(new GitExecutor(root)),
+            deliver,
+        );
+
+        const delivered = deliver.mock.calls.flatMap(([reply]) => reply.files as WorkingFile[]);
+        expect(delivered.find((file) => file.path === "changed.txt")).toMatchObject({
+            additions: 1,
+            deletions: 0,
+            statsState: "ready",
+        });
+        expect(delivered.find((file) => file.path === "same.txt")).toMatchObject({
+            additions: 0,
+            deletions: 0,
+            statsState: "ready",
+        });
+        expect(
+            readFileSync(path.join(root, ".git", "index")),
+            "the statistics read leaves the index bytes untouched",
+        ).toEqual(indexBefore);
+        loader.dispose();
+    });
+
     it("every accepted visible path reaches ready or unavailable after backpressure", async () => {
         const loader = new WorkingFileStatsLoader();
         const files = loader.reset(
