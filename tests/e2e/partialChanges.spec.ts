@@ -220,6 +220,12 @@ test.describe("Selected changes and changelists", () => {
                     const originalEditor = page.locator(
                         ".monaco-diff-editor .editor.original .view-lines:visible",
                     );
+                    // A right-click straight from the modified side can build the menu from that
+                    // side's context (it then shows Stage Selected Ranges), so settle focus first.
+                    await originalEditor.click();
+                    await expect(
+                        page.locator(".monaco-diff-editor .editor.original .monaco-editor.focused"),
+                    ).toHaveCount(1);
                     await originalEditor.click({ button: "right" });
                     const originalSubmenu = page.getByRole("menuitem", {
                         name: "IntelliGit",
