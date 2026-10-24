@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Shelving whole files and then removing them is no longer refused with "Whole-file capture source changed before publication." when nothing about those files changed. A routine `git status` (which VS Code's Git extension runs on its own) or staging an unrelated file while the removal prompt is open no longer counts as a change; staging a new version of a shelved file still does.
 
+## [0.39.3] - 2026-10-24
+
+### Fixed
+
+- Where Git converts line endings (for example `core.autocrlf` on Windows), **Undo Commit…**, **Cherry-Pick to Changelist** and **Revert to Changelist** no longer treat an unchanged file as edited. Undo Commit now keeps the undone changes in the list you chose instead of falling back to a plain reset.
+- If another Git tool stages a change while a shelve, unshelve or rollback is waiting to update the index, IntelliGit now notices that change and stops instead of overwriting it.
+
 ## [0.39.2] - 2026-10-24
 
 ### Fixed
