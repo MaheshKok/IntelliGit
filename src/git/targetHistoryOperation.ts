@@ -371,8 +371,8 @@ export async function preflightUndoCommit(
 
 /**
  * `reset --soft` to `parent` that moves HEAD only while it still names `head`, so a commit another
- * Git process made after HEAD was read is never dropped from the branch. False means another
- * process moved HEAD somewhere other than `parent`.
+ * Git process made after HEAD was read is never dropped from the branch. False means Git finished
+ * and refused because another process moved HEAD somewhere other than `parent`.
  */
 async function softResetFrom(
     git: GitExecutor,
@@ -387,18 +387,22 @@ async function softResetFrom(
         () => false,
     );
     if (unmerged || merging) throw new Error("Cannot do a soft reset in the middle of a merge.");
-    try {
-        // One transaction, so ORIG_HEAD changes only together with HEAD.
-        await git.runBinary(["update-ref", "-m", `reset: moving to ${parent}`, "--stdin"], {
+    // One transaction, so ORIG_HEAD changes only together with HEAD. Only a Git that finished with
+    // 128 can have refused; a killed or failed run may have moved HEAD, so its error propagates.
+    const { exitCode, stderr } = await git.runBinary(
+        ["update-ref", "-m", `reset: moving to ${parent}`, "--stdin"],
+        {
             input: Buffer.from(`update HEAD ${parent} ${head}\nupdate ORIG_HEAD ${head}\n`),
-        });
-        return true;
-    } catch (error) {
-        const current = (await git.run(["rev-parse", "--verify", "HEAD"]).catch(() => head)).trim();
-        // HEAD at the parent may be this move, finished before Git was stopped: not a refusal.
-        if (current !== head && current !== parent) return false;
-        throw error;
-    }
+            expectedExitCodes: [0, 128],
+        },
+    );
+    if (exitCode === 0) return true;
+    const current = (await git.run(["rev-parse", "--verify", "HEAD"]).catch(() => head)).trim();
+    // HEAD at the parent may be this move, committed before the transaction failed: not a refusal.
+    if (current !== head && current !== parent) return false;
+    throw new Error(
+        `git update-ref -m exited with 128: ${stderr.toString("utf8").trim() || "(no stderr)"}`,
+    );
 }
 
 /**

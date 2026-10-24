@@ -816,6 +816,14 @@ async function settleSavedPublication(
         throw new Error("Recovery index lock is busy or ambiguous.");
     if (changeFingerprint(currentBytes) !== publication.liveIndexFingerprint)
         throw new Error("Live index changed during recovery.");
+    // The checks above awaited (the read waits for its handle to close), so look at the path once
+    // more right before deleting it.
+    const still = await lstat(lockPath, { bigint: true }).catch((error) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+        throw error;
+    });
+    if (!still || !isDeepStrictEqual(identity(still), identity(lock)))
+        throw new Error("Recovery index lock is busy or ambiguous.");
     await unlink(lockPath);
     await syncParent(lockPath);
     return undefined;
