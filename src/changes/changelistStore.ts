@@ -1576,6 +1576,60 @@ export class ChangelistStore {
         return shelfStore ? shelfStore.withLock(finish) : finish();
     }
 
+    /**
+     * Closes a prepared Undo Commit as stale when Git refused its HEAD move because another process
+     * moved HEAD first. Only a moved HEAD with every other observation unchanged closes; anything
+     * else goes to review.
+     */
+    async closeStaleTargetOperation(
+        lease: TargetOperationLease,
+        request: TargetOperationObservation,
+    ): Promise<ChangelistState> {
+        const root = this.targetOperationRoot(lease);
+        const captured = structuredClone(request);
+        return this.write(
+            root,
+            captured.revision,
+            async (state) => {
+                if (!state.pendingTargetOperation && state.targetOperationReceipts?.[captured.id])
+                    return;
+                const pending = requireTargetOperation(state, captured);
+                const persistence = this.durable.get(root)!;
+                const chain = await persistence.loadTargetOperationEvidenceChain(
+                    pending.evidenceHash,
+                );
+                const before = this.targetOperationBefore(pending, chain.root);
+                const observed = await persistence.loadTargetOperationEvidence(
+                    captured.observedEvidenceHash,
+                );
+                if (
+                    pending.kind !== "undoCommit" ||
+                    pending.phase !== "prepared" ||
+                    !before ||
+                    observed.head === before.head ||
+                    !sameTargetObservation(before, { ...observed, head: before.head }) ||
+                    !sameTargetObservation(before, chain.evidence)
+                ) {
+                    state.pendingTargetOperation = { ...pending, phase: "reviewRequired" };
+                    return;
+                }
+                this.removeUnchangedTargetDestination(state, pending);
+                state.targetOperationReceipts ??= {};
+                state.targetOperationReceipts[pending.id] = {
+                    version: 1,
+                    id: pending.id,
+                    requestHash: pending.requestHash,
+                    outcome: "stale",
+                    ...retainedReceiptEvidence(pending),
+                };
+                delete state.pendingTargetOperation;
+            },
+            true,
+            undefined,
+            lease,
+        );
+    }
+
     /** Reads concrete storage while its lock is held; missing/corrupt evidence preserves pending for review. */
     private async matchesTargetCompletionShelf(
         pending: TargetOperationRecord,
@@ -1932,11 +1986,16 @@ export class ChangelistStore {
         return persistence?.acquire();
     }
 
-    /** Assigns new files and prunes consumed records, retaining clean history for stash/undo restoration. */
+    /**
+     * Assigns new files and prunes consumed records, retaining clean history for stash/undo
+     * restoration. With `observed`, only a record still owned as observed is pruned, so another
+     * window's newer assignment survives an older pass.
+     */
     async reconcileFiles(
         root: string,
         paths: readonly string[],
         epoch?: number,
+        observed?: ReadonlyMap<string, string>,
     ): Promise<ChangelistState> {
         this.admitObserver(root, epoch);
         if (paths.length > MAX_FILES) throw new Error("Too many changelist files.");
@@ -1953,7 +2012,11 @@ export class ChangelistStore {
                         change &&
                         ownsNoLiveChange(change) &&
                         Object.keys(change.selections ?? {}).length === 0;
-                    if (!current.has(file) && (!change || consumed)) {
+                    if (
+                        !current.has(file) &&
+                        (!change || consumed) &&
+                        (!observed || observed.get(file) === state.files[file])
+                    ) {
                         delete state.files[file];
                         delete state.changes[file];
                     }

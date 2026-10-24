@@ -34,6 +34,7 @@ const cases: {
     crashOccurrence?: number;
     busy?: boolean;
     candidate?: "redirected" | "replaced";
+    lock?: "partial" | "replaced";
 }[] = [
     { kind: "cherry-pick", scenario: "normal" },
     { kind: "revert", scenario: "normal" },
@@ -63,6 +64,20 @@ const cases: {
         stop: "checkpoint:abortIndexPrepared",
         crashOccurrence: 3,
     },
+    {
+        kind: "cherry-pick",
+        scenario: "dead owner filled lock before its checkpoint",
+        stop: "evidence:abortIndexPrepared",
+        crashOccurrence: 3,
+    },
+    ...(["partial", "replaced"] as const).map((lock) => ({
+        kind: "cherry-pick" as const,
+        scenario: `dead owner ${lock} filled lock stays busy`,
+        stop: "evidence:abortIndexPrepared",
+        crashOccurrence: 3,
+        busy: true,
+        lock,
+    })),
     {
         kind: "cherry-pick",
         scenario: "dead owner published index",
@@ -142,7 +157,7 @@ const cases: {
 
 it.each(cases)(
     "aborts $kind $scenario preserving affected stages, unrelated layers and HEAD",
-    async ({ kind, scenario, stop, crashOccurrence, busy, candidate }) => {
+    async ({ kind, scenario, stop, crashOccurrence, busy, candidate, lock }) => {
         const root = await realpath(await mkdtemp(path.join(tmpdir(), "target-native-")));
         roots.push(root);
         const git = new GitExecutor(root);
@@ -380,6 +395,7 @@ it.each(cases)(
                     crashOccurrence,
                     busy ?? false,
                     candidate,
+                    lock,
                 ));
                 if (busy) return;
             } else if (stop) {

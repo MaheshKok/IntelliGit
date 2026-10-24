@@ -15,8 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.39.0] - 2026-10-17
 
-This release delivers the changelist shelf and history phase. Phase 3B drag-and-drop work, amend with changelists and Phase 5 remain planned.
-
 ### Added
 
 - Save a whole changelist or selected whole files to a shelf, with **Save and Remove…** and **Rollback…** next to it. Removal first shows exactly what was captured, removes only those changes, and always keeps the shelf; rollback also keeps a "Before rollback" shelf so you can bring the changes back.

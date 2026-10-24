@@ -1811,7 +1811,9 @@ describe("root-bound selected-change host", () => {
         });
         // Every refresh during a running pass shares one queued pass, as the real tracker does.
         const scan = vi.spyOn(ChangeRangeTracker.prototype, "reconcile").mockReturnValue(pass);
-        const membership = vi.spyOn(store, "reconcileFiles").mockResolvedValue(undefined);
+        const membership = vi
+            .spyOn(store, "reconcileFiles")
+            .mockImplementation(async () => store.get(root));
         let epoch = 100;
         vi.spyOn(store, "observerEpoch").mockImplementation(() => ++epoch);
         const status = await gitOps.getStatus({ withStats: false });
@@ -1854,7 +1856,9 @@ describe("root-bound selected-change host", () => {
             finishPass = resolve;
         });
         const scan = vi.spyOn(ChangeRangeTracker.prototype, "reconcile").mockReturnValue(pass);
-        const membership = vi.spyOn(store, "reconcileFiles").mockResolvedValue(undefined);
+        const membership = vi
+            .spyOn(store, "reconcileFiles")
+            .mockImplementation(async () => store.get(root));
         const status = await gitOps.getStatus({ withStats: false });
         const held: WeakRef<object>[] = [];
         // Like the commit panel, each caller's error handler shares a scope that holds its files.
@@ -1899,7 +1903,9 @@ describe("root-bound selected-change host", () => {
             .spyOn(ChangeRangeTracker.prototype, "reconcile")
             .mockReturnValueOnce(firstPass)
             .mockReturnValue(secondPass);
-        const membership = vi.spyOn(store, "reconcileFiles").mockResolvedValue(undefined);
+        const membership = vi
+            .spyOn(store, "reconcileFiles")
+            .mockImplementation(async () => store.get(root));
         let epoch = 200;
         vi.spyOn(store, "observerEpoch").mockImplementation(() => ++epoch);
         const files = await gitOps.getStatus({ withStats: false });
@@ -1968,6 +1974,113 @@ describe("root-bound selected-change host", () => {
         expect(
             store.get(root).files["late.txt"],
             "the next pass must not hand the moved file to the active list",
+        ).toBe(list);
+    });
+
+    it("keeps another window's newer file in the list it was moved to through this pass's prune", async () => {
+        let finishPass!: () => void;
+        const pass = new Promise<void>((resolve) => {
+            finishPass = resolve;
+        });
+        vi.spyOn(ChangeRangeTracker.prototype, "reconcile").mockReturnValueOnce(pass);
+        const membership = vi.spyOn(store, "reconcileFiles");
+        const files = await gitOps.getStatus({ withStats: false });
+        const refresh = host.reconcile(files);
+        await vi.waitFor(() => expect(membership).toHaveBeenCalledOnce());
+        await membership.mock.results[0]!.value;
+        // A second window on this worktree lists a new file, and the user moves it there.
+        await store.reconcileFiles(root, [...files.map((file) => file.path), "other-window.txt"]);
+        const made = await store.create(root, store.revision(root), "Other window", "", false, [
+            "other-window.txt",
+        ]);
+        const list = made.lists.find((item) => item.name === "Other window")!.id;
+        finishPass();
+        await refresh;
+        await host.settled();
+        expect(membership, "precondition: this window's pass pruned").toHaveBeenCalledTimes(3);
+        expect(
+            store.get(root).files["other-window.txt"],
+            "a pass's prune keeps a file this window never observed, and its move",
+        ).toBe(list);
+    });
+
+    it("prunes nothing before the newest refresh's own membership write lands", async () => {
+        let finishPass!: () => void;
+        let finishWrite!: () => void;
+        const pass = new Promise<void>((resolve) => {
+            finishPass = resolve;
+        });
+        const writing = new Promise<void>((resolve) => {
+            finishWrite = resolve;
+        });
+        const scan = vi
+            .spyOn(ChangeRangeTracker.prototype, "reconcile")
+            .mockReturnValueOnce(pass)
+            .mockResolvedValue(undefined);
+        const reconcile = store.reconcileFiles.bind(store);
+        const membership = vi.spyOn(store, "reconcileFiles");
+        const files = await gitOps.getStatus({ withStats: false });
+        const first = host.reconcile(files);
+        await vi.waitFor(() => expect(scan).toHaveBeenCalledOnce());
+        await store.reconcileFiles(root, [...files.map((file) => file.path), "other-window.txt"]);
+        const made = await store.create(root, store.revision(root), "Other window", "", false, [
+            "other-window.txt",
+        ]);
+        const list = made.lists.find((item) => item.name === "Other window")!.id;
+        // A newer refresh from before that file holds its own membership write.
+        membership.mockImplementationOnce(async (...args: Parameters<typeof reconcile>) => {
+            await writing;
+            return reconcile(...args);
+        });
+        const second = host.reconcile(files);
+        await vi.waitFor(() => expect(membership).toHaveBeenCalledTimes(3));
+        finishPass();
+        await vi.waitFor(() => expect(membership).toHaveBeenCalledTimes(4));
+        await membership.mock.results[3]!.value;
+        expect(
+            store.get(root).files["other-window.txt"],
+            "a prune before the newest refresh's membership lands must not prune unfenced",
+        ).toBe(list);
+        finishWrite();
+        await Promise.all([first, second]);
+        await host.settled();
+    });
+
+    it("fences the prune with the owners its own membership write returned", async () => {
+        let finishPass!: () => void;
+        const pass = new Promise<void>((resolve) => {
+            finishPass = resolve;
+        });
+        vi.spyOn(ChangeRangeTracker.prototype, "reconcile").mockReturnValueOnce(pass);
+        const reconcile = store.reconcileFiles.bind(store);
+        const files = await gitOps.getStatus({ withStats: false });
+        let list = "";
+        // Another window's move lands after this window's write, before the host resumes.
+        const membership = vi
+            .spyOn(store, "reconcileFiles")
+            .mockImplementationOnce(async (...args: Parameters<typeof reconcile>) => {
+                const state = await reconcile(...args);
+                await reconcile(root, [...files.map((file) => file.path), "other-window.txt"]);
+                const made = await store.create(
+                    root,
+                    store.revision(root),
+                    "Other window",
+                    "",
+                    false,
+                    ["other-window.txt"],
+                );
+                list = made.lists.find((item) => item.name === "Other window")!.id;
+                return state;
+            });
+        const refresh = host.reconcile(files);
+        await vi.waitFor(() => expect(list).not.toBe(""));
+        finishPass();
+        await refresh;
+        await host.settled();
+        expect(membership, "precondition: this window's pass pruned").toHaveBeenCalledTimes(2);
+        expect(
+            store.get(root).files["other-window.txt"],
+            "a move landing after this window's write is not this window's observation",
         ).toBe(list);
     });
 
@@ -2087,7 +2200,9 @@ describe("root-bound selected-change host", () => {
             finishPass = resolve;
         });
         vi.spyOn(ChangeRangeTracker.prototype, "reconcile").mockReturnValue(pass);
-        const membership = vi.spyOn(store, "reconcileFiles").mockResolvedValue(undefined);
+        const membership = vi
+            .spyOn(store, "reconcileFiles")
+            .mockImplementation(async () => store.get(root));
         const files = await gitOps.getStatus({ withStats: false });
         const refreshes = [host.reconcile(files), host.reconcile(files)];
         await vi.waitFor(() => expect(membership).toHaveBeenCalledTimes(2));
@@ -2129,7 +2244,9 @@ describe("root-bound selected-change host", () => {
             finishPrune = resolve;
         });
         vi.spyOn(ChangeRangeTracker.prototype, "reconcile").mockReturnValue(pass);
-        const membership = vi.spyOn(store, "reconcileFiles").mockResolvedValue(undefined);
+        const membership = vi
+            .spyOn(store, "reconcileFiles")
+            .mockImplementation(async () => store.get(root));
         const files = await gitOps.getStatus({ withStats: false });
         const refreshes = [host.reconcile(files), host.reconcile(files)];
         await vi.waitFor(() => expect(membership).toHaveBeenCalledTimes(2));

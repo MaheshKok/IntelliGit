@@ -205,6 +205,22 @@ describe("worktree changelist metadata", () => {
         expect(state.files["one.txt"]).toBe(state.activeId);
     });
 
+    it("prunes only records still owned as observed", async () => {
+        const store = new ChangelistStore();
+        let state = await store.create("/one", 0, "Feature");
+        const feature = state.lists[1].id;
+        state = await store.reconcileFiles("/one", ["unchanged.txt", "moved.txt"]);
+        const observed = new Map(Object.entries(state.files));
+        state = await store.moveFiles("/one", state.revision, feature, ["moved.txt"]);
+        state = await store.reconcileFiles("/one", [], undefined, observed);
+        expect(state.files["unchanged.txt"], "a record still owned as observed is pruned").toBe(
+            undefined,
+        );
+        expect(state.files["moved.txt"], "a record moved since it was observed survives").toBe(
+            feature,
+        );
+    });
+
     it("marks per-line ownership stale after content changes and requires explicit review", async () => {
         const store = new ChangelistStore();
         let state = await store.reconcileFiles("/one", ["one.txt"]);
