@@ -31,7 +31,11 @@ import {
     type PartialFileSnapshot,
 } from "./partialSnapshot";
 import { RepositoryLockBusyError } from "./repositoryLock";
-import { captureTargetNativeEvidence, trustsExecutableBit } from "./targetOperationRecovery";
+import {
+    captureTargetNativeEvidence,
+    gitCleanWholeFiles,
+    trustsExecutableBit,
+} from "./targetOperationRecovery";
 
 /**
  * Captured history intent belongs to one immutable commit, HEAD and target revision. For
@@ -95,7 +99,17 @@ export async function applyTargetHistoryOperation(
             for (const file of paths.filter((candidate) => whole.has(candidate)))
                 wholeFileBefore.push(await wholeBefore(git, persistence, state, file, intent.head));
             const trustExecutableBit = await trustsExecutableBit(git);
-            assertAdmitted(captured, [...snapshots.keys()], wholeFileBefore, trustExecutableBit);
+            const gitCleanPaths = await gitCleanWholeFiles(git, persistence, {
+                paths: captured.paths,
+                wholeFileBefore,
+            });
+            assertAdmitted(
+                captured,
+                [...snapshots.keys()],
+                wholeFileBefore,
+                trustExecutableBit,
+                gitCleanPaths,
+            );
             const before: TargetOperationEvidence = {
                 ...captured,
                 ...(wholeFileBefore.length ? { wholeFileBefore } : {}),
@@ -263,6 +277,7 @@ export async function applyTargetHistoryOperation(
                 expectedPhase: "gitApplied",
                 observedEvidenceHash: await observe(),
                 trustExecutableBit,
+                gitCleanPaths,
             });
             if (current.pendingTargetOperation?.phase !== "ownershipPublished")
                 return { id: intent.id, outcome: "appliedNeedsReview" };
@@ -350,7 +365,15 @@ export async function preflightUndoCommit(
             for (const file of paths)
                 whole.push(await wholeBefore(git, persistence, state, file, request.head));
             const refusal = paths.length
-                ? wholeFileRefusal(captured, whole, await trustsExecutableBit(git))
+                ? wholeFileRefusal(
+                      captured,
+                      whole,
+                      await trustsExecutableBit(git),
+                      await gitCleanWholeFiles(git, persistence, {
+                          paths: captured.paths,
+                          wholeFileBefore: whole,
+                      }),
+                  )
                 : { reason: "noChanges" as const };
             if (!refusal || !(await softResetFrom(git, persistence.gitDir, request.head, parent)))
                 return { route: "targeted" };
@@ -608,13 +631,14 @@ function assertAdmitted(
     text: readonly string[],
     whole: readonly TargetWholeFileBefore[],
     trustExecutableBit: boolean,
+    gitClean: readonly string[],
 ): void {
     for (const file of text) {
         const index = evidence.index.filter((entry) => entry.path === file);
         if (index.length !== 1 || !plainIndexEntry(index[0]))
             throw new Error(`"${file}" has an unsupported index entry for this history action.`);
     }
-    const refusal = wholeFileRefusal(evidence, whole, trustExecutableBit);
+    const refusal = wholeFileRefusal(evidence, whole, trustExecutableBit, gitClean);
     if (refusal?.reason === "owned")
         throw new Error(
             `"${refusal.path}" already belongs to a changelist. Added, deleted, renamed, linked or re-moded files must be unassigned and clean.`,
@@ -634,6 +658,7 @@ function wholeFileRefusal(
     evidence: TargetOperationEvidence,
     whole: readonly TargetWholeFileBefore[],
     trustExecutableBit: boolean,
+    gitClean: readonly string[],
 ): WholeFileRefusal | undefined {
     for (const captured of whole) {
         const file = captured.path;
@@ -654,7 +679,8 @@ function wholeFileRefusal(
                         isDeepStrictEqual(working.target, head.object)
                       : working?.kind === "regular" &&
                         (!trustExecutableBit || working.executable === (head.mode === "100755")) &&
-                        isDeepStrictEqual(working.content, head.object));
+                        (isDeepStrictEqual(working.content, head.object) ||
+                            gitClean.includes(file)));
         if (!clean) return { path: file, reason: "localChanges" };
     }
     return undefined;

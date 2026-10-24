@@ -48,6 +48,40 @@ export async function trustsExecutableBit(executor: GitExecutor): Promise<boolea
     return value.trim() === "true";
 }
 
+/**
+ * Whole-file paths whose captured disk bytes differ from HEAD's blob yet hash to it through Git's
+ * own filters (core.autocrlf, eol and filter attributes), so Git reads them as clean.
+ */
+export async function gitCleanWholeFiles(
+    executor: GitExecutor,
+    persistence: ChangelistPersistence,
+    evidence: Pick<TargetOperationEvidence, "paths" | "wholeFileBefore">,
+): Promise<string[]> {
+    const clean: string[] = [];
+    for (const before of evidence.wholeFileBefore ?? []) {
+        const working = evidence.paths.find((entry) => entry.path === before.path)?.state;
+        if (before.head.kind !== "present" || before.head.mode === "120000") continue;
+        if (working?.kind !== "regular" || isDeepStrictEqual(working.content, before.head.object))
+            continue;
+        // Git reports a failed filter or encoding on stderr, exiting 128 (a required clean filter
+        // failed, e.g. git-lfs missing) or 0 (it then hashes the raw bytes, which can match HEAD):
+        // the path stays not clean, so callers refuse or take the plain route instead of failing.
+        const filtered = await executor.runBinary(
+            ["hash-object", `--path=${before.path}`, "--stdin"],
+            {
+                input: await persistence.loadTargetOperationObject(working.content),
+                expectedExitCodes: [0, 128],
+            },
+        );
+        if (
+            filtered.stderr.length === 0 &&
+            filtered.stdout.toString("utf8").trim() === before.head.oid
+        )
+            clean.push(before.path);
+    }
+    return clean;
+}
+
 /** Capture exact affected bytes and index stages; callers durably publish before mutating Git. */
 export async function captureTargetNativeEvidence(
     executor: GitExecutor,

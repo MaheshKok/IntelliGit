@@ -15,6 +15,7 @@ import type { GitExecutor } from "./executor";
 import {
     abortTargetNativeOperation,
     captureTargetNativeEvidence,
+    gitCleanWholeFiles,
     trustsExecutableBit,
 } from "./targetOperationRecovery";
 import {
@@ -196,6 +197,9 @@ export async function continueReviewedTargetHistoryOperation(
                     expectedPhase: "gitApplied",
                     observedEvidenceHash: await observe(),
                     trustExecutableBit,
+                    // Re-derived under today's attributes, so a resumed operation whose commit
+                    // changed .gitattributes can land in review instead of owning the file.
+                    gitCleanPaths: await gitCleanWholeFiles(git, persistence, chain.root.evidence),
                 });
                 pending = state.pendingTargetOperation!;
             }

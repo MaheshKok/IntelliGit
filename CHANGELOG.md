@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Shelve and Rollback on selected changes no longer fail with "Changelists changed. Reopen the selected changes." when the background line-count scan updates another file while the confirmation is open. They still refuse when a changelist, its files or its commit draft really changed in the meantime.
 
+## [0.39.3] - 2026-10-24
+
+### Fixed
+
+- Where Git converts line endings (for example `core.autocrlf` on Windows), **Undo Commit…**, **Cherry-Pick to Changelist** and **Revert to Changelist** no longer treat an unchanged file as edited. Undo Commit now keeps the undone changes in the list you chose instead of falling back to a plain reset.
+- If another Git tool stages a change while a shelve, unshelve or rollback is waiting to update the index, IntelliGit now notices that change and stops instead of overwriting it.
+
 ## [0.39.2] - 2026-10-24
 
 ### Fixed
