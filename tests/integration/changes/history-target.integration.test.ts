@@ -26,6 +26,7 @@ import {
     preflightUndoCommit,
 } from "../../../src/git/targetHistoryOperation";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { failNextLeaseRelease } from "../../helpers/leaseReleaseFailure";
 import { captureTargetNativeEvidence } from "../../../src/git/targetOperationRecovery";
 import {
     captureTargetHistoryReview,
@@ -976,6 +977,39 @@ it("a pending target operation blocks the plain undo before any reset", async ()
     expect(resets(calls), "a fenced undo must never reset").toHaveLength(0);
     expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(head);
     expect(f.store.get(f.root).pendingTargetOperation).toEqual(pending);
+}, 30_000);
+
+it("a failed lease release after the plain undo still reports the completed reset", async () => {
+    const f = await undoFixture();
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    const { failure, logged } = failNextLeaseRelease();
+    await expect(
+        preflightUndoCommit(f.git, f.persistence, f.store, f.request),
+        "a release failure must not replace the completed plain reset",
+    ).resolves.toEqual({ route: "plainReset", path: "affected", reason: "localChanges" });
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim(), "the soft reset moved HEAD").toBe(
+        f.parent,
+    );
+    expect(logged, "the release failure is logged, not lost").toHaveBeenCalledWith(
+        expect.any(String),
+        failure,
+    );
+}, 30_000);
+
+it("a failed lease release never replaces the plain undo's own error", async () => {
+    const f = await undoFixture();
+    const { failure, logged } = failNextLeaseRelease();
+    await expect(
+        preflightUndoCommit(f.git, f.persistence, f.store, {
+            commit: f.parent,
+            head: f.request.head,
+        }),
+        "the undo's own refusal surfaces, not the release failure",
+    ).rejects.toThrow("History action requires a commit parent.");
+    expect(logged, "the release failure is logged, not lost").toHaveBeenCalledWith(
+        expect.any(String),
+        failure,
+    );
 }, 30_000);
 
 it("metadata failure after soft reset never resets again", async () => {

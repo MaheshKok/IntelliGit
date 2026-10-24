@@ -5,21 +5,23 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GitExecutor } from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
 import { resolveShelfPaths } from "../../../src/shelf/paths";
-import { ShelfStore } from "../../../src/shelf/store";
+import { ShelfMutationAdmissionError, ShelfStore } from "../../../src/shelf/store";
 import { ShelfService } from "../../../src/services/shelfService";
 import { pathFingerprint } from "../../../src/services/shelfServiceOperations";
+import { failNextLeaseRelease } from "../../helpers/leaseReleaseFailure";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 
 afterEach(async () => {
+    vi.restoreAllMocks();
     await Promise.all(
         directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
@@ -197,6 +199,58 @@ describe("ShelfService", () => {
                 shelf: { id: result.shelfId, generation: 1 },
             }),
         ]);
+    });
+
+    it("keeps a completed shelve's result when its lease release fails", async () => {
+        const { root, service, store } = await makeService();
+        await writeFile(path.join(root, "tracked.txt"), "edited\n");
+        const { failure, logged } = failNextLeaseRelease();
+
+        const shelved = service.shelve({
+            name: "move",
+            paths: ["tracked.txt"],
+            silent: true,
+            keepLocal: false,
+        });
+
+        await expect(
+            shelved,
+            "a release failure must not replace the completed shelve",
+        ).resolves.toMatchObject({ status: "ok" });
+        const result = await shelved;
+        expect((await store.listShelves()).shelfIds, "the shelve saved exactly one shelf").toEqual([
+            result.shelfId,
+        ]);
+        await expect(
+            readFile(path.join(root, "tracked.txt"), "utf8"),
+            "the shelved edit left the worktree",
+        ).resolves.toBe("base\n");
+        expect(logged, "the release failure is logged, not lost").toHaveBeenCalledWith(
+            expect.any(String),
+            failure,
+        );
+    });
+
+    it("surfaces a refused shelve's own error when its lease release also fails", async () => {
+        const { root, service } = await makeService();
+        await writeFile(path.join(root, "tracked.txt"), "edited\n");
+        const head = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: root })).stdout;
+        await writeFile(path.join(root, ".git", "MERGE_HEAD"), head);
+        const { failure, logged } = failNextLeaseRelease();
+
+        await expect(
+            service.shelve({
+                name: "move",
+                paths: ["tracked.txt"],
+                silent: true,
+                keepLocal: false,
+            }),
+            "the native-operation refusal surfaces, not the release failure",
+        ).rejects.toBeInstanceOf(ShelfMutationAdmissionError);
+        expect(logged, "the release failure is logged, not lost").toHaveBeenCalledWith(
+            expect.any(String),
+            failure,
+        );
     });
 
     it("unshelves a staged and unstaged entry in flattened mode without touching the pre-existing index", async () => {
