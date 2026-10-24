@@ -60,6 +60,9 @@ export async function readWorkingFileStats(
         [false, true].map(async (staged) => {
             const result = await executor.runBinary(
                 [
+                    // Else a stat-dirty path makes Git rewrite the whole index under index.lock.
+                    "-c",
+                    "diff.autoRefreshIndex=false",
                     "--literal-pathspecs",
                     "diff",
                     ...(staged ? ["--cached"] : []),
