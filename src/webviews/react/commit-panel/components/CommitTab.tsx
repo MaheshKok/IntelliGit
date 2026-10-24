@@ -1,15 +1,16 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { Box, Flex } from "@chakra-ui/react";
 import { AmendContextSection } from "./AmendContextSection";
 import { CommitArea } from "./CommitArea";
 import { ChangelistGroups } from "./ChangelistGroups";
+import { FileTree } from "./FileTree";
 import { ShelveDialog } from "./ShelveDialog";
 import { Toolbar } from "./Toolbar";
 import { ContextMenu } from "../../shared/components/ContextMenu";
 import { useDragResize } from "../hooks/useDragResize";
 import { type CommitTabProps, useCommitTabController } from "./CommitTabController";
 import { t } from "../../shared/i18n";
-import { useChangelists } from "../hooks/useChangelists";
+import { changelistsInUse, useChangelists } from "../hooks/useChangelists";
 import { ChangelistToolbar } from "./ChangelistToolbar";
 
 /** Renders the working-tree commit workflow and delegates its interaction state to a controller. */
@@ -63,6 +64,35 @@ function CommitTabLayout({
         workflow.partialPaths.has(file),
     );
     const composer = scopedComposerProps(props, workflow);
+    const listsInUse =
+        workflow.metadata !== undefined &&
+        changelistsInUse(workflow.metadata, workflow.hasRecoveryIssues);
+    const { metadata, filter, choose } = workflow;
+    useEffect(() => {
+        // A view saved while several lists existed must not keep a single list scoped to its id.
+        if (metadata && !listsInUse && filter !== "all") choose("all");
+    }, [metadata, listsInUse, filter, choose]);
+    const tree: React.ComponentProps<typeof FileTree> = {
+        repositoryRoot: props.repositoryRoot,
+        files: workflow.files,
+        groupByDir: props.groupByDir,
+        showIgnoredFiles: props.showIgnoredFiles,
+        folderIcon: props.folderIcon,
+        folderExpandedIcon: props.folderExpandedIcon,
+        folderIconsByName: props.folderIconsByName,
+        checkedPaths: workflow.checkedPaths,
+        partialPaths: workflow.partialPaths,
+        onToggleFile: workflow.toggleFile,
+        onToggleFolder: workflow.toggleFolder,
+        onToggleSection: workflow.toggleSection,
+        isAllChecked: workflow.allChecked,
+        isSomeChecked: workflow.someChecked,
+        onFileClick: controller.handleFileClick,
+        onTrackUnversionedFiles: controller.handleTrackUnversionedFiles,
+        onShelfFileDragStart: partialFileActions ? undefined : props.onShelfFileDragStart,
+        expandAllSignal: controller.expandAllSignal,
+        collapseAllSignal: controller.collapseAllSignal,
+    };
     return (
         <Flex
             ref={containerRef}
@@ -93,6 +123,15 @@ function CommitTabLayout({
                 rebaseControl={controller.rebaseControl}
                 onContinueRebase={controller.handleContinueRebase}
                 onAbortRebase={controller.handleAbortRebase}
+                newChangelist={
+                    metadata && !listsInUse
+                        ? {
+                              onClick: () => workflow.command("create"),
+                              disabled:
+                                  workflow.busy || props.wholeIndexOperationInProgress === true,
+                          }
+                        : undefined
+                }
             />
             {controller.shelfMenuPosition ? (
                 <ContextMenu
@@ -110,41 +149,21 @@ function CommitTabLayout({
                     historyLoaded={props.amendBranchHistoryLoaded}
                 />
             ) : null}
-            <ChangelistToolbar
-                workflow={workflow}
-                disabled={props.wholeIndexOperationInProgress === true}
-            />
+            {listsInUse ? (
+                <ChangelistToolbar
+                    workflow={workflow}
+                    disabled={props.wholeIndexOperationInProgress === true}
+                />
+            ) : null}
             {workflow.error || workflow.draft.error ? (
                 <div role="alert">{workflow.draft.error ?? workflow.error}</div>
             ) : null}
             <Box flex="1 1 auto" overflowY="auto" minH="40px" bg="var(--intelligit-pycharm-panel)">
-                <ChangelistGroups
-                    workflow={workflow}
-                    files={props.files}
-                    tree={{
-                        repositoryRoot: props.repositoryRoot,
-                        files: workflow.files,
-                        groupByDir: props.groupByDir,
-                        showIgnoredFiles: props.showIgnoredFiles,
-                        folderIcon: props.folderIcon,
-                        folderExpandedIcon: props.folderExpandedIcon,
-                        folderIconsByName: props.folderIconsByName,
-                        checkedPaths: workflow.checkedPaths,
-                        partialPaths: workflow.partialPaths,
-                        onToggleFile: workflow.toggleFile,
-                        onToggleFolder: workflow.toggleFolder,
-                        onToggleSection: workflow.toggleSection,
-                        isAllChecked: workflow.allChecked,
-                        isSomeChecked: workflow.someChecked,
-                        onFileClick: controller.handleFileClick,
-                        onTrackUnversionedFiles: controller.handleTrackUnversionedFiles,
-                        onShelfFileDragStart: partialFileActions
-                            ? undefined
-                            : props.onShelfFileDragStart,
-                        expandAllSignal: controller.expandAllSignal,
-                        collapseAllSignal: controller.collapseAllSignal,
-                    }}
-                />
+                {listsInUse ? (
+                    <ChangelistGroups workflow={workflow} files={props.files} tree={tree} />
+                ) : (
+                    <FileTree {...tree} />
+                )}
             </Box>
             <CommitResizeHandle onDragMouseDown={onDragMouseDown} onDragKeyDown={onDragKeyDown} />
             <Box
@@ -158,12 +177,10 @@ function CommitTabLayout({
                 <CommitArea
                     commitMessage={workflow.draft.message}
                     draftScope={
-                        workflow.metadata
-                            ? workflow.filter === "all"
+                        metadata && listsInUse
+                            ? filter === "all"
                                 ? t("changes.all")
-                                : workflow.metadata.lists.find(
-                                      (list) => list.id === workflow.filter,
-                                  )?.name
+                                : metadata.lists.find((list) => list.id === filter)?.name
                             : undefined
                     }
                     isAmend={props.isAmend}

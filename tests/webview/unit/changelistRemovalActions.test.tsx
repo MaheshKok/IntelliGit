@@ -130,9 +130,11 @@ describe("changelist save, remove and rollback actions", () => {
         expect(shelfPosts(), "a pending request blocks a second removal").toHaveLength(1);
     });
 
-    it("selected whole-file actions post the checked paths and stay disabled with nothing checked", () => {
-        expect(button("Save and Remove Selected Whole Files…").disabled).toBe(true);
-        expect(button("Roll Back Selected Whole Files…").disabled).toBe(true);
+    it("selected whole-file actions post the checked paths and stay hidden with nothing checked", () => {
+        expect(
+            [...mounted.container.querySelectorAll("button")].map((element) => element.textContent),
+            "whole-file actions are hidden with nothing checked",
+        ).not.toContain("Save and Remove Selected Whole Files…");
         act(() => mounted.root.render(<Harness checked={new Set(["a.txt"])} />));
         act(() => button("Save and Remove Selected Whole Files…").click());
         expect(shelfPosts()).toEqual([

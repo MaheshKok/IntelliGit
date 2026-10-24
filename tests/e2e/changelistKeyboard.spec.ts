@@ -224,6 +224,30 @@ async function listId(workspace: Workspace, name: string): Promise<string> {
     return id!;
 }
 
+/** Creates a list by keyboard, keeping the current active list; returns its id. */
+async function createListByKeyboard(
+    page: Page,
+    frame: FrameLocator,
+    workspace: Workspace,
+    name: string,
+): Promise<string> {
+    await tabTo(
+        page,
+        frame.getByRole("button", { name: webviewText("changes.newList"), exact: true }),
+    );
+    await page.keyboard.press("Enter");
+    await expect(quickInput(page)).toContainText(hostText("New changelist"));
+    await page.keyboard.type(name);
+    await page.keyboard.press("Enter");
+    await expect(quickInput(page)).toContainText(hostText("Changelist description"));
+    await page.keyboard.press("Enter");
+    await expect(quickInput(page).locator(".monaco-list-row.focused")).toContainText(
+        hostText("Keep the current active changelist"),
+    );
+    await page.keyboard.press("Enter");
+    return listId(workspace, name);
+}
+
 const header = (frame: FrameLocator, id: string) => frame.locator(`[data-changelist-id="${id}"]`);
 const fileCheckbox = (frame: FrameLocator, file: string) =>
     frame.getByRole("checkbox", { name: file, exact: true }).first();
@@ -246,10 +270,6 @@ test.describe("Changelists by keyboard only", () => {
         try {
             const frame = await openSidebar(page);
             const defaultList = (await readState(workspace)).lists[0]!;
-            await expect(
-                header(frame, defaultList.id),
-                "active list carries a text label, not colour alone",
-            ).toContainText(webviewText("changes.active"));
 
             // Create: name dialog, description dialog, active-choice picker.
             await tabTo(
@@ -267,6 +287,11 @@ test.describe("Changelists by keyboard only", () => {
             );
             await page.keyboard.press("Enter");
             const created = await listId(workspace, LONG_NAME);
+            // List headers render only once a second list exists.
+            await expect(
+                header(frame, defaultList.id),
+                "active list carries a text label, not colour alone",
+            ).toContainText(webviewText("changes.active"));
             const createdHeader = header(frame, created);
             const toggle = createdHeader.locator("button[aria-expanded]");
             await expect(
@@ -453,6 +478,8 @@ test.describe("Changelists by keyboard only", () => {
         const { app, page } = await launch(fixtureWorkspace);
         try {
             const frame = await openSidebar(page);
+            // Whole-file shelf buttons and list menus render only once a second list exists.
+            await createListByKeyboard(page, frame, workspace, "Second 二 list");
             const store = await shelves(workspace);
             const before = await readState(workspace);
             await tabTo(page, fileCheckbox(frame, "a.txt"));
@@ -517,6 +544,8 @@ test.describe("Changelists by keyboard only", () => {
         const { app, page } = await launch(fixtureWorkspace);
         try {
             const frame = await openSidebar(page);
+            // Whole-file shelf buttons render only once a second list exists.
+            await createListByKeyboard(page, frame, workspace, "Second 二 list");
             await tabTo(page, fileCheckbox(frame, "a.txt"));
             await page.keyboard.press("Space");
             const whole = frame.getByRole("button", {
@@ -552,30 +581,11 @@ test.describe("Changelists by keyboard only", () => {
                 const frame = await openSidebar(page);
                 const defaultName = (await readState(workspace)).lists[0]!.name;
                 // An existing destination must not be the active list, or ownership cannot
-                // tell a targeted restore from the default assignment.
-                const destination = newList ?? "Target リスト";
-                if (!newList) {
-                    await tabTo(
-                        page,
-                        frame.getByRole("button", {
-                            name: webviewText("changes.newList"),
-                            exact: true,
-                        }),
-                    );
-                    await page.keyboard.press("Enter");
-                    await expect(quickInput(page)).toContainText(hostText("New changelist"));
-                    await page.keyboard.type(destination);
-                    await page.keyboard.press("Enter");
-                    await expect(quickInput(page)).toContainText(
-                        hostText("Changelist description"),
-                    );
-                    await page.keyboard.press("Enter");
-                    await expect(
-                        quickInput(page).locator(".monaco-list-row.focused"),
-                    ).toContainText(hostText("Keep the current active changelist"));
-                    await page.keyboard.press("Enter");
-                    await listId(workspace, destination);
-                }
+                // tell a targeted restore from the default assignment. Both journeys create it:
+                // the whole-file shelf buttons render only once a second list exists.
+                const existing = "Target リスト";
+                const destination = newList ?? existing;
+                await createListByKeyboard(page, frame, workspace, existing);
                 await tabTo(page, fileCheckbox(frame, "a.txt"));
                 await page.keyboard.press("Space");
                 await expect(fileCheckbox(frame, "a.txt")).toBeChecked();
@@ -667,10 +677,9 @@ test.describe("Changelists by keyboard only", () => {
                     .poll(() => readFile(path.join(workspace.root, "a.txt"), "utf8"))
                     .toBe("a\nchanged\n");
                 await expect.poll(() => owners(workspace, "a.txt")).toEqual([destination]);
-                expect((await readState(workspace)).lists.map((list) => list.name)).toEqual([
-                    defaultName,
-                    destination,
-                ]);
+                expect((await readState(workspace)).lists.map((list) => list.name)).toEqual(
+                    newList ? [defaultName, existing, newList] : [defaultName, existing],
+                );
                 expect((await readState(workspace)).activeId).toBe(
                     (await readState(workspace)).lists[0]!.id,
                 );

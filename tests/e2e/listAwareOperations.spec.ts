@@ -45,6 +45,17 @@ test.describe("List-aware operations", () => {
             await dismissFirstRunDialogs(page);
             await waitForE2eChannelReady(fixtureWorkspace.channelDir);
             const frame = await new IntelliGitView(page).reveal();
+            // List menus and whole-file shelf buttons render only once a second list exists.
+            await frame.getByRole("button", { name: "New changelist", exact: true }).click();
+            const input = page.locator(".quick-input-widget .quick-input-box input");
+            await expect(input).toBeVisible();
+            await input.fill("Second list");
+            await input.press("Enter");
+            await expect(page.locator(".quick-input-title")).toContainText(
+                "Changelist description",
+            );
+            await input.press("Enter");
+            await page.getByText("Keep the current active changelist", { exact: true }).click();
             await expect(
                 frame.getByRole("combobox", { name: "Changelists", exact: true }),
             ).toBeVisible();
@@ -61,7 +72,6 @@ test.describe("List-aware operations", () => {
                     overridePath: shelfPath,
                 }),
             );
-            const input = page.locator(".quick-input-widget .quick-input-box input");
             const whole = frame.getByRole("button", {
                 name: "Save Selected Whole Files to Shelf",
                 exact: true,

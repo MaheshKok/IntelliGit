@@ -23,6 +23,12 @@ const files: WorkingFile[] = [
     { path: "src/b.ts", status: "A", staged: false, additions: 1, deletions: 0 },
 ];
 
+// A second list turns on the changelist UI; one list keeps the plain panel.
+const twoLists = [
+    { id: "default", name: "Default" },
+    { id: "feature", name: "Feature" },
+];
+
 function click(element: Element): void {
     act(() => element.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
@@ -84,9 +90,9 @@ function renderCommitTab({
 }
 
 describe("CommitTab shelving", () => {
-    it("explicit whole-file Save stays disabled with zero selected files", () => {
+    it("one changelist keeps the plain panel with only a New changelist entry", () => {
         vscode.postMessage.mockReset();
-        const { root, container } = renderCommitTab({ checkedPaths: new Set() });
+        const { root, container } = renderCommitTab();
         act(() =>
             window.dispatchEvent(
                 new MessageEvent("message", {
@@ -104,11 +110,44 @@ describe("CommitTab shelving", () => {
                 }),
             ),
         );
+        expect(container.querySelector('select[aria-label="Changelists"]')).toBeNull();
+        expect(container.querySelector("[data-changelist-id]")).toBeNull();
+        expect(container.textContent).not.toContain("Save Selected Whole Files to Shelf");
+        const create = container.querySelector<HTMLButtonElement>(
+            'button[aria-label="New changelist"]',
+        );
+        expect(create, "New changelist toolbar entry").not.toBeNull();
+        click(create!);
+        expect(vscode.postMessage).toHaveBeenLastCalledWith(
+            expect.objectContaining({ type: "changelistAction", action: "create", revision: 1 }),
+        );
+        unmount(root, container);
+    });
+    it("explicit whole-file Save is absent with zero selected files", () => {
+        vscode.postMessage.mockReset();
+        const { root, container } = renderCommitTab({ checkedPaths: new Set() });
+        act(() =>
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "setChangelists",
+                        repositoryRoot: "/repo",
+                        state: {
+                            revision: 1,
+                            activeId: "default",
+                            lists: twoLists,
+                            files: {},
+                            changes: {},
+                        },
+                    },
+                }),
+            ),
+        );
         const button = Array.from(container.querySelectorAll("button")).find(
             (item) => item.textContent === "Save Selected Whole Files to Shelf",
         );
-        expect(button?.disabled).toBe(true);
-        click(button!);
+        expect(container.querySelector("[data-changelist-id]"), "list UI is on").not.toBeNull();
+        expect(button).toBeUndefined();
         expect(
             vscode.postMessage.mock.calls.some(
                 ([message]) => message.type === "saveChangelistShelf",
@@ -128,7 +167,7 @@ describe("CommitTab shelving", () => {
                         state: {
                             revision: 7,
                             activeId: "default",
-                            lists: [{ id: "default", name: "Default" }],
+                            lists: twoLists,
                             files: { "src/a.ts": "default", "src/b.ts": "default" },
                             changes: {},
                         },
@@ -187,7 +226,7 @@ describe("CommitTab shelving", () => {
                         state: {
                             revision: 7,
                             activeId: "default",
-                            lists: [{ id: "default", name: "Default" }],
+                            lists: twoLists,
                             files: { "src/a.ts": "default", "src/b.ts": "default" },
                             changes: {},
                         },

@@ -66,6 +66,18 @@ export function changelistFiles(
     });
 }
 
+/** One list and no line selections is plain Git use, so the panel keeps its pre-changelist layout. */
+export function changelistsInUse(state: ChangelistState, hasRecoveryIssues: boolean): boolean {
+    return (
+        state.lists.length > 1 ||
+        hasRecoveryIssues ||
+        state.targetOperationSummary?.phase === "reviewRequired" ||
+        Object.values(state.changes).some(
+            (ownership) => Object.keys(ownership?.selections ?? {}).length > 0,
+        )
+    );
+}
+
 /** Keeps list filters and checkboxes repository-scoped without launching Git on UI selections. */
 export function useChangelists(props: CommitTabProps) {
     const root = props.repositoryRoot;

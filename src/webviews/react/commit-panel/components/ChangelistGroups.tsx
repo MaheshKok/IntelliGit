@@ -97,30 +97,41 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
     if (!state) return <FileTree {...tree} />;
     return (
         <>
-            <Button
-                size="xs"
-                variant="ghost"
-                disabled={workflow.busy || workflow.checkedPaths.size === 0}
-                onClick={() => workflow.saveShelf("files")}
-            >
-                {t("changes.saveSelectedWholeFiles")}
-            </Button>
-            <Button
-                size="xs"
-                variant="ghost"
-                disabled={workflow.busy || workflow.checkedPaths.size === 0}
-                onClick={() => workflow.saveShelf("files", undefined, "saveAndRemove")}
-            >
-                {t("changes.saveAndRemoveSelectedWholeFiles")}
-            </Button>
-            <Button
-                size="xs"
-                variant="ghost"
-                disabled={workflow.busy || workflow.checkedPaths.size === 0}
-                onClick={() => workflow.saveShelf("files", undefined, "rollback")}
-            >
-                {t("changes.rollBackSelectedWholeFiles")}
-            </Button>
+            {/* These act on checked files, so they stay out of sight until a file is checked. */}
+            {workflow.checkedPaths.size > 0 ? (
+                <Flex
+                    wrap="wrap"
+                    gap="2px"
+                    px="8px"
+                    py="2px"
+                    borderBottom="1px solid var(--intelligit-pycharm-border)"
+                >
+                    <Button
+                        size="xs"
+                        variant="ghost"
+                        disabled={workflow.busy}
+                        onClick={() => workflow.saveShelf("files")}
+                    >
+                        {t("changes.saveSelectedWholeFiles")}
+                    </Button>
+                    <Button
+                        size="xs"
+                        variant="ghost"
+                        disabled={workflow.busy}
+                        onClick={() => workflow.saveShelf("files", undefined, "saveAndRemove")}
+                    >
+                        {t("changes.saveAndRemoveSelectedWholeFiles")}
+                    </Button>
+                    <Button
+                        size="xs"
+                        variant="ghost"
+                        disabled={workflow.busy}
+                        onClick={() => workflow.saveShelf("files", undefined, "rollback")}
+                    >
+                        {t("changes.rollBackSelectedWholeFiles")}
+                    </Button>
+                </Flex>
+            ) : null}
             {workflow.notice ? <Box role="status">{workflow.notice}</Box> : null}
             {groups.map((list) => {
                 const key = JSON.stringify([tree.repositoryRoot, list.id]);

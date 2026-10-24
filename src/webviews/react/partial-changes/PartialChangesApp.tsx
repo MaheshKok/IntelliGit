@@ -207,7 +207,8 @@ function PartialStatus({ data, error }: { data: FileData | null; error: string }
                     {error}
                 </div>
             ) : null}
-            {ownership?.stale ? (
+            {/* With one list every line already belongs to it, so there is nothing to review. */}
+            {ownership?.stale && (data?.lists.lists.length ?? 0) > 1 ? (
                 <div className="partial-status" role="status">
                     {t("changes.reviewAssignments")}
                 </div>
@@ -275,6 +276,43 @@ function SelectedShelfActions({
             </button>
             <button disabled={!assignable} onClick={() => send("rollbackSelection")}>
                 {t("changes.rollbackSelection")}
+            </button>
+        </>
+    );
+}
+
+/** Assigning lines needs somewhere else to send them, so one list shows no assign controls. */
+function AssignActions({
+    lists,
+    targetList,
+    assignable,
+    onTargetChange,
+    onAssign,
+}: {
+    lists: readonly { id: string; name: string }[];
+    targetList: string;
+    assignable: boolean;
+    onTargetChange: (id: string) => void;
+    onAssign: () => void;
+}) {
+    if (lists.length < 2) return null;
+    return (
+        <>
+            <select
+                aria-label={t("changes.targetList")}
+                value={targetList}
+                disabled={!assignable}
+                onChange={(event) => onTargetChange(event.currentTarget.value)}
+            >
+                {lists.map((list) => (
+                    <option key={list.id} value={list.id}>
+                        {list.name}
+                    </option>
+                ))}
+            </select>
+            <button disabled={!assignable} onClick={onAssign}>
+                <VscArrowRight />
+                {t("changes.assign")}
             </button>
         </>
     );
@@ -480,22 +518,13 @@ export function PartialChangesApp() {
                         assignable={assignable}
                         send={selectedOperation}
                     />
-                    <select
-                        aria-label={t("changes.targetList")}
-                        value={targetList}
-                        disabled={!assignable}
-                        onChange={(event) => setTargetList(event.currentTarget.value)}
-                    >
-                        {(data?.lists.lists ?? []).map((list) => (
-                            <option key={list.id} value={list.id}>
-                                {list.name}
-                            </option>
-                        ))}
-                    </select>
-                    <button disabled={!assignable} onClick={() => send("assign")}>
-                        <VscArrowRight />
-                        {t("changes.assign")}
-                    </button>
+                    <AssignActions
+                        lists={data?.lists.lists ?? []}
+                        targetList={targetList}
+                        assignable={assignable}
+                        onTargetChange={setTargetList}
+                        onAssign={() => send("assign")}
+                    />
                     <button disabled={!assignable} onClick={() => send("use")}>
                         <VscCheck />
                         {t("changes.useSelection")}

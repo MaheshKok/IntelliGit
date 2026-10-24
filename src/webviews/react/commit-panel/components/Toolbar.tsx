@@ -2,7 +2,14 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import { Box, Button, Flex, Tooltip } from "@chakra-ui/react";
-import { VscArchive, VscDiscard, VscEye, VscLibrary, VscNewFile } from "react-icons/vsc";
+import {
+    VscArchive,
+    VscDiscard,
+    VscEye,
+    VscLibrary,
+    VscListUnordered,
+    VscNewFile,
+} from "react-icons/vsc";
 import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components/Icons";
 import { getSettings } from "../../shared/settings";
 import { ContextMenu, type MenuItem } from "../../shared/components/ContextMenu";
@@ -42,6 +49,8 @@ interface Props {
     onContinueRebase: () => void;
     onAbortRebase: () => void;
     disableFileMutations?: boolean;
+    /** The only changelist entry point until a second list or a line selection exists. */
+    newChangelist?: { onClick: () => void; disabled: boolean };
 }
 
 /**
@@ -75,6 +84,7 @@ export function Toolbar({
     onContinueRebase,
     onAbortRebase,
     disableFileMutations = false,
+    newChangelist,
 }: Props): React.ReactElement {
     const [viewMenuPosition, setViewMenuPosition] = useState<{ x: number; y: number } | null>(null);
     const viewMenuItems = useMemo<MenuItem[]>(
@@ -164,6 +174,15 @@ export function Toolbar({
                     disabled={disableFileMutations}
                     color={TOOLBAR_ICON_ACCENTS.shelf}
                     icon={<VscLibrary size={16} />}
+                />
+            ) : null}
+            {newChangelist ? (
+                <ToolbarIconButton
+                    label={t("changes.newList")}
+                    onClick={newChangelist.onClick}
+                    disabled={newChangelist.disabled}
+                    color={TOOLBAR_ICON_ACCENTS.shelf}
+                    icon={<VscListUnordered size={16} />}
                 />
             ) : null}
             <ToolbarSeparator />

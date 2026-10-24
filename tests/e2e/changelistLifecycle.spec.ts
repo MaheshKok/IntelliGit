@@ -309,6 +309,8 @@ test.describe("Changelist lifecycle", () => {
         const { app, page } = await launch(fixtureWorkspace, { ...workspace, shelfStorageRoot });
         try {
             const frame = await new IntelliGitView(page).reveal();
+            // Whole-file shelf buttons render only once a second list exists.
+            await createList(page, frame, "Second list");
             await expect(listCombobox(frame)).toBeVisible();
             await frame.getByRole("checkbox", { name: OTHER, exact: true }).first().uncheck();
             await frame.getByRole("checkbox", { name: FILE, exact: true }).first().check();
@@ -600,6 +602,8 @@ test.describe("Changelists in two windows", () => {
         );
         try {
             const secondFrame = await new IntelliGitView(second.page).reveal();
+            // The list picker renders only once a second list exists.
+            await createList(second.page, secondFrame, "Second window list");
             await expect(listCombobox(secondFrame)).toBeVisible();
             // The first window never reveals its sidebar: its Graph pane would also match revealPanel.
             await new Workbench(first.page).runCommand("IntelliGit: Show Git Log");
