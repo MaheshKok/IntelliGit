@@ -12,6 +12,14 @@ import { changelistFiles, type useChangelists } from "../hooks/useChangelists";
 import type { WorkingFile } from "../../../../types";
 
 type TreeProps = React.ComponentProps<typeof FileTree>;
+// Chakra's ghost colour is too dim on VS Code themes; use the panel's own text colour.
+const SHELF_BUTTON = {
+    size: "xs",
+    variant: "ghost",
+    color: JETBRAINS_UI.color.foreground,
+    _hover: { bg: JETBRAINS_UI.color.hover },
+    fontSize: "12px",
+} as const;
 interface Props {
     workflow: ReturnType<typeof useChangelists>;
     tree: TreeProps;
@@ -107,24 +115,21 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                     borderBottom="1px solid var(--intelligit-pycharm-border)"
                 >
                     <Button
-                        size="xs"
-                        variant="ghost"
+                        {...SHELF_BUTTON}
                         disabled={workflow.busy}
                         onClick={() => workflow.saveShelf("files")}
                     >
                         {t("changes.saveSelectedWholeFiles")}
                     </Button>
                     <Button
-                        size="xs"
-                        variant="ghost"
+                        {...SHELF_BUTTON}
                         disabled={workflow.busy}
                         onClick={() => workflow.saveShelf("files", undefined, "saveAndRemove")}
                     >
                         {t("changes.saveAndRemoveSelectedWholeFiles")}
                     </Button>
                     <Button
-                        size="xs"
-                        variant="ghost"
+                        {...SHELF_BUTTON}
                         disabled={workflow.busy}
                         onClick={() => workflow.saveShelf("files", undefined, "rollback")}
                     >
@@ -317,6 +322,7 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                                         // Each tree counts only its own rows, so many small lists
                                         // would otherwise draw every file once all are open.
                                         virtualize={files.length > VIRTUAL_THRESHOLD}
+                                        hideChangesHeader
                                     />
                                 ) : (
                                     <Box

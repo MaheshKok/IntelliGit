@@ -40,6 +40,8 @@ interface Props {
     collapseAllSignal: number;
     /** Virtualizes even a small tree, for a panel whose trees together are large. */
     virtualize?: boolean;
+    /** Drops the "Changes" header when a parent row (a changelist) already names these files. */
+    hideChangesHeader?: boolean;
 }
 
 interface FileTreeExpansionState {
@@ -97,6 +99,7 @@ interface FileSectionProps {
     onFileDragEnd?: () => void;
     checkboxVisibility?: "visible" | "hidden";
     virtualize?: boolean;
+    hideHeader?: boolean;
 }
 
 function splitVisibleFiles(files: WorkingFile[], showIgnoredFiles: boolean): FileBuckets {
@@ -190,6 +193,7 @@ function FileSection({
     onFileDragEnd,
     checkboxVisibility = "visible",
     virtualize,
+    hideHeader = false,
 }: FileSectionProps): React.ReactElement {
     const requestStats = useVisibleFileStats(repositoryRoot);
     const isDirectoryExpanded = useCallback(
@@ -314,20 +318,22 @@ function FileSection({
     );
     return (
         <>
-            <SectionHeader
-                label={label}
-                count={count}
-                stats={stats}
-                isOpen={isOpen}
-                onToggleOpen={onToggleOpen}
-                checkbox={{
-                    isAllChecked: getAllChecked(files),
-                    isSomeChecked: getSomeChecked(files),
-                    onToggle: onToggleCheck,
-                    visibility: checkboxVisibility,
-                }}
-                drag={{ isOver: isDragOver }}
-            />
+            {hideHeader ? null : (
+                <SectionHeader
+                    label={label}
+                    count={count}
+                    stats={stats}
+                    isOpen={isOpen}
+                    onToggleOpen={onToggleOpen}
+                    checkbox={{
+                        isAllChecked: getAllChecked(files),
+                        isSomeChecked: getSomeChecked(files),
+                        onToggle: onToggleCheck,
+                        visibility: checkboxVisibility,
+                    }}
+                    drag={{ isOver: isDragOver }}
+                />
+            )}
             {isOpen && (
                 <VirtualFileTreeRows
                     entries={entries}
@@ -379,6 +385,7 @@ export function FileTree({
     expandAllSignal,
     collapseAllSignal,
     virtualize,
+    hideChangesHeader = false,
 }: Props): React.ReactElement {
     const [expansion, setExpansion] = useState<FileTreeExpansionState>(() => ({
         changesOpen: true,
@@ -544,7 +551,9 @@ export function FileTree({
                         stats={trackedStats}
                         files={tracked}
                         entries={trackedTree}
-                        isOpen={changesOpen}
+                        // With no header there is nothing to reopen a collapsed section from.
+                        isOpen={hideChangesHeader || changesOpen}
+                        hideHeader={hideChangesHeader}
                         onToggleOpen={() =>
                             setExpansion((prev) => ({ ...prev, changesOpen: !prev.changesOpen }))
                         }

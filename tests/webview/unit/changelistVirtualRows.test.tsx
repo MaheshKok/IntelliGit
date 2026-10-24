@@ -127,3 +127,48 @@ describe("open changelists draw rows for the viewport, not for every list", () =
         expect(twenty, "drawn rows follow the viewport, not the list count").toBe(ten);
     });
 });
+
+describe("an open changelist names its files once", () => {
+    it("draws its rows under the list header without a second Changes header", () => {
+        const files: WorkingFile[] = ["a.ts", "b.ts"].map((path) => ({
+            path,
+            status: "M",
+            staged: false,
+            additions: 1,
+            deletions: 0,
+        }));
+        const state: ChangelistState = {
+            revision: 1,
+            activeId: "default",
+            lists: [
+                { id: "default", name: "Default" },
+                { id: "feature", name: "Feature" },
+            ],
+            files: { "a.ts": "default", "b.ts": "feature" },
+            changes: {},
+        };
+        api.getState.mockReturnValue({
+            changelistExpansion: {
+                [JSON.stringify([root, "default"])]: true,
+                [JSON.stringify([root, "feature"])]: true,
+            },
+        });
+        mounted = mount(<Harness files={files} />);
+        act(() =>
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: { type: "setChangelists", repositoryRoot: root, state },
+                }),
+            ),
+        );
+        const groups = [...mounted.container.querySelectorAll('[role="group"]')];
+        expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual([
+            "Default",
+            "Feature",
+        ]);
+        for (const [group, file] of groups.map((group, index) => [group, files[index]!] as const)) {
+            expect(group.textContent, "the list's own file row is drawn").toContain(file.path);
+            expect(group.textContent, "no nested Changes header").not.toContain("Changes");
+        }
+    });
+});
