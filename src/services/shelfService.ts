@@ -757,6 +757,7 @@ export class ShelfService {
                     if (!entry || !isStructural(entry))
                         throw new Error("Structural shelf entry does not exist.");
                     await resolveStructuralAction(input, this.options, entry);
+                    if (ended) return ended;
                     return {
                         status: "ok",
                         entries: [{ kind: "applied", changeId: entry.changeId }],
