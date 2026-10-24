@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.39.2] - 2026-10-24
+
+### Fixed
+
+- In a large repository with many small changelists open, the Commit panel no longer stalls after Expand All with line counts stuck on "...". Every open changelist now draws only the rows in view once the repository has more changed files than one list draws in full, so the counts for visible files fill in.
+
 ## [0.39.0] - 2026-10-17
 
 ### Added
