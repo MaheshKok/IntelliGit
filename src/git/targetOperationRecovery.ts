@@ -664,6 +664,7 @@ async function restoreIndex(
         };
         await checkpoint(publication);
         await restoreSavedIndexEntries(executor, before, candidate);
+        await fault?.("afterCandidateRebuild");
         const result = await readIndex(executor, candidate);
         if (
             !isDeepStrictEqual(

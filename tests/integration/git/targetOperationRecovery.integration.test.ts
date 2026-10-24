@@ -33,6 +33,7 @@ const cases: {
     stop?: string;
     crashOccurrence?: number;
     busy?: boolean;
+    candidate?: "redirected" | "replaced";
 }[] = [
     { kind: "cherry-pick", scenario: "normal" },
     { kind: "revert", scenario: "normal" },
@@ -42,6 +43,12 @@ const cases: {
         kind: "cherry-pick",
         scenario: "dead owner initial candidate",
         stop: "checkpoint:abortIndexPrepared",
+        crashOccurrence: 1,
+    },
+    {
+        kind: "cherry-pick",
+        scenario: "dead owner rebuilt candidate",
+        stop: "afterCandidateRebuild",
         crashOccurrence: 1,
     },
     {
@@ -75,6 +82,15 @@ const cases: {
         stop: "checkpoint:abortIndexPrepared",
         crashOccurrence: 1,
         busy: true,
+        candidate: "redirected",
+    },
+    {
+        kind: "cherry-pick",
+        scenario: "replaced published candidate stays pending",
+        stop: "afterIndexPublish",
+        crashOccurrence: 1,
+        busy: true,
+        candidate: "replaced",
     },
     { kind: "cherry-pick", scenario: "partialInstall", stop: "beforeInstall:affected" },
     ...[
@@ -126,7 +142,7 @@ const cases: {
 
 it.each(cases)(
     "aborts $kind $scenario preserving affected stages, unrelated layers and HEAD",
-    async ({ kind, scenario, stop, crashOccurrence, busy }) => {
+    async ({ kind, scenario, stop, crashOccurrence, busy, candidate }) => {
         const root = await realpath(await mkdtemp(path.join(tmpdir(), "target-native-")));
         roots.push(root);
         const git = new GitExecutor(root);
@@ -363,7 +379,7 @@ it.each(cases)(
                     stop,
                     crashOccurrence,
                     busy ?? false,
-                    scenario === "redirected candidate stays busy",
+                    candidate,
                 ));
                 if (busy) return;
             } else if (stop) {
@@ -417,6 +433,12 @@ it.each(cases)(
                 store.get(root).targetOperationReceipts?.[id],
                 "a finished abort releases its evidence to collection",
             ).not.toHaveProperty("evidenceHash");
+            await expect(
+                lstat(path.join(gitDir, "index.lock")),
+                "a finished abort must leave no index lock behind",
+            ).rejects.toThrow("ENOENT");
+            await writeFile(path.join(root, "later"), "later\n");
+            await git.run(["add", "later"]);
         } finally {
             await lease.release();
         }

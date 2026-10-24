@@ -1,5 +1,5 @@
 import { fork } from "node:child_process";
-import { readFile, rename, symlink, writeFile } from "node:fs/promises";
+import { copyFile, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { build } from "esbuild";
 import { expect } from "vitest";
@@ -15,7 +15,7 @@ export async function restartNativeRecoveryAfterProcessExit(
     stop: string,
     occurrence: number,
     expectBusy: boolean,
-    redirectCandidate = false,
+    candidate?: "redirected" | "replaced",
 ): Promise<{ store: ChangelistStore; lease: TargetOperationLease }> {
     await previousLease.release();
     const worker = path.join(root, "native-crash-worker.cjs");
@@ -59,11 +59,17 @@ export async function restartNativeRecoveryAfterProcessExit(
             ).toEqual(
                 JSON.parse(await readFile(path.join(root, "native-worker-identity.json"), "utf8")),
             );
-        if (redirectCandidate) {
+        if (candidate) {
             const evidence = await persistence.loadTargetOperationEvidence(pending.evidenceHash);
-            const candidate = path.join(gitDir, evidence.indexPublication!.candidate.path);
-            await rename(candidate, `${candidate}.redirected`);
-            await symlink(`${candidate}.redirected`, candidate);
+            const file = path.join(gitDir, evidence.indexPublication!.candidate.path);
+            if (candidate === "redirected") {
+                await rename(file, `${file}.redirected`);
+                await symlink(`${file}.redirected`, file);
+            } else {
+                // The same bytes in a new file: only the saved identity tells the two apart.
+                await copyFile(file, `${file}.copy`);
+                await rename(`${file}.copy`, file);
+            }
         }
         const operation = abortTargetNativeOperation(
             new GitExecutor(root),
@@ -72,7 +78,13 @@ export async function restartNativeRecoveryAfterProcessExit(
             lease,
             { id: pending.id, revision: state.revision, expectedPhase: pending.phase },
         );
-        if (expectBusy) {
+        if (candidate === "replaced") {
+            await expect(
+                operation,
+                "a published index must not be claimed through a replaced candidate",
+            ).rejects.toThrow("Recovery candidate identity changed.");
+            expect(store.get(root).pendingTargetOperation).toBeDefined();
+        } else if (expectBusy) {
             await expect(
                 operation,
                 "an unacknowledged or changed index lock must remain busy",
