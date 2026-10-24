@@ -1433,7 +1433,12 @@ export class ShelfService {
             try {
                 return await this.withRepositoryStore(lease, operation);
             } finally {
-                await lease.release();
+                // A release failure must not replace the shelf mutation's outcome or its error.
+                await lease
+                    .release()
+                    .catch((error: unknown) =>
+                        console.error("[IntelliGit] Shelf lease release failed:", error),
+                    );
             }
         });
         this.mutationTail = result.then(

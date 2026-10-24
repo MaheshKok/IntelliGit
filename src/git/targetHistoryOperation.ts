@@ -336,7 +336,12 @@ export async function preflightUndoCommit(
         if (error instanceof RepositoryLockBusyError) return { route: "busy" };
         throw error;
     } finally {
-        await lease?.release();
+        // A release failure must not replace the undo's outcome or its error.
+        await lease
+            ?.release()
+            .catch((error: unknown) =>
+                console.error("[IntelliGit] Undo Commit lease release failed:", error),
+            );
     }
 }
 
