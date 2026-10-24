@@ -924,6 +924,66 @@ describe("targeted conflict continuation", () => {
         expect(await f.store.readCurrentShelfManifest(f.input.id)).toEqual(f.shelf);
     });
 
+    it("an edit saved while the resolution reads its evidence is never overwritten", async () => {
+        const f = await restoreFixture(true, true);
+        expect((await f.service.unshelve(f.input)).status).toBe("conflicted");
+        const session = await conflictSession(f);
+        const read = f.changelists.readTargetOperationOwnership.bind(f.changelists);
+        vi.spyOn(f.changelists, "readTargetOperationOwnership").mockImplementationOnce(
+            async (...args) => {
+                // The ownership read is the last await between the editor-fingerprint check and the replace.
+                await writeFile(path.join(f.root, "second.txt"), "saved during resolve\n");
+                return read(...args);
+            },
+        );
+        expect(await session.resolve("reviewed second\n")).toEqual({
+            status: "stale",
+            reason: "operation",
+        });
+        expect(
+            await readFile(path.join(f.root, "second.txt"), "utf8"),
+            "an edit saved after the fingerprint check must survive the resolution",
+        ).toBe("saved during resolve\n");
+        expect(f.changelists.get(f.root).pendingTargetOperation?.phase).toBe("conflicted");
+        expect(await f.store.readCurrentShelfManifest(f.input.id)).toEqual(f.shelf);
+    });
+
+    it("a swap refused for a late save never reports a write when the gate fails afterwards", async () => {
+        const f = await restoreFixture(true, true);
+        expect((await f.service.unshelve(f.input)).status).toBe("conflicted");
+        const gate = new RepositoryMutationGate(
+            new RepositoryMutationCoordinator(),
+            new RepositoryLock(),
+        );
+        const service = new ShelfService({
+            repositoryRoot: f.root,
+            executor: f.executor,
+            store: f.store,
+            changelists: f.changelists,
+            gate,
+        });
+        const session = await conflictSession(f, service);
+        const read = f.changelists.readTargetOperationOwnership.bind(f.changelists);
+        vi.spyOn(f.changelists, "readTargetOperationOwnership").mockImplementationOnce(
+            async (...args) => {
+                await writeFile(path.join(f.root, "second.txt"), "saved during resolve\n");
+                return read(...args);
+            },
+        );
+        const run = gate.run.bind(gate);
+        vi.spyOn(gate, "run").mockImplementationOnce((async (...args: Parameters<typeof run>) => {
+            await run(...args);
+            throw new Error("gate cleanup failed");
+        }) as typeof run);
+
+        // Not "applied, needs review": the refused swap wrote nothing.
+        await expect(session.resolve("reviewed second\n")).rejects.toThrow("gate cleanup failed");
+        expect(await readFile(path.join(f.root, "second.txt"), "utf8")).toBe(
+            "saved during resolve\n",
+        );
+        expect(f.changelists.get(f.root).pendingTargetOperation?.phase).toBe("conflicted");
+    });
+
     it("conflict restart keeps target, resolves once and never recopies the draft", async () => {
         const f = await restoreFixture(true, true);
         const input = await copySource(f);
