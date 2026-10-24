@@ -1013,6 +1013,8 @@ test.describe("lazy statistics lifecycle", () => {
                 .toBe(2);
             evidence.detachedHeldPids = detachedHeldPids;
             await commitPane.getByRole("button", { name: "Dock IntelliGit", exact: true }).click();
+            // In CI, the palette key pressed while this focused frame closed never returned.
+            await expect(commitPane).toHaveCount(0);
             const restored = await view.reveal();
             await expect(
                 (await showLifecycleEdge(restored, "first", first)).getByRole("status"),
