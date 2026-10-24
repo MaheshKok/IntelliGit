@@ -127,7 +127,6 @@ export class ShelfService {
         SelectedShelfInput,
         Awaited<ReturnType<typeof captureSelectedShelf>> & {
             readonly planDigest: string;
-            readonly revision: number;
             readonly scope: string;
         }
     >();
@@ -218,7 +217,7 @@ export class ShelfService {
                     this.materializeEntry(file, base, index, working),
             });
             savedId = captured.shelfId;
-            this.scopedCaptures.set(input, { ...captured, planDigest, revision, scope });
+            this.scopedCaptures.set(input, { ...captured, planDigest, scope });
             return {
                 status: "ok",
                 entries: [],
@@ -361,7 +360,6 @@ export class ShelfService {
         if (
             captured.planDigest !==
                 createHash("sha256").update(JSON.stringify(input)).digest("hex") ||
-            captured.revision !== revision ||
             captured.scope !== scope
         )
             throw new Error("The captured removal plan changed after Save.");

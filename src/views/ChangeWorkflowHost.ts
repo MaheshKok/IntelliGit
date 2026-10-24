@@ -1459,7 +1459,6 @@ export class ChangeWorkflowHost {
         before: ChangelistState,
         reply: Extract<ChangelistReply, { type: "changelistShelfResult" }>,
     ): Promise<void> {
-        const revision = before.revision;
         if (operation === "rollback" && !(await this.confirmSelectedRemoval(plan, true))) {
             reply.message = vscode.l10n.t("Rollback cancelled. Nothing was saved or removed.");
             return;
@@ -1474,7 +1473,7 @@ export class ChangeWorkflowHost {
                 { shelfId: reply.shelfId },
             );
         else if (operation !== "save") {
-            const removal = await this.removeScopedPlan(plan, scope, revision, reply.shelfId);
+            const removal = await this.removeScopedPlan(plan, scope, before, reply.shelfId);
             reply.message = removal.message;
             if (removal.failed) reply.error = removal.message;
         }
@@ -1484,7 +1483,7 @@ export class ChangeWorkflowHost {
     private async removeScopedPlan(
         plan: SelectedShelfInput,
         scope: string,
-        revision: number,
+        before: ChangelistState,
         shelfId: string,
     ): Promise<{ message: string; failed: boolean }> {
         let result: Awaited<ReturnType<ShelfService["removeScopedChanges"]>> | undefined;
@@ -1492,12 +1491,16 @@ export class ChangeWorkflowHost {
         let lease: TargetOperationLease | undefined;
         try {
             lease = await this.store.acquireTargetOperationLease(this.deps.root);
+            // As in Save: a scan may have moved the revision; remove only if the plan's view held.
+            const latest = this.store.get(this.deps.root);
+            if (saveIntent(latest) !== saveIntent(before))
+                throw new Error("Changelists changed. Reopen the selected changes.");
             result = await this.deps.shelfService!.removeScopedChanges(
                 plan,
                 shelfId,
                 this.partial,
                 lease,
-                revision,
+                latest.revision,
                 scope,
                 (files) => assertChangeBuffersSaved(this.deps.root, files),
             );
