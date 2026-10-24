@@ -741,8 +741,11 @@ export class ShelfService {
                 this.options.changelists.get(this.repositoryRoot).pendingTargetOperation
             )
                 return ended;
-            expectedShelfGeneration = (await this.options.store.readCurrentShelfManifest(input.id))
-                .generation;
+            const manifest = await this.options.store.readCurrentShelfManifest(input.id);
+            const entry = manifest.files.find((file) => file.changeId === input.changeId);
+            // A raw entry has no local structural action, so the ended restore is the whole reply.
+            if (!entry || !isStructural(entry)) return ended;
+            expectedShelfGeneration = manifest.generation;
         }
         return this.withMutation(async () =>
             this.options.store.withGenerationCas(
