@@ -262,8 +262,11 @@ export class ChangeWorkflowHost {
         // The scan opens each modified file in turn, which takes minutes in large repositories,
         // so new files are listed first. Commits and targeted operations keep their own
         // content, revision and hold fences; the second pass prunes what the scan consumed.
-        await this.busyDuring(() => this.store.reconcileFiles(this.deps.root, paths, epoch));
+        const membership = this.busyDuring(() =>
+            this.store.reconcileFiles(this.deps.root, paths, epoch),
+        );
         this.latest = { paths, epoch };
+        await membership;
         this.pruneAfter(this.tracker.reconcile(files, epoch));
     }
 
