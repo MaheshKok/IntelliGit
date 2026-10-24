@@ -402,12 +402,12 @@ export async function captureWholeSourceIdentity(
 ): Promise<() => Promise<void>> {
     const { executor, repositoryRoot } = dependencies;
     const changed = () => new Error("Whole-file capture source changed before publication.");
-    const indexPath = (
-        await executor.runBinary(["rev-parse", "--path-format=absolute", "--git-path", "index"])
-    ).stdout
-        .toString("utf8")
-        .trim();
-    const index = await pathFingerprint(indexPath);
+    // Entries, not the index file: any `git status` rewrites the file with refreshed stat data alone.
+    const listIndex = async () =>
+        (await executor.runBinary(["ls-files", "--stage", "-v", "-z"])).stdout
+            .toString("utf8")
+            .split("\0");
+    const listed = await listIndex();
     if ((await readHead(executor)) !== expectedHead) throw changed();
     // Porcelain -z names the destination first, then the source for a rename/copy.
     // Include both endpoints even when the requested whole entry names only one.
@@ -436,10 +436,13 @@ export async function captureWholeSourceIdentity(
     const fingerprints = new Map<string, string>();
     for (const file of paths)
         fingerprints.set(file, await wholePathFingerprint(repositoryRoot, file));
+    const entries = (records: readonly string[]) =>
+        records.filter((record) => paths.has(record.slice(record.indexOf("\t") + 1))).join("\0");
+    const index = entries(listed);
     const assertCurrent = async (): Promise<void> => {
         for (const [file, fingerprint] of fingerprints)
             if ((await wholePathFingerprint(repositoryRoot, file)) !== fingerprint) throw changed();
-        if ((await pathFingerprint(indexPath)) !== index) throw changed();
+        if (entries(await listIndex()) !== index) throw changed();
         if ((await readHead(executor)) !== expectedHead) throw changed();
     };
     // Bracket source discovery as well as the later patch collection and object writes.
