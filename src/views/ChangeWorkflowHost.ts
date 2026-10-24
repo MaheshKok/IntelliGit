@@ -101,12 +101,8 @@ export class ChangeWorkflowHost {
     private readonly tracker: ChangeRangeTracker;
     private connected?: Promise<void>;
     private retry?: Promise<void>;
-    private prune?: {
-        scan: Promise<void>;
-        paths: readonly string[];
-        epoch: number;
-        done: Promise<void>;
-    };
+    private prune?: { scan: Promise<void>; done: Promise<void> };
+    private latest?: { paths: readonly string[]; epoch: number };
     private readonly poll: ReturnType<typeof setInterval>;
     private lastRevision = -1;
     private lastPollError?: string;
@@ -257,7 +253,7 @@ export class ChangeWorkflowHost {
     /**
      * Starts the range pass's prune without returning it: a caller waiting on it would keep its
      * whole file list alive through its handlers' scope until the pass ends, and at 10k files
-     * every status refresh adds one.
+     * every status refresh adds one. The host keeps only the newest admitted refresh's paths.
      */
     private async startObservation(files: readonly WorkingFile[], epoch: number): Promise<void> {
         const paths = files.filter((file) => file.status !== "!").map((file) => file.path);
@@ -267,32 +263,28 @@ export class ChangeWorkflowHost {
         // so new files are listed first. Commits and targeted operations keep their own
         // content, revision and hold fences; the second pass prunes what the scan consumed.
         await this.busyDuring(() => this.store.reconcileFiles(this.deps.root, paths, epoch));
-        this.pruneAfter(this.tracker.reconcile(files, epoch), paths, epoch);
+        this.latest = { paths, epoch };
+        this.pruneAfter(this.tracker.reconcile(files, epoch));
     }
 
     /**
-     * Refreshes that join one pass share its single prune, run with the paths and epoch of the
-     * last refresh that joined that pass. The tracker starts a pass with its last caller's files,
-     * so a refresh that lands in the next queued pass never changes this one's prune.
+     * Refreshes that join one pass share its single prune. Every prune reads the newest admitted
+     * refresh's paths and epoch when it fires: an older refresh's list would delete a newer
+     * refresh's file the user has since moved, or re-add a file the newer refresh dropped.
      * No refresh waits on the prune, so the host reports its failure once.
      */
-    private pruneAfter(scan: Promise<void>, paths: readonly string[], epoch: number): void {
-        const joined = this.prune;
-        if (joined?.scan === scan) {
-            joined.paths = paths;
-            joined.epoch = epoch;
-            return;
-        }
-        const entry = { scan, paths, epoch, done: Promise.resolve() };
-        this.prune = entry;
-        entry.done = scan
+    private pruneAfter(scan: Promise<void>): void {
+        if (this.prune?.scan === scan) return;
+        const done = scan
             .then(async () => {
+                const { paths, epoch } = this.latest!;
                 await this.busyDuring(() =>
-                    this.store.reconcileFiles(this.deps.root, entry.paths, entry.epoch),
+                    this.store.reconcileFiles(this.deps.root, paths, epoch),
                 );
             })
             .catch((error: unknown) => this.retryAfterRefusal(error))
             .catch((error: unknown) => this.postFailure(error));
+        this.prune = { scan, done };
     }
 
     private async busyDuring<T>(work: () => Promise<T>): Promise<T> {
