@@ -38,6 +38,7 @@
     "command.rollback": "Reverter",
     "command.jumpToSource": "Ir para a fonte",
     "command.stashChanges": "Guardar no Stash",
+    "command.fileSaveToShelf": "Salvar arquivo inteiro na prateleira",
     "command.compareWithRevision": "Comparar com a revisão",
     "command.compareWithBranch": "Comparar com branch ou tag",
     "command.compareWithLocal": "Comparar com o local",
@@ -121,5 +122,8 @@
     "configuration.updateStrategy.markdownDescription": "Escolha como as ações manuais Puxar e Atualizar integram os commits recebidos no branch atual. Aplica-se a repositórios sem alterações locais e a repositórios com alterações locais. Configure por pasta do espaço de trabalho para usar estratégias diferentes em repositórios diferentes. Sincronizar e Atualizar em outros branches mantêm o comportamento existente.",
     "configuration.updateStrategy.rebase.description": "Reaplica os commits locais sobre os commits recebidos para manter um histórico linear.",
     "configuration.updateStrategy.merge.description": "Preserva os commits existentes e cria um commit de mesclagem quando os históricos divergem; executa um avanço rápido quando possível.",
-    "command.openPartialChanges": "Abrir alterações parciais"
+    "command.openPartialChanges": "Abrir alterações parciais",
+    "command.shelf.applyPatchToChangelist": "Aplicar Patch à lista de alterações…",
+    "command.completeTargetedHistory": "Concluir ação do histórico não confirmada",
+    "command.discardTargetedHistory": "Descartar ação do histórico não confirmada"
 }

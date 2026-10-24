@@ -1,7 +1,19 @@
+import {
+    resolveTargetedShelfConflict,
+    restoreTargetedShelf,
+    type ShelfRestoreTarget,
+    type TargetShelfMutationResult,
+    type PerEntryResult,
+    type UnshelveInput,
+} from "./shelfTargetRestore";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { ChangelistStore, TargetOperationLease } from "../changes/changelistStore";
+import type { PartialChanges } from "../git/partialChanges";
+import type { ChangelistState, SelectedFileChanges } from "../webviews/protocol/changeSelection";
+import { captureSelectedShelf, type SelectedShelfInput } from "./shelfSelectedCapture";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import { RepositoryLockBusyError } from "../git/repositoryLock";
@@ -13,9 +25,17 @@ import {
     purgeRecoverySnapshots,
     ShelfRecoveryFullError,
     ShelfReverter,
+    ShelfWorktreeRemovalCompletedError,
     type PendingShelfRecoveryResult,
 } from "../shelf/recovery";
-import { ShelfStoreCorruptionError, type ShelfStore } from "../shelf/store";
+import {
+    ShelfMutationAdmissionError,
+    ShelfStoreCorruptionError,
+    ShelfStaleShelfError,
+    type ShelfManifest,
+    type ShelfPersistenceManifest,
+    type ShelfStore,
+} from "../shelf/store";
 import {
     exportFlattenedPatch,
     importPatchFiles,
@@ -42,20 +62,7 @@ import {
 export { ShelfRecoveryFullError } from "../shelf/recovery";
 export { ShelfStaleCatalogError, ShelfStaleShelfError } from "../shelf/store";
 export type { ShelfListResult, ShelfSummary } from "./shelfServiceOperations";
-/** One public per-entry outcome; later protocol code maps these without string parsing. */
-export type PerEntryResult =
-    | { readonly kind: "applied"; readonly changeId: string }
-    | { readonly kind: "conflicted"; readonly changeId: string }
-    | { readonly kind: "retained"; readonly changeId: string; readonly reason: string }
-    | { readonly kind: "flattenedResidue"; readonly changeId: string }
-    | { readonly kind: "refused"; readonly changeId: string; readonly reason: string }
-    | {
-          readonly kind: "structuralPending";
-          readonly changeId: string;
-          readonly reason: string;
-          readonly path: string;
-          readonly pathFingerprint: string;
-      };
+export type { PerEntryResult, UnshelveInput } from "./shelfTargetRestore";
 /** Aggregate state returned by a shelf mutation. */
 type ShelfMutationStatus =
     | "ok"
@@ -85,6 +92,8 @@ export interface ShelfServiceOptions {
     readonly executor: GitExecutor;
     readonly store: ShelfStore;
     readonly gate: RepositoryMutationGate;
+    /** Shared, durably connected metadata store; its lease precedes repository and shelf locks. */
+    readonly changelists: ChangelistStore;
     readonly gitOps?: GitOps;
     readonly reverter?: ShelfReverter;
     readonly recoveryMinimumRetentionMs?: number;
@@ -100,14 +109,6 @@ export interface ShelveInput {
     readonly expectedCatalogGeneration?: number;
     readonly idempotencyToken?: string;
 }
-/** Request for applying complete stored shelf entries. */
-export interface UnshelveInput {
-    readonly id: string;
-    readonly changeIds?: readonly string[];
-    readonly removeFromShelf: boolean;
-    readonly mode: "flattened" | "exactState";
-    readonly expectedShelfGeneration?: number;
-}
 /** Optimistic-concurrency selector for one shelf generation. */
 export interface ShelfGenerationInput {
     readonly id: string;
@@ -122,7 +123,16 @@ export interface ImportPatchInput {
 }
 /** Repository host orchestration for persisted shelves; providers and protocol stay outside this module. */
 export class ShelfService {
+    private readonly scopedCaptures = new WeakMap<
+        SelectedShelfInput,
+        Awaited<ReturnType<typeof captureSelectedShelf>> & {
+            readonly planDigest: string;
+            readonly scope: string;
+        }
+    >();
+    private mutationTail: Promise<void> = Promise.resolve();
     private healthWarnings = new Map<ShelfHealthWarning["kind"], readonly ShelfHealthWarning[]>();
+    private readonly rewriteListeners = new Set<() => void>();
     private readonly gitOps: GitOps;
     private readonly reverter: ShelfReverter;
     private readonly recoveryMinimumRetentionMs: number;
@@ -154,6 +164,11 @@ export class ShelfService {
     get repositoryRoot(): string {
         return this.options.repositoryRoot;
     }
+    /** Reports a host-side rewrite that published a shelf generation no caller asked for. */
+    subscribeToRewrites(listener: () => void): () => void {
+        this.rewriteListeners.add(listener);
+        return () => this.rewriteListeners.delete(listener);
+    }
     /** Captures selected layers durably; Save to Shelf deliberately skips the destructive reverter. */
     async shelve(input: ShelveInput): Promise<ShelfMutationResult> {
         assertShelfName(input.name);
@@ -173,8 +188,306 @@ export class ShelfService {
             );
         });
     }
+
+    /** Saves under an actual held metadata lease without removal; cleanup errors retain the durable shelf identity. */
+    async saveSelectedChanges(
+        input: SelectedShelfInput,
+        lease: TargetOperationLease,
+        revision: number,
+        scope: string,
+        guard: Parameters<PartialChanges["validate"]>[1],
+    ): Promise<ShelfMutationResult> {
+        assertShelfName(input.name);
+        let savedId: string | undefined;
+        return this.withRepositoryStore<ShelfMutationResult>(lease, async () => {
+            await this.options.store.migrateWithHeldLocks();
+            this.assertSelectedMetadata(input, lease, revision, scope);
+            await guard([
+                ...input.selected.map((entry) => entry.snapshot.view.path),
+                ...input.whole.map((entry) => entry.path),
+            ]);
+            // Digest the intent before the async capture so an edit during capture cannot become the saved plan.
+            const planDigest = createHash("sha256").update(JSON.stringify(input)).digest("hex");
+            const captured = await captureSelectedShelf(input, {
+                repositoryRoot: this.options.repositoryRoot,
+                executor: this.options.executor,
+                store: this.options.store,
+                recordBaseRevisions: this.recordBaseRevisions,
+                materializeEntry: (file, base, index, working) =>
+                    this.materializeEntry(file, base, index, working),
+            });
+            savedId = captured.shelfId;
+            this.scopedCaptures.set(input, { ...captured, planDigest, scope });
+            return {
+                status: "ok",
+                entries: [],
+                shelfId: captured.shelfId,
+                newGeneration: captured.generation,
+            };
+        }).catch((error: unknown) => {
+            if (savedId)
+                throw new Error(
+                    `Shelf ${savedId} was saved. Lock cleanup failed; do not repeat the save.`,
+                    {
+                        cause: error,
+                    },
+                );
+            throw error;
+        });
+    }
+
+    /** Rejects stale source names, drafts and owners before capture; the caller cannot certify its own lease. */
+    private assertSelectedMetadata(
+        input: SelectedShelfInput,
+        lease: TargetOperationLease,
+        revision: number,
+        scope: string,
+    ): void {
+        const state = this.options.changelists.inspectTargetOperationLease(
+            this.repositoryRoot,
+            lease,
+        );
+        if (state.pendingTargetOperation || state.revision !== revision)
+            throw new Error("Changelists changed. Reopen the selected changes.");
+        if (!["selection", "list", "files"].includes(input.scope))
+            throw new Error("Unknown shelf selection scope.");
+        const draft =
+            scope === "all"
+                ? (state.allDraft ?? "")
+                : (state.lists.find((list) => list.id === scope)?.draft ?? "");
+        if (
+            (scope !== "all" && !state.lists.some((list) => list.id === scope)) ||
+            input.scopeDraft !== draft
+        )
+            throw new Error("The captured selection draft changed.");
+        const owners = new Set<string>();
+        for (const entry of input.whole) {
+            const expected = this.wholeShelfOwners(state, entry);
+            if (input.scope === "list" && [...expected].some((id) => id !== scope))
+                throw new Error("List save cannot capture another source owner.");
+            expected.forEach((id) => owners.add(id));
+        }
+        for (const entry of input.selected) {
+            const file = entry.snapshot.view.path;
+            const ownership = state.changes[file];
+            if (ownership?.stale) throw new Error("Change assignments need review.");
+            for (const [fingerprint, owner] of Object.entries(entry.owners)) {
+                if (
+                    (ownership?.lines[fingerprint] ?? state.files[file] ?? state.activeId) !== owner
+                )
+                    throw new Error("The captured selection owner changed.");
+                owners.add(owner);
+                if (input.scope === "list" && owner !== scope)
+                    throw new Error("List save cannot capture another source owner.");
+            }
+        }
+        this.assertShelfSourceLists(state, input, owners);
+    }
+
+    /** Requires the complete source-list set and exact captured names, descriptions and drafts. */
+    private assertShelfSourceLists(
+        state: ChangelistState,
+        input: SelectedShelfInput,
+        owners: ReadonlySet<string>,
+    ): void {
+        if (
+            input.sourceLists.length !== owners.size ||
+            input.sourceLists.some((source) => {
+                const list = state.lists.find((item) => item.id === source.id);
+                return (
+                    !owners.has(source.id) ||
+                    !list ||
+                    list.name !== source.name ||
+                    (list.description ?? "") !== source.description ||
+                    (list.draft ?? "") !== source.draft
+                );
+            })
+        )
+            throw new Error("The captured source lists changed.");
+    }
+
+    /** Derives every whole-file owner from current metadata and complete working evidence, never caller declarations alone. */
+    private wholeShelfOwners(
+        state: ChangelistState,
+        entry: SelectedShelfInput["whole"][number],
+    ): Set<string> {
+        const tracking = state.changes[entry.path];
+        if (tracking?.stale) throw new Error("Change assignments need review.");
+        const fallback = state.files[entry.path] ?? state.activeId;
+        const expected = new Set<string>();
+        if (tracking && Object.keys(tracking.lines).length > 0) {
+            const evidence = entry.ownership;
+            if (!evidence || evidence.snapshot.contentId !== tracking.contentId)
+                throw new Error("Whole-file source ownership requires current evidence.");
+            const lines = evidence.snapshot.view.blocks
+                .flatMap((block) => block.lines)
+                .filter((line) => line.kind !== "context");
+            if (Object.keys(evidence.owners).length !== lines.length)
+                throw new Error("Whole-file source owners changed.");
+            for (const line of lines) {
+                const owner = tracking.lines[line.fingerprint] ?? fallback;
+                if (evidence.owners[line.fingerprint] !== owner)
+                    throw new Error("Whole-file source owners changed.");
+                expected.add(owner);
+            }
+        } else expected.add(fallback);
+        if (
+            entry.sourceListIds.length !== expected.size ||
+            entry.sourceListIds.some((id) => !expected.has(id))
+        )
+            throw new Error("Whole-file source owners changed.");
+        return expected;
+    }
+
+    /** Removes one durably saved host plan at most once; completed paths and the saved identity survive later failures. */
+    async removeScopedChanges(
+        input: SelectedShelfInput,
+        shelfId: string,
+        partial: PartialChanges,
+        lease: TargetOperationLease,
+        revision: number,
+        scope: string,
+        guard: Parameters<PartialChanges["validate"]>[1],
+    ): Promise<{
+        shelfId: string;
+        completedPaths: string[];
+        retainedPaths: string[];
+        error?: string;
+    }> {
+        const captured = this.scopedCaptures.get(input);
+        if (!captured || captured.shelfId !== shelfId)
+            throw new Error("The saved removal plan expired or was already attempted.");
+        if (
+            captured.planDigest !==
+                createHash("sha256").update(JSON.stringify(input)).digest("hex") ||
+            captured.scope !== scope
+        )
+            throw new Error("The captured removal plan changed after Save.");
+        const selected = input.selected.map((entry) => ({ ...entry, lineIds: [...entry.lineIds] }));
+        const wholePaths = input.whole.map((entry) => entry.path);
+        this.assertSelectedMetadata(input, lease, revision, scope);
+        if (wholePaths.length)
+            await this.withRepositoryStore(lease, async () => {
+                await guard(wholePaths);
+                await captured.assertWholeCurrent!();
+            });
+        for (const entry of selected) {
+            if (partial.snapshot(entry.snapshot.view.snapshotId) !== entry.snapshot)
+                throw new Error("The captured removal snapshot changed.");
+            await partial.validate(
+                { snapshotId: entry.snapshot.view.snapshotId, lineIds: [...entry.lineIds] },
+                guard,
+            );
+        }
+        this.scopedCaptures.delete(input);
+        const completedPaths: string[] = [];
+        const paths = [...selected.map((entry) => entry.snapshot.view.path), ...wholePaths];
+        for (const entry of selected) {
+            try {
+                await partial.rollbackCaptured(
+                    entry.snapshot,
+                    entry.lineIds,
+                    async (files) => {
+                        this.assertSelectedMetadata(input, lease, revision, scope);
+                        await guard(files);
+                    },
+                    this.reverter,
+                    randomUUID().replaceAll("-", ""),
+                );
+                completedPaths.push(entry.snapshot.view.path);
+            } catch (error) {
+                if (error instanceof ShelfWorktreeRemovalCompletedError)
+                    completedPaths.push(entry.snapshot.view.path);
+                return {
+                    shelfId,
+                    completedPaths,
+                    retainedPaths: paths.filter((file) => !completedPaths.includes(file)),
+                    error: error instanceof Error ? error.message : String(error),
+                };
+            }
+        }
+        if (wholePaths.length) {
+            const transactionId = randomUUID().replaceAll("-", "");
+            try {
+                await this.withRepositoryStore(lease, async () => {
+                    this.assertSelectedMetadata(input, lease, revision, scope);
+                    await guard(wholePaths);
+                    await captured.assertWholeCurrent!();
+                    try {
+                        await this.reverter.revertWithHeldLocks({
+                            transactionId,
+                            baseOid: captured.baseCommit,
+                            files: captured.revertFiles.flat(),
+                        });
+                        completedPaths.push(...wholePaths);
+                    } catch (error) {
+                        if (
+                            (await this.options.store.readJournals()).some(
+                                (journal) =>
+                                    journal.id === transactionId && journal.state === "shelved",
+                            )
+                        )
+                            completedPaths.push(...wholePaths);
+                        throw error;
+                    }
+                });
+            } catch (error) {
+                return {
+                    shelfId,
+                    completedPaths,
+                    retainedPaths: paths.filter((file) => !completedPaths.includes(file)),
+                    error: error instanceof Error ? error.message : String(error),
+                };
+            }
+        }
+        return { shelfId, completedPaths, retainedPaths: [] };
+    }
+
+    /** Removes only the captured selection through the service reverter's own gate; no outer gate is acquired. */
+    async removeSelectedChanges(
+        input: SelectedShelfInput,
+        selection: SelectedFileChanges,
+        partial: PartialChanges,
+        lease: TargetOperationLease,
+        revision: number,
+        scope: string,
+        guard: Parameters<PartialChanges["validate"]>[1],
+    ): Promise<{ readonly baseOid: string; readonly recoveryDirectory: string }> {
+        this.assertSelectedMetadata(input, lease, revision, scope);
+        const entry = input.selected[0];
+        if (
+            input.selected.length !== 1 ||
+            entry.snapshot !== partial.snapshot(selection.snapshotId) ||
+            JSON.stringify(entry.lineIds) !== JSON.stringify(selection.lineIds)
+        )
+            throw new Error("The selected removal plan changed.");
+        await guard([entry.snapshot.view.path]);
+        return partial.rollback(
+            selection,
+            async (files) => {
+                this.assertSelectedMetadata(input, lease, revision, scope);
+                await guard(files);
+            },
+            this.reverter,
+            randomUUID().replaceAll("-", ""),
+        );
+    }
     /** Applies whole selected entries only; flattened mode never writes the Git index. */
-    async unshelve(input: UnshelveInput): Promise<ShelfMutationResult> {
+    async unshelve(
+        input: UnshelveInput & { readonly targetOperation: ShelfRestoreTarget },
+    ): Promise<TargetShelfMutationResult>;
+    /** Legacy internal callers retain the existing non-list result contract. */
+    async unshelve(
+        input: UnshelveInput & { readonly targetOperation?: undefined },
+    ): Promise<ShelfMutationResult>;
+    /** Routes captured destination intent through the durable target-operation protocol. */
+    async unshelve(input: UnshelveInput): Promise<ShelfMutationResult | TargetShelfMutationResult> {
+        if (input.targetOperation)
+            return restoreTargetedShelf(input, {
+                ...this.options,
+                gitOps: this.gitOps,
+                applyEntry: (shelfId, entry, mode) => this.applyEntry(shelfId, entry, mode),
+            });
         return this.withMutation(async () =>
             this.options.store.withGenerationCas(
                 { shelfId: input.id, expectedShelfGeneration: input.expectedShelfGeneration },
@@ -278,12 +591,30 @@ export class ShelfService {
             ),
         );
     }
-    /** Creates the documented lossy content-only patch stream from whole selected entries. */
+    /** Reads one validated immutable generation without refreshing or rewriting history metadata. */
+    async getShelfManifest(id: string): Promise<ShelfPersistenceManifest> {
+        return this.options.store.readCurrentShelfManifest(id);
+    }
+    /** Exports only content, refusing a generation that changed while the user reviewed consent. */
     async exportPatch(input: {
         readonly id: string;
         readonly changeIds?: readonly string[];
+        readonly expectedShelfGeneration?: number;
+        readonly expectedShelfChecksum?: string;
     }): Promise<Buffer> {
-        const manifest = await this.options.store.readCurrentShelfManifest(input.id);
+        const manifest = await this.getShelfManifest(input.id);
+        if (
+            input.expectedShelfGeneration !== undefined &&
+            input.expectedShelfGeneration !== manifest.generation
+        ) {
+            throw new ShelfStaleShelfError(input.expectedShelfGeneration, manifest.generation);
+        }
+        if (
+            input.expectedShelfChecksum !== undefined &&
+            input.expectedShelfChecksum !== manifest.checksum
+        ) {
+            throw new Error("Shelf contents changed. Review the shelf before exporting again.");
+        }
         return exportFlattenedPatch(
             this.options.store,
             input.id,
@@ -406,13 +737,48 @@ export class ShelfService {
         id: string,
         changeId: string,
     ): Promise<ShelfConflictSessionPayload> {
-        return this.conflictSessions.open({ id, changeId });
+        const payload = await this.conflictSessions.open({ id, changeId });
+        // The host binds the editor to the durable pending restore it reads here, never to a webview value.
+        const pending = this.options.changelists.get(this.repositoryRoot).pendingTargetOperation;
+        return pending?.kind === "shelfRestore" &&
+            pending.phase === "conflicted" &&
+            pending.shelf?.id === id
+            ? { ...payload, operationId: pending.id }
+            : payload;
     }
     /** Applies a shelf merge result through the session's queue, CAS, and fingerprint guards. */
     async applyShelfConflictResolution(
         input: ApplyShelfConflictResolutionInput,
     ): Promise<ApplyShelfConflictResolutionResult> {
-        return this.conflictSessions.apply(input);
+        if (input.operationId === undefined) return this.conflictSessions.apply(input);
+        const result = await resolveTargetedShelfConflict(
+            {
+                operationId: input.operationId,
+                shelfId: input.id,
+                changeId: input.changeId,
+                content: input.content,
+                expectedPathFingerprint: input.expectedPathFingerprint,
+            },
+            {
+                ...this.options,
+                gitOps: this.gitOps,
+                applyEntry: (shelfId, entry, mode) => this.applyEntry(shelfId, entry, mode),
+            },
+        );
+        if (result.status === "busy")
+            return {
+                status: "refused",
+                reason: "Another repository operation is running. Try again.",
+            };
+        if (result.status === "stale" || result.status === "notApplied")
+            return { status: "stale", reason: "operation" };
+        const newGeneration = await this.options.store
+            .readCurrentShelfManifest(input.id)
+            .then((manifest) => manifest.generation)
+            .catch(() => input.expectedShelfGeneration);
+        return result.status === "appliedNeedsReview"
+            ? { status: "applied", newGeneration, needsReview: true }
+            : { status: "applied", newGeneration };
     }
     /** Explicit recovery purge; deleting a shelf never reaches this path. */
     async purgeRecovery(): Promise<readonly string[]> {
@@ -555,37 +921,54 @@ export class ShelfService {
         };
     }
     /** Rolls back incomplete destructive captures and removes their now-cancelled durable shelves. */
-    async resumePendingRecovery(): Promise<PendingShelfRecoveryResult> {
-        const journals = await this.options.store.readJournals();
-        const links = new Map<string, NonNullable<(typeof journals)[number]["shelf"]>>();
-        for (const journal of journals) {
-            if (journal.state === "shelvePendingRevert" && journal.shelf)
-                links.set(journal.id, journal.shelf);
-        }
-        const result = await this.reverter.resumePending();
-        for (const id of result.rolledBackIds) {
-            const shelf = links.get(id);
-            if (!shelf) continue;
-            // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Stop at the first failed deletion so later recovery shelves remain available for retry.
-            await this.withMutation(async () => {
-                await this.options.store.deleteShelf(shelf.id).catch((error: unknown) => {
-                    if (!isNotFound(error)) throw error;
-                });
-            });
-        }
-        const pending = await this.options.store.readJournals();
-        this.replaceHealth(
-            "pendingRecovery",
-            pending.length
-                ? [
-                      {
-                          kind: "pendingRecovery",
-                          detail: `${pending.length} pending recovery journal(s)`,
-                      },
-                  ]
-                : [],
-        );
-        return result;
+    async resumePendingRecovery(): Promise<
+        PendingShelfRecoveryResult & { readonly upgraded: boolean }
+    > {
+        return this.withLockedState(async () => {
+            const journals = await this.options.store.readJournals();
+            const links = new Map<string, { id: string; manifest: ShelfManifest }>();
+            for (const journal of journals) {
+                if (journal.state === "shelvePendingRevert" && journal.shelf) {
+                    const manifest = await this.options.store.readCurrentManifest(journal.shelf.id);
+                    if (manifest.generation !== journal.shelf.generation)
+                        throw new ShelfStoreCorruptionError("Shelf recovery generation changed.");
+                    links.set(journal.id, { id: journal.shelf.id, manifest });
+                }
+            }
+            const result = await this.reverter.resumePendingWithHeldLocks();
+            // A repository that never shelved has nothing to upgrade; upgrading it would leave store files in every repository opened.
+            const upgraded =
+                result.rolledBackIds.length > 0 || (await this.options.store.hasCatalog())
+                    ? await this.options.store.migrateWithHeldLocks().catch((error: unknown) => {
+                          // Upgrading at startup lets panels list post-upgrade generations; a refused upgrade waits for the next write.
+                          if (
+                              result.rolledBackIds.length === 0 &&
+                              error instanceof ShelfMutationAdmissionError
+                          )
+                              return false;
+                          throw error;
+                      })
+                    : false;
+            for (const id of result.rolledBackIds) {
+                const shelf = links.get(id);
+                if (!shelf) continue;
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Stop at the first failed deletion so later recovery shelves remain available for retry.
+                await this.options.store.deleteRecoveredShelf(shelf.id, shelf.manifest);
+            }
+            const pending = await this.options.store.readJournals();
+            this.replaceHealth(
+                "pendingRecovery",
+                pending.length
+                    ? [
+                          {
+                              kind: "pendingRecovery",
+                              detail: `${pending.length} pending recovery journal(s)`,
+                          },
+                      ]
+                    : [],
+            );
+            return { ...result, upgraded };
+        });
     }
     private async captureShelf(input: ShelveInput): Promise<ShelfMutationResult> {
         const captured = await captureShelfArtifacts(input, {
@@ -824,39 +1207,82 @@ export class ShelfService {
     }
     /** Persists unavailable history bases as `none` so snapshots never promise a missing base. */
     private async refreshHistoryBaseAvailability(id: string) {
-        return this.withMutation(async () =>
-            this.options.store.withLock(async () => {
-                const manifest = await this.options.store.readCurrentShelfManifest(id);
-                if (!manifest.metadata.baseCommit) return manifest;
-                const unavailable = new Set<string>();
-                for (const entry of manifest.files) {
-                    if (entry.baseAvailability !== "history") continue;
-                    const block = entry.worktreeBlock ?? entry.indexBlock;
-                    if (!block) {
-                        unavailable.add(entry.changeId);
-                        continue;
+        const persisted = await this.options.store.readCurrentShelfManifest(id);
+        if (
+            persisted.schemaVersion === 1 ||
+            !persisted.metadata.baseCommit ||
+            !persisted.files.some((entry) => entry.baseAvailability === "history")
+        )
+            return persisted;
+        let rewritten = false;
+        try {
+            const refreshed = await this.withLockedState(async () =>
+                this.options.store.withLock(async () => {
+                    await this.options.store.assertMutationReady();
+                    if (
+                        (await this.options.store.readJournals()).some(
+                            (journal) =>
+                                journal.state === "shelvePendingRevert" ||
+                                journal.state === "unshelvePending",
+                        )
+                    )
+                        throw new ShelfMutationAdmissionError(
+                            "Shelf recovery must finish before history refresh.",
+                        );
+                    const manifest = await this.options.store.readCurrentShelfManifest(id);
+                    if (!manifest.metadata.baseCommit) return manifest;
+                    const unavailable = new Set<string>();
+                    for (const entry of manifest.files) {
+                        if (entry.baseAvailability !== "history") continue;
+                        const block = entry.worktreeBlock ?? entry.indexBlock;
+                        if (!block) {
+                            unavailable.add(entry.changeId);
+                            continue;
+                        }
+                        const relativePath = validateShelfManifestPath(
+                            block.renamedFrom ?? block.path,
+                        );
+                        // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Keep Git history probes ordered while the repository mutation and store locks are held.
+                        const result = await this.options.executor.runBinary(
+                            ["show", `${manifest.metadata.baseCommit}:${relativePath}`],
+                            { expectedExitCodes: [0, 128] },
+                        );
+                        if (result.exitCode !== 0) unavailable.add(entry.changeId);
                     }
-                    const relativePath = validateShelfManifestPath(block.renamedFrom ?? block.path);
-                    // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Keep Git history probes ordered while the repository mutation and store locks are held.
-                    const result = await this.options.executor.runBinary(
-                        ["show", `${manifest.metadata.baseCommit}:${relativePath}`],
-                        { expectedExitCodes: [0, 128] },
-                    );
-                    if (result.exitCode !== 0) unavailable.add(entry.changeId);
-                }
-                if (unavailable.size === 0) return manifest;
-                return this.options.store.writeShelfGeneration(id, {
-                    schemaVersion: manifest.schemaVersion,
-                    objectHashes: manifest.objectHashes,
-                    metadata: manifest.metadata,
-                    files: manifest.files.map((entry) =>
-                        unavailable.has(entry.changeId)
-                            ? { ...entry, baseAvailability: "none" as const }
-                            : entry,
-                    ),
-                });
-            }),
-        );
+                    if (unavailable.size === 0) return manifest;
+                    rewritten = true;
+                    return this.options.store.writeShelfGeneration(id, {
+                        schemaVersion: manifest.schemaVersion,
+                        objectHashes: manifest.objectHashes,
+                        metadata: manifest.metadata,
+                        files: manifest.files.map((entry) =>
+                            unavailable.has(entry.changeId)
+                                ? { ...entry, baseAvailability: "none" as const }
+                                : entry,
+                        ),
+                    });
+                }),
+            );
+            // The caller's result may never reach a view, so views re-list from the store instead.
+            if (rewritten) this.notifyRewrite();
+            return refreshed;
+        } catch (error) {
+            if (
+                error instanceof ShelfMutationAdmissionError ||
+                error instanceof RepositoryLockBusyError
+            )
+                return persisted;
+            throw error;
+        }
+    }
+    private notifyRewrite(): void {
+        for (const listener of this.rewriteListeners) {
+            try {
+                listener();
+            } catch (error) {
+                console.error("[IntelliGit] Shelf rewrite delivery failed:", error);
+            }
+        }
     }
     private async applyPatchUnder(
         directory: string,
@@ -998,14 +1424,63 @@ export class ShelfService {
         return createHash("sha256").update(listing.stdout).digest("hex");
     }
 
-    private async withMutation<T>(operation: () => Promise<T>): Promise<T> {
-        const directories = await this.gitOps.getGitDirectories();
-        try {
-            const result = await this.options.gate.run(
+    /** Orders the actual metadata lease before repository and shared-store serialization. */
+    private async withLockedState<T>(operation: () => Promise<T>): Promise<T> {
+        const result = this.mutationTail.then(async () => {
+            const lease = await this.options.changelists.acquireTargetOperationLease(
                 this.options.repositoryRoot,
-                directories.commonDir,
-                () => this.options.store.withLock(operation),
             );
+            try {
+                return await this.withRepositoryStore(lease, operation);
+            } finally {
+                // A release failure must not replace the shelf mutation's outcome or its error.
+                await lease
+                    .release()
+                    .catch((error: unknown) =>
+                        console.error("[IntelliGit] Shelf lease release failed:", error),
+                    );
+            }
+        });
+        this.mutationTail = result.then(
+            () => undefined,
+            () => undefined,
+        );
+        return result;
+    }
+
+    /** Reuses the existing repository/store order without reacquiring an actual caller-held metadata lease. */
+    private async withRepositoryStore<T>(
+        lease: TargetOperationLease,
+        operation: () => Promise<T>,
+    ): Promise<T> {
+        const state = this.options.changelists.inspectTargetOperationLease(
+            this.repositoryRoot,
+            lease,
+        );
+        if (state.pendingTargetOperation)
+            throw new ShelfMutationAdmissionError(
+                "Pending target operation requires recovery before shelf migration.",
+            );
+        const directories = await this.gitOps.getGitDirectories();
+        return this.options.gate.run(this.repositoryRoot, directories.commonDir, () =>
+            this.options.store.withLock(async () => {
+                this.options.changelists.inspectTargetOperationLease(this.repositoryRoot, lease);
+                if ((await this.gitOps.getActiveOperation()) !== "none")
+                    throw new ShelfMutationAdmissionError(
+                        "Native Git operation must finish before shelf mutation.",
+                    );
+                return operation();
+            }),
+        );
+    }
+
+    /** Validates migration before any newly requested shelf mutation reaches its callback. */
+    private async withMutation<T>(operation: () => Promise<T>): Promise<T> {
+        try {
+            const result = await this.withLockedState(async () => {
+                await this.options.store.migrateWithHeldLocks();
+                return operation();
+            });
             this.replaceHealth("lockBusy", []);
             this.replaceHealth("recoveryFull", []);
             return result;

@@ -1,6 +1,8 @@
 import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { changeFingerprint } from "../changes/parseDiff";
+import type { ShelfReverter } from "../shelf/recovery";
 import { changeIds, selectedContent, validateSelection } from "../changes/selection";
 import type { ChangeFileView, SelectedFileChanges } from "../webviews/protocol/changeSelection";
 import type { GitExecutor } from "./executor";
@@ -67,6 +69,159 @@ export class PartialChanges {
         const snapshot = this.snapshots.get(id);
         if (!snapshot) throw new Error("The change snapshot expired. Reopen its changes.");
         return snapshot;
+    }
+
+    /** Each path's stage entries and flag tag, the per-file index state a snapshot reads, in one Git call. */
+    async indexEntries(): Promise<Map<string, string>> {
+        const entries = new Map<string, string>();
+        const output = await this.executor.run(["ls-files", "--stage", "-v", "-z"]);
+        for (const record of output.split("\0")) {
+            if (!record) continue;
+            const file = record.slice(record.indexOf("\t") + 1);
+            entries.set(file, (entries.get(file) ?? "") + record);
+        }
+        return entries;
+    }
+
+    /** Revalidates host-owned selection identities and repository state under the mutation gate. */
+    async validate(selection: SelectedFileChanges, guard: DirtyBufferGuard): Promise<void> {
+        const snapshot = this.snapshot(selection.snapshotId);
+        validateSelection(snapshot.view.blocks, selection.lineIds);
+        if (!selection.lineIds.length) throw new Error("Select changes first.");
+        await this.executor.runWithinMutationGate(() =>
+            this.assertCurrent(
+                [snapshot.view.path],
+                () => Promise.resolve({ snapshot, content: snapshot.view.base }),
+                guard,
+            ),
+        );
+    }
+
+    /** Creates a Git patch for exactly the selected content; no real index or worktree is written. */
+    async exportPatch(selection: SelectedFileChanges, guard: DirtyBufferGuard): Promise<Buffer> {
+        const snapshot = this.snapshot(selection.snapshotId);
+        const content = selectedContent(
+            snapshot.view.base,
+            snapshot.view.blocks,
+            selection.lineIds,
+        );
+        if (!selection.lineIds.length) throw new Error("Select changes first.");
+        const assertCurrent = () =>
+            this.assertCurrent(
+                [snapshot.view.path],
+                () => Promise.resolve({ snapshot, content }),
+                guard,
+            );
+        return this.executor.runWithinMutationGate(async () => {
+            await assertCurrent();
+            const directory = await mkdtemp(path.join(tmpdir(), "intelligit-selected-patch-"));
+            try {
+                const index = path.join(directory, "index");
+                await this.executor.runBinary(["read-tree", snapshot.head], {
+                    env: { GIT_INDEX_FILE: index },
+                });
+                await this.writeBlob(index, snapshot, content);
+                const patch = await this.executor.runBinary(
+                    [
+                        "-c",
+                        "diff.suppressBlankEmpty=false",
+                        "--literal-pathspecs",
+                        "diff",
+                        "--cached",
+                        "--binary",
+                        "--full-index",
+                        "--no-ext-diff",
+                        "--no-textconv",
+                        "--no-color",
+                        "--src-prefix=a/",
+                        "--dst-prefix=b/",
+                        snapshot.head,
+                        "--",
+                        snapshot.view.path,
+                    ],
+                    {
+                        env: { GIT_INDEX_FILE: index },
+                        maxOutputBytes: 8 * 1024 * 1024,
+                        signal: AbortSignal.timeout(10_000),
+                    },
+                );
+                if (patch.truncated || !patch.stdout.length)
+                    throw new Error("The selected patch is empty or exceeds its supported size.");
+                await assertCurrent();
+                return patch.stdout;
+            } finally {
+                await rm(directory, { recursive: true, force: true });
+            }
+        });
+    }
+
+    /**
+     * Removes reviewed working lines under the supplied reverter's single repository/store gate.
+     * The host must hold its metadata lease and durably save an independent recovery shelf first;
+     * shelf migration must already be complete. Completed failures must never be retried.
+     */
+    async rollback(
+        selection: SelectedFileChanges,
+        guard: DirtyBufferGuard,
+        reverter: ShelfReverter,
+        transactionId: string,
+    ): Promise<{ readonly baseOid: string; readonly recoveryDirectory: string }> {
+        return this.rollbackCaptured(
+            this.snapshot(selection.snapshotId),
+            selection.lineIds,
+            guard,
+            reverter,
+            transactionId,
+        );
+    }
+
+    /** Removes a host-captured selection after earlier removals invalidated the editor cache; validates its original bytes under the recovery gate. */
+    async rollbackCaptured(
+        snapshot: PartialFileSnapshot,
+        lineIds: readonly string[],
+        guard: DirtyBufferGuard,
+        reverter: ShelfReverter,
+        transactionId: string,
+    ): Promise<{ readonly baseOid: string; readonly recoveryDirectory: string }> {
+        if (snapshot.view.side !== "working")
+            throw new Error("Rollback requires working-tree changes.");
+        const ids = validateSelection(snapshot.view.blocks, lineIds);
+        if (!ids.size) throw new Error("Select changes first.");
+        const remaining = selectedContent(
+            snapshot.view.base,
+            snapshot.view.blocks,
+            changeIds(snapshot.view.blocks).filter((id) => !ids.has(id)),
+        );
+        const before = await this.worktreeBytes(snapshot, snapshot.working);
+        if (changeFingerprint(before) !== snapshot.worktreeHash)
+            throw new Error("The file's line endings require the whole-file/native workflow.");
+        const after = await this.worktreeBytes(snapshot, remaining);
+        const afterSnapshot = {
+            ...snapshot,
+            working: remaining,
+            worktreeHash: changeFingerprint(after),
+        };
+        const result = await reverter.revertWorktree({
+            repositoryRoot: snapshot.root,
+            transactionId,
+            relativePath: snapshot.view.path,
+            before,
+            after,
+            validateBefore: () =>
+                this.assertCurrent(
+                    [snapshot.view.path],
+                    () => Promise.resolve({ snapshot, content: remaining }),
+                    guard,
+                ),
+            validateAfter: () =>
+                this.assertCurrent(
+                    [snapshot.view.path],
+                    () => Promise.resolve({ snapshot: afterSnapshot, content: remaining }),
+                    guard,
+                ),
+        });
+        this.clear();
+        return result;
     }
 
     /** Applies selected working changes, or removes selected indexed changes, without a worktree write. */
@@ -433,6 +588,24 @@ export class PartialChanges {
         const content = result.stdout.toString("utf8");
         assertContentSize(content);
         return content;
+    }
+    /** Git performs the inverse clean conversion; a non-round-tripping original is never rewritten. */
+    private async worktreeBytes(snapshot: PartialFileSnapshot, content: string): Promise<Buffer> {
+        assertContentSize(content);
+        const oid = await this.executor.runBinary(["hash-object", "-w", "--stdin"], {
+            input: Buffer.from(content),
+        });
+        const result = await this.executor.runBinary(
+            [
+                "cat-file",
+                "--filters",
+                `--path=${snapshot.view.path}`,
+                oid.stdout.toString("utf8").trim(),
+            ],
+            { maxOutputBytes: MAX_PARTIAL_TEXT_BYTES, signal: AbortSignal.timeout(10_000) },
+        );
+        if (result.truncated) throw new Error("The rollback exceeds the supported text size.");
+        return result.stdout;
     }
 }
 

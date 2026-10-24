@@ -73,6 +73,7 @@ async function writeOneGeneration(platform: string): Promise<void> {
     });
     await ensureShelfRoot(paths);
     const store = new ShelfStore(paths);
+    await store.withLock(() => store.migrateWithHeldLocks());
     const object = await store.putObject("shelf-one", Buffer.from("payload"));
 
     // Setup writes too. Count only the generation write.

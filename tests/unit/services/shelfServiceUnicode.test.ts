@@ -1,3 +1,4 @@
+import { connectedChangelists } from "../../helpers/connectedChangelists";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -56,6 +57,7 @@ describe("ShelfService Unicode filenames", () => {
             new RepositoryLock(),
         );
         const service = new ShelfService({
+            changelists: await connectedChangelists(root),
             repositoryRoot: root,
             executor: new GitExecutor(root),
             store,

@@ -3,12 +3,14 @@ import path from "node:path";
 import { changeFingerprint } from "./parseDiff";
 import { assertRepoRelativePath } from "../utils/repoRelativePath";
 
-/** Cheap cache invalidation only; mutations still require the full protected snapshot fences. */
+/**
+ * Cheap cache invalidation only; mutations still require the full protected snapshot fences.
+ * The index is keyed per file by the tracker, so staging one file does not re-read every other.
+ */
 export async function rangeObservation(gitDir: string, commonDir: string): Promise<string> {
     const head = (await boundedRead(path.join(gitDir, "HEAD"))).toString("utf8");
     const ref = /^ref: (refs\/[^\r\n]+)\s*$/.exec(head)?.[1];
     const files = [
-        path.join(gitDir, "index"),
         path.join(commonDir, "packed-refs"),
         path.join(commonDir, "config"),
         path.join(gitDir, "config.worktree"),

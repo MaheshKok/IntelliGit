@@ -63,7 +63,7 @@ const STATUS_SENTENCES: Record<ShelfMutationStatus, string> = {
     ok: "Shelf mutation completed.",
     partial: "Shelf mutation partially completed.",
     conflicts: "Shelf mutation completed with conflicts.",
-    staleShelf: "Shelf changed before this mutation.",
+    staleShelf: "The shelf or changelists changed. Nothing was changed; try again.",
     staleCatalog: "Shelf catalog changed before this mutation.",
     busy: "Shelf mutation is busy.",
     recoveryFull: "Shelf recovery storage is full.",

@@ -606,3 +606,49 @@ describe("activateE2eControlChannel: end-to-end request/response over the real t
         return JSON.parse(readFileSync(responsePath, "utf8"));
     }
 });
+
+describe("benchmark numeric snapshot transport", () => {
+    it.each([true, false])("answers only with benchmark opt-in=%s", async (enabled) => {
+        const channelDir = mkdtempSync(join(tmpdir(), "intelligit-benchmark-channel-"));
+        vi.stubEnv("INTELLIGIT_E2E", "1");
+        vi.stubEnv("INTELLIGIT_E2E_CHANNEL_DIR", channelDir);
+        vi.stubEnv("INTELLIGIT_E2E_BENCHMARK", enabled ? "1" : "0");
+        const handle = activateE2eControlChannel(
+            makeContext(vscodeMock.ExtensionMode.Development).context,
+        );
+        try {
+            writeFileSync(
+                join(channelDir, "bench.request.json"),
+                JSON.stringify({ nonce: "bench", store: "metrics", operation: "snapshot" }),
+            );
+            await waitFor(() => existsSync(join(channelDir, "bench.response.json")));
+            const response = JSON.parse(
+                readFileSync(join(channelDir, "bench.response.json"), "utf8"),
+            );
+            if (enabled) {
+                expect(response).toMatchObject({
+                    ok: true,
+                    result: {
+                        kind: "value",
+                        value: {
+                            heap: { heapUsed: expect.any(Number) },
+                            ipc: {
+                                in: { count: expect.any(Number) },
+                                out: { count: expect.any(Number) },
+                            },
+                        },
+                    },
+                });
+                expect(JSON.stringify(response)).not.toContain(channelDir);
+            } else
+                expect(response).toMatchObject({
+                    ok: false,
+                    error: "Benchmark metrics are not enabled.",
+                });
+        } finally {
+            handle.dispose();
+            vi.unstubAllEnvs();
+            removeScratchDirectoriesSync(channelDir);
+        }
+    });
+});

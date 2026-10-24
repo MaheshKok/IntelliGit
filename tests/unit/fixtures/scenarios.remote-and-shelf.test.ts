@@ -1,3 +1,4 @@
+import { connectedChangelists } from "../../helpers/connectedChangelists";
 /**
  * Spec-derived tests for `tests/fixtures/repo/scenarios.ts`: the remote-relationship scenarios
  * (ahead-behind / ahead-only / pushed-tip / rewritten-history / stale-lease), empty-repo, and the
@@ -441,6 +442,7 @@ describe("shelf-conflicted", () => {
             new RepositoryLock(),
         );
         const service = new ShelfService({
+            changelists: await connectedChangelists(workspace.root),
             repositoryRoot: workspace.root,
             executor,
             store,
@@ -469,6 +471,7 @@ describe("shelf-conflicted", () => {
             new RepositoryLock(),
         );
         const service = new ShelfService({
+            changelists: await connectedChangelists(workspace.root),
             repositoryRoot: workspace.root,
             executor,
             store,
@@ -510,6 +513,7 @@ describe("shelf-conflicted", () => {
             new RepositoryLock(),
         );
         const service = new ShelfService({
+            changelists: await connectedChangelists(workspace.root),
             repositoryRoot: workspace.root,
             executor,
             store,

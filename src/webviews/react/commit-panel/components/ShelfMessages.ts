@@ -10,6 +10,7 @@ export function statusMessage(status: ShelfMutationStatus): string {
         staleCatalog: t("shelf.status.staleCatalog"),
         busy: t("shelf.status.busy"),
         recoveryFull: t("shelf.status.recoveryFull"),
+        needsReview: t("shelf.status.needsReview"),
         error: t("shelf.status.failed"),
     }[status];
 }

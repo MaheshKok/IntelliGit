@@ -1,3 +1,4 @@
+import { connectedChangelists } from "../../helpers/connectedChangelists";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -115,6 +116,7 @@ export async function createShelfFixture(
         executor,
         store,
         service: new ShelfService({
+            changelists: await connectedChangelists(root),
             repositoryRoot: root,
             executor,
             store,
@@ -151,6 +153,7 @@ export async function createSecondService(
     return {
         store,
         service: new ShelfService({
+            changelists: await connectedChangelists(repositoryRoot),
             repositoryRoot,
             executor: new GitExecutor(repositoryRoot),
             store,

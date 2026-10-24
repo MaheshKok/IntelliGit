@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.38.3",
+    "version": "0.39.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -354,6 +354,16 @@
                 }
             },
             {
+                "command": "intelligit.completeTargetedHistory",
+                "title": "%command.completeTargetedHistory%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.discardTargetedHistory",
+                "title": "%command.discardTargetedHistory%",
+                "category": "%intelligit%"
+            },
+            {
                 "command": "intelligit.checkout",
                 "title": "%command.checkout%",
                 "category": "%intelligit%"
@@ -591,6 +601,11 @@
                 "category": "%intelligit%"
             },
             {
+                "command": "intelligit.fileSaveToShelf",
+                "title": "%command.fileSaveToShelf%",
+                "category": "%intelligit%"
+            },
+            {
                 "command": "intelligit.fileAddToVcs",
                 "title": "%command.addToVcs%",
                 "category": "%intelligit%"
@@ -779,6 +794,11 @@
             {
                 "command": "intelligit.importPatch",
                 "title": "%command.shelf.importPatch%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.applyPatchToChangelist",
+                "title": "%command.shelf.applyPatchToChangelist%",
                 "category": "%intelligit%"
             },
             {
@@ -1350,6 +1370,11 @@
                     "group": "2_destructive@2"
                 },
                 {
+                    "command": "intelligit.fileSaveToShelf",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file' && !webviewIgnoredFile",
+                    "group": "1_actions@3"
+                },
+                {
                     "command": "intelligit.fileRefresh",
                     "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
                     "group": "3_info@2"
@@ -1627,7 +1652,7 @@
         "test:watch": "bun vitest",
         "test:visual": "playwright test --config playwright.visual.config.ts",
         "test:visual:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && bun run test:visual'",
-        "test:e2e": "playwright test --config playwright.e2e.config.ts tests/e2e/flows/flows.spec.ts tests/e2e/undockShortcut.spec.ts tests/e2e/branchRepositoryScope.spec.ts tests/e2e/gitLogPersistence.spec.ts tests/e2e/gitLogLayout.spec.ts tests/e2e/fileContextCompareBranchOrTag.spec.ts tests/e2e/fileContextShowCurrentRevision.spec.ts tests/e2e/fileContextAnnotateWithGitBlame.spec.ts tests/e2e/fileContextRollback.spec.ts tests/e2e/fileContextFetch.spec.ts tests/e2e/fileContextPull.spec.ts tests/e2e/currentBranchUpdate.spec.ts tests/e2e/fileContextPush.spec.ts tests/e2e/fileContextCommit.spec.ts tests/e2e/fileContextAddToVcs.spec.ts tests/e2e/fileContextMerge.spec.ts tests/e2e/mergeWorkbench.spec.ts tests/e2e/partialChanges.spec.ts tests/e2e/fileContextBranches.spec.ts tests/e2e/fileContextNewBranch.spec.ts tests/e2e/fileContextNewTag.spec.ts tests/e2e/fileContextResetHead.spec.ts tests/e2e/fileContextStashChanges.spec.ts tests/e2e/fileContextUnstashChanges.spec.ts tests/e2e/fileContextGitHub.spec.ts tests/e2e/fileContextManageRemotes.spec.ts tests/e2e/fileContextClone.spec.ts",
+        "test:e2e": "playwright test --config playwright.e2e.config.ts tests/e2e/flows/flows.spec.ts tests/e2e/undockShortcut.spec.ts tests/e2e/branchRepositoryScope.spec.ts tests/e2e/gitLogPersistence.spec.ts tests/e2e/gitLogLayout.spec.ts tests/e2e/fileContextCompareBranchOrTag.spec.ts tests/e2e/fileContextShowCurrentRevision.spec.ts tests/e2e/fileContextAnnotateWithGitBlame.spec.ts tests/e2e/fileContextRollback.spec.ts tests/e2e/fileContextFetch.spec.ts tests/e2e/fileContextPull.spec.ts tests/e2e/currentBranchUpdate.spec.ts tests/e2e/fileContextPush.spec.ts tests/e2e/fileContextCommit.spec.ts tests/e2e/fileContextAddToVcs.spec.ts tests/e2e/fileContextMerge.spec.ts tests/e2e/mergeWorkbench.spec.ts tests/e2e/partialChanges.spec.ts tests/e2e/fileContextBranches.spec.ts tests/e2e/fileContextNewBranch.spec.ts tests/e2e/fileContextNewTag.spec.ts tests/e2e/fileContextResetHead.spec.ts tests/e2e/fileContextStashChanges.spec.ts tests/e2e/fileContextUnstashChanges.spec.ts tests/e2e/fileContextGitHub.spec.ts tests/e2e/fileContextManageRemotes.spec.ts tests/e2e/fileContextClone.spec.ts tests/e2e/changelistScale.spec.ts tests/e2e/listAwareOperations.spec.ts tests/e2e/historyToChangelist.spec.ts tests/e2e/changelistKeyboard.spec.ts tests/e2e/changelistLifecycle.spec.ts",
         "test:e2e:diff-viewer": "playwright test --config playwright.e2e.config.ts tests/e2e/diffViewer.spec.ts tests/e2e/diffViewerTheme.spec.ts",
         "test:e2e:diff-viewer:perf": "playwright test --config playwright.e2e.config.ts tests/e2e/diffViewer.performance.spec.ts",
         "test:e2e:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a bun run test:e2e'",

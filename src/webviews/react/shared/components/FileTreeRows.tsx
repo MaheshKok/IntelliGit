@@ -16,6 +16,7 @@ import { getLeafName, getParentPath } from "../utils/path";
 import { JETBRAINS_UI, SHADOW } from "../tokens";
 import { t } from "../i18n";
 import { countFiles, type TreeEntry, type TreeFolder } from "../fileTree";
+import { observeVisibleRow } from "../visibleRows";
 
 /**
  * Tree geometry is expressed as metrics so callers can move the outer guide
@@ -75,6 +76,7 @@ export interface TreeRowFile {
     status: string;
     additions: number;
     deletions: number;
+    statsState?: "pending" | "ready" | "unavailable";
     icon?: ThemeTreeIcon;
 }
 
@@ -83,6 +85,8 @@ interface TreeFileWiring {
     /** Whether this row is the tree's current file; the caller owns the identity. */
     isSelected: boolean;
     onSelect: () => void;
+    /** Optional read-only work for an actually visible row, independent of selection. */
+    onVisible?: () => void;
     /** Preserves the commit-panel callback contract, including the original click event. */
     onSelectWithEvent?: (event: React.MouseEvent<HTMLElement>) => void;
     onActivate?: () => void;
@@ -583,6 +587,25 @@ function TreeFileStats({
      */
     rowOverridesForeground?: boolean;
 }): React.ReactElement | null {
+    if (file.statsState === "pending" || file.statsState === "unavailable") {
+        const label = t(
+            file.statsState === "pending" ? "common.loading" : "changes.statsUnavailable",
+        );
+        return (
+            <Box
+                as="span"
+                ml="auto"
+                fontSize="11px"
+                flexShrink={0}
+                minW="3ch"
+                title={label}
+                aria-label={label}
+                role="status"
+            >
+                {file.statsState === "pending" ? "..." : "-"}
+            </Box>
+        );
+    }
     if (file.additions <= 0 && file.deletions <= 0) return null;
     const addedColor = rowOverridesForeground
         ? undefined
@@ -674,6 +697,17 @@ function TreeFileRowImpl({
         onContextMenu,
         !isCommitPanel,
     );
+    const latestOnVisible = useRef(wiring.onVisible);
+    useEffect(() => {
+        latestOnVisible.current = wiring.onVisible;
+    }, [wiring.onVisible]);
+    const observesVisibility = wiring.onVisible !== undefined;
+    // Keyed on the file, not the callback: each re-observe reports a visible row again.
+    useEffect(() => {
+        const row = rowRef.current;
+        if (row && observesVisibility)
+            return observeVisibleRow(row, () => latestOnVisible.current?.());
+    }, [rowRef, file, observesVisibility]);
     return (
         <Flex
             ref={rowRef}
@@ -758,6 +792,20 @@ function TreeFileRowImpl({
                 stagedState={wiring.stagedState}
                 rowOverridesForeground={visuals.background !== undefined}
             />
+            {wiring.isIndeterminate ? (
+                <Box
+                    as="span"
+                    flexShrink={0}
+                    fontSize="11px"
+                    color={
+                        visuals.background !== undefined
+                            ? undefined
+                            : "var(--intelligit-pycharm-muted)"
+                    }
+                >
+                    {t("changes.partialInclusion")}
+                </Box>
+            ) : null}
             <TreeFileStats
                 file={file}
                 rowVariant={rowVariant}

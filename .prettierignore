@@ -15,3 +15,9 @@ package-lock.json
 # Recorded artifacts, not source. The visual fixture gates compare these bytes
 # against a fresh recording, so a formatter rewriting them fails the gate.
 tests/visual/fixtures
+
+# Exact bundle from the pinned schema-4 client; its checksum is asserted by tests.
+tests/fixtures/changes/schema4/changelistStore.cjs
+
+# Exact shipped-service fixture: its checksum is part of the compatibility proof.
+tests/fixtures/shelf-v1/shelfService.cjs

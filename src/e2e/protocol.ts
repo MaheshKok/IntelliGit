@@ -49,7 +49,15 @@ export type E2eWebviewStateRequest =
     | (E2eWebviewStateRequestBase & { readonly operation: "reset" });
 
 /** One correlated request written by the Playwright-side client as `<nonce>.request.json`. */
-export type E2eRequest = E2eMementoRequest | E2eSecretRequest | E2eWebviewStateRequest;
+export type E2eRequest =
+    | E2eMementoRequest
+    | E2eSecretRequest
+    | E2eWebviewStateRequest
+    | {
+          readonly nonce: string;
+          readonly store: "metrics";
+          readonly operation: "snapshot";
+      };
 
 /** The payload carried by a successful response, shaped per the request that produced it. */
 type E2eResult =
@@ -165,6 +173,10 @@ export function parseE2eRequest(raw: unknown): E2eRequest {
     const nonce = assertString(record.nonce, "nonce");
     const operation = assertOperation(record.operation);
     const store = record.store;
+    if (store === "metrics") {
+        if (operation !== "snapshot") throw new Error("Benchmark metrics are read-only.");
+        return { nonce, store, operation };
+    }
 
     if (store === "memento") {
         return parseMementoRequest(record, nonce, operation);

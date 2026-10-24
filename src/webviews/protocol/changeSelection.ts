@@ -1,3 +1,9 @@
+import type {
+    TargetOperationRecord,
+    TargetOperationReceipt,
+    TargetOperationSummary,
+} from "../../changes/targetOperation";
+
 /** One host-parsed line in an immutable ordinary-text diff. */
 export interface ChangeLine {
     id: string;
@@ -101,6 +107,12 @@ export interface ChangelistState {
     allDraft?: string;
     /** Bounded deletion redirects restore saved view scopes without reviving removed IDs. */
     removedScopes?: Record<string, string>;
+    /** Host-only replay fence; public projections replace it with a compact summary. */
+    pendingTargetOperation?: TargetOperationRecord;
+    /** Host-only terminal replay refusals retained by explicit recovery policy. */
+    targetOperationReceipts?: Record<string, TargetOperationReceipt>;
+    /** Browser-safe routing state derived from the pending record. */
+    targetOperationSummary?: TargetOperationSummary;
 }
 
 /** One correlated selection; the host resolves every identifier from its own snapshot. */

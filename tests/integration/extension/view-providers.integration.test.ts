@@ -441,6 +441,7 @@ const refreshServiceInstances = vi.hoisted(
         [] as Array<{
             root: string;
             registerFileWatchers: ReturnType<typeof vi.fn>;
+            refreshCommitPanels: ReturnType<typeof vi.fn>;
             dispose: ReturnType<typeof vi.fn>;
         }>,
 );
@@ -521,6 +522,11 @@ vi.mock("../../../src/git/operations", async (importOriginal) => {
             getStatus = vi.fn(async () => gitStatusByRoot.get(this.currentRoot()) ?? []);
             listStashes = vi.fn(async () => []);
             getConflictFilesDetailed = vi.fn(async () => []);
+            getGitDirectories = vi.fn(async () => {
+                const root = this.currentRoot();
+                const gitDir = path.join(root, ".git");
+                return { root, gitDir, commonDir: gitDir };
+            });
             deriveFor = vi.fn((root: string) => new MockGitOps({ root }));
         },
     };
@@ -543,6 +549,7 @@ vi.mock("../../../src/views/RefreshService", () => ({
         refreshMergeConflicts = vi.fn(async () => undefined);
         refreshConflictUi = vi.fn(async () => undefined);
         refreshAll = vi.fn(async () => undefined);
+        refreshCommitPanels = vi.fn(async () => undefined);
         registerFileWatchers = vi.fn();
         dispose = vi.fn();
     },
@@ -832,6 +839,7 @@ function makeGitOpsMock(repositoryRoot = "/repo") {
         getConflictFilesDetailed: vi.fn(async () => []),
         getRepositoryRoot: vi.fn(async () => "/repo"),
         abortMerge: vi.fn(async () => undefined),
+        controlTargetHistory: vi.fn(async () => ({ status: "noPending" as const })),
         getStashFilePatch: vi.fn(async () => "diff --git a b"),
         getStashFileContents: vi.fn(async () => ({ before: "base", after: "stash" })),
         getFileContentAtRef: vi.fn(async () => "stash file content\n"),
@@ -1807,6 +1815,7 @@ describe("view providers integration", () => {
 
     it("starts shelf recovery before initial snapshots without blocking activation", async () => {
         const repositoryRoot = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-repository-"));
+        await mkdir(path.join(repositoryRoot, ".git"));
         const globalStoragePath = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-storage-"));
         const { ShelfService } = await import("../../../src/services/shelfService");
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
@@ -1853,6 +1862,148 @@ describe("view providers integration", () => {
             listShelves.mockRestore();
             consoleError.mockRestore();
             await removeScratchDirectories(repositoryRoot, globalStoragePath);
+        }
+    });
+
+    it.each([true, false])(
+        "refreshes the commit panels after startup recovery only when it upgraded the shelves (upgraded=%s)",
+        async (upgraded) => {
+            const repositoryRoot = await mkdtemp(
+                path.join(tmpdir(), "intelligit-shelf-repository-"),
+            );
+            await mkdir(path.join(repositoryRoot, ".git"));
+            const globalStoragePath = await mkdtemp(
+                path.join(tmpdir(), "intelligit-shelf-storage-"),
+            );
+            const { ShelfService } = await import("../../../src/services/shelfService");
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
+            let finishRecovery!: () => void;
+            const resumePendingRecovery = vi
+                .spyOn(ShelfService.prototype, "resumePendingRecovery")
+                .mockImplementationOnce(
+                    () =>
+                        new Promise((resolve) => {
+                            finishRecovery = () =>
+                                resolve({ rolledBackIds: [], retainedIds: [], upgraded });
+                        }),
+                );
+            // Both stubs keep real store-lock writes from racing the scratch cleanup, as above.
+            const cleanUp = vi
+                .spyOn(ShelfService.prototype, "cleanUpExpiredGhosts")
+                .mockResolvedValue({ status: "ok" } as never);
+            const listShelves = vi.spyOn(ShelfService.prototype, "listShelves").mockResolvedValue({
+                shelfIds: [],
+                corruptShelfIds: [],
+                catalogGeneration: 0,
+                shelves: [],
+            });
+            const refreshes = () =>
+                refreshServiceInstances.reduce(
+                    (count, instance) => count + instance.refreshCommitPanels.mock.calls.length,
+                    0,
+                );
+            try {
+                await activateRepositoryMode(
+                    {
+                        extensionUri: vscodeMock.Uri.file("/ext"),
+                        globalStorageUri: vscodeMock.Uri.file(globalStoragePath),
+                        subscriptions: [],
+                        workspaceState: createMemento(),
+                        secrets: {},
+                    } as never,
+                    [{ root: repositoryRoot, label: "Shelf repository" }],
+                );
+                await flushMicrotasks();
+                const before = refreshes();
+                finishRecovery();
+                await vi.waitFor(() => expect(cleanUp).toHaveBeenCalled());
+                await flushMicrotasks();
+                expect(refreshes() - before).toBe(upgraded ? 1 : 0);
+                await vi.waitFor(() => expect(listShelves).toHaveBeenCalled());
+            } finally {
+                resumePendingRecovery.mockRestore();
+                cleanUp.mockRestore();
+                listShelves.mockRestore();
+                await removeScratchDirectories(repositoryRoot, globalStoragePath);
+            }
+        },
+    );
+
+    it("activates every repository when one repository's changelist metadata fails to connect", async () => {
+        const failingRoot = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-repository-"));
+        const healthyRoot = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-repository-"));
+        await mkdir(path.join(failingRoot, ".git"));
+        await mkdir(path.join(healthyRoot, ".git"));
+        const globalStoragePath = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-storage-"));
+        const { ShelfService } = await import("../../../src/services/shelfService");
+        const { ChangelistStore: CurrentStore } =
+            await import("../../../src/changes/changelistStore");
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const connect = vi
+            .spyOn(CurrentStore.prototype, "connect")
+            .mockImplementation(async (root: string) => {
+                if (root === failingRoot) throw new Error("conflicting changelist metadata");
+            });
+        // Both shelf services start recovery; stubbing it and the catalog keeps real store-lock
+        // writes from racing the scratch cleanup, as in the recovery cases above.
+        const resumePendingRecovery = vi
+            .spyOn(ShelfService.prototype, "resumePendingRecovery")
+            .mockResolvedValue({ rolledBackIds: [], retainedIds: [], upgraded: false } as never);
+        const cleanUp = vi
+            .spyOn(ShelfService.prototype, "cleanUpExpiredGhosts")
+            .mockResolvedValue({ status: "ok" } as never);
+        const listShelves = vi.spyOn(ShelfService.prototype, "listShelves").mockResolvedValue({
+            shelfIds: [],
+            corruptShelfIds: [],
+            catalogGeneration: 0,
+            shelves: [],
+        });
+        const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        try {
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    globalStorageUri: vscodeMock.Uri.file(globalStoragePath),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    secrets: {},
+                } as never,
+                [
+                    { root: failingRoot, label: "Failing repository" },
+                    { root: healthyRoot, label: "Healthy repository" },
+                ],
+            );
+
+            expect(connect).toHaveBeenCalledTimes(2);
+            expect(
+                vscodeMock.window.registerWebviewViewProvider.mock.calls.some(
+                    ([viewType]) => viewType === "intelligit.commitPanel",
+                ),
+                "the Changes view must still register",
+            ).toBe(true);
+            expect(registeredCommands.has("intelligit.fileSaveToShelf")).toBe(true);
+            expect(resumePendingRecovery, "both repositories keep a shelf service").toBeCalledTimes(
+                2,
+            );
+            expect(
+                consoleWarn.mock.calls.some(
+                    ([line]) =>
+                        typeof line === "string" &&
+                        line.includes(failingRoot) &&
+                        line.includes("conflicting changelist metadata"),
+                ),
+                "the warning names the repository and keeps the error message",
+            ).toBe(true);
+            await vi.waitFor(() => expect(cleanUp).toHaveBeenCalledTimes(2));
+            await vi.waitFor(() => expect(listShelves).toHaveBeenCalled());
+        } finally {
+            connect.mockRestore();
+            resumePendingRecovery.mockRestore();
+            cleanUp.mockRestore();
+            listShelves.mockRestore();
+            consoleWarn.mockRestore();
+            await removeScratchDirectories(failingRoot, healthyRoot, globalStoragePath);
         }
     });
 
@@ -3184,6 +3335,7 @@ describe("view providers integration", () => {
             })),
             getShelfFiles: vi.fn(async () => []),
             getHealthWarnings: vi.fn(() => []),
+            subscribeToRewrites: vi.fn(() => () => undefined),
         };
         const provider = createTestUndockedViewProvider(
             UndockedViewProvider,
@@ -6302,7 +6454,10 @@ describe("view providers integration", () => {
             expandedWatcher!.trigger("change", "/repo-b/src/b.ts");
             await vi.advanceTimersByTimeAsync(300);
 
-            expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+            expect(repoBGitOps.getStatus).toHaveBeenCalledWith({
+                includeIgnored: false,
+                withStats: "lazy",
+            });
             expect(gitOps.getStatus).not.toHaveBeenCalled();
             expect(postMessageSpy).toHaveBeenCalledWith(
                 expect.objectContaining({ type: "update", repositoryRoot: "/repo-b" }),
@@ -6426,7 +6581,10 @@ describe("view providers integration", () => {
 
         expect(repoBGitOps.stageFiles).toHaveBeenCalledWith(["src/b.ts"]);
         expect(gitOps.stageFiles).not.toHaveBeenCalled();
-        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({
+            includeIgnored: false,
+            withStats: "lazy",
+        });
         expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "update",
@@ -6516,7 +6674,10 @@ describe("view providers integration", () => {
         }
 
         expect(repoBGitOps.fetch).toHaveBeenCalledTimes(1);
-        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({
+            includeIgnored: false,
+            withStats: "lazy",
+        });
         expect(repoBGitOps.listStashes).toHaveBeenCalledTimes(1);
         expect(repoBGitOps.getLog).not.toHaveBeenCalled();
         expect(gitOps.getLog).not.toHaveBeenCalled();
@@ -6536,6 +6697,8 @@ describe("view providers integration", () => {
     it("CommitPanelViewProvider repository runtimes skip graph refresh for non-active abortMerge", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         const repoBGitOps = makeGitOpsMock();
+        // Abort derives root-bound GitOps; this double is already bound to its repository.
+        Object.assign(repoBGitOps, { deriveFor: vi.fn(() => repoBGitOps) });
         repoBGitOps.getStatus.mockResolvedValue([
             { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
         ]);
@@ -6567,7 +6730,10 @@ describe("view providers integration", () => {
         await webview.send({ type: "abortMerge", repositoryRoot: "/repo-b" });
 
         expect(repoBGitOps.abortMerge).toHaveBeenCalledTimes(1);
-        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({
+            includeIgnored: false,
+            withStats: "lazy",
+        });
         expect(repoBGitOps.listStashes).toHaveBeenCalledTimes(1);
         expect(repoBGitOps.getLog).not.toHaveBeenCalled();
         expect(gitOps.getLog).not.toHaveBeenCalled();
@@ -7648,6 +7814,7 @@ describe("view providers integration", () => {
             })),
             getShelfFiles: vi.fn(async () => shelfOneFiles),
             getHealthWarnings: vi.fn(() => []),
+            subscribeToRewrites: vi.fn(() => () => undefined),
         };
         const { provider, webview } = await setupCommitPanelProvider(undefined, {
             shelfService: shelf,

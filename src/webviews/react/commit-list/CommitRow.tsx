@@ -492,10 +492,24 @@ function CommitRowInner({
         },
         [commit.hash, onSelect],
     );
-    /** Keeps Enter and Space equivalent to pointer activation, including modifiers. */
+    /** Keeps Enter and Space equivalent to pointer activation, and the menu keys to a right-click. */
     const handleKeyDown = React.useCallback(
         (event: React.KeyboardEvent<HTMLDivElement>) => {
             if (event.currentTarget !== event.target) return;
+            if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                // Replays the row's own contextmenu path so selection and menu stay identical.
+                event.currentTarget.dispatchEvent(
+                    new MouseEvent("contextmenu", {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: rect.left,
+                        clientY: rect.bottom,
+                    }),
+                );
+                return;
+            }
             if (event.key !== "Enter" && event.key !== " ") return;
             event.preventDefault();
             handleSelect(event);

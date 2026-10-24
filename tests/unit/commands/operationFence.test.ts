@@ -46,9 +46,11 @@ describe("operation fence", () => {
 
         expect(fenced).toEqual([
             "cherryPick",
+            "cherryPickToChangelist",
             "checkoutRevision",
             "resetCurrentToHere",
             "revertCommit",
+            "revertToChangelist",
             "undoCommit",
             "editCommitMessage",
             "squashCommits",

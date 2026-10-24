@@ -9,6 +9,8 @@ import type { ShelfFileEntry, ShelfLayerBlock, ShelfMetadata } from "../shelf/mo
 import { classifyPatchHeader } from "../shelf/patchClassification";
 import { generateLayerPatches, generateUntrackedPatch, indexPatchBlocks } from "../shelf/patchIO";
 import type { ShelfStore } from "../shelf/store";
+import { assertContainedParentIfPresent } from "../shelf/recoveryPaths";
+import { pathFingerprint } from "./shelfServiceOperations";
 
 /** Input fields required to capture durable shelf artifacts. */
 export interface ShelfCaptureRequest {
@@ -46,12 +48,56 @@ export async function captureShelfArtifacts(
     input: ShelfCaptureRequest,
     dependencies: ShelfCaptureDependencies,
 ): Promise<ShelfCaptureArtifacts> {
-    await assertShelfCaptureStateSupported(dependencies.executor, dependencies.repositoryRoot);
     const shelfId = randomUUID();
+    const captured = await captureShelfObjects(input, dependencies, shelfId);
+    const metadata: ShelfMetadata = {
+        name: input.name,
+        baseCommit: captured.baseCommit,
+        lifecycle: "shelved",
+        createdAt: Date.now(),
+    };
+    const manifest = await dependencies.store.writeShelfGeneration(shelfId, {
+        schemaVersion: 1,
+        objectHashes: captured.objectHashes,
+        metadata,
+        files: captured.entries,
+    });
+    return {
+        shelfId,
+        generation: manifest.generation,
+        baseCommit: captured.baseCommit,
+        revertFiles: captured.revertFiles,
+    };
+}
+
+/** Immutable whole-file layers awaiting one caller-owned generation publication. */
+export interface ShelfCapturedObjects {
+    readonly baseCommit?: string;
+    readonly entries: readonly ShelfFileEntry[];
+    readonly objectHashes: readonly string[];
+    readonly revertFiles: ShelfCaptureArtifacts["revertFiles"];
+}
+
+/** Reuses ordinary layer/raw capture without publishing a pointer; caller holds ordered locks. */
+export async function captureShelfObjects(
+    input: ShelfCaptureRequest,
+    dependencies: ShelfCaptureDependencies,
+    shelfId: string,
+    maximumPatchBytes?: number,
+): Promise<ShelfCapturedObjects> {
+    await assertShelfCaptureStateSupported(dependencies.executor, dependencies.repositoryRoot);
     const directory = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-capture-"));
     try {
         const source = await collectCaptureSource(input.paths, directory, dependencies.executor);
-        return persistCaptureSource(input.name, shelfId, source, dependencies);
+        if (
+            maximumPatchBytes !== undefined &&
+            [...source.patchByPath.values()].reduce(
+                (size, entry) => size + (entry.index?.length ?? 0) + (entry.worktree?.length ?? 0),
+                0,
+            ) > maximumPatchBytes
+        )
+            throw new Error("Shelf capture exceeds the supported aggregate size.");
+        return persistCaptureSource(shelfId, source, dependencies);
     } finally {
         await rm(directory, { recursive: true, force: true });
     }
@@ -104,11 +150,10 @@ async function addUntrackedBlocks(
 }
 
 async function persistCaptureSource(
-    name: string,
     shelfId: string,
     source: CaptureSource,
     dependencies: ShelfCaptureDependencies,
-): Promise<ShelfCaptureArtifacts> {
+): Promise<ShelfCapturedObjects> {
     const entries: ShelfFileEntry[] = [];
     const revertFiles: Array<
         readonly { readonly relativePath: string; readonly baseBytes?: Uint8Array }[]
@@ -130,19 +175,7 @@ async function persistCaptureSource(
         revertFiles.push(captured.revertFiles);
     }
     if (entries.length === 0) throw new Error("No selected changes to shelve.");
-    const metadata: ShelfMetadata = {
-        name,
-        baseCommit: source.baseCommit,
-        lifecycle: "shelved",
-        createdAt: Date.now(),
-    };
-    const manifest = await dependencies.store.writeShelfGeneration(shelfId, {
-        schemaVersion: 1,
-        objectHashes: [...objectHashes],
-        metadata,
-        files: entries,
-    });
-    return { shelfId, generation: manifest.generation, baseCommit: source.baseCommit, revertFiles };
+    return { baseCommit: source.baseCommit, entries, objectHashes: [...objectHashes], revertFiles };
 }
 
 async function persistCaptureEntry(
@@ -354,4 +387,71 @@ function addBlocks(
             [layer]: patch.subarray(block.start, block.end),
         });
     }
+}
+
+/**
+ * Pins whole-source identities independently of optional ownership provenance.
+ * The caller holds the repository/store locks and must invoke the returned assertion
+ * after all object IO, immediately before publishing. This reads native whole-file
+ * bytes and modes without imposing partial-text eligibility or persisting new state.
+ */
+export async function captureWholeSourceIdentity(
+    selectedPaths: readonly string[],
+    expectedHead: string,
+    dependencies: ShelfCaptureDependencies,
+): Promise<() => Promise<void>> {
+    const { executor, repositoryRoot } = dependencies;
+    const changed = () => new Error("Whole-file capture source changed before publication.");
+    const indexPath = (
+        await executor.runBinary(["rev-parse", "--path-format=absolute", "--git-path", "index"])
+    ).stdout
+        .toString("utf8")
+        .trim();
+    const index = await pathFingerprint(indexPath);
+    if ((await readHead(executor)) !== expectedHead) throw changed();
+    // Porcelain -z names the destination first, then the source for a rename/copy.
+    // Include both endpoints even when the requested whole entry names only one.
+    const status = (
+        await executor.runBinary([
+            "status",
+            "--porcelain=v1",
+            "--renames",
+            "-z",
+            "--untracked-files=all",
+        ])
+    ).stdout
+        .toString("utf8")
+        .split("\0");
+    const paths = new Set(selectedPaths.map(validateShelfManifestPath));
+    for (let i = 0; i < status.length; i++) {
+        const record = status[i];
+        if (!record || !/[RC]/.test(record.slice(0, 2))) continue;
+        const destination = record.slice(3);
+        const source = status[++i];
+        if (paths.has(destination) || paths.has(source)) {
+            paths.add(validateShelfManifestPath(destination));
+            paths.add(validateShelfManifestPath(source));
+        }
+    }
+    const fingerprints = new Map<string, string>();
+    for (const file of paths)
+        fingerprints.set(file, await wholePathFingerprint(repositoryRoot, file));
+    const assertCurrent = async (): Promise<void> => {
+        for (const [file, fingerprint] of fingerprints)
+            if ((await wholePathFingerprint(repositoryRoot, file)) !== fingerprint) throw changed();
+        if ((await pathFingerprint(indexPath)) !== index) throw changed();
+        if ((await readHead(executor)) !== expectedHead) throw changed();
+    };
+    // Bracket source discovery as well as the later patch collection and object writes.
+    await assertCurrent();
+    return assertCurrent;
+}
+
+/** Checks containment on both sides of a native path fingerprint, including absent rename sources. */
+async function wholePathFingerprint(root: string, relativePath: string): Promise<string> {
+    const target = path.join(root, relativePath);
+    await assertContainedParentIfPresent(root, target);
+    const fingerprint = await pathFingerprint(target);
+    await assertContainedParentIfPresent(root, target);
+    return fingerprint;
 }

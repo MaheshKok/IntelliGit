@@ -1,7 +1,56 @@
-import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { execFile, spawn } from "node:child_process";
+import { accessSync, constants, createWriteStream, existsSync, realpathSync } from "node:fs";
+import path from "node:path";
 import { pipeline } from "node:stream/promises";
+import { promisify } from "node:util";
 import { RepositoryMutationGate } from "./repositoryMutationGate";
+
+let gitBinary = "git";
+let gitBinaryLookup: Promise<string> | undefined;
+
+/**
+ * Looks up the Git program every executor spawns, and makes later spawns use it.
+ *
+ * On macOS `/usr/bin/git` is an xcrun shim that adds several milliseconds to every process
+ * before Git itself starts, which a restore of many files pays hundreds of times. Git's own exec
+ * path holds the real binary, so ask whichever `git` is on PATH once per extension host and spawn
+ * that. Spawns started before the answer arrives still use `git` from PATH, so no call waits on
+ * it. Other platforms keep the PATH lookup: Linux has no shim to skip, and on Windows the
+ * `cmd\git.exe` launcher sets up the environment Git expects. When the lookup fails, plain `git`
+ * keeps today's behaviour and its spawn reports the real error. The answer is cached for the
+ * life of the process, so switching `xcode-select` mid-session takes effect after a reload.
+ * Only the shim is skipped: when the first `git` on PATH is anything else (a user's wrapper, a
+ * Homebrew install), it is spawned as-is so whatever it does still happens.
+ */
+export function resolveGitBinary(
+    platform: NodeJS.Platform = process.platform,
+    pathEnv: string = process.env.PATH ?? "",
+): Promise<string> {
+    if (platform !== "darwin") return Promise.resolve("git");
+    gitBinaryLookup ??= (async () => {
+        if (firstGitOnPath(pathEnv) !== "/usr/bin/git") return "git";
+        const { stdout } = await promisify(execFile)("git", ["--exec-path"]);
+        const binary = path.join(stdout.trim(), "git");
+        return existsSync(binary) ? binary : "git";
+    })()
+        .catch(() => "git")
+        .then((binary) => (gitBinary = binary));
+    return gitBinaryLookup;
+}
+
+function firstGitOnPath(pathEnv: string): string | undefined {
+    for (const dir of pathEnv.split(path.delimiter)) {
+        if (!dir) continue;
+        const candidate = path.join(dir, "git");
+        try {
+            accessSync(candidate, constants.X_OK);
+            return realpathSync(candidate);
+        } catch {
+            // Not here; keep walking PATH the way the shell would.
+        }
+    }
+    return undefined;
+}
 
 /** Options for a binary Git process invocation. */
 export interface GitBinaryRunOptions {
@@ -179,8 +228,9 @@ export class GitExecutor {
         if (resolveSubcommand(args) === "status") {
             env.GIT_OPTIONAL_LOCKS ??= "0";
         }
+        void resolveGitBinary();
         return new Promise<GitBinaryRunResult>((resolve, reject) => {
-            const child = spawn("git", args, {
+            const child = spawn(gitBinary, args, {
                 cwd: this.repoRoot,
                 stdio: "pipe",
                 env,

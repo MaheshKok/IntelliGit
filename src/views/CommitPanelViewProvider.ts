@@ -30,6 +30,7 @@ import type {
     CommitPanelRepositorySnapshot,
     InboundMessage,
 } from "../webviews/protocol/commitPanelMessages";
+import { mergeWorkingFileStats } from "../webviews/protocol/workingFileStats";
 import type { ShelfService } from "../services/shelfService";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { CommitPanelRepositoryRuntime } from "./commitPanelRepositoryRuntime";
@@ -212,6 +213,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private readonly expandedRepositoryRoots = new Set<string>();
     private readonly runtimeWatchers = new Map<string, vscode.Disposable>();
     private readonly runtimeRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private readonly shelfRewriteSubscriptions = new Map<ShelfService, () => void>();
     private readonly storedChangedFileCounts = new Map<string, StoredChangedFileCount>();
     private changedFileCountsWrite = Promise.resolve();
     private activeRepositoryRoot: string | null = null;
@@ -457,6 +459,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             );
             runtime.lastKnownChangedFileCount = this.getStoredChangedFileCount(runtime);
             this.runtimes.set(repository.root, runtime);
+            this.subscribeToShelfRewrites(runtime.shelfService);
             attachAfterChangelistLoad(
                 this.workspaceState,
                 repository.root,
@@ -550,6 +553,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         await this.changeWorkflow(runtime).openFromEditor(filePath);
     }
 
+    /** Resolves the native row's captured root once before its whole-file Save prompt. */
+    async saveWholeFileToShelf(repositoryRoot: string, filePath: string): Promise<void> {
+        const runtime = this.runtimes.get(path.normalize(repositoryRoot));
+        if (!runtime) throw new Error("Selected file is not in a known IntelliGit repository.");
+        await this.changeWorkflow(runtime).saveFileFromEditor(filePath);
+    }
+
     private getActiveRuntime(): CommitPanelRepositoryRuntime | undefined {
         return this.activeRepositoryRoot !== null
             ? this.runtimes.get(this.activeRepositoryRoot)
@@ -585,6 +595,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     private invalidateRuntime(runtime: CommitPanelRepositoryRuntime): void {
+        runtime.fileStats.dispose();
         runtime.requestSeq += 1;
         runtime.dataRefreshSeq += 1;
         runtime.countRefreshSeq += 1;
@@ -937,6 +948,20 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    /** Re-lists every displayed runtime of a service whose host-side rewrite published a new generation. */
+    private subscribeToShelfRewrites(service: ShelfService | undefined): void {
+        if (!service || this.shelfRewriteSubscriptions.has(service)) return;
+        this.shelfRewriteSubscriptions.set(
+            service,
+            service.subscribeToRewrites(() => {
+                for (const runtime of this.watchedRuntimes()) {
+                    if (runtime.shelfService === service)
+                        this.refreshDataWithErrorHandling(true, runtime);
+                }
+            }),
+        );
+    }
+
     /** Coalesces row-local file changes at the active service's light-refresh cadence. */
     private scheduleRuntimeWatcherRefresh(runtime: CommitPanelRepositoryRuntime): void {
         const root = runtime.repository.root;
@@ -1030,6 +1055,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             root,
             extensionUri: this.extensionUri,
             workspaceState: this.workspaceState,
+            shelfService: runtime.shelfService,
+            focusView: () => this.view?.show(false),
             mirrorDraft: (_scope, text) => this.setFromPanelSafely(root, text),
             postScopedCommit: () =>
                 this.postToWebview({
@@ -1121,6 +1148,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             await executeShelfMutationRequest(
                 {
                     shelfService: service,
+                    changelists: ChangelistStore.forStorage(this.workspaceState),
                     refreshData: () => this.refreshData(false, runtime),
                     fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
                     selectExportDestination: async () =>
@@ -1293,6 +1321,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.viewDisposables.push(
             webviewView.onDidDispose(() => {
                 if (this.view === thisView) {
+                    for (const runtime of this.runtimes.values()) runtime.fileStats.dispose();
                     this.nativeCommitInputBridge.setVisible(false);
                     this.view = undefined;
                     this.iconTheme.dispose();
@@ -1455,6 +1484,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         try {
             const status = await runtime.gitOps.getStatus({
                 includeIgnored: runtime.showIgnoredFiles,
+                withStats: "lazy",
             });
             await this.iconTheme.initIconThemeData().catch(() => {});
             const [stashes, currentBranchStatus, shelfState] = await Promise.all([
@@ -1498,9 +1528,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     ...shelfFilePaths(shelfState.shelves),
                 ])
                 .catch(() => runtime.folderIconsByName);
+            const statsBasis = await runtime.fileStats.capture(
+                files,
+                runtime.gitOps,
+                runtime.repository.root,
+            );
             if (refreshRequestId === runtime.dataRefreshSeq) {
                 runtime.folderIconsByName = folderIconsByName;
-                runtime.files = files;
+                runtime.files = runtime.fileStats.reset(files, statsBasis);
                 void this.changeWorkflows
                     .get(runtime.repository.root)
                     ?.reconcile(files)
@@ -1878,6 +1913,21 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         switch (msg.type) {
+            case "requestWorkingFileStats": {
+                const runtime = scopedRuntime();
+                if (!runtime || msg.repositoryRoot !== runtime.repository.root) return;
+                await runtime.fileStats.request(
+                    msg.revision,
+                    msg.paths,
+                    runtime.repository.root,
+                    runtime.gitOps,
+                    (reply) => {
+                        runtime.files = mergeWorkingFileStats(runtime.files, reply);
+                        this.postToWebview(reply);
+                    },
+                );
+                break;
+            }
             case "ready":
                 await this.handleReadyMessage(msg.attempt);
                 break;
@@ -2254,8 +2304,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
     /** Confirms and aborts an active merge, then refreshes all conflict and working-tree surfaces. */
     private async abortMerge(runtime?: CommitPanelRepositoryRuntime): Promise<void> {
+        const root = runtime?.repository.root ?? this.repoRootUri?.fsPath;
+        if (!root) throw new Error("A captured repository is required for history recovery.");
         await abortMergeWithConfirmation({
-            gitOps: runtime?.gitOps ?? this.gitOps,
+            gitOps: (runtime?.gitOps ?? this.gitOps).deriveFor(root),
+            root,
+            changelists: ChangelistStore.forStorage(this.workspaceState),
             onConflictStateChanged: async () => {
                 if (runtime) {
                     await this.refreshData(false, runtime);
@@ -2511,11 +2565,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * Releases theme listeners, icon resources, and event emitters owned by the Changes provider.
      */
     dispose(): void {
+        for (const runtime of this.runtimes.values()) this.invalidateRuntime(runtime);
         for (const workflow of this.changeWorkflows.values()) workflow.dispose();
         this.changeWorkflows.clear();
         this.commitMessageGenerationCoordinator?.dropHost(this.commitMessageGenerationHost);
         this.nativeCommitInputBridge.dispose();
         this.disposeAllRuntimeWatchers();
+        for (const unsubscribe of this.shelfRewriteSubscriptions.values()) unsubscribe();
+        this.shelfRewriteSubscriptions.clear();
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
         this.disposeViewSubscriptions();

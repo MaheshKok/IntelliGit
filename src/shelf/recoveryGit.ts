@@ -1,10 +1,18 @@
 import { createHash } from "node:crypto";
+import { acquireWithBoundedWait } from "../git/boundedLockRetry";
 import { readEmptyTreeOid } from "../git/emptyTree";
 import { GitExecutor } from "../git/executor";
+import { REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS } from "../git/repositoryMutationGate";
 import type { ShelfJournalIndexEntry } from "./store";
 
 /** Git's stable empty-tree object ID used when a repository is unborn. */
 export const EMPTY_TREE_OID = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+/**
+ * Git's refusal while another process holds the index lock. It matches Git's English text, so a
+ * localized Git skips the wait and fails at once as before; pin `LC_ALL=C` if that matters.
+ */
+const INDEX_LOCK_EXISTS = /index\.lock': File exists/;
 
 /** Raised when recovery cannot establish a safe filesystem or Git state. */
 export class RecoverySafetyError extends Error {
@@ -27,7 +35,15 @@ export interface ShelfRecoveryGit {
     ): Promise<ShelfJournalIndexEntry | undefined>;
     getIndexEntry(relativePath: string): Promise<ShelfJournalIndexEntry | undefined>;
     readBlob(oid: string): Promise<Buffer>;
-    writeIndexEntry(relativePath: string, entry: ShelfJournalIndexEntry | undefined): Promise<void>;
+    /**
+     * `beforeRetry` runs before each retry of a write refused by a held index.lock; a rejection
+     * ends the write.
+     */
+    writeIndexEntry(
+        relativePath: string,
+        entry: ShelfJournalIndexEntry | undefined,
+        beforeRetry?: () => Promise<void>,
+    ): Promise<void>;
 }
 
 /** Default direct Git plumbing; callers already own the repository mutation gate. */
@@ -119,13 +135,29 @@ export class GitExecutorRecoveryGit implements ShelfRecoveryGit {
     async writeIndexEntry(
         relativePath: string,
         entry: ShelfJournalIndexEntry | undefined,
+        beforeRetry?: () => Promise<void>,
     ): Promise<void> {
         const record = entry
             ? `${assertMode(entry.mode)} ${assertOid(entry.oid)}\t${relativePath}\0`
             : `0 ${"0".repeat((await this.emptyTreeOid()).length)}\t${relativePath}\0`;
-        await this.executor.runBinary(["update-index", "-z", "--index-info"], {
-            input: Buffer.from(record),
-        });
+        // Another Git process (VS Code's own refresh) may hold index.lock briefly; Git takes the
+        // lock before writing anything, so the refused write is safe to repeat. That process may
+        // also have changed the index meanwhile, so the caller re-checks before every repeat.
+        let attempted = false;
+        await acquireWithBoundedWait(
+            async () => {
+                if (attempted) await beforeRetry?.();
+                attempted = true;
+                return this.executor.runBinary(["update-index", "-z", "--index-info"], {
+                    input: Buffer.from(record),
+                });
+            },
+            {
+                timeoutMs: REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS,
+                retryDelayMs: 50,
+                isBusy: (error) => error instanceof Error && INDEX_LOCK_EXISTS.test(error.message),
+            },
+        );
     }
 }
 

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-10-17
+
+### Added
+
+- Save a whole changelist or selected whole files to a shelf, with **Save and Remove…** and **Rollback…** next to it. Removal first shows exactly what was captured, removes only those changes, and always keeps the shelf; rollback also keeps a "Before rollback" shelf so you can bring the changes back.
+- Choose which changelist receives an unshelved shelf, an applied patch, or an undone commit. You can create a new list on the way and copy a saved commit draft. Cancelling the choice changes nothing.
+- **Apply Patch to Changelist…** imports a patch and applies it straight into the list you pick. **Import Patches…** still only imports.
+- **Cherry-Pick to Changelist (Uncommitted)…** and **Revert to Changelist (Uncommitted)…** in the commit graph menu bring a commit's changes into a list without creating a commit. If Git stops on conflicts, finish or discard with **Complete Uncommitted History Action** or **Discard Uncommitted History Action**. Discard leaves your unrelated edits alone.
+
+### Changed
+
+- **Undo Commit…** now asks which changelist gets the undone changes. It refuses, before touching Git, when an affected file already belongs to a list or has local edits.
+- The Changes panel shows files right away and loads line counts only for rows you can see. Large repositories open faster, and every visible row ends with counts or "unavailable" instead of loading forever.
+
+### Fixed
+
+- If something changes while a restore or history prompt is open, IntelliGit stops and asks you to try again instead of applying to the wrong repository, shelf version or list.
+
 ## [0.38.3] - 2026-10-16
 
 ### Added

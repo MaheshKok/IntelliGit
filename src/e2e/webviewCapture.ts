@@ -7,6 +7,7 @@
 // receives its original webview object back, unchanged and identity-equal, and nothing is
 // allocated.
 
+import { createHash } from "node:crypto";
 import type * as vscode from "vscode";
 import { isE2eControlChannelActive } from "./activationState";
 
@@ -41,21 +42,43 @@ export interface CapturedWebviewMessage {
 }
 
 /**
+ * Messages a benchmark-mode sink keeps. Each one can carry the whole 10k-file list, and keeping
+ * every message held 714 MB of a 1104 MB host heap in bench r5 -- the heap the benchmark measures.
+ */
+export const BENCHMARK_CAPTURE_TAIL = 10;
+
+/**
  * In-memory, append-only record of every `postMessage` a captured webview has sent, in call order.
- * Nothing persists this to disk today; it is held in memory only, and never logs payload contents
- * on its own -- a captured message can carry real repository data.
+ * In benchmark mode (`INTELLIGIT_E2E_BENCHMARK=1`) only the newest
+ * {@link BENCHMARK_CAPTURE_TAIL} are kept. Nothing persists this to disk today; it is held in memory
+ * only, and never logs payload contents on its own -- a captured message can carry real repository
+ * data.
  */
 export class WebviewCaptureSink {
     private readonly messages: CapturedWebviewMessage[] = [];
+    private readonly countsByType = new Map<string, number>();
 
     /** Appends one captured message. Called synchronously from the wrapped `postMessage`. */
     record(contextId: WebviewContextId, message: unknown): void {
         this.messages.push({ contextId, message });
+        const type = (message as { type?: unknown } | null)?.type;
+        const key = typeof type === "string" ? type : "(untyped)";
+        this.countsByType.set(key, (this.countsByType.get(key) ?? 0) + 1);
+        if (
+            process.env.INTELLIGIT_E2E_BENCHMARK === "1" &&
+            this.messages.length > BENCHMARK_CAPTURE_TAIL
+        )
+            this.messages.shift();
     }
 
-    /** Returns every message captured so far, oldest first. */
+    /** Returns the messages still held, oldest first: all of them outside benchmark mode. */
     getMessages(): readonly CapturedWebviewMessage[] {
         return this.messages;
+    }
+
+    /** Returns how many messages of each `type` were ever recorded, including dropped ones. */
+    getCountsByType(): Record<string, number> {
+        return Object.fromEntries(this.countsByType);
     }
 }
 
@@ -70,6 +93,86 @@ const HANDSHAKE_TRACED_TYPES = new Set(["ready", "setRepositories"]);
 
 /** Prefix every traced line carries, so the dump's reader can tell host lines from webview ones. */
 const HANDSHAKE_TRACE_PREFIX = "[intelligit-e2e] handshake";
+
+/** Fixture-only switch for high-volume lazy-statistics tracing; ordinary flow runs stay quiet. */
+const WORKING_STATS_TRACE_ENV = "INTELLIGIT_E2E_TRACE_WORKING_FILE_STATS";
+
+/** Separate prefix keeps the bounded hydration trail unchanged outside the opted-in scale test. */
+const WORKING_STATS_TRACE_PREFIX = "[intelligit-e2e] working-file-stats";
+
+/**
+ * Traces cumulative unique counts for the scale fixture without printing repository data.
+ *
+ * The capture boundary already receives full protocol messages in memory. This opt-in projection
+ * emits counts and SHA-256 path acknowledgments so the rendered test can prove delivery
+ * without persisting paths, repository roots, revisions, or file contents in its log.
+ */
+function traceWorkingFileStats(
+    contextId: WebviewContextId,
+    instance: number,
+    generation: number,
+    direction: "in" | "out",
+    message: unknown,
+    revisions: Map<
+        string,
+        {
+            ordinal: number;
+            requested: Set<string>;
+            terminal: Set<string>;
+            ready: Set<string>;
+            unavailable: Set<string>;
+        }
+    >,
+): void {
+    if (process.env[WORKING_STATS_TRACE_ENV] !== "1") return;
+    if (typeof message !== "object" || message === null) return;
+    const { type, revision } = message as { type?: unknown; revision?: unknown };
+    if (!(
+        (direction === "in" && type === "requestWorkingFileStats") ||
+        (direction === "out" && type === "workingFileStats")
+    ))
+        return;
+    if (typeof revision !== "string") return;
+    const revisionState =
+        revisions.get(revision) ??
+        (() => {
+            const state = {
+                ordinal: revisions.size + 1,
+                requested: new Set<string>(),
+                terminal: new Set<string>(),
+                ready: new Set<string>(),
+                unavailable: new Set<string>(),
+            };
+            revisions.set(revision, state);
+            return state;
+        })();
+    if (direction === "in") {
+        const paths = (message as { paths?: unknown }).paths;
+        if (!Array.isArray(paths) || paths.some((path) => typeof path !== "string")) return;
+        for (const path of paths as string[]) revisionState.requested.add(path);
+        const hashes = paths.map((path: string) => createHash("sha256").update(path).digest("hex"));
+        console.error(
+            `${WORKING_STATS_TRACE_PREFIX} ${contextId}#${instance}.${generation} in requestWorkingFileStats revision=${revisionState.ordinal} unique=${revisionState.requested.size} hashes=${hashes.join(",")}`,
+        );
+        return;
+    }
+    if (direction === "out") {
+        const files = (message as { files?: unknown }).files;
+        if (!Array.isArray(files)) return;
+        for (const file of files) {
+            if (typeof file !== "object" || file === null) continue;
+            const { path, statsState } = file as { path?: unknown; statsState?: unknown };
+            if (typeof path !== "string") continue;
+            if (statsState === "ready" || statsState === "unavailable") {
+                revisionState.terminal.add(path);
+                revisionState[statsState].add(path);
+            }
+        }
+        console.error(
+            `${WORKING_STATS_TRACE_PREFIX} ${contextId}#${instance}.${generation} out workingFileStats revision=${revisionState.ordinal} terminal=${revisionState.terminal.size} ready=${revisionState.ready.size} unavailable=${revisionState.unavailable.size}`,
+        );
+    }
+}
 
 /**
  * Whether `message` is a document announcing itself for the first time.
@@ -176,6 +279,7 @@ export function getE2eWebviewCaptureSink(): WebviewCaptureSink | undefined {
 /** Test-only: clears the process-wide sink so tests do not leak captured state into each other. */
 export function resetE2eWebviewCaptureSinkForTests(): void {
     globalSink = undefined;
+    benchmarkMetrics = undefined;
 }
 
 function ensureGlobalSink(): WebviewCaptureSink {
@@ -204,6 +308,16 @@ export function wrapWebviewForCapture(
     // `documentGeneration` rather than directly: a post traced before any `ready` belongs to the
     // first document, not to a zeroth one that never existed.
     let announcedDocuments = 0;
+    const workingStatsRevisions = new Map<
+        string,
+        {
+            ordinal: number;
+            requested: Set<string>;
+            terminal: Set<string>;
+            ready: Set<string>;
+            unavailable: Set<string>;
+        }
+    >();
     const documentGeneration = (): number => Math.max(announcedDocuments, 1);
     // Subscribed ONCE here, not inside `onDidReceiveMessage` below. That method is a
     // per-SUBSCRIPTION wrapper, so a tap placed inside it runs once per registered listener rather
@@ -221,8 +335,17 @@ export function wrapWebviewForCapture(
     webview.onDidReceiveMessage((message: unknown) => {
         // Counted before the line is emitted, so the reload's own `ready` prints under the
         // generation it opens rather than under the one it replaced.
+        recordBenchmarkMessage("in", message);
         if (isOpeningAsk(message)) announcedDocuments += 1;
         traceHandshake(contextId, instance, documentGeneration(), "in", message);
+        traceWorkingFileStats(
+            contextId,
+            instance,
+            documentGeneration(),
+            "in",
+            message,
+            workingStatsRevisions,
+        );
     });
     return {
         get options() {
@@ -252,8 +375,17 @@ export function wrapWebviewForCapture(
         ): vscode.Disposable => webview.onDidReceiveMessage(listener, thisArgs, disposables),
         asWebviewUri: (localResource: vscode.Uri) => webview.asWebviewUri(localResource),
         postMessage: (message: unknown): Thenable<boolean> => {
+            recordBenchmarkMessage("out", message);
             sink.record(contextId, message);
             traceHandshake(contextId, instance, documentGeneration(), "out", message);
+            traceWorkingFileStats(
+                contextId,
+                instance,
+                documentGeneration(),
+                "out",
+                message,
+                workingStatsRevisions,
+            );
             return webview.postMessage(message);
         },
     };
@@ -373,4 +505,35 @@ export function captureWebviewViewProvider<T extends vscode.WebviewViewProvider>
         ): void | Thenable<void> =>
             provider.resolveWebviewView(captureWebview(webviewView, contextId), context, token),
     });
+}
+
+/** Numeric-only counters; bytes mean UTF-8 JSON of the protocol value, not Electron wire framing. */
+interface BenchmarkDirectionMetrics {
+    count: number;
+    serializedBytes: number;
+    serializationFailures: number;
+}
+let benchmarkMetrics: Record<"in" | "out", BenchmarkDirectionMetrics> | undefined;
+
+/** Reads a detached counter snapshot without allocating the opt-in global accumulator. */
+export function getE2eBenchmarkMetrics(): typeof benchmarkMetrics {
+    return benchmarkMetrics && { in: { ...benchmarkMetrics.in }, out: { ...benchmarkMetrics.out } };
+}
+
+/** Measures once at the proxy boundary; serialization failure must never change delivery. */
+function recordBenchmarkMessage(direction: "in" | "out", message: unknown): void {
+    if (!isE2eControlChannelActive() || process.env.INTELLIGIT_E2E_BENCHMARK !== "1") return;
+    benchmarkMetrics ??= {
+        in: { count: 0, serializedBytes: 0, serializationFailures: 0 },
+        out: { count: 0, serializedBytes: 0, serializationFailures: 0 },
+    };
+    const counter = benchmarkMetrics[direction];
+    counter.count++;
+    try {
+        const serialized = JSON.stringify(message);
+        if (serialized === undefined) throw new Error("No JSON representation");
+        counter.serializedBytes += Buffer.byteLength(serialized, "utf8");
+    } catch {
+        counter.serializationFailures++;
+    }
 }

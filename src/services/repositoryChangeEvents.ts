@@ -298,5 +298,7 @@ function relativeWorkspacePath(repoRoot: string, fsPath: string): string | undef
     if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
     const [topLevelDir] = relative.split(path.sep);
     if (topLevelDir && ignoredWorkspaceEventDirs.has(topLevelDir)) return undefined;
+    // Git tracks no path with a `.git` component, so a nested repository's metadata cannot change this root.
+    if (relative.split(path.sep).includes(".git")) return undefined;
     return relative.split(path.sep).join("/");
 }

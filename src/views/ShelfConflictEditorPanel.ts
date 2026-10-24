@@ -57,8 +57,15 @@ export function createShelfConflictEditorMessageHandler(
             content,
             expectedShelfGeneration: dependencies.payload.shelfGeneration,
             expectedPathFingerprint: dependencies.payload.worktreeFingerprint,
+            ...(dependencies.payload.operationId
+                ? { operationId: dependencies.payload.operationId }
+                : {}),
         } satisfies ApplyShelfConflictResolutionInput;
         const result = await dependencies.apply(input);
+        if (result.status === "stale" && result.reason === "operation")
+            throw new Error(
+                "The restore changed since this editor opened. Reopen the conflict from the Shelf tab.",
+            );
         if (result.status === "stale") {
             if ((await dependencies.chooseStaleResolution()) !== "overwrite") return;
             const override = await dependencies.apply({
@@ -221,7 +228,16 @@ export class ShelfConflictEditorPanel {
             shelfId: this.options.shelfId,
             changeId: this.options.changeId,
             payload: this.payload,
-            apply: (input) => this.options.shelfService.applyShelfConflictResolution(input),
+            apply: async (input) => {
+                const result = await this.options.shelfService.applyShelfConflictResolution(input);
+                if (result.status === "applied" && result.needsReview)
+                    void vscode.window.showWarningMessage(
+                        vscode.l10n.t(
+                            "Unshelve changed files but needs review before it can finish.",
+                        ),
+                    );
+                return result;
+            },
             postConflictData: (diffOptions) => this.postConflictData(diffOptions),
             chooseStaleResolution: () => this.chooseStaleResolution(),
             onApplied: this.options.onApplied,

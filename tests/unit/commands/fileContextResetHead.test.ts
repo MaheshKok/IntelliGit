@@ -102,7 +102,7 @@ describe("native Reset HEAD repository contract", () => {
             title: "%command.fileResetHead%",
             category: "%intelligit%",
         });
-        expect(manifest.contributes.commands).toHaveLength(101);
+        expect(manifest.contributes.commands).toHaveLength(105);
         for (const menu of ["intelligit.fileContext", "intelligit.editorContext"]) {
             const entries = manifest.contributes.menus[menu];
             expect(entries).toHaveLength(menu === "intelligit.editorContext" ? 24 : 23);

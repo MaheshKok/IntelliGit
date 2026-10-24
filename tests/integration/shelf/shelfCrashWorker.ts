@@ -1,3 +1,4 @@
+import { connectedChangelists } from "../../helpers/connectedChangelists";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
@@ -26,7 +27,14 @@ const reverter = new ShelfReverter({
         if (actualCheckpoint === checkpoint) process.kill(process.pid, "SIGKILL");
     },
 });
-const service = new ShelfService({ repositoryRoot, executor, store, gate, reverter });
+const service = new ShelfService({
+    changelists: await connectedChangelists(repositoryRoot),
+    repositoryRoot,
+    executor,
+    store,
+    gate,
+    reverter,
+});
 await service.shelve({
     name: "crash worker shelf",
     paths: ["tracked.txt"],

@@ -1,3 +1,4 @@
+import { connectedChangelists } from "../../helpers/connectedChangelists";
 /**
  * The repository scenario layer (PLAN.md:101, Phase 2c-iii). `seedFixtureTemplate` produces
  * exactly one repository state -- history, branches, tag, bare origin, stash entries, and a dirty
@@ -889,7 +890,13 @@ async function prepareShelfPopulated(
         new RepositoryMutationCoordinator(),
         new RepositoryLock(),
     );
-    const service = new ShelfService({ repositoryRoot: root, executor, store, gate });
+    const service = new ShelfService({
+        changelists: await connectedChangelists(root),
+        repositoryRoot: root,
+        executor,
+        store,
+        gate,
+    });
 
     await service.shelve({
         name: "scenario-seeded-shelf",
@@ -927,7 +934,13 @@ async function prepareShelfConflicted(
         new RepositoryMutationCoordinator(),
         new RepositoryLock(),
     );
-    const service = new ShelfService({ repositoryRoot: root, executor, store, gate });
+    const service = new ShelfService({
+        changelists: await connectedChangelists(root),
+        repositoryRoot: root,
+        executor,
+        store,
+        gate,
+    });
 
     await service.shelve({
         name: "scenario-seeded-conflict-shelf",

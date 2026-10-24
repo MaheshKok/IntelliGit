@@ -1,3 +1,4 @@
+import { ChangelistStore } from "../../../src/changes/changelistStore";
 // End-to-end flow tests for the native merge editor host panel.
 // Each test creates a real Git repository with a real merge conflict, opens
 // MergeEditorPanel against it, drives the webview message protocol, and
@@ -144,6 +145,7 @@ vi.mock("../../../src/utils/notifications", () => ({
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
+import { areSameRepositoryRoot } from "../../../src/utils/repositoryRoot";
 import {
     MergeEditorPanel,
     type MergeEditorPanelOptions,
@@ -843,6 +845,7 @@ describe("MergeEditorPanel end-to-end merge flow", () => {
             const executor = new GitExecutor(a);
             const gitOps = new GitOps(executor);
             const callbacksA = {
+                changelists: new ChangelistStore(),
                 onOpenMergeConflict: vi.fn(async () => undefined),
                 onConflictStateChanged: vi.fn(async () => undefined),
             };
@@ -859,6 +862,7 @@ describe("MergeEditorPanel end-to-end merge flow", () => {
                 await createConflictRepo();
                 executor.setRoot(b);
                 const callbacksB = {
+                    changelists: new ChangelistStore(),
                     onOpenMergeConflict: vi.fn(async () => undefined),
                     onConflictStateChanged: vi.fn(async () => undefined),
                 };
@@ -961,6 +965,63 @@ describe("MergeEditorPanel end-to-end merge flow", () => {
         expect(git(["ls-files", "-u"]).trim()).toBe("");
         expect(panel.disposed).toBe(true);
     });
+
+    it.each(["editor", "session"] as const)(
+        "targeted %s host checks pending before native state and never falls through after cancellation",
+        async (host) => {
+            await createConflictRepo();
+            const ops = new GitOps(new GitExecutor(repoRoot));
+            const control = vi
+                .spyOn(GitOps.prototype, "controlTargetHistory")
+                .mockResolvedValue({ status: "cancelled", id: "pending" });
+            const native = vi.spyOn(GitOps.prototype, "getActiveOperation");
+            const abort = vi.spyOn(GitOps.prototype, "abortMerge");
+            try {
+                if (host === "editor") await MergeEditorPanel.open(makeOptions(ops));
+                else
+                    await MergeConflictSessionPanel.open(
+                        EXTENSION_URI as never,
+                        ops,
+                        {},
+                        {
+                            changelists: new ChangelistStore(),
+                            onOpenMergeConflict: async () => undefined,
+                            onConflictStateChanged: async () => undefined,
+                        },
+                    );
+                native.mockClear();
+                await fireMessage(lastPanel(), { type: "abortMerge" });
+                const sessionRoot = await fs.realpath(repoRoot);
+                expect(
+                    control,
+                    "both conflict hosts must consult targeted pending state",
+                ).toHaveBeenCalledWith(
+                    // The session host passes Git's own spelling, which uses `/` on Windows.
+                    host === "session"
+                        ? expect.toSatisfy((root: string) =>
+                              areSameRepositoryRoot(root, sessionRoot),
+                          )
+                        : repoRoot,
+                    expect.any(ChangelistStore),
+                    "abort",
+                    expect.any(Function),
+                );
+                expect(
+                    native,
+                    "targeted cancellation must precede native operation classification",
+                ).not.toHaveBeenCalled();
+                expect(
+                    abort,
+                    "targeted cancellation must bypass ordinary abort/reset",
+                ).not.toHaveBeenCalled();
+                expect(git(["ls-files", "-u"]).trim()).not.toBe("");
+            } finally {
+                control.mockRestore();
+                native.mockRestore();
+                abort.mockRestore();
+            }
+        },
+    );
 
     it("opens the conflict list and aborts the backing merge after confirmation", async () => {
         await createConflictRepo();

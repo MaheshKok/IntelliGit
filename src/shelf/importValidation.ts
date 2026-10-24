@@ -468,6 +468,13 @@ function parseUnifiedHeaderPath(
     const value = decodeHeader(line.subarray(prefix.length));
     const pathname = value.slice(0, value.indexOf("\t") >= 0 ? value.indexOf("\t") : value.length);
     if (pathname === "/dev/null") return undefined;
+    if (pathname.startsWith('"')) {
+        const decoded = decodeGitQuotedPath(pathname, 0);
+        if (decoded.next !== pathname.length) fail();
+        if (decoded.value === "/dev/null") return undefined;
+        validateRelativePath(decoded.value);
+        return normalizeImportedPatchPath(decoded.value, stripLevel);
+    }
     return normalizeImportedPatchPath(pathname, stripLevel);
 }
 

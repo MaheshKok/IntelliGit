@@ -116,6 +116,18 @@ const COMMAND_ENTRIES = [
         mutating: false,
         aliasOf: "intelligit.sidebarRepositoryIndicator",
     },
+    {
+        kind: "command",
+        id: "intelligit.completeTargetedHistory",
+        mutating: true,
+        notCovered: COMMAND_NOT_COVERED,
+    },
+    {
+        kind: "command",
+        id: "intelligit.discardTargetedHistory",
+        mutating: true,
+        notCovered: COMMAND_NOT_COVERED,
+    },
     { kind: "command", id: "intelligit.checkout", mutating: true, coveredBy: "branch-checkout" },
     {
         kind: "command",
@@ -461,10 +473,22 @@ const COMMAND_ENTRIES = [
         mutating: true,
         notCovered: COMMAND_NOT_COVERED,
     },
+    {
+        kind: "command",
+        id: "intelligit.fileSaveToShelf",
+        mutating: true,
+        notCovered: COMMAND_NOT_COVERED,
+    },
     { kind: "command", id: "intelligit.unshelve", mutating: true, notCovered: COMMAND_NOT_COVERED },
     {
         kind: "command",
         id: "intelligit.importPatch",
+        mutating: true,
+        notCovered: COMMAND_NOT_COVERED,
+    },
+    {
+        kind: "command",
+        id: "intelligit.applyPatchToChangelist",
         mutating: true,
         notCovered: COMMAND_NOT_COVERED,
     },
@@ -513,6 +537,15 @@ const WEBVIEW_ENTRIES = [
     { kind: "webview", id: "push", mutating: true, coveredBy: "push" },
     { kind: "webview", id: "sync", mutating: true, notCovered: WEBVIEW_NOT_COVERED },
     { kind: "webview", id: "saveCommitDraft", mutating: false },
+    // Visible-row line counts only; never writes. Runtime scenario: tests/e2e/changelistScale.spec.ts.
+    { kind: "webview", id: "requestWorkingFileStats", mutating: false },
+    {
+        kind: "webview",
+        id: "saveChangelistShelf",
+        mutating: true,
+        coveredBySpec: "tests/e2e/listAwareOperations.spec.ts",
+    },
+    { kind: "webview", id: "saveSelection", mutating: true, notCovered: WEBVIEW_NOT_COVERED },
     { kind: "webview", id: "loadChangelists", mutating: false },
     { kind: "webview", id: "changelistAction", mutating: false },
     { kind: "webview", id: "changelistDraft", mutating: false },

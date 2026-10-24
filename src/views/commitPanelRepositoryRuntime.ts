@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
+import { WorkingFileStatsLoader } from "./workingFileStatsLoader";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import type { ShelfService } from "../services/shelfService";
 import type { ShelfEntry } from "../webviews/protocol/commitPanelMessages";
@@ -16,6 +17,7 @@ export class CommitPanelRepositoryRuntime {
     repository: DiscoveredRepository;
     readonly repoRootUri: vscode.Uri;
     readonly gitOps: GitOps;
+    readonly fileStats = new WorkingFileStatsLoader();
     files: WorkingFile[] = [];
     stashes: StashEntry[] = [];
     selectedStashIndex: number | null = null;
