@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import {
     lstat,
@@ -22,8 +22,34 @@ import {
     captureTargetNativeEvidence,
 } from "../../../src/git/targetOperationRecovery";
 
+// One case swaps index.lock right after recovery opens or reads it, as a second Git process would.
+const lockRead = vi.hoisted(() => ({
+    swap: undefined as ((file: string) => Promise<void>) | undefined,
+}));
+vi.mock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs/promises")>();
+    const after = async (file: unknown) => {
+        const swap = lockRead.swap;
+        if (!swap || typeof file !== "string" || !file.endsWith("index.lock")) return;
+        lockRead.swap = undefined;
+        await swap(file);
+    };
+    const open: typeof actual.open = async (file, flags, mode) => {
+        const handle = await actual.open(file, flags, mode);
+        await after(file);
+        return handle;
+    };
+    const readFile = (async (...args: Parameters<typeof actual.readFile>) => {
+        const bytes = await actual.readFile(...args);
+        await after(args[0]);
+        return bytes;
+    }) as typeof actual.readFile;
+    return { ...actual, open, readFile };
+});
+
 const roots: string[] = [];
 afterEach(async () => {
+    lockRead.swap = undefined;
     await removeScratchDirectories(...roots);
 });
 
@@ -78,6 +104,13 @@ const cases: {
         busy: true,
         lock,
     })),
+    {
+        kind: "cherry-pick",
+        scenario: "dead owner filled lock replaced while read stays busy",
+        stop: "evidence:abortIndexPrepared",
+        crashOccurrence: 3,
+        busy: true,
+    },
     {
         kind: "cherry-pick",
         scenario: "dead owner published index",
@@ -388,6 +421,13 @@ it.each(cases)(
                     "a retry after a refused publication must start the index step over",
                 ).resolves.toBeUndefined();
             } else if (crashOccurrence && stop) {
+                const readRace =
+                    scenario === "dead owner filled lock replaced while read stays busy";
+                if (readRace)
+                    lockRead.swap = async (file) => {
+                        await unlink(file);
+                        await writeFile(file, "foreign lock");
+                    };
                 ({ store, lease } = await restartNativeRecoveryAfterProcessExit(
                     root,
                     lease,
@@ -397,6 +437,13 @@ it.each(cases)(
                     candidate,
                     lock,
                 ));
+                if (readRace) {
+                    expect(lockRead.swap, "precondition: recovery read index.lock").toBeUndefined();
+                    await expect(
+                        readFile(path.join(gitDir, "index.lock"), "utf8"),
+                        "a lock replaced while recovery reads it must never be deleted",
+                    ).resolves.toBe("foreign lock");
+                }
                 if (busy) return;
             } else if (stop) {
                 await expect(

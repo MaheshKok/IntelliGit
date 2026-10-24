@@ -1298,6 +1298,50 @@ it("an outside commit after the targeted undo is prepared stays on the branch", 
     ).toEqual({ outcome: "stale", pending: undefined });
 }, 30_000);
 
+/** Lets the undo's own HEAD move commit, then fails the call as a Git stopped by a signal would. */
+function stopGitAfterHeadMove(): void {
+    const original = GitExecutor.prototype.runBinary;
+    vi.spyOn(GitExecutor.prototype, "runBinary").mockImplementation(async function (
+        this: GitExecutor,
+        args,
+        options,
+    ) {
+        const result = await original.call(this, args, options);
+        if (args[0] === "update-ref") throw new Error("git update-ref was killed by SIGKILL");
+        return result;
+    });
+}
+
+it("a targeted undo whose Git stops after its own HEAD move goes to review, not stale", async () => {
+    const f = await undoFixture();
+    stopGitAfterHeadMove();
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim(), "precondition: Undo moved HEAD").toBe(
+        f.parent,
+    );
+    expect(
+        { outcome: result.outcome, pending: f.store.get(f.root).pendingTargetOperation?.id },
+        "a move Git made before it was stopped stays in review",
+    ).toEqual({ outcome: "appliedNeedsReview", pending: f.request.id });
+    expect(
+        f.store.get(f.root).lists.map((list) => list.name),
+        "review keeps the destination list",
+    ).toContain("Destination");
+}, 30_000);
+
+it("a plain undo whose Git stops after its own HEAD move surfaces the error", async () => {
+    const f = await undoFixture();
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    stopGitAfterHeadMove();
+    await expect(
+        preflightUndoCommit(f.git, f.persistence, f.store, f.request),
+        "a Git stopped after the move surfaces instead of rerouting to the targeted path",
+    ).rejects.toThrow("killed by SIGKILL");
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim(), "precondition: Undo moved HEAD").toBe(
+        f.parent,
+    );
+}, 30_000);
+
 /**
  * Leaves a pending merge before the move's own checks: MERGE_HEAD as a conflict-free
  * `git merge --no-commit` would, or unmerged stages with no MERGE_HEAD as a conflicted

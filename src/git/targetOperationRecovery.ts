@@ -801,12 +801,14 @@ async function settleSavedPublication(
     }
     if (!lock) return undefined;
     // A crash after filling our lock but before saving its new identity leaves the same file
-    // holding exactly the candidate bytes; a partial fill stays ambiguous.
+    // holding exactly the candidate bytes; a partial fill stays ambiguous. The identity-checked
+    // read refuses a lock another Git process replaced while it was being read.
     const filled =
         lock.isFile() &&
         String(lock.dev) === publication.lock.identity.device &&
         String(lock.ino) === publication.lock.identity.inode &&
-        changeFingerprint(await readFile(lockPath)) === publication.candidate.fingerprint;
+        changeFingerprint(await readRegularBytes(lockPath, identity(lock))) ===
+            publication.candidate.fingerprint;
     if (
         !(filled || isDeepStrictEqual(identity(lock), publication.lock.identity)) ||
         !ownerDead(publication.lock.owner.pid)
