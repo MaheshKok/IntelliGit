@@ -8,6 +8,7 @@ import {
     readFile,
     readlink,
     realpath,
+    rm,
     symlink,
     writeFile,
 } from "node:fs/promises";
@@ -803,6 +804,54 @@ it("Undo Commit stays targeted for an executable file where core.fileMode=false"
     expect(result.outcome, `targeted undo must publish: ${result.reason ?? ""}`).toBe("applied");
     const state = f.store.get(f.root);
     expect(state.files.affected, "the undone file belongs to the explicit destination").toBe(
+        state.lists.find((list) => list.name === "Destination")!.id,
+    );
+}, 30_000);
+
+/** Checks `file` out again as Windows Git does with core.autocrlf=true: CRLF on disk, clean to Git. */
+async function checkOutWithCrlf(root: string, git: GitExecutor, file: string) {
+    await git.run(["config", "core.autocrlf", "true"]);
+    await rm(path.join(root, file));
+    await git.run(["checkout", "--", file]);
+    expect(
+        await readFile(path.join(root, file), "utf8"),
+        "Git checks the file out with CRLF",
+    ).toMatch(/\r\n$/);
+    expect(
+        await git.run(["status", "--porcelain", "--", file]),
+        "Git reads the CRLF copy as clean",
+    ).toBe("");
+}
+
+it("Undo Commit stays targeted for a file Git reads as clean under core.autocrlf", async () => {
+    const f = await fixture("revert");
+    const request = { ...f.request, kind: "undoCommit" as const };
+    await checkOutWithCrlf(f.root, f.git, "affected");
+    const route = await preflightUndoCommit(f.git, f.persistence, f.store, request);
+    expect(route, "a file Git reads as clean is clean for the targeted undo").toEqual({
+        route: "targeted",
+    });
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, request);
+    expect(result.outcome, `targeted undo must publish: ${result.reason ?? ""}`).toBe("applied");
+    const state = f.store.get(f.root);
+    expect(state.files.affected, "the undone file belongs to the explicit destination").toBe(
+        state.lists.find((list) => list.name === "Destination")!.id,
+    );
+}, 30_000);
+
+it("targeted revert removes an added file Git reads as clean under core.autocrlf", async () => {
+    const f = await fixture("revert", async (root) =>
+        writeFile(path.join(root, "added"), "added text\n"),
+    );
+    await checkOutWithCrlf(f.root, f.git, "added");
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(result.outcome, `targeted revert must publish: ${result.reason ?? ""}`).toBe("applied");
+    await expect(
+        lstat(path.join(f.root, "added")),
+        "the revert removes the added file",
+    ).rejects.toThrow();
+    const state = f.store.get(f.root);
+    expect(state.files.added, "the removed file belongs to the explicit destination").toBe(
         state.lists.find((list) => list.name === "Destination")!.id,
     );
 }, 30_000);
