@@ -7,10 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-10-24
+
 ### Changed
 
 - The Commit panel is simple again if you don't use changelists: one plain list of changed files, and clicking a file opens its normal diff. The changelist picker, list headers and extra shelf buttons appear only after you create a second changelist or pick individual lines to commit. Start one any time with the new **New changelist** toolbar button.
 - The shelf buttons for checked files now appear only while files are checked, and the line-selection editor hides **Assign** and the "review assignments" notice when there is only one changelist.
+
+### Fixed
+
+- With two or more changelists, clicking a file opens its side-by-side diff (**HEAD ↔ Working Tree**) again instead of the **Selected changes** editor. Selected changes is still one click away on the **Partial changes** toolbar button.
+- Each changelist header shows its own `+N -M` line total again, and an open changelist no longer repeats a second **Changes** header under its name.
+- The whole-file **Shelve** buttons are no longer drawn in a faint grey that was hard to read.
 
 ## [0.39.6] - 2026-10-24
 
