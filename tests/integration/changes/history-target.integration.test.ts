@@ -232,7 +232,7 @@ async function fixture(
     kind: "cherryPick" | "revert",
     change: (root: string, git: GitExecutor) => Promise<void> = async (root) =>
         writeFile(path.join(root, "affected"), "source change\n"),
-    seed: (root: string) => Promise<void> = async () => undefined,
+    seed: (root: string, git: GitExecutor) => Promise<void> = async () => undefined,
 ) {
     const root = await realpath(await mkdtemp(path.join(tmpdir(), "history-target-")));
     roots.push(root);
@@ -246,7 +246,7 @@ async function fixture(
     await git.run(["config", "user.email", "fixture@example.invalid"]);
     await writeFile(path.join(root, "affected"), "base\n");
     await writeFile(path.join(root, "unrelated"), "original\n");
-    await seed(root);
+    await seed(root, git);
     await git.run(["add", "."]);
     await git.run(["commit", "-qm", "base"]);
     const base = (await git.run(["rev-parse", "HEAD"])).trim();
@@ -673,6 +673,155 @@ it.each(["cherryPick", "revert"] as const)(
         expect(await f.git.run(["show", ":unrelated"])).toBe("staged unrelated\n");
         expect(await readFile(path.join(f.root, "unrelated"), "utf8")).toBe("working unrelated\n");
         expect(state.pendingTargetOperation).toBeUndefined();
+    },
+    30_000,
+);
+
+it("targeted revert of a mode change applies where core.fileMode=false leaves the file non-executable", async () => {
+    const f = await fixture("revert", structuralChange, structuralSeed);
+    // Windows Git sets core.fileMode=false and never marks a checked-out file executable.
+    await f.git.run(["config", "core.fileMode", "false"]);
+    await chmod(path.join(f.root, "tool"), 0o644);
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(result.outcome, `structural apply must publish: ${result.reason ?? ""}`).toBe("applied");
+    expect(await indexModes(f.git), "the revert restores the regular mode in the index").toEqual({
+        gone: "100644",
+        old: "100644",
+        tool: "100644",
+    });
+    const state = f.store.get(f.root);
+    const destination = state.lists.find((list) => list.name === "Destination")!;
+    expect(state.files.tool, "tool belongs to the explicit destination").toBe(destination.id);
+    expect(state.pendingTargetOperation).toBeUndefined();
+}, 30_000);
+
+it("reviewed continue publishes a re-moded revert after a crash where core.fileMode=false", async () => {
+    const f = await fixture("revert", structuralChange, structuralSeed);
+    // Windows Git sets core.fileMode=false and never marks a checked-out file executable.
+    await f.git.run(["config", "core.fileMode", "false"]);
+    await chmod(path.join(f.root, "tool"), 0o644);
+    const publish = vi
+        .spyOn(f.store, "publishTargetOwnership")
+        .mockRejectedValueOnce(new Error("Injected crash before ownership publication"));
+    const first = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(first.outcome, "the crash leaves the applied revert for review").toBe(
+        "appliedNeedsReview",
+    );
+    publish.mockRestore();
+    const review = await captureTargetHistoryReview(f.git, f.persistence, f.store, "continue");
+    const result = await continueReviewedTargetHistoryOperation(
+        f.git,
+        f.persistence,
+        f.store,
+        review!,
+    );
+    expect(result.outcome, `reviewed continue must publish: ${result.reason ?? ""}`).toBe(
+        "applied",
+    );
+    const state = f.store.get(f.root);
+    const destination = state.lists.find((list) => list.name === "Destination")!;
+    expect(state.files.tool, "tool belongs to the explicit destination").toBe(destination.id);
+}, 30_000);
+
+/** Commits `affected` as 100755 on every platform; chmod alone reaches Git only where fileMode is true. */
+const executableAffected = async (root: string, git: GitExecutor) => {
+    await chmod(path.join(root, "affected"), 0o755);
+    await git.run(["add", "affected"]);
+    await git.run(["update-index", "--chmod=+x", "affected"]);
+};
+
+it("reviewed targeted revert conflict completes an executable script where core.fileMode=false", async () => {
+    const f = await fixture("revert", undefined, executableAffected);
+    // Windows Git sets core.fileMode=false and never marks a checked-out file executable.
+    await f.git.run(["config", "core.fileMode", "false"]);
+    await chmod(path.join(f.root, "affected"), 0o644);
+    await writeFile(path.join(f.root, "affected"), "competing committed change\n");
+    await f.git.run(["commit", "--only", "-qm", "competing", "--", "affected"]);
+    const request = { ...f.request, head: (await f.git.run(["rev-parse", "HEAD"])).trim() };
+    expect(
+        (await applyTargetHistoryOperation(f.git, f.persistence, f.store, request)).outcome,
+    ).toBe("conflicted");
+    await writeFile(path.join(f.root, "affected"), "accepted resolution\n");
+    await chmod(path.join(f.root, "affected"), 0o644);
+    await f.git.run(["add", "affected"]);
+    const review = await captureTargetHistoryReview(f.git, f.persistence, f.store, "continue");
+    const result = await continueReviewedTargetHistoryOperation(
+        f.git,
+        f.persistence,
+        f.store,
+        review!,
+    );
+    expect(result.outcome, `reviewed resolution must finish: ${result.reason ?? ""}`).toBe(
+        "applied",
+    );
+    expect(
+        (await f.git.run(["ls-files", "-s", "--", "affected"])).split(" ")[0],
+        "the script keeps its executable mode",
+    ).toBe("100755");
+}, 30_000);
+
+it.skipIf(!POSIX_PERMISSIONS_ENFORCED)(
+    "reviewed targeted revert conflict still refuses a local executable-bit change where core.fileMode is true",
+    async () => {
+        const f = await fixture("revert", undefined, executableAffected);
+        await writeFile(path.join(f.root, "affected"), "competing committed change\n");
+        await f.git.run(["commit", "--only", "-qm", "competing", "--", "affected"]);
+        const request = { ...f.request, head: (await f.git.run(["rev-parse", "HEAD"])).trim() };
+        expect(
+            (await applyTargetHistoryOperation(f.git, f.persistence, f.store, request)).outcome,
+        ).toBe("conflicted");
+        await writeFile(path.join(f.root, "affected"), "accepted resolution\n");
+        await f.git.run(["add", "affected"]);
+        // The index keeps 100755; only the disk loses the bit, which Git reports as a mode change.
+        await chmod(path.join(f.root, "affected"), 0o644);
+        const review = await captureTargetHistoryReview(f.git, f.persistence, f.store, "continue");
+        const result = await continueReviewedTargetHistoryOperation(
+            f.git,
+            f.persistence,
+            f.store,
+            review!,
+        );
+        expect(result.outcome, "a local mode change is not a text resolution").toBe(
+            "appliedNeedsReview",
+        );
+        expect(result.reason).toBe("History resolution needs supported regular text evidence.");
+    },
+    30_000,
+);
+
+it("Undo Commit stays targeted for an executable file where core.fileMode=false", async () => {
+    const f = await fixture("revert", undefined, executableAffected);
+    const request = { ...f.request, kind: "undoCommit" as const };
+    // Windows Git sets core.fileMode=false and never marks a checked-out file executable.
+    await f.git.run(["config", "core.fileMode", "false"]);
+    await chmod(path.join(f.root, "affected"), 0o644);
+    const route = await preflightUndoCommit(f.git, f.persistence, f.store, request);
+    expect(route, "an unchanged executable file is clean for the targeted undo").toEqual({
+        route: "targeted",
+    });
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, request);
+    expect(result.outcome, `targeted undo must publish: ${result.reason ?? ""}`).toBe("applied");
+    const state = f.store.get(f.root);
+    expect(state.files.affected, "the undone file belongs to the explicit destination").toBe(
+        state.lists.find((list) => list.name === "Destination")!.id,
+    );
+}, 30_000);
+
+it.skipIf(!POSIX_PERMISSIONS_ENFORCED)(
+    "targeted revert still refuses a local executable-bit change where core.fileMode is true",
+    async () => {
+        const f = await fixture("revert", structuralChange, structuralSeed);
+        await chmod(path.join(f.root, "tool"), 0o644);
+        const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+        expect(result.outcome, "the local executable-bit change is refused before Git runs").toBe(
+            "notApplied",
+        );
+        expect(result.reason, "refusal names the re-moded path").toContain(
+            '"tool" has local changes',
+        );
+        expect((await indexModes(f.git)).tool, "the index keeps the executable mode").toBe(
+            "100755",
+        );
     },
     30_000,
 );
