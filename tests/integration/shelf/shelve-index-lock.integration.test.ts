@@ -248,25 +248,29 @@ describe("shelve save under a concurrent index.lock", () => {
         );
     }, 20_000);
 
-    it("waits out an index.lock in a checkout whose path holds a newline", async () => {
-        const root = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-line\nbreak-"));
-        try {
-            await git(root, ["init"]);
-            await writeFile(path.join(root, "tracked.txt"), "base\n");
-            await git(root, ["add", "tracked.txt"]);
-            const recovery = new GitExecutorRecoveryGit(new GitExecutor(root));
-            const entry = await recovery.getIndexEntry("tracked.txt");
-            const release = await holdIndexLock(root);
-            setTimeout(() => void release(), 200);
-            const outcome = await recovery.writeIndexEntry("tracked.txt", entry).then(
-                () => "written",
-                (error: Error) => error.message,
-            );
-            expect(outcome, "the refused write waits for the lock").toBe("written");
-        } finally {
-            await removeScratchDirectories(root);
-        }
-    });
+    // Windows refuses a newline in a directory name.
+    it.skipIf(process.platform === "win32")(
+        "waits out an index.lock in a checkout whose path holds a newline",
+        async () => {
+            const root = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-line\nbreak-"));
+            try {
+                await git(root, ["init"]);
+                await writeFile(path.join(root, "tracked.txt"), "base\n");
+                await git(root, ["add", "tracked.txt"]);
+                const recovery = new GitExecutorRecoveryGit(new GitExecutor(root));
+                const entry = await recovery.getIndexEntry("tracked.txt");
+                const release = await holdIndexLock(root);
+                setTimeout(() => void release(), 200);
+                const outcome = await recovery.writeIndexEntry("tracked.txt", entry).then(
+                    () => "written",
+                    (error: Error) => error.message,
+                );
+                expect(outcome, "the refused write waits for the lock").toBe("written");
+            } finally {
+                await removeScratchDirectories(root);
+            }
+        },
+    );
 
     it("does not retry other Git errors", async () => {
         const f = await createShelfFixture();
