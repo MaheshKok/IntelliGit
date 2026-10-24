@@ -49,11 +49,17 @@ async function stagedEntry(root: string) {
 
 /**
  * Reverts a staged change while, from the `at` checkpoint on, another Git process holds
- * index.lock. Right after the write under test is first refused, that process restages
- * tracked.txt and releases the lock, so the first retry is the only attempt that can see the
- * change before Git accepts the write.
+ * index.lock. That process restages tracked.txt and releases the lock either right after the
+ * write under test is first refused ("at-refusal"), so the first retry is the only attempt that
+ * can see the change, or just before a retried write runs ("before-retry"), so a re-check made
+ * while the lock was still held read the index that process was about to replace. In
+ * "before-retry" a timer restages and releases after 300 ms when no retried write comes first.
  */
-async function contendedReverter(at: RevertCheckpoint, interrupt = false) {
+async function contendedReverter(
+    at: RevertCheckpoint,
+    interrupt = false,
+    publishes: "at-refusal" | "before-retry" = "at-refusal",
+) {
     const f = await createShelfFixture();
     await writeFile(path.join(f.root, "tracked.txt"), "local\n");
     await git(f.root, ["add", "tracked.txt"]);
@@ -67,15 +73,25 @@ async function contendedReverter(at: RevertCheckpoint, interrupt = false) {
         .trim();
     let release: (() => Promise<void>) | undefined;
     let staged = false;
+    let refused = false;
+    const publish = async () => {
+        if (staged) return;
+        staged = true;
+        await stageForeignEntry(f.root, f.executor, foreignOid);
+        await release?.();
+    };
     const runBinary = f.executor.runBinary.bind(f.executor);
     vi.spyOn(f.executor, "runBinary").mockImplementation(async (args, options) => {
+        if (refused && isIndexWrite(args)) await publish();
         try {
             return await runBinary(args, options);
         } catch (error) {
             if (release && !staged && isIndexWrite(args)) {
-                staged = true;
-                await stageForeignEntry(f.root, f.executor, foreignOid);
-                await release();
+                if (publishes === "at-refusal") await publish();
+                else if (!refused) {
+                    refused = true;
+                    setTimeout(() => void publish(), 300);
+                }
             }
             throw error;
         }
@@ -153,6 +169,42 @@ describe("shelve save under a concurrent index.lock", () => {
         );
         expect(await stagedEntry(root), "the other process's entry survives").toBe(
             `100644 ${foreignOid} 0\ttracked.txt\n`,
+        );
+    });
+
+    it("re-checks a restore write only once index.lock is gone, keeping an entry its holder staged", async () => {
+        const { root, foreignOid, revert } = await contendedReverter(
+            "base-written",
+            false,
+            "before-retry",
+        );
+        const outcome = await revert().then(
+            () => undefined,
+            (error: unknown) => error,
+        );
+        expect(await stagedEntry(root), "the other process's entry survives").toBe(
+            `100644 ${foreignOid} 0\ttracked.txt\n`,
+        );
+        expect(outcome, "the restore refuses the restaged path").toBeInstanceOf(
+            ShelfRollbackRetainedError,
+        );
+    });
+
+    it("re-checks a rolled-back path only once index.lock is gone, keeping an entry its holder staged", async () => {
+        const { root, foreignOid, revert } = await contendedReverter(
+            "index-updated",
+            true,
+            "before-retry",
+        );
+        const outcome = await revert().then(
+            () => undefined,
+            (error: unknown) => error,
+        );
+        expect(await stagedEntry(root), "the other process's entry survives").toBe(
+            `100644 ${foreignOid} 0\ttracked.txt\n`,
+        );
+        expect(outcome, "rollback retains the restaged path").toBeInstanceOf(
+            ShelfRollbackRetainedError,
         );
     });
 
