@@ -1255,6 +1255,62 @@ it("a structural choice beside an open text conflict keeps the restore waiting a
     expect(await f.store.readCurrentShelfManifest(f.input.id)).toEqual(f.shelf);
 });
 
+it("a structural choice on a raw entry ends the restore and reports it instead of failing", async () => {
+    const raw = await createShelfFixture({
+        initialFiles: { ".gitattributes": "raw.txt text eol=crlf\n", "raw.txt": "base\r\n" },
+    });
+    const root = await realpath(raw.root);
+    const changelists = await connectedChangelists(root);
+    const service = new ShelfService({
+        repositoryRoot: root,
+        executor: raw.executor,
+        store: raw.store,
+        changelists,
+        gate: new RepositoryMutationGate(new RepositoryMutationCoordinator(), new RepositoryLock()),
+    });
+    await writeFile(path.join(root, "raw.txt"), Buffer.from("edited\r\n"));
+    const saved = await service.shelve({
+        name: "raw shelf",
+        paths: ["raw.txt"],
+        silent: true,
+        keepLocal: true,
+    });
+    const shelf = await raw.store.readCurrentShelfManifest(saved.shelfId!);
+    expect(shelf.files.map((entry) => entry.exactReconstruction)).toEqual([false]);
+    await writeFile(path.join(root, "raw.txt"), Buffer.from("local\r\n"));
+    await changelists.create(root, changelists.revision(root), "D");
+    const destination = changelists.get(root).lists.find((list) => list.name === "D")!.id;
+    const input = {
+        id: saved.shelfId!,
+        mode: "flattened" as const,
+        removeFromShelf: true,
+        expectedShelfGeneration: shelf.generation,
+        targetOperation: {
+            id: randomUUID(),
+            root,
+            target: {
+                kind: "existing" as const,
+                id: destination,
+                revision: changelists.revision(root),
+            },
+            sourceChecksum: shelf.checksum,
+            draftChoice: { kind: "keep" as const },
+        },
+    };
+    const pending = structuralPending((await service.unshelve(input)).entries);
+    const result = await service.resolveStructural({
+        id: input.id,
+        changeId: pending.changeId,
+        expectedShelfGeneration: shelf.generation,
+        expectedPathFingerprint: pending.pathFingerprint,
+        action: "keepLocal",
+    });
+    expect(result.status, "the ended restore is the reply").toBe("notApplied");
+    expect(changelists.get(root).pendingTargetOperation).toBeUndefined();
+    expect(await readFile(path.join(root, "raw.txt"))).toEqual(Buffer.from("local\r\n"));
+    expect(await raw.store.readCurrentShelfManifest(input.id)).toEqual(shelf);
+});
+
 it("deleting the local file ends a mixed restore with the deletion still on the shelf", async () => {
     const f = await restoreFixture(true, true, true);
     const first = await f.service.unshelve(f.input);
