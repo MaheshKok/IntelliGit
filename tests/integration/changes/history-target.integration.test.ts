@@ -880,6 +880,29 @@ it("Undo Commit falls back to the plain reset when a required clean filter fails
     );
 }, 30_000);
 
+it("targeted revert refuses a file Git hashes to HEAD only after reporting an encoding error", async () => {
+    const f = await fixture("revert");
+    // UTF-16 requires a BOM, so Git reports an error, still exits 0 and hashes the raw bytes,
+    // which eol=crlf then normalizes to HEAD's blob.
+    await mkdir(path.join(f.root, ".git", "info"), { recursive: true });
+    await writeFile(
+        path.join(f.root, ".git", "info", "attributes"),
+        "affected working-tree-encoding=UTF-16 eol=crlf\n",
+    );
+    await writeFile(path.join(f.root, "affected"), "source change\r\n");
+    expect(
+        await f.git.run(["status", "--porcelain", "--", "affected"]),
+        "Git reads the file as modified",
+    ).toBe(" M affected\n");
+    const refused = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(refused.outcome, "the targeted adapter refuses a file Git reported an error on").toBe(
+        "notApplied",
+    );
+    expect(await readFile(path.join(f.root, "affected"), "utf8"), "the local bytes survive").toBe(
+        "source change\r\n",
+    );
+}, 30_000);
+
 it.skipIf(!POSIX_PERMISSIONS_ENFORCED)(
     "targeted revert still refuses a local executable-bit change where core.fileMode is true",
     async () => {
