@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Shelve and Rollback on selected changes no longer fail with "Changelists changed. Reopen the selected changes." when the background line-count scan updates another file while the confirmation is open. They still refuse when a changelist, its files or its commit draft really changed in the meantime.
 
+## [0.39.4] - 2026-10-24
+
+### Fixed
+
+- Shelving whole files and then removing them is no longer refused with "Whole-file capture source changed before publication." when nothing about those files changed. A routine `git status` (which VS Code's Git extension runs on its own) or staging an unrelated file while the removal prompt is open no longer counts as a change; staging a new version of a shelved file still does.
+
 ## [0.39.3] - 2026-10-24
 
 ### Fixed
