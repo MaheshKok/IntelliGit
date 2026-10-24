@@ -31,7 +31,7 @@ import {
     type PartialFileSnapshot,
 } from "./partialSnapshot";
 import { RepositoryLockBusyError } from "./repositoryLock";
-import { captureTargetNativeEvidence } from "./targetOperationRecovery";
+import { captureTargetNativeEvidence, trustsExecutableBit } from "./targetOperationRecovery";
 
 /**
  * Captured history intent belongs to one immutable commit, HEAD and target revision. For
@@ -95,7 +95,8 @@ export async function applyTargetHistoryOperation(
             const wholeFileBefore: TargetWholeFileBefore[] = [];
             for (const file of paths.filter((candidate) => whole.has(candidate)))
                 wholeFileBefore.push(await wholeBefore(git, persistence, state, file, intent.head));
-            assertAdmitted(captured, [...snapshots.keys()], wholeFileBefore);
+            const trustExecutableBit = await trustsExecutableBit(git);
+            assertAdmitted(captured, [...snapshots.keys()], wholeFileBefore, trustExecutableBit);
             const before: TargetOperationEvidence = {
                 ...captured,
                 ...(wholeFileBefore.length ? { wholeFileBefore } : {}),
@@ -239,6 +240,7 @@ export async function applyTargetHistoryOperation(
                 revision: current.revision,
                 expectedPhase: "gitApplied",
                 observedEvidenceHash: await observe(),
+                trustExecutableBit,
             });
             if (current.pendingTargetOperation?.phase !== "ownershipPublished")
                 return { id: intent.id, outcome: "appliedNeedsReview" };
@@ -296,9 +298,9 @@ export type UndoCommitPreflight =
 /**
  * Under the metadata lease and mutation gate, apply the targeted admission rules to the undone
  * paths. A pending target operation or held lease is `busy`. When the rules refuse a path for its
- * owner or local changes, or no path changes at all, the plain `reset --soft` runs under the same
- * lease so nothing interleaves between decision and reset. Anything else is left to the targeted
- * path's own checks.
+ * owner or local changes, or no path changes at all, the plain soft reset runs under the same
+ * lease, and only while HEAD is still the captured one. Anything else, including a HEAD that
+ * another Git process moved meanwhile, is left to the targeted path's own checks.
  */
 export async function preflightUndoCommit(
     executor: GitExecutor,
@@ -310,7 +312,7 @@ export async function preflightUndoCommit(
     let lease: TargetOperationLease | undefined;
     try {
         lease = await store.acquireTargetOperationLease(persistence.root);
-        return await git.runWithinMutationGate(async (run): Promise<UndoCommitPreflight> => {
+        return await git.runWithinMutationGate(async (): Promise<UndoCommitPreflight> => {
             const state = store.inspectTargetOperationLease(persistence.root, lease!);
             if (state.pendingTargetOperation) return { route: "busy" };
             const { paths, parent } = await admittedPaths(git, { ...request, kind: "undoCommit" });
@@ -326,10 +328,10 @@ export async function preflightUndoCommit(
             for (const file of paths)
                 whole.push(await wholeBefore(git, persistence, state, file, request.head));
             const refusal = paths.length
-                ? wholeFileRefusal(captured, whole)
+                ? wholeFileRefusal(captured, whole, await trustsExecutableBit(git))
                 : { reason: "noChanges" as const };
-            if (!refusal) return { route: "targeted" };
-            await run(["reset", "--soft", parent]);
+            if (!refusal || !(await softResetFrom(git, request.head, parent)))
+                return { route: "targeted" };
             return { route: "plainReset", ...refusal };
         });
     } catch (error) {
@@ -342,6 +344,27 @@ export async function preflightUndoCommit(
             .catch((error: unknown) =>
                 console.error("[IntelliGit] Undo Commit lease release failed:", error),
             );
+    }
+}
+
+/**
+ * `reset --soft` to `parent` that moves HEAD only while it still names `head`, so a commit another
+ * Git process made after HEAD was read is never dropped from the branch. False means HEAD moved.
+ */
+async function softResetFrom(git: GitExecutor, head: string, parent: string): Promise<boolean> {
+    // reset --soft refuses this too; the native evidence sees MERGE_HEAD but not unmerged stages.
+    if ((await git.run(["ls-files", "-u", "-z"])).length)
+        throw new Error("Cannot do a soft reset in the middle of a merge.");
+    try {
+        // One transaction, so ORIG_HEAD changes only together with HEAD.
+        await git.runBinary(["update-ref", "-m", `reset: moving to ${parent}`, "--stdin"], {
+            input: Buffer.from(`update HEAD ${parent} ${head}\nupdate ORIG_HEAD ${head}\n`),
+        });
+        return true;
+    } catch (error) {
+        const current = await git.run(["rev-parse", "--verify", "HEAD"]).catch(() => head);
+        if (current.trim() !== head) return false;
+        throw error;
     }
 }
 
@@ -520,13 +543,14 @@ function assertAdmitted(
     evidence: TargetOperationEvidence,
     text: readonly string[],
     whole: readonly TargetWholeFileBefore[],
+    trustExecutableBit: boolean,
 ): void {
     for (const file of text) {
         const index = evidence.index.filter((entry) => entry.path === file);
         if (index.length !== 1 || !plainIndexEntry(index[0]))
             throw new Error(`"${file}" has an unsupported index entry for this history action.`);
     }
-    const refusal = wholeFileRefusal(evidence, whole);
+    const refusal = wholeFileRefusal(evidence, whole, trustExecutableBit);
     if (refusal?.reason === "owned")
         throw new Error(
             `"${refusal.path}" already belongs to a changelist. Added, deleted, renamed, linked or re-moded files must be unassigned and clean.`,
@@ -545,6 +569,7 @@ function plainIndexEntry(entry: TargetIndexEntry): boolean {
 function wholeFileRefusal(
     evidence: TargetOperationEvidence,
     whole: readonly TargetWholeFileBefore[],
+    trustExecutableBit: boolean,
 ): WholeFileRefusal | undefined {
     for (const captured of whole) {
         const file = captured.path;
@@ -564,7 +589,7 @@ function wholeFileRefusal(
                       ? working?.kind === "symlink" &&
                         isDeepStrictEqual(working.target, head.object)
                       : working?.kind === "regular" &&
-                        working.executable === (head.mode === "100755") &&
+                        (!trustExecutableBit || working.executable === (head.mode === "100755")) &&
                         isDeepStrictEqual(working.content, head.object));
         if (!clean) return { path: file, reason: "localChanges" };
     }

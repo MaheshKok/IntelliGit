@@ -84,6 +84,8 @@ export interface TargetOperationObservation extends TargetOperationExpectedState
 /** Fresh revision-bound Keep consent changes only the draft decision, never original operation intent. */
 export interface TargetOwnershipPublication extends TargetOperationObservation {
     readonly reviewedDraft?: { readonly kind: "keep"; readonly expectedDestinationDraft: string };
+    /** The adapter's core.fileMode reading; false skips the disk executable bit, omitted compares it. */
+    readonly trustExecutableBit?: boolean;
 }
 
 interface MetadataStorage {
@@ -516,6 +518,7 @@ function cleanWholeFileBefore(
     captured: TargetWholeFileBefore | undefined,
     working: TargetPathState | undefined,
     index: TargetIndexEntry | undefined,
+    trustExecutableBit: boolean,
 ): boolean {
     if (!captured || !captured.unowned || !working) return false;
     if (captured.head.kind === "absent") return !index && working.kind === "absent";
@@ -536,7 +539,7 @@ function cleanWholeFileBefore(
     return (
         (head.mode === "100644" || head.mode === "100755") &&
         working.kind === "regular" &&
-        working.executable === (head.mode === "100755") &&
+        (!trustExecutableBit || working.executable === (head.mode === "100755")) &&
         isDeepStrictEqual(working.content, head.object)
     );
 }
@@ -546,6 +549,7 @@ function validWholeFileOwnership(
     state: ChangelistState,
     before: TargetOperationEvidence,
     after: TargetOperationEvidence,
+    trustExecutableBit: boolean,
 ): boolean {
     const captured = new Map(before.wholeFileBefore?.map((entry) => [entry.path, entry]));
     const beforePaths = new Map(before.paths.map((entry) => [entry.path, entry.state]));
@@ -563,7 +567,12 @@ function validWholeFileOwnership(
         return endpoints.every(
             (file) =>
                 targetPathUnowned(state, file) &&
-                cleanWholeFileBefore(captured.get(file), beforePaths.get(file), index.get(file)),
+                cleanWholeFileBefore(
+                    captured.get(file),
+                    beforePaths.get(file),
+                    index.get(file),
+                    trustExecutableBit,
+                ),
         );
     });
 }
@@ -1276,7 +1285,14 @@ export class ChangelistStore {
                     return;
                 }
                 const updates = new Map<string, OwnershipPublication>();
-                if (!validWholeFileOwnership(state, before, after)) {
+                if (
+                    !validWholeFileOwnership(
+                        state,
+                        before,
+                        after,
+                        captured.trustExecutableBit ?? true,
+                    )
+                ) {
                     review();
                     return;
                 }

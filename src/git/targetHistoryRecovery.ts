@@ -12,7 +12,11 @@ import { reconcileRanges } from "../changes/rangeMapping";
 import type { TargetOperationAttribution } from "../changes/rangeMetadata";
 import { MAX_PARTIAL_TEXT_BYTES } from "./partialSnapshot";
 import type { GitExecutor } from "./executor";
-import { abortTargetNativeOperation, captureTargetNativeEvidence } from "./targetOperationRecovery";
+import {
+    abortTargetNativeOperation,
+    captureTargetNativeEvidence,
+    trustsExecutableBit,
+} from "./targetOperationRecovery";
 import {
     historyTextSnapshot,
     quitCompletedHistory,
@@ -76,6 +80,7 @@ export async function continueReviewedTargetHistoryOperation(
         result = await git.runWithinMutationGate(async (run) => {
             if (review.action !== "continue")
                 throw new Error("Completion requires its own review decision.");
+            const trustExecutableBit = await trustsExecutableBit(git);
             let state = readReviewedOperation(store, persistence, lease!, review);
             let pending = state.pendingTargetOperation!;
             const chain = await persistence.loadTargetOperationEvidenceChain(pending.evidenceHash);
@@ -98,6 +103,7 @@ export async function continueReviewedTargetHistoryOperation(
                     lease!,
                     chain.root.evidence,
                     actual,
+                    trustExecutableBit,
                 );
                 saved = {
                     ...actual,
@@ -189,6 +195,7 @@ export async function continueReviewedTargetHistoryOperation(
                     revision: state.revision,
                     expectedPhase: "gitApplied",
                     observedEvidenceHash: await observe(),
+                    trustExecutableBit,
                 });
                 pending = state.pendingTargetOperation!;
             }
@@ -352,6 +359,7 @@ async function resolvedAttribution(
     lease: TargetOperationLease,
     before: TargetOperationEvidence,
     after: TargetOperationEvidence,
+    trustExecutableBit: boolean,
 ) {
     const paths = before.paths.map((entry) => entry.path);
     const state = store.inspectTargetOperationLease(persistence.root, lease);
@@ -374,8 +382,8 @@ async function resolvedAttribution(
         });
         if (baseResult.truncated) throw new Error("History base exceeds supported text bounds.");
         const base = historyText(baseResult.stdout);
-        const old = await evidenceText(persistence, before, file, entry[1]);
-        const working = await evidenceText(persistence, after, file, entry[1]);
+        const old = await evidenceText(persistence, before, file, entry[1], trustExecutableBit);
+        const working = await evidenceText(persistence, after, file, entry[1], trustExecutableBit);
         const beforeSnapshot = await historyTextSnapshot(git, before, file, base, old);
         const afterSnapshot = await historyTextSnapshot(git, after, file, base, working);
         const fallback = state.files[file] ?? state.activeId;
@@ -411,12 +419,13 @@ async function evidenceText(
     evidence: TargetOperationEvidence,
     file: string,
     mode: string,
+    trustExecutableBit: boolean,
 ): Promise<string> {
     const state = evidence.paths.find((entry) => entry.path === file)?.state;
     const entries = evidence.index.filter((entry) => entry.path === file);
     if (
         state?.kind !== "regular" ||
-        state.executable !== (mode === "100755") ||
+        (trustExecutableBit && state.executable !== (mode === "100755")) ||
         entries.length !== 1 ||
         entries[0].stage !== 0 ||
         entries[0].mode !== mode ||

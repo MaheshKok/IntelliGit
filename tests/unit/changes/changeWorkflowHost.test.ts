@@ -2006,6 +2006,81 @@ describe("root-bound selected-change host", () => {
         await host.settled();
     });
 
+    it("keeps a file moved while its refresh's membership write finishes through an earlier pass's prune", async () => {
+        let finishFirst!: () => void;
+        let finishSecond!: () => void;
+        let finishRelease!: () => void;
+        const firstPass = new Promise<void>((resolve) => {
+            finishFirst = resolve;
+        });
+        const secondPass = new Promise<void>((resolve) => {
+            finishSecond = resolve;
+        });
+        const releasing = new Promise<void>((resolve) => {
+            finishRelease = resolve;
+        });
+        const made = await store.create(root, store.revision(root), "Chosen");
+        const chosen = made.lists.find((item) => item.name === "Chosen")!.id;
+        const scan = vi
+            .spyOn(ChangeRangeTracker.prototype, "reconcile")
+            .mockReturnValueOnce(firstPass)
+            .mockReturnValue(secondPass);
+        const membership = vi.spyOn(store, "reconcileFiles");
+        const moves = vi.spyOn(store, "moveFiles");
+        const files = await gitOps.getStatus({ withStats: false });
+        const later = [...files, { ...files[0]!, path: "moved.txt", status: "?" }];
+        const refreshes = [host.reconcile(files)];
+        await vi.waitFor(() => expect(scan).toHaveBeenCalledTimes(1));
+        // The later refresh's write commits and notifies, then waits on its lease release.
+        const acquire = ChangelistPersistence.prototype.acquire;
+        const lease = vi
+            .spyOn(ChangelistPersistence.prototype, "acquire")
+            .mockImplementationOnce(async function (this: ChangelistPersistence) {
+                const release = await acquire.call(this);
+                return async () => {
+                    await releasing;
+                    await release();
+                };
+            });
+        refreshes.push(host.reconcile(later));
+        await vi.waitFor(() => expect(store.get(root).files["moved.txt"]).toBeDefined());
+        expect(lease, "the later refresh's write holds the lease").toHaveBeenCalledOnce();
+        expect(
+            membership.mock.calls.map((call) => call[2]),
+            "both refreshes share one epoch",
+        ).toEqual([store.observerEpoch(root), store.observerEpoch(root)]);
+        posted.length = 0;
+        const move = host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "move",
+            listId: chosen,
+            paths: ["moved.txt"],
+            revision: store.revision(root),
+        });
+        await vi.waitFor(() => expect(moves).toHaveBeenCalledOnce());
+        finishFirst();
+        await vi.waitFor(() => expect(membership).toHaveBeenCalledTimes(3));
+        finishRelease();
+        await move;
+        expect(
+            posted
+                .filter((message) => (message as { type: string }).type === "error")
+                .map((message) => (message as { message: string }).message),
+            "the move must not be refused",
+        ).toEqual([]);
+        expect((await moves.mock.results[0]!.value).files["moved.txt"], "the move applied").toBe(
+            chosen,
+        );
+        finishSecond();
+        await Promise.all(refreshes);
+        await host.settled();
+        expect(
+            store.get(root).files["moved.txt"],
+            "a file moved while its refresh's membership write finished must stay in the chosen list",
+        ).toBe(chosen);
+    });
+
     it("reports a failed shared prune once, without rejecting the refreshes that joined it", async () => {
         let finishPass!: () => void;
         const pass = new Promise<void>((resolve) => {
@@ -2033,8 +2108,14 @@ describe("root-bound selected-change host", () => {
             ]),
         );
         expect(membership).toHaveBeenCalledTimes(3);
+        // A failed prune posts the idle state, then its error; no later state is sure to arrive in time.
         await vi.waitFor(() =>
-            expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false }),
+            expect(
+                (posted as { type?: string }[])
+                    .filter((message) => message.type === "setChangelists")
+                    .at(-1),
+                "the panel is idle again after the failed prune",
+            ).toMatchObject({ busy: false }),
         );
     });
 
