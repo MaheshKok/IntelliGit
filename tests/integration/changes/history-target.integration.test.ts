@@ -857,9 +857,21 @@ it("undo retains pre-existing mixed ownership", async () => {
     expect(state.files.unrelated).toBe(f.owner);
 }, 30_000);
 
-/** Git argument lists of every `reset` the spy saw. */
+/** Git argument lists of every `reset` or `update-ref` (the plain undo's HEAD move) the spy saw. */
 const resets = (calls: { mock: { calls: unknown[][] } }) =>
-    calls.mock.calls.map(([args]) => args as string[]).filter((args) => args[0] === "reset");
+    calls.mock.calls
+        .map(([args]) => args as string[])
+        .filter((args) => args[0] === "reset" || args[0] === "update-ref");
+
+/** ORIG_HEAD's object ID, or "" while the repository has none. */
+const origHead = async (git: GitExecutor) =>
+    (
+        await git.runBinary(["rev-parse", "--verify", "-q", "ORIG_HEAD"], {
+            expectedExitCodes: [0, 1],
+        })
+    ).stdout
+        .toString("utf8")
+        .trim();
 
 it("undo of a locally changed affected file falls back to the plain soft reset", async () => {
     const f = await undoFixture();
@@ -876,9 +888,12 @@ it("undo of a locally changed affected file falls back to the plain soft reset",
         reason: "localChanges",
     });
     expect(resets(calls), "the plain undo soft-resets exactly once").toEqual([
-        ["reset", "--soft", f.parent],
+        ["update-ref", "-m", `reset: moving to ${f.parent}`, "--stdin"],
     ]);
     expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.parent);
+    expect(await origHead(f.git), "the plain undo records ORIG_HEAD like reset --soft").toBe(
+        f.request.head,
+    );
     expect(await readFile(path.join(f.root, "affected"), "utf8"), "the local edit survives").toBe(
         "local edit\n",
     );
@@ -953,7 +968,7 @@ it.each(["an empty commit", "a commit a later commit exactly reverses"] as const
             reason: "noChanges",
         });
         expect(resets(calls), "the plain undo soft-resets exactly once").toEqual([
-            ["reset", "--soft", parent],
+            ["update-ref", "-m", `reset: moving to ${parent}`, "--stdin"],
         ]);
         expect((await f.git.run(["rev-parse", "HEAD"])).trim(), "the undo succeeded").toBe(parent);
         expect(f.store.get(f.root), "no destination list or pending operation").toEqual(prior);
@@ -1015,6 +1030,122 @@ it("a failed lease release after the plain undo still reports the completed rese
     expect(logged, "the release failure is logged, not lost").toHaveBeenCalledWith(
         expect.any(String),
         failure,
+    );
+}, 30_000);
+
+/**
+ * Runs a real write from a second Git process, outside IntelliGit's mutation gate, at the latest
+ * point one can interleave: after the undo's last read, just before its HEAD move runs. By default
+ * it lands a commit; `landed.head` is what the write returned.
+ */
+function writeOutsideBeforeHeadMove(
+    root: string,
+    write = async (outside: GitExecutor) => {
+        await outside.run(["commit", "--allow-empty", "--only", "-qm", "outside"]);
+        return (await outside.run(["rev-parse", "HEAD"])).trim();
+    },
+): { head?: string } {
+    const outside = new GitExecutor(root, undefined, {
+        GIT_CONFIG_GLOBAL: ABSENT_GIT_CONFIG_GLOBAL,
+        GIT_CONFIG_NOSYSTEM: "1",
+    });
+    const original = GitExecutor.prototype.runBinary;
+    const landed: { head?: string } = {};
+    let armed = true;
+    vi.spyOn(GitExecutor.prototype, "runBinary").mockImplementation(async function (
+        this: GitExecutor,
+        args,
+        options,
+    ) {
+        if (armed && (args[0] === "reset" || args[0] === "update-ref")) {
+            armed = false;
+            landed.head = await write(outside);
+        }
+        return original.call(this, args, options);
+    });
+    return landed;
+}
+
+it("an outside commit before the plain undo's HEAD move stays on the branch", async () => {
+    const f = await undoFixture();
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    const origBefore = await origHead(f.git);
+    const outside = writeOutsideBeforeHeadMove(f.root);
+    const route = await preflightUndoCommit(f.git, f.persistence, f.store, f.request);
+    expect(
+        outside.head,
+        "precondition: an outside commit landed before the HEAD move",
+    ).toBeDefined();
+    expect(
+        (await f.git.run(["rev-parse", "HEAD"])).trim(),
+        "the outside commit is still HEAD after the plain undo",
+    ).toBe(outside.head);
+    expect(
+        (await f.git.run(["rev-parse", "HEAD^"])).trim(),
+        "the commit to undo is still under the outside commit",
+    ).toBe(f.request.head);
+    expect(await origHead(f.git), "the refused move leaves ORIG_HEAD alone").toBe(origBefore);
+    expect(route, "a moved HEAD hands Undo Commit to the targeted path's checks").toEqual({
+        route: "targeted",
+    });
+    const applied = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(applied.outcome, "the targeted path refuses the moved HEAD").toBe("stale");
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(outside.head);
+    expect(
+        f.store.get(f.root).pendingTargetOperation,
+        "nothing is left for review",
+    ).toBeUndefined();
+}, 30_000);
+
+it("a failed plain undo whose HEAD did not move surfaces its error and moves nothing", async () => {
+    const f = await undoFixture();
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    await writeFile(path.join(f.persistence.gitDir, "ORIG_HEAD.lock"), "");
+    await expect(
+        preflightUndoCommit(f.git, f.persistence, f.store, f.request),
+        "a failure other than a moved HEAD surfaces instead of rerouting",
+    ).rejects.toThrow("ORIG_HEAD");
+    expect(
+        (await f.git.run(["rev-parse", "HEAD"])).trim(),
+        "HEAD moves only together with ORIG_HEAD",
+    ).toBe(f.request.head);
+}, 30_000);
+
+it("a HEAD switched to an unborn branch before the plain undo's move surfaces the error", async () => {
+    const f = await undoFixture();
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    const branch = (await f.git.run(["symbolic-ref", "HEAD"])).trim();
+    const outside = writeOutsideBeforeHeadMove(f.root, async (git) => {
+        await git.run(["symbolic-ref", "HEAD", "refs/heads/unborn-outside"]);
+        return "unborn";
+    });
+    await expect(
+        preflightUndoCommit(f.git, f.persistence, f.store, f.request),
+        "a HEAD that cannot be read after a refused move surfaces the error instead of rerouting",
+    ).rejects.toThrow();
+    expect(outside.head, "precondition: HEAD was switched before the move").toBe("unborn");
+    expect(
+        (await f.git.run(["rev-parse", branch])).trim(),
+        "the commit to undo stays on its branch",
+    ).toBe(f.request.head);
+}, 30_000);
+
+it("the plain undo still refuses while the index holds unresolved conflicts", async () => {
+    const f = await undoFixture();
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    // A conflicted stash pop leaves these stages without MERGE_HEAD, which the evidence reads.
+    const blob = (await f.git.run(["rev-parse", ":unrelated"])).trim();
+    const stages = [1, 2, 3].map((stage) => `100644 ${blob} ${stage}\tunrelated\n`).join("");
+    await f.git.runBinary(["update-index", "--index-info"], {
+        input: Buffer.from(`0 ${blob.replace(/./g, "0")}\tunrelated\n${stages}`),
+    });
+    expect(await f.git.run(["ls-files", "-u"]), "precondition: unrelated is unmerged").not.toBe("");
+    await expect(
+        preflightUndoCommit(f.git, f.persistence, f.store, f.request),
+        "an unresolved conflict refuses the plain undo, as reset --soft does",
+    ).rejects.toThrow("Cannot do a soft reset in the middle of a merge.");
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim(), "the refused undo leaves HEAD").toBe(
+        f.request.head,
     );
 }, 30_000);
 
