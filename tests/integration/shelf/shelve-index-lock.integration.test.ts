@@ -1,4 +1,5 @@
-import { copyFile, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GitExecutor } from "../../../src/git/executor";
@@ -15,6 +16,7 @@ import {
     type RevertCheckpoint,
 } from "../../../src/shelf/recovery";
 import { GitExecutorRecoveryGit } from "../../../src/shelf/recoveryGit";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { cleanTemporaryRepositories, createShelfFixture, git } from "./shelfTestHarness";
 
 afterEach(async () => {
@@ -51,14 +53,14 @@ async function stagedEntry(root: string) {
  * Reverts a staged change while, from the `at` checkpoint on, another Git process holds
  * index.lock. That process restages tracked.txt and releases the lock either right after the
  * write under test is first refused ("at-refusal"), so the first retry is the only attempt that
- * can see the change, or just before a retried write runs ("before-retry"), so a re-check made
- * while the lock was still held read the index that process was about to replace. In
- * "before-retry" a timer restages and releases after 300 ms when no retried write comes first.
+ * can see the change, or right after a re-check made while it still holds the lock
+ * ("after-recheck"), so that re-check read the index the process then replaced. In
+ * "after-recheck" a timer restages and releases after 300 ms when no such re-check comes first.
  */
 async function contendedReverter(
     at: RevertCheckpoint,
     interrupt = false,
-    publishes: "at-refusal" | "before-retry" = "at-refusal",
+    publishes: "at-refusal" | "after-recheck" = "at-refusal",
 ) {
     const f = await createShelfFixture();
     await writeFile(path.join(f.root, "tracked.txt"), "local\n");
@@ -82,7 +84,6 @@ async function contendedReverter(
     };
     const runBinary = f.executor.runBinary.bind(f.executor);
     vi.spyOn(f.executor, "runBinary").mockImplementation(async (args, options) => {
-        if (refused && isIndexWrite(args)) await publish();
         try {
             return await runBinary(args, options);
         } catch (error) {
@@ -97,6 +98,18 @@ async function contendedReverter(
         }
     });
     const recoveryGit = new GitExecutorRecoveryGit(f.executor);
+    const writeIndexEntry = recoveryGit.writeIndexEntry.bind(recoveryGit);
+    vi.spyOn(recoveryGit, "writeIndexEntry").mockImplementation((file, entry, beforeRetry) =>
+        writeIndexEntry(
+            file,
+            entry,
+            beforeRetry &&
+                (async () => {
+                    await beforeRetry();
+                    await publish();
+                }),
+        ),
+    );
     const reverter = new ShelfReverter({
         repositoryRoot: f.root,
         gitOps: new GitOps(f.executor),
@@ -176,7 +189,7 @@ describe("shelve save under a concurrent index.lock", () => {
         const { root, foreignOid, revert } = await contendedReverter(
             "base-written",
             false,
-            "before-retry",
+            "after-recheck",
         );
         const outcome = await revert().then(
             () => undefined,
@@ -194,7 +207,7 @@ describe("shelve save under a concurrent index.lock", () => {
         const { root, foreignOid, revert } = await contendedReverter(
             "index-updated",
             true,
-            "before-retry",
+            "after-recheck",
         );
         const outcome = await revert().then(
             () => undefined,
@@ -234,6 +247,26 @@ describe("shelve save under a concurrent index.lock", () => {
             REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS,
         );
     }, 20_000);
+
+    it("waits out an index.lock in a checkout whose path holds a newline", async () => {
+        const root = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-line\nbreak-"));
+        try {
+            await git(root, ["init"]);
+            await writeFile(path.join(root, "tracked.txt"), "base\n");
+            await git(root, ["add", "tracked.txt"]);
+            const recovery = new GitExecutorRecoveryGit(new GitExecutor(root));
+            const entry = await recovery.getIndexEntry("tracked.txt");
+            const release = await holdIndexLock(root);
+            setTimeout(() => void release(), 200);
+            const outcome = await recovery.writeIndexEntry("tracked.txt", entry).then(
+                () => "written",
+                (error: Error) => error.message,
+            );
+            expect(outcome, "the refused write waits for the lock").toBe("written");
+        } finally {
+            await removeScratchDirectories(root);
+        }
+    });
 
     it("does not retry other Git errors", async () => {
         const f = await createShelfFixture();
