@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import {
     chmod,
     lstat,
+    mkdir,
     mkdtemp,
     readFile,
     readlink,
@@ -853,6 +854,29 @@ it("targeted revert removes an added file Git reads as clean under core.autocrlf
     const state = f.store.get(f.root);
     expect(state.files.added, "the removed file belongs to the explicit destination").toBe(
         state.lists.find((list) => list.name === "Destination")!.id,
+    );
+}, 30_000);
+
+it("Undo Commit falls back to the plain reset when a required clean filter fails on an affected file", async () => {
+    const f = await undoFixture();
+    // git-lfs installs its filter as required, so a missing git-lfs binary fails the same way.
+    await mkdir(path.join(f.root, ".git", "info"), { recursive: true });
+    await writeFile(path.join(f.root, ".git", "info", "attributes"), "affected filter=broken\n");
+    await f.git.run(["config", "filter.broken.clean", "false"]);
+    await f.git.run(["config", "filter.broken.required", "true"]);
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    const refused = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(refused.outcome, "the targeted adapter refuses a file Git cannot filter").toBe(
+        "notApplied",
+    );
+    const route = await preflightUndoCommit(f.git, f.persistence, f.store, f.request);
+    expect(route, "an unfilterable file routes Undo Commit to the plain reset").toEqual({
+        route: "plainReset",
+        path: "affected",
+        reason: "localChanges",
+    });
+    expect(await readFile(path.join(f.root, "affected"), "utf8"), "the local edit survives").toBe(
+        "local edit\n",
     );
 }, 30_000);
 
