@@ -1185,7 +1185,7 @@ it("a failed lease release after the plain undo still reports the completed rese
 /**
  * Runs a real write from a second Git process, outside IntelliGit's mutation gate, at the latest
  * point one can interleave: after the undo's last read, just before its HEAD move runs. By default
- * it lands a commit; `landed.head` is what the write returned.
+ * it lands a commit; `landed.head` is what the write returned. `when` picks an earlier Git call.
  */
 function writeOutsideBeforeHeadMove(
     root: string,
@@ -1193,6 +1193,7 @@ function writeOutsideBeforeHeadMove(
         await outside.run(["commit", "--allow-empty", "--only", "-qm", "outside"]);
         return (await outside.run(["rev-parse", "HEAD"])).trim();
     },
+    when = (args: readonly string[]) => args[0] === "reset" || args[0] === "update-ref",
 ): { head?: string } {
     const outside = new GitExecutor(root, undefined, {
         GIT_CONFIG_GLOBAL: ABSENT_GIT_CONFIG_GLOBAL,
@@ -1206,7 +1207,7 @@ function writeOutsideBeforeHeadMove(
         args,
         options,
     ) {
-        if (armed && (args[0] === "reset" || args[0] === "update-ref")) {
+        if (armed && when(args)) {
             armed = false;
             landed.head = await write(outside);
         }
@@ -1245,6 +1246,167 @@ it("an outside commit before the plain undo's HEAD move stays on the branch", as
         "nothing is left for review",
     ).toBeUndefined();
 }, 30_000);
+
+it("an outside commit before the targeted undo's HEAD move stays on the branch", async () => {
+    const f = await undoFixture();
+    const origBefore = await origHead(f.git);
+    const outside = writeOutsideBeforeHeadMove(f.root);
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(
+        outside.head,
+        "precondition: an outside commit landed before the HEAD move",
+    ).toBeDefined();
+    expect(
+        (await f.git.run(["rev-parse", "HEAD"])).trim(),
+        "the outside commit is still HEAD after the targeted undo",
+    ).toBe(outside.head);
+    expect(await origHead(f.git), "the refused move leaves ORIG_HEAD alone").toBe(origBefore);
+    expect(
+        { outcome: result.outcome, pending: f.store.get(f.root).pendingTargetOperation?.phase },
+        "a refused HEAD move applies nothing and leaves nothing to review",
+    ).toEqual({ outcome: "stale", pending: undefined });
+    expect(
+        f.store.get(f.root).lists.map((list) => list.name),
+        "the refused undo removes the destination list it created",
+    ).not.toContain("Destination");
+    expect(
+        (await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request)).outcome,
+        "the same request answers from its receipt",
+    ).toBe("stale");
+}, 30_000);
+
+it("an outside commit after the targeted undo is prepared stays on the branch", async () => {
+    const f = await undoFixture();
+    const outside = new GitExecutor(f.root, undefined, {
+        GIT_CONFIG_GLOBAL: ABSENT_GIT_CONFIG_GLOBAL,
+        GIT_CONFIG_NOSYSTEM: "1",
+    });
+    const prepare = f.store.prepareTargetOperation.bind(f.store);
+    let landed: string | undefined;
+    vi.spyOn(f.store, "prepareTargetOperation").mockImplementationOnce(async (...args) => {
+        const prepared = await prepare(...args);
+        await outside.run(["commit", "--allow-empty", "--only", "-qm", "outside"]);
+        landed = (await outside.run(["rev-parse", "HEAD"])).trim();
+        return prepared;
+    });
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(landed, "precondition: an outside commit landed after preparation").toBeDefined();
+    expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(landed);
+    expect(
+        { outcome: result.outcome, pending: f.store.get(f.root).pendingTargetOperation?.phase },
+        `a HEAD moved before the undo's own move leaves nothing to review: ${result.reason ?? ""}`,
+    ).toEqual({ outcome: "stale", pending: undefined });
+}, 30_000);
+
+/**
+ * Leaves a pending merge before the move's own checks: MERGE_HEAD as a conflict-free
+ * `git merge --no-commit` would, or unmerged stages with no MERGE_HEAD as a conflicted
+ * cherry-pick would.
+ */
+function mergeBeforeHeadMove(
+    f: Awaited<ReturnType<typeof undoFixture>>,
+    leave: "MERGE_HEAD" | "unmerged stages" = "MERGE_HEAD",
+): { head?: string } {
+    return writeOutsideBeforeHeadMove(
+        f.root,
+        async (outside) => {
+            if (leave === "MERGE_HEAD")
+                await writeFile(
+                    path.join(f.persistence.gitDir, "MERGE_HEAD"),
+                    `${f.request.head}\n`,
+                );
+            else {
+                const blob = (
+                    await outside.run(["rev-parse", `${f.request.head}:affected`])
+                ).trim();
+                const stages = [1, 2, 3].map((stage) => `100644 ${blob} ${stage}\tconflicted\n`);
+                await outside.runBinary(["update-index", "--index-info"], {
+                    input: Buffer.from(stages.join("")),
+                });
+            }
+            return "merging";
+        },
+        (args) => (args[0] === "ls-files" && args[1] === "-u") || args[0] === "reset",
+    );
+}
+
+it.each(["MERGE_HEAD", "unmerged stages"] as const)(
+    "a merge left as %s before the plain undo's HEAD move refuses the undo",
+    async (leave) => {
+        const f = await undoFixture();
+        await writeFile(path.join(f.root, "affected"), "local edit\n");
+        const merge = mergeBeforeHeadMove(f, leave);
+        await expect(
+            preflightUndoCommit(f.git, f.persistence, f.store, f.request),
+            "a pending merge refuses the plain undo, as reset --soft does",
+        ).rejects.toThrow("Cannot do a soft reset in the middle of a merge.");
+        expect(merge.head, "precondition: the merge appeared before the move").toBe("merging");
+        expect(
+            (await f.git.run(["rev-parse", "HEAD"])).trim(),
+            "the merge's first parent stays where the merge started",
+        ).toBe(f.request.head);
+    },
+    30_000,
+);
+
+it("a merge started before the targeted undo's HEAD move keeps HEAD", async () => {
+    const f = await undoFixture();
+    const merge = mergeBeforeHeadMove(f);
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(merge.head, "precondition: MERGE_HEAD appeared before the move").toBe("merging");
+    expect(
+        (await f.git.run(["rev-parse", "HEAD"])).trim(),
+        "the targeted undo never moves HEAD under a pending merge",
+    ).toBe(f.request.head);
+    expect(result.outcome).not.toBe("applied");
+}, 30_000);
+
+it.each([
+    ["HEAD did not move", async () => {}],
+    [
+        "HEAD moved and the undone path changed",
+        async (root: string) => {
+            const outside = new GitExecutor(root, undefined, {
+                GIT_CONFIG_GLOBAL: ABSENT_GIT_CONFIG_GLOBAL,
+                GIT_CONFIG_NOSYSTEM: "1",
+            });
+            await writeFile(path.join(root, "affected"), "outside staged\n");
+            await outside.run(["add", "affected"]);
+            await outside.run(["commit", "--allow-empty", "--only", "-qm", "outside"]);
+        },
+    ],
+] as const)(
+    "the store keeps a prepared undo for review when %s",
+    async (_name, change) => {
+        const f = await undoFixture();
+        const prepare = f.store.prepareTargetOperation.bind(f.store);
+        vi.spyOn(f.store, "prepareTargetOperation").mockImplementationOnce(async (...args) => {
+            await prepare(...args);
+            throw new Error("Injected stop after preparation");
+        });
+        await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+        await change(f.root);
+        const lease = await f.store.acquireTargetOperationLease(f.root);
+        try {
+            const observed = await captureTargetNativeEvidence(f.git, f.persistence, f.request.id, [
+                "affected",
+            ]);
+            const state = await f.store.closeStaleTargetOperation(lease, {
+                id: f.request.id,
+                revision: f.store.inspectTargetOperationLease(f.root, lease).revision,
+                expectedPhase: "prepared",
+                observedEvidenceHash: await f.persistence.storeTargetOperationEvidence(observed),
+            });
+            expect(
+                state.pendingTargetOperation?.phase,
+                "only a moved HEAD with nothing else changed closes as stale",
+            ).toBe("reviewRequired");
+        } finally {
+            await lease.release();
+        }
+    },
+    30_000,
+);
 
 it("a failed plain undo whose HEAD did not move surfaces its error and moves nothing", async () => {
     const f = await undoFixture();
@@ -1329,7 +1491,7 @@ it("metadata failure after soft reset never resets again", async () => {
     await second.connect(f.root, f.persistence.gitDir);
     const retry = await applyTargetHistoryOperation(f.git, f.persistence, second, f.request);
     expect(
-        calls.mock.calls.filter(([args]) => args[0] === "reset"),
+        calls.mock.calls.filter(([args]) => args[0] === "update-ref"),
         "metadata failure must never repeat the soft reset",
     ).toHaveLength(1);
     expect((await f.git.run(["rev-parse", "HEAD"])).trim()).toBe(f.parent);

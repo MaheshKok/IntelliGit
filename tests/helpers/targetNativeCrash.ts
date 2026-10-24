@@ -1,5 +1,5 @@
 import { fork } from "node:child_process";
-import { copyFile, readFile, rename, symlink, writeFile } from "node:fs/promises";
+import { copyFile, readFile, rename, symlink, truncate, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { build } from "esbuild";
 import { expect } from "vitest";
@@ -16,6 +16,7 @@ export async function restartNativeRecoveryAfterProcessExit(
     occurrence: number,
     expectBusy: boolean,
     candidate?: "redirected" | "replaced",
+    lock?: "partial" | "replaced",
 ): Promise<{ store: ChangelistStore; lease: TargetOperationLease }> {
     await previousLease.release();
     const worker = path.join(root, "native-crash-worker.cjs");
@@ -70,6 +71,14 @@ export async function restartNativeRecoveryAfterProcessExit(
                 await copyFile(file, `${file}.copy`);
                 await rename(`${file}.copy`, file);
             }
+        }
+        const lockPath = path.join(gitDir, "index.lock");
+        // The dead owner's lock cut short in place, or its exact bytes in a new file.
+        if (lock === "partial")
+            await truncate(lockPath, Math.floor((await readFile(lockPath)).length / 2));
+        if (lock === "replaced") {
+            await copyFile(lockPath, `${lockPath}.copy`);
+            await rename(`${lockPath}.copy`, lockPath);
         }
         const operation = abortTargetNativeOperation(
             new GitExecutor(root),
