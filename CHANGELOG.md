@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.39.5] - 2026-10-24
+
+### Fixed
+
+- Shelve and Rollback on selected changes no longer fail with "Changelists changed. Reopen the selected changes." when the background line-count scan updates another file while the confirmation is open. They still refuse when a changelist, its files or its commit draft really changed in the meantime.
+
 ## [0.39.2] - 2026-10-24
 
 ### Fixed
