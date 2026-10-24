@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ABSENT_GIT_CONFIG_GLOBAL } from "../../helpers/gitConfigIsolation";
+import { POSIX_PERMISSIONS_ENFORCED } from "../../helpers/platformCapabilities";
 import { ChangelistPersistence } from "../../../src/changes/changelistPersistence";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { GitExecutor } from "../../../src/git/executor";
@@ -596,6 +597,8 @@ const structuralChange = async (root: string, git: GitExecutor) => {
     await git.run(["mv", "old", "renamed"]);
     await symlink("affected", path.join(root, "link"));
     await chmod(path.join(root, "tool"), 0o755);
+    // Windows runs with core.filemode=false, where chmod reaches neither the file nor Git.
+    await git.run(["update-index", "--chmod=+x", "tool"]);
 };
 const STRUCTURAL_PATHS = ["added", "gone", "link", "old", "renamed", "tool"];
 
@@ -629,11 +632,13 @@ it.each(["cherryPick", "revert"] as const)(
         );
         if (kind === "cherryPick") {
             expect(await readlink(path.join(f.root, "link"))).toBe("affected");
-            expect((await lstat(path.join(f.root, "tool"))).mode & 0o111).not.toBe(0);
+            if (POSIX_PERMISSIONS_ENFORCED)
+                expect((await lstat(path.join(f.root, "tool"))).mode & 0o111).not.toBe(0);
             expect(await readFile(path.join(f.root, "renamed"), "utf8")).toBe("renamed text\n");
         } else {
             expect(await readFile(path.join(f.root, "old"), "utf8")).toBe("renamed text\n");
-            expect((await lstat(path.join(f.root, "tool"))).mode & 0o111).toBe(0);
+            if (POSIX_PERMISSIONS_ENFORCED)
+                expect((await lstat(path.join(f.root, "tool"))).mode & 0o111).toBe(0);
         }
         const state = f.store.get(f.root);
         const destination = state.lists.find((list) => list.name === "Destination")!;
