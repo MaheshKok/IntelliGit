@@ -14,7 +14,7 @@ export const EMPTY_TREE_OID = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
  * path. It matches Git's English text, so a localized Git skips the wait and fails at once as
  * before; pin `LC_ALL=C` if that matters.
  */
-const INDEX_LOCK_EXISTS = /Unable to create '(.*index\.lock)': File exists/;
+const INDEX_LOCK_EXISTS = /Unable to create '(.*index\.lock)': File exists/s;
 
 /** Raised when recovery cannot establish a safe filesystem or Git state. */
 export class RecoverySafetyError extends Error {
