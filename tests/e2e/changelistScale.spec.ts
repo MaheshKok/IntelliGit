@@ -210,8 +210,10 @@ exec "${realGit.replaceAll('"', '\\"')}" "$@"
             const graphHeader = page.locator(".pane-header").filter({
                 has: page.getByText("Graph", { exact: true }),
             });
+            // The header's centre can land on one of its action buttons in a narrow sidebar.
             if ((await graphHeader.getAttribute("aria-expanded")) === "true")
-                await graphHeader.click();
+                await graphHeader.getByText("Graph", { exact: true }).click();
+            await expect(graphHeader).toHaveAttribute("aria-expanded", "false");
             const resizeHandle = frame.getByRole("separator", { exact: true });
             for (let press = 0; press < 8; press += 1) await resizeHandle.press("ArrowDown");
 
@@ -663,7 +665,10 @@ async function expandLifecyclePane(page: Page, frame: FrameLocator) {
     const graph = page
         .locator(".pane-header")
         .filter({ has: page.getByText("Graph", { exact: true }) });
-    if ((await graph.getAttribute("aria-expanded")) === "true") await graph.click();
+    // The header's centre can land on one of its action buttons in a narrow sidebar.
+    if ((await graph.getAttribute("aria-expanded")) === "true")
+        await graph.getByText("Graph", { exact: true }).click();
+    await expect(graph).toHaveAttribute("aria-expanded", "false");
     for (let index = 0; index < 8; index++)
         await frame.getByRole("separator", { exact: true }).press("ArrowDown");
 }
@@ -1008,6 +1013,8 @@ test.describe("lazy statistics lifecycle", () => {
                 .toBe(2);
             evidence.detachedHeldPids = detachedHeldPids;
             await commitPane.getByRole("button", { name: "Dock IntelliGit", exact: true }).click();
+            // In CI, the palette key pressed while this focused frame closed never returned.
+            await expect(commitPane).toHaveCount(0);
             const restored = await view.reveal();
             await expect(
                 (await showLifecycleEdge(restored, "first", first)).getByRole("status"),
