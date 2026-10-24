@@ -21,6 +21,7 @@ const api = vi.hoisted(() => ({
 vi.mock("../../../src/webviews/react/shared/vscodeApi", () => ({ getVsCodeApi: () => api }));
 vi.mock("../../../src/webviews/react/commit-panel/components/FileTree", () => ({
     FileTree: () => null,
+    changesStats: () => undefined,
 }));
 initReactDomTestEnvironment();
 

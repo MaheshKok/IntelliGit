@@ -364,10 +364,6 @@ export function useChangelists(props: CommitTabProps) {
         saveShelf,
         notice: state.root === root ? state.notice : undefined,
         openPartial,
-        openFile: (path: string, listId: string) => {
-            if (root)
-                api.postMessage({ type: "openPartialChanges", repositoryRoot: root, path, listId });
-        },
         commit,
         busy,
         hasRecoveryIssues: state.root === root && state.hasRecoveryIssues === true,

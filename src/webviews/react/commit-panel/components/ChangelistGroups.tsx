@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Flex, Button } from "@chakra-ui/react";
 import { VscChevronDown, VscChevronRight, VscEllipsis } from "react-icons/vsc";
-import { FileTree } from "./FileTree";
+import { FileTree, changesStats } from "./FileTree";
 import { VIRTUAL_THRESHOLD } from "./VirtualFileTreeRows";
 import { VscCheckbox } from "../../shared/components/VscCheckbox";
 import { ContextMenu } from "../../shared/components/ContextMenu";
+import { SectionStatsText } from "../../shared/components/SectionHeader";
 import { getVsCodeApi } from "../../shared/vscodeApi";
 import { JETBRAINS_UI, SHADOW } from "../../shared/tokens";
 import { t } from "../../shared/i18n";
@@ -86,6 +87,7 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                     ...list,
                     files: members,
                     count: new Set(members.map((file) => file.path)).size,
+                    stats: changesStats(members),
                     partial: new Set(
                         members
                             .filter((file) => {
@@ -259,6 +261,7 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                                     {t("changes.partialInclusion")}
                                 </Box>
                             ) : null}
+                            <SectionStatsText stats={list.stats} />
                             <Box
                                 as="span"
                                 fontSize="11px"
@@ -317,7 +320,6 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                                         isSomeChecked={(items) =>
                                             canSelect && workflow.someChecked(items)
                                         }
-                                        onFileClick={(path) => workflow.openFile(path, list.id)}
                                         onShelfFileDragStart={undefined}
                                         // Each tree counts only its own rows, so many small lists
                                         // would otherwise draw every file once all are open.

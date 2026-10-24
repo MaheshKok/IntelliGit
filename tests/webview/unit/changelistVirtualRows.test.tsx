@@ -20,6 +20,7 @@ vi.mock("../../../src/webviews/react/shared/vscodeApi", () => ({ getVsCodeApi: (
 initReactDomTestEnvironment();
 
 const root = "/repo";
+const onFileClick = vi.fn();
 // Each list stays under the per-tree virtualization cutoff while the repository is above it.
 const FILES_PER_LIST = 30;
 let mounted: ReturnType<typeof mount> | undefined;
@@ -55,7 +56,7 @@ function Harness({ files }: { files: WorkingFile[] }) {
                     onToggleSection: workflow.toggleSection,
                     isAllChecked: workflow.allChecked,
                     isSomeChecked: workflow.someChecked,
-                    onFileClick: () => undefined,
+                    onFileClick,
                     expandAllSignal: 0,
                     collapseAllSignal: 0,
                 }}
@@ -129,14 +130,11 @@ describe("open changelists draw rows for the viewport, not for every list", () =
 });
 
 describe("an open changelist names its files once", () => {
-    it("draws its rows under the list header without a second Changes header", () => {
-        const files: WorkingFile[] = ["a.ts", "b.ts"].map((path) => ({
-            path,
-            status: "M",
-            staged: false,
-            additions: 1,
-            deletions: 0,
-        }));
+    it("draws its rows and line totals under the list header, and a row click opens the diff", () => {
+        const files: WorkingFile[] = [
+            { path: "a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+            { path: "b.ts", status: "M", staged: false, additions: 2, deletions: 1 },
+        ];
         const state: ChangelistState = {
             revision: 1,
             activeId: "default",
@@ -170,5 +168,21 @@ describe("an open changelist names its files once", () => {
             expect(group.textContent, "the list's own file row is drawn").toContain(file.path);
             expect(group.textContent, "no nested Changes header").not.toContain("Changes");
         }
+        const headerText = (id: string) =>
+            mounted!.container.querySelector(`[data-changelist-id="${id}"] > div`)?.textContent;
+        expect(headerText("default"), "Default list header total").toContain("+1");
+        expect(headerText("feature"), "Feature list header total").toContain("+2-1");
+
+        const row = [...groups[1]!.querySelectorAll("*")].find(
+            (element) => element.children.length === 0 && element.textContent === "b.ts",
+        ) as HTMLElement;
+        act(() => row.click());
+        expect(onFileClick, "a list row click takes the plain diff route").toHaveBeenCalledWith(
+            "b.ts",
+        );
+        expect(
+            api.postMessage.mock.calls.filter(([message]) => message?.type === "openPartialChanges"),
+            "a row click does not open Selected changes",
+        ).toEqual([]);
     });
 });

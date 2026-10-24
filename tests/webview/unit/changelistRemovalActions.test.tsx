@@ -19,6 +19,7 @@ vi.mock("../../../src/webviews/react/shared/vscodeApi", () => ({ getVsCodeApi: (
 // The file rows are covered elsewhere; these tests exercise the list and selection actions.
 vi.mock("../../../src/webviews/react/commit-panel/components/FileTree", () => ({
     FileTree: () => null,
+    changesStats: () => undefined,
 }));
 initReactDomTestEnvironment();
 

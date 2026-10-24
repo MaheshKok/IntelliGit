@@ -164,6 +164,11 @@ function sumStats(
     return { additions, deletions };
 }
 
+/** The line total a "Changes" header shows for these files; undefined while any count loads. */
+export function changesStats(files: WorkingFile[]) {
+    return sumStats(splitVisibleFiles(files, false).tracked, true);
+}
+
 /** Renders one file-status bucket with native context metadata for its visible rows. */
 function FileSection({
     repositoryRoot,

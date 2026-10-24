@@ -175,44 +175,50 @@ function CommitPanelSectionHeader({
                 >
                     {t("common.fileCount", { count })}
                 </Box>
-                {stats && (stats.additions > 0 || stats.deletions > 0) ? (
-                    // Tabular figures keep the counts a fixed width, so the +/-
-                    // pair stops jittering as a section's numbers change under it.
-                    //
-                    // These carry the same diff-status colours as the per-file counts in
-                    // FileTreeRows: a section total that reads `+12 -3` in the header's
-                    // own foreground while every row beneath it is green/red makes the
-                    // total look like a different kind of number than the ones it sums.
-                    // Legibility comes from the surface, not from draining the tokens --
-                    // see COMMIT_PANEL_SECTION_HEADER_BG for why the header no longer
-                    // paints itself in the selection colour, and note that
-                    // tests/unit/visual/diffStatusChroma.test.ts blocks the desaturation
-                    // shortcut these numbers would otherwise invite.
-                    <Box
-                        as="span"
-                        ml="auto"
-                        fontSize="11px"
-                        flexShrink={0}
-                        sx={{ fontVariantNumeric: "tabular-nums" }}
-                    >
-                        {stats.additions > 0 ? (
-                            <Box
-                                as="span"
-                                color="var(--intelligit-pycharm-added)"
-                                mr={stats.deletions > 0 ? "3px" : "0"}
-                            >
-                                +{stats.additions}
-                            </Box>
-                        ) : null}
-                        {stats.deletions > 0 ? (
-                            <Box as="span" color="var(--intelligit-pycharm-deleted)">
-                                -{stats.deletions}
-                            </Box>
-                        ) : null}
-                    </Box>
-                ) : null}
+                <SectionStatsText stats={stats} />
             </Flex>
         </SectionHeading>
+    );
+}
+
+/** The `+12 -3` line total of a commit-panel section or changelist header. */
+export function SectionStatsText({ stats }: { stats?: SectionStats }): React.ReactElement | null {
+    if (!stats || (stats.additions === 0 && stats.deletions === 0)) return null;
+    return (
+        // Tabular figures keep the counts a fixed width, so the +/-
+        // pair stops jittering as a section's numbers change under it.
+        //
+        // These carry the same diff-status colours as the per-file counts in
+        // FileTreeRows: a section total that reads `+12 -3` in the header's
+        // own foreground while every row beneath it is green/red makes the
+        // total look like a different kind of number than the ones it sums.
+        // Legibility comes from the surface, not from draining the tokens --
+        // see COMMIT_PANEL_SECTION_HEADER_BG for why the header no longer
+        // paints itself in the selection colour, and note that
+        // tests/unit/visual/diffStatusChroma.test.ts blocks the desaturation
+        // shortcut these numbers would otherwise invite.
+        <Box
+            as="span"
+            ml="auto"
+            fontSize="11px"
+            flexShrink={0}
+            sx={{ fontVariantNumeric: "tabular-nums" }}
+        >
+            {stats.additions > 0 ? (
+                <Box
+                    as="span"
+                    color="var(--intelligit-pycharm-added)"
+                    mr={stats.deletions > 0 ? "3px" : "0"}
+                >
+                    +{stats.additions}
+                </Box>
+            ) : null}
+            {stats.deletions > 0 ? (
+                <Box as="span" color="var(--intelligit-pycharm-deleted)">
+                    -{stats.deletions}
+                </Box>
+            ) : null}
+        </Box>
     );
 }
 
