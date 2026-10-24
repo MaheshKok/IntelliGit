@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { chmod, lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { build } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PartialChanges } from "../../../src/git/partialChanges";
 import { GitExecutor } from "../../../src/git/executor";
@@ -320,6 +321,17 @@ describe("selected worktree removal restart", () => {
         "journal-committed",
     ])("recovers a real process crash at %s without changing index bytes", async (point) => {
         const f = await fixture();
+        // Run on Node, the runtime the extension ships on. Under Bun on Windows the worker's
+        // exclusive create of the restored file failed with ENOENT; the same write passes on Node.
+        const worker = path.join(f.root, ".git", "selected-removal-crash-worker.mjs");
+        await build({
+            entryPoints: [path.resolve("tests/integration/shelf/selectedRemovalCrashWorker.ts")],
+            outfile: worker,
+            bundle: true,
+            platform: "node",
+            format: "esm",
+            logLevel: "silent",
+        });
         const index = await readFile(path.join(f.root, ".git/index"));
         const outcome = await new Promise<{
             code: number | null;
@@ -327,16 +339,9 @@ describe("selected worktree removal restart", () => {
             stderr: string;
             pid: number;
         }>((resolve, reject) => {
-            const child = spawn(
-                "bun",
-                [
-                    "tests/integration/shelf/selectedRemovalCrashWorker.ts",
-                    f.root,
-                    f.storageRoot,
-                    point,
-                ],
-                { stdio: ["ignore", "ignore", "pipe"] },
-            );
+            const child = spawn(process.execPath, [worker, f.root, f.storageRoot, point], {
+                stdio: ["ignore", "ignore", "pipe"],
+            });
             const stderr: Buffer[] = [];
             child.stderr.on("data", (b: Buffer) => stderr.push(b));
             child.once("error", reject);
