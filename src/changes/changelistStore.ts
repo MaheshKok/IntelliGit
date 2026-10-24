@@ -553,7 +553,7 @@ function validWholeFileOwnership(
     before: TargetOperationEvidence,
     after: TargetOperationEvidence,
     trustExecutableBit: boolean,
-    gitClean: readonly string[],
+    gitClean: readonly string[] = [],
 ): boolean {
     const captured = new Map(before.wholeFileBefore?.map((entry) => [entry.path, entry]));
     const beforePaths = new Map(before.paths.map((entry) => [entry.path, entry.state]));
@@ -1296,7 +1296,7 @@ export class ChangelistStore {
                         before,
                         after,
                         captured.trustExecutableBit ?? true,
-                        captured.gitCleanPaths ?? [],
+                        captured.gitCleanPaths,
                     )
                 ) {
                     review();
