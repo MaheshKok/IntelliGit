@@ -1298,8 +1298,11 @@ it("an outside commit after the targeted undo is prepared stays on the branch", 
     ).toEqual({ outcome: "stale", pending: undefined });
 }, 30_000);
 
-/** Lets the undo's own HEAD move commit, then fails the call as a Git stopped by a signal would. */
-function stopGitAfterHeadMove(): void {
+/**
+ * Lets the undo's own HEAD move commit, then fails the call as a Git stopped by a signal would;
+ * `moveAgain` runs once in between, as another process moving HEAD before Undo looks.
+ */
+function stopGitAfterHeadMove(moveAgain?: () => Promise<unknown>): void {
     const original = GitExecutor.prototype.runBinary;
     vi.spyOn(GitExecutor.prototype, "runBinary").mockImplementation(async function (
         this: GitExecutor,
@@ -1307,9 +1310,22 @@ function stopGitAfterHeadMove(): void {
         options,
     ) {
         const result = await original.call(this, args, options);
-        if (args[0] === "update-ref") throw new Error("git update-ref was killed by SIGKILL");
-        return result;
+        if (args[0] !== "update-ref") return result;
+        const again = moveAgain;
+        moveAgain = undefined;
+        await again?.();
+        throw new Error("git update-ref was killed by SIGKILL");
     });
+}
+
+/** Commits on top of HEAD from a separate executor, as another Git process would. */
+async function commitOutside(root: string): Promise<string> {
+    const outside = new GitExecutor(root, undefined, {
+        GIT_CONFIG_GLOBAL: ABSENT_GIT_CONFIG_GLOBAL,
+        GIT_CONFIG_NOSYSTEM: "1",
+    });
+    await outside.run(["commit", "--allow-empty", "--only", "-qm", "outside"]);
+    return (await outside.run(["rev-parse", "HEAD"])).trim();
 }
 
 it("a targeted undo whose Git stops after its own HEAD move goes to review, not stale", async () => {
@@ -1340,6 +1356,66 @@ it("a plain undo whose Git stops after its own HEAD move surfaces the error", as
     expect((await f.git.run(["rev-parse", "HEAD"])).trim(), "precondition: Undo moved HEAD").toBe(
         f.parent,
     );
+}, 30_000);
+
+it("a targeted undo whose stopped Git moved HEAD before another process did goes to review", async () => {
+    const f = await undoFixture();
+    let landed: string | undefined;
+    stopGitAfterHeadMove(async () => (landed = await commitOutside(f.root)));
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(
+        (await f.git.run(["rev-parse", "HEAD"])).trim(),
+        "precondition: HEAD moved again after Undo's own move",
+    ).toBe(landed);
+    expect(
+        { outcome: result.outcome, pending: f.store.get(f.root).pendingTargetOperation?.id },
+        "a stopped Git's move stays in review even after HEAD moves again",
+    ).toEqual({ outcome: "appliedNeedsReview", pending: f.request.id });
+}, 30_000);
+
+it("a plain undo whose stopped Git moved HEAD before another process did surfaces the error", async () => {
+    const f = await undoFixture();
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    let landed: string | undefined;
+    stopGitAfterHeadMove(async () => (landed = await commitOutside(f.root)));
+    await expect(
+        preflightUndoCommit(f.git, f.persistence, f.store, f.request),
+        "a stopped Git surfaces even after HEAD moves again, instead of rerouting",
+    ).rejects.toThrow("killed by SIGKILL");
+    expect(
+        (await f.git.run(["rev-parse", "HEAD"])).trim(),
+        "precondition: HEAD moved again after Undo's own move",
+    ).toBe(landed);
+}, 30_000);
+
+/** Moves HEAD to the parent from a separate executor right before Undo's own HEAD move. */
+function resetOutsideToParentBeforeHeadMove(root: string, parent: string): { head?: string } {
+    return writeOutsideBeforeHeadMove(root, async (outside) => {
+        await outside.run(["update-ref", "HEAD", parent]);
+        return parent;
+    });
+}
+
+it("a targeted undo whose Git refuses with HEAD already at the parent goes to review", async () => {
+    const f = await undoFixture();
+    const outside = resetOutsideToParentBeforeHeadMove(f.root, f.parent);
+    const result = await applyTargetHistoryOperation(f.git, f.persistence, f.store, f.request);
+    expect(outside.head, "precondition: HEAD reached the parent before Undo's move").toBe(f.parent);
+    expect(
+        { outcome: result.outcome, pending: f.store.get(f.root).pendingTargetOperation?.id },
+        "a refusal that leaves HEAD at the parent may be Undo's own move, so it stays in review",
+    ).toEqual({ outcome: "appliedNeedsReview", pending: f.request.id });
+}, 30_000);
+
+it("a plain undo whose Git refuses with HEAD already at the parent surfaces the error", async () => {
+    const f = await undoFixture();
+    await writeFile(path.join(f.root, "affected"), "local edit\n");
+    const outside = resetOutsideToParentBeforeHeadMove(f.root, f.parent);
+    await expect(
+        preflightUndoCommit(f.git, f.persistence, f.store, f.request),
+        "a refusal that leaves HEAD at the parent surfaces instead of rerouting",
+    ).rejects.toThrow("git update-ref -m exited with 128");
+    expect(outside.head, "precondition: HEAD reached the parent before Undo's move").toBe(f.parent);
 }, 30_000);
 
 /**

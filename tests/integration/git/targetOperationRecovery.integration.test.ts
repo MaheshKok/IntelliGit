@@ -22,26 +22,34 @@ import {
     captureTargetNativeEvidence,
 } from "../../../src/git/targetOperationRecovery";
 
-// One case swaps index.lock right after recovery opens or reads it, as a second Git process would.
+// Two cases swap index.lock as a second Git process would: right after recovery opens or reads
+// it, or once recovery closes its read handle.
 const lockRead = vi.hoisted(() => ({
     swap: undefined as ((file: string) => Promise<void>) | undefined,
+    when: "read" as "read" | "close",
 }));
 vi.mock("node:fs/promises", async (importOriginal) => {
     const actual = await importOriginal<typeof import("node:fs/promises")>();
-    const after = async (file: unknown) => {
+    const after = async (file: unknown, when: "read" | "close") => {
         const swap = lockRead.swap;
-        if (!swap || typeof file !== "string" || !file.endsWith("index.lock")) return;
+        if (!swap || lockRead.when !== when) return;
+        if (typeof file !== "string" || !file.endsWith("index.lock")) return;
         lockRead.swap = undefined;
         await swap(file);
     };
     const open: typeof actual.open = async (file, flags, mode) => {
         const handle = await actual.open(file, flags, mode);
-        await after(file);
+        const close = handle.close.bind(handle);
+        handle.close = async () => {
+            await close();
+            await after(file, "close");
+        };
+        await after(file, "read");
         return handle;
     };
     const readFile = (async (...args: Parameters<typeof actual.readFile>) => {
         const bytes = await actual.readFile(...args);
-        await after(args[0]);
+        await after(args[0], "read");
         return bytes;
     }) as typeof actual.readFile;
     return { ...actual, open, readFile };
@@ -50,6 +58,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 const roots: string[] = [];
 afterEach(async () => {
     lockRead.swap = undefined;
+    lockRead.when = "read";
     await removeScratchDirectories(...roots);
 });
 
@@ -107,6 +116,13 @@ const cases: {
     {
         kind: "cherry-pick",
         scenario: "dead owner filled lock replaced while read stays busy",
+        stop: "evidence:abortIndexPrepared",
+        crashOccurrence: 3,
+        busy: true,
+    },
+    {
+        kind: "cherry-pick",
+        scenario: "dead owner filled lock replaced as its read closes stays busy",
         stop: "evidence:abortIndexPrepared",
         crashOccurrence: 3,
         busy: true,
@@ -421,13 +437,18 @@ it.each(cases)(
                     "a retry after a refused publication must start the index step over",
                 ).resolves.toBeUndefined();
             } else if (crashOccurrence && stop) {
+                const closeRace =
+                    scenario === "dead owner filled lock replaced as its read closes stays busy";
                 const readRace =
+                    closeRace ||
                     scenario === "dead owner filled lock replaced while read stays busy";
-                if (readRace)
+                if (readRace) {
+                    lockRead.when = closeRace ? "close" : "read";
                     lockRead.swap = async (file) => {
                         await unlink(file);
                         await writeFile(file, "foreign lock");
                     };
+                }
                 ({ store, lease } = await restartNativeRecoveryAfterProcessExit(
                     root,
                     lease,
