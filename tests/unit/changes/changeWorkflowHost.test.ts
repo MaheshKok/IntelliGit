@@ -2108,8 +2108,14 @@ describe("root-bound selected-change host", () => {
             ]),
         );
         expect(membership).toHaveBeenCalledTimes(3);
+        // A failed prune posts the idle state, then its error; no later state is sure to arrive in time.
         await vi.waitFor(() =>
-            expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false }),
+            expect(
+                (posted as { type?: string }[])
+                    .filter((message) => message.type === "setChangelists")
+                    .at(-1),
+                "the panel is idle again after the failed prune",
+            ).toMatchObject({ busy: false }),
         );
     });
 
