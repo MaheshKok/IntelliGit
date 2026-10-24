@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.39.6] - 2026-10-24
+
+### Fixed
+
+- The nightly end-to-end check for Open Partial Changes no longer fails at random. It now clicks the original side of a diff and waits for it to take focus before opening its menu, so the check tests the right menu every time. Nothing changes in the extension itself.
+
 ## [0.39.5] - 2026-10-24
 
 ### Fixed
