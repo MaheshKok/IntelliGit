@@ -7,6 +7,7 @@ import {
     readFile,
     symlink,
     unlink,
+    utimes,
     writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -672,10 +673,8 @@ describe("whole capture source freshness", () => {
                         .trim();
                     await git(fixture.root, ["update-ref", "HEAD", commit]);
                 }
-                if (change === "index") {
-                    await writeFile(path.join(fixture.root, "other.txt"), "external index\n");
-                    await git(fixture.root, ["add", "other.txt"]);
-                }
+                // Staging the captured bytes moves only its index entry; the worktree bytes stay put.
+                if (change === "index") await git(fixture.root, ["add", "--", file]);
                 if (change === "mode") await chmod(path.join(fixture.root, file), 0o755);
                 if (change === "type") {
                     await unlink(path.join(fixture.root, file));
@@ -810,4 +809,68 @@ describe("whole capture source freshness", () => {
         );
         expect(await readFile(path.join(fixture.root, ".git/index"))).toEqual(index);
     });
+
+    it.for(["stat-only index refresh", "unrelated staged path"] as const)(
+        "publishes whole capture across an outside %s",
+        async (drift) => {
+            const fixture = await createShelfFixture({
+                initialFiles: { "tracked.txt": "base\n", "other.txt": "other\n" },
+            });
+            await fixture.store.withLock(() => fixture.store.migrateWithHeldLocks());
+            const file = path.join(fixture.root, "tracked.txt");
+            await writeFile(file, "captured\n");
+            // Staged, so a refresh rewrites the captured entry's own cached stat data.
+            await git(fixture.root, ["add", "tracked.txt"]);
+            const indexPath = path.join(fixture.root, ".git/index");
+            const object = fixture.store.putObject.bind(fixture.store);
+            let injected = false;
+            vi.spyOn(fixture.store, "putObject").mockImplementation(async (...args) => {
+                const result = await object(...args);
+                if (injected) return result;
+                injected = true;
+                const rawIndex = await readFile(indexPath);
+                const listing = await indexSnapshot(fixture.root);
+                if (drift === "stat-only index refresh") {
+                    // Same bytes, older mtime: `git status` re-hashes, finds no change and
+                    // rewrites the index file with refreshed stat data alone.
+                    await utimes(file, 1_000_000_000, 1_000_000_000);
+                    await git(fixture.root, ["status", "--porcelain"]);
+                    expect(await indexSnapshot(fixture.root), "entries unchanged").toEqual(listing);
+                } else {
+                    await writeFile(path.join(fixture.root, "other.txt"), "external index\n");
+                    await git(fixture.root, ["add", "other.txt"]);
+                    expect(await indexSnapshot(fixture.root), "entries changed").not.toEqual(
+                        listing,
+                    );
+                }
+                expect(await readFile(indexPath), "index file rewritten").not.toEqual(rawIndex);
+                return result;
+            });
+            const result = await fixture.store.withLock(async () =>
+                captureSelectedShelf(
+                    {
+                        name: "refreshed",
+                        baseCommit: (await git(fixture.root, ["rev-parse", "HEAD"]))
+                            .toString()
+                            .trim(),
+                        scope: "files",
+                        sourceLists: [lists[0]],
+                        selected: [],
+                        whole: [{ path: "tracked.txt", sourceListIds: ["default"] }],
+                    },
+                    {
+                        repositoryRoot: fixture.root,
+                        executor: fixture.executor,
+                        store: fixture.store,
+                        recordBaseRevisions: true,
+                        materializeEntry: async () => undefined,
+                    },
+                ),
+            );
+            expect(injected, "fault injection must run").toBe(true);
+            expect(
+                (await fixture.store.readCurrentShelfManifest(result.shelfId)).files,
+            ).toHaveLength(1);
+        },
+    );
 });
