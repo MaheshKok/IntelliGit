@@ -175,13 +175,16 @@ function isIndexLockRefusal(error: unknown): error is Error {
     return error instanceof Error && INDEX_LOCK_EXISTS.test(error.message);
 }
 
-/** Whether the lock file named in Git's refusal still exists. */
+/**
+ * Whether the lock file named in Git's refusal still exists. Only "not found" proves it gone; any
+ * other error (EACCES once this process loses search permission on a parent) counts as held.
+ */
 async function lockStillHeld(refusal: Error): Promise<boolean> {
     try {
         await access(INDEX_LOCK_EXISTS.exec(refusal.message)![1]);
         return true;
-    } catch {
-        return false;
+    } catch (error) {
+        return (error as NodeJS.ErrnoException).code !== "ENOENT";
     }
 }
 
