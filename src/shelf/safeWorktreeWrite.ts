@@ -32,8 +32,14 @@ export async function replaceRegularWorktreeFile(
     repositoryRoot: string,
     relativePath: string,
     bytes: Uint8Array,
+    beforeReplace?: () => Promise<void>,
 ): Promise<void> {
-    return replaceMergeWorktreeFile(repositoryRoot, validateShelfManifestPath(relativePath), bytes);
+    return replaceMergeWorktreeFile(
+        repositoryRoot,
+        validateShelfManifestPath(relativePath),
+        bytes,
+        beforeReplace,
+    );
 }
 
 /** Shares the contained atomic replacement while merge paths keep Git's literal filename rules. */
