@@ -63,9 +63,14 @@ export async function gitCleanWholeFiles(
         if (before.head.kind !== "present" || before.head.mode === "120000") continue;
         if (working?.kind !== "regular" || isDeepStrictEqual(working.content, before.head.object))
             continue;
+        // 128 is Git refusing to filter (a required clean filter failed, e.g. git-lfs missing):
+        // the path stays not clean, so callers refuse or take the plain route instead of failing.
         const filtered = await executor.runBinary(
             ["hash-object", `--path=${before.path}`, "--stdin"],
-            { input: await persistence.loadTargetOperationObject(working.content) },
+            {
+                input: await persistence.loadTargetOperationObject(working.content),
+                expectedExitCodes: [0, 128],
+            },
         );
         if (filtered.stdout.toString("utf8").trim() === before.head.oid) clean.push(before.path);
     }
