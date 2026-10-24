@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Flex, Button } from "@chakra-ui/react";
 import { VscChevronDown, VscChevronRight, VscEllipsis } from "react-icons/vsc";
 import { FileTree } from "./FileTree";
+import { VIRTUAL_THRESHOLD } from "./VirtualFileTreeRows";
 import { VscCheckbox } from "../../shared/components/VscCheckbox";
 import { ContextMenu } from "../../shared/components/ContextMenu";
 import { getVsCodeApi } from "../../shared/vscodeApi";
@@ -302,6 +303,9 @@ export function ChangelistGroups({ workflow, tree, files }: Props): React.ReactE
                                         }
                                         onFileClick={(path) => workflow.openFile(path, list.id)}
                                         onShelfFileDragStart={undefined}
+                                        // Each tree counts only its own rows, so many small lists
+                                        // would otherwise draw every file once all are open.
+                                        virtualize={files.length > VIRTUAL_THRESHOLD}
                                     />
                                 ) : (
                                     <Box

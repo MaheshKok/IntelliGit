@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Where Git converts line endings (for example `core.autocrlf` on Windows), **Undo Commit…**, **Cherry-Pick to Changelist** and **Revert to Changelist** no longer treat an unchanged file as edited. Undo Commit now keeps the undone changes in the list you chose instead of falling back to a plain reset.
 - If another Git tool stages a change while a shelve, unshelve or rollback is waiting to update the index, IntelliGit now notices that change and stops instead of overwriting it.
 
+## [0.39.2] - 2026-10-24
+
+### Fixed
+
+- In a large repository with many small changelists open, the Commit panel no longer stalls after Expand All with line counts stuck on "...". Every open changelist now draws only the rows in view once the repository has more changed files than one list draws in full, so the counts for visible files fill in.
+
 ## [0.39.1] - 2026-10-24
 
 ### Fixed

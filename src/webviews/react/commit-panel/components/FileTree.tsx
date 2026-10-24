@@ -38,6 +38,8 @@ interface Props {
     ) => void;
     expandAllSignal: number;
     collapseAllSignal: number;
+    /** Virtualizes even a small tree, for a panel whose trees together are large. */
+    virtualize?: boolean;
 }
 
 interface FileTreeExpansionState {
@@ -94,6 +96,7 @@ interface FileSectionProps {
     onShelfFileDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
     onFileDragEnd?: () => void;
     checkboxVisibility?: "visible" | "hidden";
+    virtualize?: boolean;
 }
 
 function splitVisibleFiles(files: WorkingFile[], showIgnoredFiles: boolean): FileBuckets {
@@ -186,6 +189,7 @@ function FileSection({
     onShelfFileDragStart,
     onFileDragEnd,
     checkboxVisibility = "visible",
+    virtualize,
 }: FileSectionProps): React.ReactElement {
     const requestStats = useVisibleFileStats(repositoryRoot);
     const isDirectoryExpanded = useCallback(
@@ -339,6 +343,7 @@ function FileSection({
                     fileWiring={cachedFileWiring}
                     fileRowKey={fileRowKey}
                     folderWiring={cachedFolderWiring}
+                    virtualize={virtualize}
                 />
             )}
         </>
@@ -373,6 +378,7 @@ export function FileTree({
     onShelfFileDragStart,
     expandAllSignal,
     collapseAllSignal,
+    virtualize,
 }: Props): React.ReactElement {
     const [expansion, setExpansion] = useState<FileTreeExpansionState>(() => ({
         changesOpen: true,
@@ -561,6 +567,7 @@ export function FileTree({
                             onShelfFileDragStart?.(event, file, checkedPaths)
                         }
                         onFileDragEnd={handleFileDragEnd}
+                        virtualize={virtualize}
                     />
                 </Box>
             )}
@@ -598,6 +605,7 @@ export function FileTree({
                         onShelfFileDragStart?.(event, file, checkedPaths)
                     }
                     onFileDragEnd={handleFileDragEnd}
+                    virtualize={virtualize}
                 />
             )}
             {ignored.length > 0 && (
@@ -633,6 +641,7 @@ export function FileTree({
                     }
                     onFileDragEnd={handleFileDragEnd}
                     checkboxVisibility="hidden"
+                    virtualize={virtualize}
                 />
             )}
         </>
