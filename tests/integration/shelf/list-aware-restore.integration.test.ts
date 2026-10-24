@@ -16,6 +16,7 @@ import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordina
 import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
 import { ShelfService } from "../../../src/services/shelfService";
+import type { PerEntryResult } from "../../../src/services/shelfTargetRestore";
 import { connectedChangelists } from "../../helpers/connectedChangelists";
 import { cleanTemporaryRepositories, createShelfFixture, git } from "./shelfTestHarness";
 
@@ -1192,6 +1193,69 @@ it("clean tracked rename retains both endpoints and target through restart", asy
     expect(second.changelists.get(f.root).activeId).toBe(f.c);
     expect(await f.store.readCurrentShelfManifest(input.id)).toEqual(shelf);
     expect(appliedCalls(spy)).toBe(0);
+});
+
+/** The structural-pending result the panel's structural buttons act on. */
+function structuralPending(entries: readonly PerEntryResult[]) {
+    const pending = entries.find((entry) => entry.kind === "structuralPending");
+    if (pending?.kind !== "structuralPending") throw new Error("No structural-pending entry.");
+    return pending;
+}
+
+it("keeping the local file ends a structural-only restore and keeps the deletion on the shelf", async () => {
+    const f = await restoreFixture(true, true, true);
+    await writeFile(path.join(f.root, "second.txt"), "base\n");
+    const deleted = (f.shelf.files as readonly ShelfFileEntry[]).find(
+        (entry) => entry.worktreeBlock?.status === "D",
+    )!;
+    const input = { ...f.input, changeIds: [deleted.changeId] };
+    const pending = structuralPending((await f.service.unshelve(input)).entries);
+    await f.service.resolveStructural({
+        id: f.input.id,
+        changeId: pending.changeId,
+        expectedShelfGeneration: f.shelf.generation,
+        expectedPathFingerprint: pending.pathFingerprint,
+        action: "keepLocal",
+    });
+    const state = f.changelists.get(f.root);
+    expect(state.pendingTargetOperation, "a structural choice ends the restore").toBeUndefined();
+    expect(state.targetOperationReceipts?.[input.targetOperation.id]?.outcome).toBe("notApplied");
+    expect(await readFile(path.join(f.root, "second.txt"), "utf8")).toBe("base\n");
+    expect(await readFile(path.join(f.root, ".git", "index"))).toEqual(f.index);
+    expect(await f.store.readCurrentShelfManifest(f.input.id)).toEqual(f.shelf);
+    const second = await reopen(f);
+    expect((await second.service.unshelve(input)).status).toBe("notApplied");
+});
+
+it("deleting the local file ends a mixed restore with the deletion still on the shelf", async () => {
+    const f = await restoreFixture(true, true, true);
+    const first = await f.service.unshelve(f.input);
+    expect(first.status).toBe("conflicted");
+    const pending = structuralPending(first.entries);
+    await f.service.resolveStructural({
+        id: f.input.id,
+        changeId: pending.changeId,
+        expectedShelfGeneration: f.shelf.generation,
+        expectedPathFingerprint: pending.pathFingerprint,
+        action: "deleteLocal",
+    });
+    const state = f.changelists.get(f.root);
+    expect(state.pendingTargetOperation, "a structural choice ends the restore").toBeUndefined();
+    expect(state.targetOperationReceipts?.[f.input.targetOperation.id]?.outcome).toBe("applied");
+    expect(await readFile(path.join(f.root, "shared.txt"), "utf8")).toBe(
+        f.local.replace("line-25\n", "incoming-C\n"),
+    );
+    expect(state.activeId).toBe(f.c);
+    await expect(readFile(path.join(f.root, "second.txt"))).rejects.toMatchObject({
+        code: "ENOENT",
+    });
+    const shelf = await f.store.readCurrentShelfManifest(f.input.id);
+    expect(
+        shelf.files.map((entry) => entry.changeId),
+        "the abandoned deletion stays on the shelf",
+    ).toContain(pending.changeId);
+    const second = await reopen(f);
+    expect((await second.service.unshelve(f.input)).status).toBe("applied");
 });
 
 /** Rewrites `.git/index` with stat data only, as an outside `git status` (VS Code's Git) does. */
