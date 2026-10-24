@@ -1228,7 +1228,7 @@ export class ChangeWorkflowHost {
                   });
         if (name === undefined)
             return { message: vscode.l10n.t("Save cancelled."), removed: false };
-        const revision = this.store.get(this.deps.root).revision;
+        const before = this.store.get(this.deps.root);
         const patch = await this.partial.exportPatch(selection, guard);
         const plan = this.selectedShelfPlan(snapshot, selection, scope, name, patch);
         if (operation === "rollback" && !(await this.confirmSelectedRemoval(plan, true)))
@@ -1237,7 +1237,18 @@ export class ChangeWorkflowHost {
         let shelfId: string | undefined;
         let saveFailure: Error | undefined;
         try {
-            const result = await shelf.saveSelectedChanges(plan, lease, revision, scope, guard);
+            // A range scan may have moved the revision since the plan was captured, including
+            // during the rollback confirmation; save against the latest only if the plan's view held.
+            const latest = this.store.get(this.deps.root);
+            if (saveIntent(latest) !== saveIntent(before))
+                throw new Error("Changelists changed. Reopen the selected changes.");
+            const result = await shelf.saveSelectedChanges(
+                plan,
+                lease,
+                latest.revision,
+                scope,
+                guard,
+            );
             shelfId = result.shelfId;
             if (!shelfId) throw new Error("The selected shelf was not durably saved.");
         } catch (error) {
@@ -1267,7 +1278,7 @@ export class ChangeWorkflowHost {
                     }),
                     removed: false,
                 };
-            return this.removeSavedSelection(plan, selection, scope, revision, shelfId);
+            return this.removeSavedSelection(plan, selection, scope, before, shelfId);
         }
         return {
             message: vscode.l10n.t("Selected changes saved in shelf {shelfId}.", { shelfId }),
@@ -1390,7 +1401,7 @@ export class ChangeWorkflowHost {
         plan: SelectedShelfInput,
         selection: SelectedFileChanges,
         scope: string,
-        revision: number,
+        before: ChangelistState,
         shelfId: string,
     ): Promise<{ message: string; removed: boolean }> {
         let completed = false;
@@ -1398,12 +1409,16 @@ export class ChangeWorkflowHost {
         let lease: TargetOperationLease | undefined;
         try {
             lease = await this.store.acquireTargetOperationLease(this.deps.root);
+            // As in Save: a scan may have moved the revision; remove only if the plan's view held.
+            const latest = this.store.get(this.deps.root);
+            if (saveIntent(latest) !== saveIntent(before))
+                throw new Error("Changelists changed. Reopen the selected changes.");
             await this.deps.shelfService!.removeSelectedChanges(
                 plan,
                 selection,
                 this.partial,
                 lease,
-                revision,
+                latest.revision,
                 scope,
                 (files) => assertChangeBuffersSaved(this.deps.root, files),
             );
