@@ -1210,13 +1210,14 @@ it("keeping the local file ends a structural-only restore and keeps the deletion
     )!;
     const input = { ...f.input, changeIds: [deleted.changeId] };
     const pending = structuralPending((await f.service.unshelve(input)).entries);
-    await f.service.resolveStructural({
+    const result = await f.service.resolveStructural({
         id: f.input.id,
         changeId: pending.changeId,
         expectedShelfGeneration: f.shelf.generation,
         expectedPathFingerprint: pending.pathFingerprint,
         action: "keepLocal",
     });
+    expect(result.status, "the ended restore is the reply").toBe("notApplied");
     const state = f.changelists.get(f.root);
     expect(state.pendingTargetOperation, "a structural choice ends the restore").toBeUndefined();
     expect(state.targetOperationReceipts?.[input.targetOperation.id]?.outcome).toBe("notApplied");
@@ -1316,13 +1317,14 @@ it("deleting the local file ends a mixed restore with the deletion still on the 
     const first = await f.service.unshelve(f.input);
     expect(first.status).toBe("conflicted");
     const pending = structuralPending(first.entries);
-    await f.service.resolveStructural({
+    const result = await f.service.resolveStructural({
         id: f.input.id,
         changeId: pending.changeId,
         expectedShelfGeneration: f.shelf.generation,
         expectedPathFingerprint: pending.pathFingerprint,
         action: "deleteLocal",
     });
+    expect(result.status, "the ended restore is the reply").toBe("applied");
     const state = f.changelists.get(f.root);
     expect(state.pendingTargetOperation, "a structural choice ends the restore").toBeUndefined();
     expect(state.targetOperationReceipts?.[f.input.targetOperation.id]?.outcome).toBe("applied");
