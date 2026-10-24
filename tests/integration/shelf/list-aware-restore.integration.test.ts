@@ -16,6 +16,7 @@ import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordina
 import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
 import { ShelfService } from "../../../src/services/shelfService";
+import type { PerEntryResult } from "../../../src/services/shelfTargetRestore";
 import { connectedChangelists } from "../../helpers/connectedChangelists";
 import { WINDOWS_BUDGET_MS, withWindowsHeadroom } from "../../setup/platformTimeouts";
 import { cleanTemporaryRepositories, createShelfFixture, git } from "./shelfTestHarness";
@@ -1253,6 +1254,155 @@ it("clean tracked rename retains both endpoints and target through restart", asy
     expect(second.changelists.get(f.root).activeId).toBe(f.c);
     expect(await f.store.readCurrentShelfManifest(input.id)).toEqual(shelf);
     expect(appliedCalls(spy)).toBe(0);
+});
+
+/** The structural-pending result the panel's structural buttons act on. */
+function structuralPending(entries: readonly PerEntryResult[]) {
+    const pending = entries.find((entry) => entry.kind === "structuralPending");
+    if (pending?.kind !== "structuralPending") throw new Error("No structural-pending entry.");
+    return pending;
+}
+
+it("keeping the local file ends a structural-only restore and keeps the deletion on the shelf", async () => {
+    const f = await restoreFixture(true, true, true);
+    await writeFile(path.join(f.root, "second.txt"), "base\n");
+    const deleted = (f.shelf.files as readonly ShelfFileEntry[]).find(
+        (entry) => entry.worktreeBlock?.status === "D",
+    )!;
+    const input = { ...f.input, changeIds: [deleted.changeId] };
+    const pending = structuralPending((await f.service.unshelve(input)).entries);
+    const result = await f.service.resolveStructural({
+        id: f.input.id,
+        changeId: pending.changeId,
+        expectedShelfGeneration: f.shelf.generation,
+        expectedPathFingerprint: pending.pathFingerprint,
+        action: "keepLocal",
+    });
+    expect(result.status, "the ended restore is the reply").toBe("notApplied");
+    const state = f.changelists.get(f.root);
+    expect(state.pendingTargetOperation, "a structural choice ends the restore").toBeUndefined();
+    expect(state.targetOperationReceipts?.[input.targetOperation.id]?.outcome).toBe("notApplied");
+    expect(await readFile(path.join(f.root, "second.txt"), "utf8")).toBe("base\n");
+    expect(await readFile(path.join(f.root, ".git", "index"))).toEqual(f.index);
+    expect(await f.store.readCurrentShelfManifest(f.input.id)).toEqual(f.shelf);
+    const second = await reopen(f);
+    expect((await second.service.unshelve(input)).status).toBe("notApplied");
+});
+
+it("a structural choice beside an open text conflict keeps the restore waiting and the file untouched", async () => {
+    const f = await restoreFixture(true, true, true);
+    await writeFile(
+        path.join(f.root, "shared.txt"),
+        f.local.replace("line-25\n", "local conflicting change\n"),
+    );
+    const first = await f.service.unshelve(f.input);
+    expect(first.entries.some((entry) => entry.kind === "conflicted")).toBe(true);
+    const pending = structuralPending(first.entries);
+    const result = await f.service.resolveStructural({
+        id: f.input.id,
+        changeId: pending.changeId,
+        expectedShelfGeneration: f.shelf.generation,
+        expectedPathFingerprint: pending.pathFingerprint,
+        action: "deleteLocal",
+    });
+    expect(result.status).toBe("conflicted");
+    expect(
+        f.changelists.get(f.root).pendingTargetOperation?.phase,
+        "the text conflict still holds the restore",
+    ).toBe("conflicted");
+    expect(
+        await readFile(path.join(f.root, "second.txt"), "utf8"),
+        "no local action runs inside a pending restore",
+    ).toBe("local second\n");
+    expect(await f.store.readCurrentShelfManifest(f.input.id)).toEqual(f.shelf);
+});
+
+it("a structural choice on a raw entry ends the restore and reports it instead of failing", async () => {
+    const raw = await createShelfFixture({
+        initialFiles: { ".gitattributes": "raw.txt text eol=crlf\n", "raw.txt": "base\r\n" },
+    });
+    const root = await realpath(raw.root);
+    const changelists = await connectedChangelists(root);
+    const service = new ShelfService({
+        repositoryRoot: root,
+        executor: raw.executor,
+        store: raw.store,
+        changelists,
+        gate: new RepositoryMutationGate(new RepositoryMutationCoordinator(), new RepositoryLock()),
+    });
+    await writeFile(path.join(root, "raw.txt"), Buffer.from("edited\r\n"));
+    const saved = await service.shelve({
+        name: "raw shelf",
+        paths: ["raw.txt"],
+        silent: true,
+        keepLocal: true,
+    });
+    const shelf = await raw.store.readCurrentShelfManifest(saved.shelfId!);
+    expect(shelf.files.map((entry) => entry.exactReconstruction)).toEqual([false]);
+    await writeFile(path.join(root, "raw.txt"), Buffer.from("local\r\n"));
+    await changelists.create(root, changelists.revision(root), "D");
+    const destination = changelists.get(root).lists.find((list) => list.name === "D")!.id;
+    const input = {
+        id: saved.shelfId!,
+        mode: "flattened" as const,
+        removeFromShelf: true,
+        expectedShelfGeneration: shelf.generation,
+        targetOperation: {
+            id: randomUUID(),
+            root,
+            target: {
+                kind: "existing" as const,
+                id: destination,
+                revision: changelists.revision(root),
+            },
+            sourceChecksum: shelf.checksum,
+            draftChoice: { kind: "keep" as const },
+        },
+    };
+    const pending = structuralPending((await service.unshelve(input)).entries);
+    const result = await service.resolveStructural({
+        id: input.id,
+        changeId: pending.changeId,
+        expectedShelfGeneration: shelf.generation,
+        expectedPathFingerprint: pending.pathFingerprint,
+        action: "keepLocal",
+    });
+    expect(result.status, "the ended restore is the reply").toBe("notApplied");
+    expect(changelists.get(root).pendingTargetOperation).toBeUndefined();
+    expect(await readFile(path.join(root, "raw.txt"))).toEqual(Buffer.from("local\r\n"));
+    expect(await raw.store.readCurrentShelfManifest(input.id)).toEqual(shelf);
+});
+
+it("deleting the local file ends a mixed restore with the deletion still on the shelf", async () => {
+    const f = await restoreFixture(true, true, true);
+    const first = await f.service.unshelve(f.input);
+    expect(first.status).toBe("conflicted");
+    const pending = structuralPending(first.entries);
+    const result = await f.service.resolveStructural({
+        id: f.input.id,
+        changeId: pending.changeId,
+        expectedShelfGeneration: f.shelf.generation,
+        expectedPathFingerprint: pending.pathFingerprint,
+        action: "deleteLocal",
+    });
+    expect(result.status, "the ended restore is the reply").toBe("applied");
+    const state = f.changelists.get(f.root);
+    expect(state.pendingTargetOperation, "a structural choice ends the restore").toBeUndefined();
+    expect(state.targetOperationReceipts?.[f.input.targetOperation.id]?.outcome).toBe("applied");
+    expect(await readFile(path.join(f.root, "shared.txt"), "utf8")).toBe(
+        f.local.replace("line-25\n", "incoming-C\n"),
+    );
+    expect(state.activeId).toBe(f.c);
+    await expect(readFile(path.join(f.root, "second.txt"))).rejects.toMatchObject({
+        code: "ENOENT",
+    });
+    const shelf = await f.store.readCurrentShelfManifest(f.input.id);
+    expect(
+        shelf.files.map((entry) => entry.changeId),
+        "the abandoned deletion stays on the shelf",
+    ).toContain(pending.changeId);
+    const second = await reopen(f);
+    expect((await second.service.unshelve(f.input)).status).toBe("applied");
 });
 
 /** Rewrites `.git/index` with stat data only, as an outside `git status` (VS Code's Git) does. */
