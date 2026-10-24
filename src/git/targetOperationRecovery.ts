@@ -42,6 +42,12 @@ const nativeRecoveryGate = new RepositoryMutationGate(
     new RepositoryLock(),
 );
 
+/** False where core.fileMode is false, as Git for Windows sets it: Git then ignores the disk executable bit. */
+export async function trustsExecutableBit(executor: GitExecutor): Promise<boolean> {
+    const value = await executor.run(["config", "--bool", "--default", "true", "core.fileMode"]);
+    return value.trim() === "true";
+}
+
 /** Capture exact affected bytes and index stages; callers durably publish before mutating Git. */
 export async function captureTargetNativeEvidence(
     executor: GitExecutor,
