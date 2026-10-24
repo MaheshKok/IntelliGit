@@ -697,10 +697,17 @@ function TreeFileRowImpl({
         onContextMenu,
         !isCommitPanel,
     );
+    const latestOnVisible = useRef(wiring.onVisible);
+    useEffect(() => {
+        latestOnVisible.current = wiring.onVisible;
+    }, [wiring.onVisible]);
+    const observesVisibility = wiring.onVisible !== undefined;
+    // Keyed on the file, not the callback: each re-observe reports a visible row again.
     useEffect(() => {
         const row = rowRef.current;
-        if (row && wiring.onVisible) return observeVisibleRow(row, wiring.onVisible);
-    }, [rowRef, wiring.onVisible]);
+        if (row && observesVisibility)
+            return observeVisibleRow(row, () => latestOnVisible.current?.());
+    }, [rowRef, file, observesVisibility]);
     return (
         <Flex
             ref={rowRef}
