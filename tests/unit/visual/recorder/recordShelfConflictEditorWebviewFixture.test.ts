@@ -1,3 +1,4 @@
+import { connectedChangelists } from "../../../helpers/connectedChangelists";
 /**
  * Spec-derived tests for the Phase 2c-v-d shelf-conflict-editor / shelf-conflicted recorder.
  *
@@ -106,6 +107,7 @@ async function shelfServiceFor(workspace: ScenarioWorkspace): Promise<{
     return {
         store,
         service: new ShelfService({
+            changelists: await connectedChangelists(workspace.root),
             repositoryRoot: workspace.root,
             executor,
             store,

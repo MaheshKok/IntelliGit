@@ -17,6 +17,7 @@ import type {
     ShelfMutationStatus,
 } from "../../protocol/commitPanelMessages";
 import { commitMessageGenerationPrefix } from "../shared/commitMessageDraft";
+import { mergeWorkingFileStats } from "../../protocol/workingFileStats";
 
 /** Commit-check state cached by the undocked commit graph. */
 export type CommitChecksValue = CommitChecksSnapshot | "loading";
@@ -113,6 +114,10 @@ export interface CommitPanelState {
 
 /** Reducer actions emitted by unified undocked messages and local commit-panel controls. */
 export type CommitPanelAction =
+    | {
+          type: "SET_WORKING_FILE_STATS";
+          reply: import("../../protocol/workingFileStats").WorkingFileStatsReply;
+      }
     | { type: "RESET_REPOSITORY" }
     | {
           type: "SET_FILES_AND_STASHES";
@@ -254,6 +259,8 @@ export function commitPanelReducer(
     action: CommitPanelAction,
 ): CommitPanelState {
     switch (action.type) {
+        case "SET_WORKING_FILE_STATS":
+            return { ...state, files: mergeWorkingFileStats(state.files, action.reply) };
         case "RESET_REPOSITORY":
             return initialCommitPanelState;
         case "SET_FILES_AND_STASHES":

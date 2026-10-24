@@ -53,7 +53,14 @@ import {
     createFakeUriFromPath,
 } from "../../visual/recorder/commitInfoVscodeDouble";
 import { GitExecutor } from "../../../src/git/executor";
+import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { GitOps } from "../../../src/git/operations";
+import { RepositoryLock } from "../../../src/git/repositoryLock";
+import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
+import { ShelfService } from "../../../src/services/shelfService";
+import { resolveShelfPaths } from "../../../src/shelf/paths";
+import { ShelfStaleShelfError, ShelfStore } from "../../../src/shelf/store";
+import { connectedChangelists } from "../../helpers/connectedChangelists";
 import {
     CommitPanelViewProvider,
     affectsExpandedRow,
@@ -69,7 +76,8 @@ import { assertDirtyPostcondition } from "../../fixtures/repo/scenarios";
 import { seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
 import { createScratchWorkspaces } from "../fixtures/scratchWorkspaces";
 import { createNoopNativeCommitInputBridge } from "../../helpers/nativeCommitInputBridgeDouble";
-import type { CommitDetail } from "../../../src/types";
+import type { CommitDetail, WorkingFile } from "../../../src/types";
+import type { CommitPanelRepositoryRuntime } from "../../../src/views/commitPanelRepositoryRuntime";
 import type { CommitGraphInbound } from "../../../src/webviews/protocol/commitGraphTypes";
 import type { NativeCommitInputBridgeOptions } from "../../../src/views/nativeCommitInputBridge";
 
@@ -203,6 +211,17 @@ function messagesOfType(posted: readonly unknown[], type: string): Record<string
     return posted.filter(
         (message): message is Record<string, unknown> => isRecord(message) && message.type === type,
     );
+}
+
+function pendingStatsFile(path: string): WorkingFile {
+    return {
+        path,
+        status: "M",
+        staged: false,
+        additions: 0,
+        deletions: 0,
+        statsState: "pending",
+    };
 }
 
 interface BridgeHarness {
@@ -1336,6 +1355,59 @@ describe("CommitPanelViewProvider native commit bridge wiring", () => {
         expect(bridge.disposed).toBe(true);
     });
 
+    it("disposing the current view aborts queued working-file statistics", async () => {
+        const { provider, root } = createBridgeProvider();
+        const view = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const runtime = (
+            provider as unknown as { runtimes: Map<string, CommitPanelRepositoryRuntime> }
+        ).runtimes.get(root)!;
+        runtime.files = runtime.fileStats.reset([
+            pendingStatsFile("first.txt"),
+            pendingStatsFile("second.txt"),
+        ]);
+        const revision = runtime.files[0]?.statsRevision;
+        let blockedSignal: AbortSignal | undefined;
+        const read = vi.spyOn(runtime.gitOps, "getWorkingFileStats").mockImplementation(
+            (_files, _paths, signal) =>
+                new Promise<WorkingFile[]>((resolve) => {
+                    blockedSignal = signal;
+                    signal.addEventListener("abort", () => resolve([]), { once: true });
+                }),
+        );
+
+        const first = view.receiveMessage({
+            type: "requestWorkingFileStats",
+            repositoryRoot: root,
+            revision,
+            paths: ["first.txt"],
+        });
+        const second = view.receiveMessage({
+            type: "requestWorkingFileStats",
+            repositoryRoot: root,
+            revision,
+            paths: ["second.txt"],
+        });
+        await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+
+        view.disposeView();
+
+        expect(
+            blockedSignal?.aborted,
+            "the registered current-view disposal callback must abort the active statistics read",
+        ).toBe(true);
+        await Promise.all([first, second]);
+        expect(
+            read,
+            "the queued second read must never start after disposal",
+        ).toHaveBeenCalledTimes(1);
+        expect(
+            messagesOfType(view.posted, "workingFileStats"),
+            "a disposed view must not receive a late statistics reply",
+        ).toEqual([]);
+        provider.dispose();
+    });
+
     it("a replaced view's disposal does not hide the bridge under the view that owns it", () => {
         const { bridge, provider } = createBridgeProvider();
         const replaced = createInspectableCommitPanelWebviewView("delivered", true);
@@ -1351,4 +1423,137 @@ describe("CommitPanelViewProvider native commit bridge wiring", () => {
                 "hide the native input polling underneath it",
         ).toEqual([true, true]);
     });
+});
+
+it("targeted host Abort retains its captured repository and never falls through after cancellation", async () => {
+    const control = vi
+        .spyOn(GitOps.prototype, "controlTargetHistory")
+        .mockResolvedValue({ status: "cancelled", id: "pending" });
+    const abort = vi.spyOn(GitOps.prototype, "abortMerge").mockResolvedValue();
+    const { provider, workspace, root } = createBridgeProvider();
+    try {
+        await (provider as unknown as { abortMerge(): Promise<void> }).abortMerge();
+        expect(
+            control,
+            "host must consult authoritative targeted recovery before ordinary abort",
+        ).toHaveBeenCalledWith(
+            root,
+            ChangelistStore.forStorage(workspace.state),
+            "abort",
+            expect.any(Function),
+        );
+        expect(
+            abort,
+            "cancelled pending target must never fall through to native abort/reset",
+        ).not.toHaveBeenCalled();
+    } finally {
+        control.mockRestore();
+        abort.mockRestore();
+    }
+});
+
+/** The generation of `shelfId` in the last `update` the Shelf tab received. */
+function listedShelfGeneration(posted: readonly unknown[], shelfId: string): number | undefined {
+    const shelves = messagesOfType(posted, "update").at(-1)?.shelves as
+        readonly { id: string; generation: number }[] | undefined;
+    return shelves?.find((shelf) => shelf.id === shelfId)?.generation;
+}
+
+/**
+ * The first listing downgrades an unresolvable history base and publishes the shelf as a new
+ * generation. When the listing the Shelf tab received could not do that rewrite (a changelist
+ * operation held the target lease) and a later host-side listing did, nothing re-sent the tab, so
+ * its Unshelve carried the old generation and the restore guard refused it: "Shelf changed before
+ * this mutation." (e2e `changelistLifecycle.spec.ts`, 2 of 6 runs).
+ */
+describe("CommitPanelViewProvider shelf listing after a host-side rewrite", () => {
+    afterEach(async () => {
+        await scratch.removeAll();
+    });
+
+    it("re-sends the Shelf tab the generation a history-base rewrite published", async () => {
+        const parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-commit-panel-shelf-"));
+        scratch.register(parentDir);
+        const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+        const env = toGitEnvironment(workspace.env);
+        const changelists = await connectedChangelists(workspace.root);
+        const store = new ShelfStore(
+            await resolveShelfPaths({
+                repositoryRoot: workspace.root,
+                globalStoragePath: path.join(parentDir, "shelf-storage"),
+            }),
+        );
+        const service = new ShelfService({
+            changelists,
+            repositoryRoot: workspace.root,
+            executor: new GitExecutor(workspace.root, undefined, env),
+            store,
+            gate: new RepositoryMutationGate(
+                new RepositoryMutationCoordinator(),
+                new RepositoryLock(),
+            ),
+        });
+        // The e2e `shelf-populated` shelf: untracked, so its history base can never resolve.
+        const shelfId = (
+            await service.shelve({
+                name: "scenario-seeded-shelf",
+                paths: ["untracked.txt"],
+                silent: true,
+                keepLocal: false,
+            })
+        ).shelfId!;
+        const lease = await changelists.acquireTargetOperationLease(workspace.root);
+        const provider = createTestCommitPanelViewProvider(
+            createFakeExtensionUri(),
+            new GitOps(new GitExecutor(workspace.root, undefined, env)),
+            createFakeUriFromPath(workspace.root),
+            createEmptyWorkspaceMemento(),
+            undefined,
+            () => service,
+        );
+        const { webviewView, posted, receiveMessage } = createInspectableCommitPanelWebviewView();
+        try {
+            provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+            await receiveMessage({ type: "ready" });
+            expect(
+                listedShelfGeneration(posted, shelfId),
+                "the startup listing ran while the lease refused the rewrite",
+            ).toBe(1);
+            await lease.release();
+
+            // Any host-side listing (palette command, mutation pre-check, a superseded refresh).
+            await service.listShelves();
+            const { generation } = await store.readCurrentShelfManifest(shelfId);
+            expect(generation, "the history-base downgrade publishes a new generation").toBe(2);
+
+            await vi.waitFor(
+                () =>
+                    expect(
+                        listedShelfGeneration(posted, shelfId),
+                        "the Shelf tab must be re-sent the generation the store now holds",
+                    ).toBe(generation),
+                { timeout: 5_000 },
+            );
+            await expect(
+                service.unshelve({
+                    id: shelfId,
+                    expectedShelfGeneration: 1,
+                    removeFromShelf: false,
+                    mode: "flattened",
+                }),
+                "the stale-generation guard still refuses what the user no longer sees",
+            ).rejects.toBeInstanceOf(ShelfStaleShelfError);
+            await expect(
+                service.unshelve({
+                    id: shelfId,
+                    expectedShelfGeneration: listedShelfGeneration(posted, shelfId),
+                    removeFromShelf: false,
+                    mode: "flattened",
+                }),
+                "Unshelve with the generation the Shelf tab holds must apply",
+            ).resolves.toMatchObject({ status: "ok" });
+        } finally {
+            provider.dispose();
+        }
+    }, 30_000);
 });

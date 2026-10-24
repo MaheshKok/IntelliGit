@@ -2,19 +2,91 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { changeFingerprint } from "./parseDiff";
 import { assertRepoRelativePath } from "../utils/repoRelativePath";
+import type { ChangelistTarget } from "../webviews/protocol/changelists";
 import type {
     ChangelistState,
     ChangeOwnership,
     RangeSnapshot,
     RangeSnapshotReference,
 } from "../webviews/protocol/changeSelection";
-import { ChangelistPersistence, ChangelistEvidenceError } from "./changelistPersistence";
+import {
+    ChangelistPersistence,
+    ChangelistEvidenceError,
+    type TargetOperationEvidenceChain,
+} from "./changelistPersistence";
 import {
     reconcileRanges,
     type HydratedChangeOwnership,
     type HydratedChangelistState,
 } from "./rangeMapping";
 import { validRangeMetadata, validSnapshot, snapshotReference } from "./rangeMetadata";
+import { attributeOperationChanges } from "./operationAttribution";
+import { RepositoryLockBusyError } from "../git/repositoryLock";
+import { mapWithConcurrency } from "../utils/concurrency";
+import {
+    ShelfStore,
+    ShelfStoreCorruptionError,
+    type ShelfTargetPublicationRequest,
+} from "../shelf/store";
+import { ShelfPersistenceContractError } from "../shelf/model";
+import { resolveShelfPaths } from "../shelf/paths";
+import {
+    parseTargetOperationReceipt,
+    parseTargetOperationRecord,
+    summarizeTargetOperation,
+    type TargetOperationRecord,
+    type TargetOperationEvidence,
+    type TargetOperationExpectedState,
+    type TargetOperationCheckpoint,
+    type TargetWholeFileBefore,
+    type TargetPathState,
+    type TargetIndexEntry,
+} from "./targetOperation";
+
+const targetOperationLeaseBrand: unique symbol = Symbol("targetOperationLease");
+
+/** Host-captured intent retained independently of subsequent phase and evidence checkpoints. */
+export interface PrepareTargetOperationRequest {
+    readonly id: string;
+    readonly kind: TargetOperationRecord["kind"];
+    readonly target: ChangelistTarget;
+    readonly headBefore: string;
+    readonly evidenceHash: string;
+    readonly shelf?: TargetOperationRecord["shelf"];
+    readonly commit?: string;
+    readonly draftChoice?: TargetOperationRecord["draftChoice"];
+    readonly sourceDraft?: string;
+}
+
+/** Opaque metadata lease acquired before repository/shelf locks; release after those locks. */
+export interface TargetOperationLease {
+    readonly [targetOperationLeaseBrand]: true;
+    /** Wait for queued metadata publications and release exactly once. */
+    release(): Promise<void>;
+}
+
+/** Only a fresh prepared publication authorizes Git; known pending/terminal requests never replay. */
+export interface TargetOperationPreparation {
+    readonly status: "prepared" | "known";
+    readonly state: ChangelistState;
+}
+
+/** Actual observations captured by the adapter under metadata → repository → shelf locks. */
+export interface TargetOperationObservation extends TargetOperationExpectedState {
+    readonly observedEvidenceHash: string;
+    readonly shelf?: {
+        readonly id: string;
+        readonly generation: number;
+        readonly checksum: string;
+    };
+}
+
+/** Fresh revision-bound Keep consent changes only the draft decision, never original operation intent. */
+export interface TargetOwnershipPublication extends TargetOperationObservation {
+    readonly reviewedDraft?: { readonly kind: "keep"; readonly expectedDestinationDraft: string };
+    /** The adapter's core.fileMode reading; false skips the disk executable bit, omitted compares it. */
+    readonly trustExecutableBit?: boolean;
+}
 
 interface MetadataStorage {
     get<T>(key: string): T | undefined;
@@ -38,12 +110,46 @@ const DEFAULT_CHANGELIST_ID = "default";
 const instances = new WeakMap<MetadataStorage, ChangelistStore>();
 const MAX_LISTS = 100;
 const MAX_FILES = 20_000;
+// Tuning constant: 8 overlapping files plus one directory barrier took a measured 1000-file macOS
+// upgrade from 11.7 s to 4.9 s, while bounding open descriptors and payloads held in memory.
+const MIGRATION_CONCURRENCY = 8;
+
+/**
+ * Bounded like `mapWithConcurrency`, but a failure stops new calls and waits for every started
+ * call before rethrowing the first error, so no write outlives the caller's metadata lease.
+ */
+async function mapDrained<T, R>(
+    items: readonly T[],
+    limit: number,
+    mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+    const failures: unknown[] = [];
+    const results = await mapWithConcurrency(items, limit, async (item) => {
+        if (failures.length) return undefined;
+        try {
+            return await mapper(item);
+        } catch (error) {
+            failures.push(error);
+            return undefined;
+        }
+    });
+    if (failures.length) throw failures[0];
+    return results as R[];
+}
 
 /** A concurrent writer won the revision; callers must refresh rather than overwrite its decision. */
 export class ChangelistRevisionError extends Error {
     /** Preserve the established user-visible conflict message across storage backends. */
     constructor() {
         super("Changelists changed. Refresh before retrying.");
+    }
+}
+
+/** A targeted operation leases or holds this root's metadata; observers re-observe once it releases. */
+export class TargetOperationLeaseHeldError extends Error {
+    /** Keeps the message callers already showed for a write refused by another operation's lease. */
+    constructor() {
+        super("A targeted operation requires its owning metadata lease.");
     }
 }
 
@@ -78,6 +184,437 @@ function parseLegacyState(value: unknown): HydratedChangelistState | undefined {
     return parseState(value, 2, true);
 }
 
+/** A replay fence permits only guarded drafts once the operation has published ownership. */
+function assertTargetOperationWriteAllowed(state: ChangelistState, pendingWrite?: "draft"): void {
+    const pending = state.pendingTargetOperation;
+    if (
+        pending &&
+        !(
+            pendingWrite === "draft" &&
+            (pending.phase === "ownershipPublished" || pending.phase === "shelfPublished")
+        )
+    )
+        throw new Error("A targeted operation is pending review.");
+}
+
+/** Fixed key order makes retries independent of object insertion order and mutable checkpoints. */
+function targetRequestHash(request: PrepareTargetOperationRequest): string {
+    const shelf = request.shelf;
+    const choice = request.draftChoice;
+    return changeFingerprint(
+        JSON.stringify({
+            id: request.id,
+            kind: request.kind,
+            target: request.target,
+            headBefore: request.headBefore,
+            evidenceHash: request.evidenceHash,
+            shelf: shelf
+                ? {
+                      id: shelf.id,
+                      generation: shelf.generation,
+                      checksum: shelf.checksum,
+                      changeIds: shelf.changeIds,
+                      removeFromShelf: shelf.removeFromShelf,
+                  }
+                : undefined,
+            commit: request.commit,
+            draftChoice:
+                choice?.kind === "copySource"
+                    ? {
+                          kind: choice.kind,
+                          sourceListId: choice.sourceListId,
+                          expectedDestinationDraft: choice.expectedDestinationDraft,
+                      }
+                    : choice
+                      ? { kind: choice.kind }
+                      : undefined,
+            sourceDraft: request.sourceDraft,
+        }),
+    );
+}
+
+/** The target as prepare records it: a new list's name normalized exactly as list creation does. */
+function preparedTarget(target: ChangelistTarget): ChangelistTarget {
+    return target.kind === "new"
+        ? { kind: "new", name: nameFor(target.name), revision: target.revision }
+        : { kind: "existing", id: target.id, revision: target.revision };
+}
+
+/** The request hash prepare stores, so a caller can prove a later request is the same one. */
+export function preparedTargetRequestHash(request: PrepareTargetOperationRequest): string {
+    return targetRequestHash({ ...request, target: preparedTarget(request.target) });
+}
+
+/** Checkpoints cannot select a different operation or move from an unexpected durable phase. */
+function requireTargetOperation(
+    state: ChangelistState,
+    expected: TargetOperationExpectedState,
+): TargetOperationRecord {
+    const pending = state.pendingTargetOperation;
+    if (!pending || pending.id !== expected.id)
+        throw new Error("Target operation identity changed.");
+    if (pending.phase !== expected.expectedPhase)
+        throw new Error("Target operation phase changed.");
+    return pending;
+}
+
+/** Compare unordered identities without permitting missing, duplicate, or unrelated members. */
+function sameTargetSet(left: readonly string[], right: readonly string[]): boolean {
+    return (
+        left.length === right.length &&
+        new Set(left).size === left.length &&
+        new Set(right).size === right.length &&
+        isDeepStrictEqual([...left].sort(), [...right].sort())
+    );
+}
+
+/** Evidence is captured before Git and can cover only the explicitly frozen operation paths. */
+function assertPreparedEvidence(
+    pending: TargetOperationRecord,
+    before: TargetOperationEvidence,
+): void {
+    const paths = new Set(before.paths.map((entry) => entry.path));
+    if (
+        before.operationId !== pending.id ||
+        before.checkpoint !== "before" ||
+        before.previousEvidenceHash !== undefined ||
+        before.head !== pending.headBefore ||
+        before.native.some((entry) => entry.present) ||
+        before.index.some((entry) => entry.stage !== 0) ||
+        before.entries.some((entry) => entry.outcome !== "pending") ||
+        before.index.some((entry) => !paths.has(entry.path)) ||
+        before.entries.some((entry) => entry.path !== undefined && !paths.has(entry.path)) ||
+        (pending.shelf &&
+            !sameTargetSet(
+                pending.shelf.changeIds,
+                before.entries.map((entry) => entry.changeId),
+            ))
+    )
+        throw new Error("Target operation before evidence does not match the request.");
+}
+
+/**
+ * Receipts are written only once review is resolved, so finished evidence is released to collection.
+ * shortcut: shelf restore replay still rebuilds its request and entry results from this chain
+ * (shelfTargetRestore.ts run); drop this exception once that replay no longer reads it.
+ */
+function retainedReceiptEvidence(pending: TargetOperationRecord): { evidenceHash?: string } {
+    return pending.kind === "shelfRestore" ? { evidenceHash: pending.evidenceHash } : {};
+}
+
+/** Only forward application progress is accepted; review and completion use separate named methods. */
+function assertCheckpointPhase(
+    from: TargetOperationRecord["phase"],
+    to: TargetOperationCheckpoint["phase"],
+): void {
+    if (
+        (from === "prepared" && ["prepared", "gitApplied", "conflicted"].includes(to)) ||
+        (from === "conflicted" && ["gitApplied", "conflicted"].includes(to))
+    )
+        return;
+    throw new Error("Invalid target operation checkpoint phase transition.");
+}
+
+/** Every chained checkpoint preserves affected identities and successful entries, never silently replaying them. */
+function assertCheckpointEvidence(
+    pending: TargetOperationRecord,
+    before: TargetOperationEvidence,
+    after: TargetOperationEvidence,
+    phase: TargetOperationCheckpoint["phase"],
+): void {
+    const paths = new Set(before.paths.map((entry) => entry.path));
+    const entries = new Map(before.entries.map((entry) => [entry.changeId, entry]));
+    if (
+        after.operationId !== pending.id ||
+        after.checkpoint !== "after" ||
+        after.previousEvidenceHash !== pending.evidenceHash ||
+        (pending.kind !== "undoCommit" && after.head !== pending.headBefore) ||
+        !sameTargetSet(
+            [...paths],
+            after.paths.map((entry) => entry.path),
+        ) ||
+        !sameTargetSet(
+            [...entries.keys()],
+            after.entries.map((entry) => entry.changeId),
+        ) ||
+        after.index.some((entry) => !paths.has(entry.path)) ||
+        after.entries.some((entry) => {
+            const previous = entries.get(entry.changeId);
+            return (
+                !previous ||
+                entry.path !== previous.path ||
+                (["applied", "retained", "refused"].includes(previous.outcome) &&
+                    entry.outcome !== previous.outcome)
+            );
+        }) ||
+        (phase === "gitApplied" &&
+            (after.index.some((entry) => entry.stage !== 0) ||
+                after.entries.some((entry) =>
+                    ["pending", "conflicted"].includes(entry.outcome),
+                ))) ||
+        (phase === "conflicted" && !after.entries.some((entry) => entry.outcome === "conflicted"))
+    )
+        throw new Error(
+            "Target operation checkpoint evidence changed its affected set or progress.",
+        );
+}
+
+/**
+ * Compare concrete adapter observations, including markerless conflicts and path identities. The
+ * whole-index fingerprint is left out: an outside `git status` rewrites it with stat data alone.
+ */
+function sameTargetObservation(
+    saved: TargetOperationEvidence,
+    observed: TargetOperationEvidence,
+): boolean {
+    return (
+        saved.operationId === observed.operationId &&
+        saved.head === observed.head &&
+        isDeepStrictEqual(saved.index, observed.index) &&
+        isDeepStrictEqual(saved.paths, observed.paths) &&
+        isDeepStrictEqual(saved.native, observed.native)
+    );
+}
+
+/** Same generation alone is insufficient when an external client replaces the shelf manifest. */
+function sameTargetShelf(
+    pending: TargetOperationRecord,
+    observed: TargetOwnershipPublication["shelf"],
+): boolean {
+    return pending.shelf
+        ? observed?.id === pending.shelf.id &&
+              observed.generation === pending.shelf.generation &&
+              observed.checksum === pending.shelf.checksum
+        : observed === undefined;
+}
+
+/** Copy consent applies only to the exact destination draft captured before Git ran. */
+function targetDraftMatches(
+    pending: TargetOperationRecord,
+    draft: string | undefined,
+    reviewed: TargetOwnershipPublication["reviewedDraft"],
+): boolean {
+    if (reviewed) return reviewed.kind === "keep" && draft === reviewed.expectedDestinationDraft;
+    return (
+        pending.draftChoice?.kind !== "copySource" ||
+        draft === pending.draftChoice.expectedDestinationDraft
+    );
+}
+
+/** Reviewed Keep may revisit a rejected publication but cannot convert incomplete Git evidence. */
+function targetOwnershipPhaseAllowed(
+    pending: TargetOperationRecord,
+    request: TargetOwnershipPublication,
+): boolean {
+    return (
+        pending.phase === "gitApplied" ||
+        (pending.phase === "reviewRequired" && request.reviewedDraft?.kind === "keep")
+    );
+}
+
+/** The completion records the final choice while captured request identity and source draft remain unchanged. */
+function targetDraftDecision(
+    pending: TargetOperationRecord,
+    request: TargetOwnershipPublication,
+): "kept" | "copied" | "keptAfterReview" {
+    return request.reviewedDraft?.kind === "keep"
+        ? "keptAfterReview"
+        : pending.draftChoice?.kind === "copySource"
+          ? "copied"
+          : "kept";
+}
+
+/** Attribution starts only from a complete saved result that still matches both observed authorities. */
+function validOwnershipObservation(
+    pending: TargetOperationRecord,
+    captured: TargetOwnershipPublication,
+    after: TargetOperationEvidence,
+    observed: TargetOperationEvidence,
+): boolean {
+    return (
+        sameTargetShelf(pending, captured.shelf) &&
+        validAppliedObservation(pending, after, observed)
+    );
+}
+
+/** Later completion validates Git evidence independently of the source pointer that publication advances. */
+function validAppliedObservation(
+    pending: TargetOperationRecord,
+    after: TargetOperationEvidence,
+    observed: TargetOperationEvidence,
+): boolean {
+    return (
+        sameTargetObservation(after, observed) &&
+        after.head === pending.headAfter &&
+        !after.entries.some(
+            (entry) => entry.outcome === "pending" || entry.outcome === "conflicted",
+        ) &&
+        !after.index.some((entry) => entry.stage !== 0)
+    );
+}
+
+/** Only corruption and missing artifacts become review; transient I/O or injected failures retain their phase. */
+function shelfPublicationRequiresReview(error: unknown): boolean {
+    return (
+        error instanceof ShelfStoreCorruptionError ||
+        error instanceof ShelfPersistenceContractError ||
+        error instanceof SyntaxError ||
+        (!!error && typeof error === "object" && "code" in error && error.code === "ENOENT")
+    );
+}
+
+/** Phase text alone never admits removal completion; the concrete receipt is verified under its lock later. */
+function assertTargetShelfCheckpoint(
+    pending: TargetOperationRecord,
+    shelfStore?: ShelfStore,
+): void {
+    if (
+        pending.shelf?.removeFromShelf &&
+        (!shelfStore ||
+            pending.phase !== "shelfPublished" ||
+            pending.completion?.shelfPublication !== "published")
+    ) {
+        throw new Error("Target completion requires a concrete shelf publication receipt.");
+    }
+}
+
+/** Text attribution is bound to the exact captured bytes, HEAD and index, never just line coordinates. */
+function snapshotMatchesOperationPath(
+    snapshot: RangeSnapshot,
+    evidence: TargetOperationEvidence,
+    file: string,
+): boolean {
+    const state = evidence.paths.find((entry) => entry.path === file)?.state;
+    return (
+        state?.kind === "regular" &&
+        snapshot.workingHash === state.content.hash &&
+        snapshot.head === evidence.head &&
+        snapshot.indexHash === evidence.indexFingerprint
+    );
+}
+
+/** No counted change, line or base-anchored history is live; selections alone are remembered checkbox state. */
+function ownsNoLiveChange(change: ChangeOwnership): boolean {
+    return (
+        !change.stale &&
+        change.totalChanges === 0 &&
+        Object.keys(change.lines).length === 0 &&
+        !change.history?.some(
+            ({ snapshot }) =>
+                snapshot.baseHash === change.tracking?.baseHash && snapshot.anchorCount > 0,
+        )
+    );
+}
+
+/** A whole owner without a record, or a record owning a live change, prevents whole-file replacement. */
+export function targetPathUnowned(state: ChangelistState, file: string): boolean {
+    return Object.hasOwn(state.changes, file)
+        ? ownsNoLiveChange(state.changes[file])
+        : !Object.hasOwn(state.files, file);
+}
+
+/** Captured HEAD, index and worktree must represent the same file, independently of metadata ownership. */
+function cleanWholeFileBefore(
+    captured: TargetWholeFileBefore | undefined,
+    working: TargetPathState | undefined,
+    index: TargetIndexEntry | undefined,
+    trustExecutableBit: boolean,
+): boolean {
+    if (!captured || !captured.unowned || !working) return false;
+    if (captured.head.kind === "absent") return !index && working.kind === "absent";
+    const head = captured.head;
+    if (
+        !index ||
+        index.stage !== 0 ||
+        index.intentToAdd ||
+        index.skipWorktree ||
+        index.assumeUnchanged ||
+        index.mode !== head.mode ||
+        index.oid !== head.oid ||
+        !isDeepStrictEqual(index.object, head.object)
+    )
+        return false;
+    if (head.mode === "120000")
+        return working.kind === "symlink" && isDeepStrictEqual(working.target, head.object);
+    return (
+        (head.mode === "100644" || head.mode === "100755") &&
+        working.kind === "regular" &&
+        (!trustExecutableBit || working.executable === (head.mode === "100755")) &&
+        isDeepStrictEqual(working.content, head.object)
+    );
+}
+
+/** Validate both rename endpoints and every ownership surface in one pass over captured path evidence. */
+function validWholeFileOwnership(
+    state: ChangelistState,
+    before: TargetOperationEvidence,
+    after: TargetOperationEvidence,
+    trustExecutableBit: boolean,
+): boolean {
+    const captured = new Map(before.wholeFileBefore?.map((entry) => [entry.path, entry]));
+    const beforePaths = new Map(before.paths.map((entry) => [entry.path, entry.state]));
+    const afterPaths = new Map(after.paths.map((entry) => [entry.path, entry.state]));
+    const index = new Map(before.index.map((entry) => [entry.path, entry]));
+    return (after.wholeFileAttribution ?? []).every((entry) => {
+        const endpoints = entry.sourcePath ? [entry.path, entry.sourcePath] : [entry.path];
+        if (
+            entry.sourcePath !== undefined &&
+            (beforePaths.get(entry.sourcePath)?.kind === "absent" ||
+                afterPaths.get(entry.sourcePath)?.kind !== "absent" ||
+                afterPaths.get(entry.path)?.kind === "absent")
+        )
+            return false;
+        return endpoints.every(
+            (file) =>
+                targetPathUnowned(state, file) &&
+                cleanWholeFileBefore(
+                    captured.get(file),
+                    beforePaths.get(file),
+                    index.get(file),
+                    trustExecutableBit,
+                ),
+        );
+    });
+}
+
+/** Publish all validated structural owners, including a rename's removed source, in the caller's metadata CAS. */
+interface OwnershipPublication {
+    readonly ownership: HydratedChangeOwnership;
+    /** The file had no change before the operation, so every change in it is the destination's. */
+    readonly whole: boolean;
+}
+
+function publishFileOwner(
+    state: ChangelistState,
+    file: string,
+    publication: OwnershipPublication,
+    destinationId: string,
+): HydratedChangeOwnership {
+    if (publication.whole) state.files[file] = destinationId;
+    else state.files[file] ??= state.activeId;
+    const owner = state.files[file];
+    // Like reconcileRanges, keep only lines owned apart from the file; any stored line owner shows
+    // the file as Partial.
+    const lines = Object.fromEntries(
+        Object.entries(publication.ownership.lines).filter(([, id]) => id !== owner),
+    );
+    return { ...publication.ownership, lines };
+}
+
+function publishWholeFileOwners(
+    state: ChangelistState,
+    entries: NonNullable<TargetOperationEvidence["wholeFileAttribution"]>,
+    destinationId: string,
+): void {
+    for (const file of entries.flatMap((entry) =>
+        entry.sourcePath ? [entry.path, entry.sourcePath] : [entry.path],
+    )) {
+        state.files[file] = destinationId;
+        // Validated to own no live change; a consumed record's history must not reassign lines later.
+        delete state.changes[file];
+    }
+}
+
 /** Serialized, revisioned worktree metadata shared by docked and undocked providers. */
 export class ChangelistStore {
     private readonly roots = new Map<string, ChangelistState>();
@@ -86,12 +623,22 @@ export class ChangelistStore {
     private loadError?: string;
     private migrationSource?: unknown;
     private readonly commitLeases = new Map<string, string>();
+    private readonly targetLeases = new Map<
+        string,
+        { handle: TargetOperationLease; closing: boolean; released: Promise<void> }
+    >();
     private readonly mirrorScopes = new Map<string, string>();
     private readonly durable = new Map<string, ChangelistPersistence>();
     private requiresConnection = false;
     private readonly seeds = new Map<string, HydratedChangelistState>();
     private readonly hydratedReferences = new WeakMap<RangeSnapshot, RangeSnapshotReference>();
     private readonly evidence = new Map<string, Map<string, RangeSnapshot>>();
+    private readonly observations = new Map<string, Set<Promise<unknown>>>();
+    private readonly holds = new Map<
+        string,
+        { count: number; released: Promise<void>; end: () => void }
+    >();
+    private readonly epochs = new Map<string, number>();
 
     /** Reuses the workspace store so independent panels cannot overwrite each other's lists. */
     static forStorage(storage?: MetadataStorage): ChangelistStore {
@@ -112,13 +659,13 @@ export class ChangelistStore {
             typeof saved !== "object" ||
             !("entries" in saved) ||
             !("schemaVersion" in saved) ||
-            ![1, 2, 3, 4].includes(saved.schemaVersion as number)
+            ![1, 2, 3, 4, 5].includes(saved.schemaVersion as number)
         ) {
             this.loadError = "Changelist metadata is invalid and will not be overwritten.";
             return;
         }
         const entries = (saved as { entries?: unknown }).entries;
-        this.requiresConnection = saved.schemaVersion === 3 || saved.schemaVersion === 4;
+        this.requiresConnection = [3, 4, 5].includes(saved.schemaVersion as number);
         if (!Array.isArray(entries) || entries.length > 128) {
             this.loadError = "Changelist metadata is invalid and will not be overwritten.";
             return;
@@ -171,6 +718,70 @@ export class ChangelistStore {
         return this.authoritative(root).revision;
     }
 
+    /** Registers a host prerequisite (connection, recovery) target prompts wait for; returns it unchanged. */
+    observe<T>(root: string, observation: Promise<T>): Promise<T> {
+        const pending = this.observations.get(root) ?? new Set<Promise<unknown>>();
+        this.observations.set(root, pending);
+        pending.add(observation);
+        const settle = () => pending.delete(observation);
+        observation.then(settle, settle);
+        return observation;
+    }
+
+    /**
+     * Resolves once every prerequisite already in flight settles. A rejected one never blocks; the
+     * revision fence still guards. Observer writes are held by `holdObservers`, never awaited here.
+     */
+    async settled(root: string): Promise<void> {
+        await Promise.allSettled([...(this.observations.get(root) ?? [])]);
+    }
+
+    /** Changes whenever a hold starts or ends; an observation begun at an older value is discarded. */
+    observerEpoch(root: string): number {
+        return this.epochs.get(root) ?? 0;
+    }
+
+    /**
+     * Holds this root's observer writes for a target prompt and its apply. Writes already admitted
+     * drain first; later ones are refused, never queued, so the operation cannot wait on its own
+     * hold. Another window's writes are not held; the exact revision fence still refuses them.
+     */
+    async holdObservers(root: string): Promise<() => void> {
+        let hold = this.holds.get(root);
+        if (!hold) {
+            let end!: () => void;
+            const released = new Promise<void>((resolve) => (end = resolve));
+            hold = { count: 0, released, end };
+            this.holds.set(root, hold);
+        }
+        const active = hold;
+        active.count++;
+        this.epochs.set(root, this.observerEpoch(root) + 1);
+        let open = true;
+        const release = () => {
+            if (!open) return;
+            open = false;
+            this.epochs.set(root, this.observerEpoch(root) + 1);
+            if (--active.count > 0) return;
+            this.holds.delete(root);
+            active.end();
+        };
+        // Every writer replaces the tail with a settled continuation, so this never rejects.
+        await this.writes;
+        return release;
+    }
+
+    /** Resolves once no targeted operation leases or holds this root's metadata. */
+    async targetOperationReleased(root: string): Promise<void> {
+        await Promise.all([this.targetLeases.get(root)?.released, this.holds.get(root)?.released]);
+    }
+
+    /** Refuses an observer write while held, or once a hold began or ended after it observed. */
+    private admitObserver(root: string, epoch: number | undefined): void {
+        if (this.holds.has(root) || (epoch !== undefined && epoch !== this.observerEpoch(root)))
+            throw new TargetOperationLeaseHeldError();
+    }
+
     /** Borrowed compact state remains private; callers receive independent snapshots through get. */
     private authoritative(root: string): ChangelistState {
         if (this.loadError) throw new Error(this.loadError);
@@ -201,13 +812,15 @@ export class ChangelistStore {
             const persistence = await ChangelistPersistence.open(root, gitDir);
             const release = await persistence.acquire();
             try {
-                const legacy = await persistence.readLegacy(parseLegacyState);
+                const legacy = await persistence.readLegacy(parseLegacyState, parseDurableState);
                 const existing = legacy ? undefined : persistence.read(parseDurableState);
                 const existingMatches =
                     !this.roots.has(root) ||
                     persistence.migratedFrom(root, seed) ||
                     (legacy
-                        ? isDeepStrictEqual(legacy.state, seed)
+                        ? legacy.schemaVersion === 4
+                            ? await this.matchesSeed(root, legacy.state, seed, persistence)
+                            : isDeepStrictEqual(legacy.state, seed)
                         : existing
                           ? await this.matchesSeed(root, existing, seed, persistence)
                           : true);
@@ -225,9 +838,12 @@ export class ChangelistStore {
                         root,
                         state: seed,
                     });
-                if (legacy) await persistence.backupLegacy(legacy.bytes);
+                if (legacy) await persistence.backupLegacy(legacy.bytes, legacy.schemaVersion);
                 const state =
-                    existing ?? (await this.compactState(root, legacy?.state ?? seed, persistence));
+                    existing ??
+                    (legacy?.schemaVersion === 4
+                        ? legacy.state
+                        : await this.compactState(root, legacy?.state ?? seed, persistence));
                 await persistence.validateEvidence(state);
                 if (this.migrationSource !== undefined) await this.backupMigration();
                 const hasSeed = this.roots.has(root) || (!existing && !legacy);
@@ -261,7 +877,7 @@ export class ChangelistStore {
         if (hasSeed && !seeds.has(root)) seeds.set(root, seed);
         // Detached references never enter workspace storage; old clients refuse the new sentinel.
         const sentinel = {
-            schemaVersion: 4,
+            schemaVersion: 5,
             entries: [...seeds].map(([key, value]) => ({ root: key, state: value })),
         };
         if (JSON.stringify(this.storage?.get(STORAGE_KEY)) !== JSON.stringify(sentinel))
@@ -275,6 +891,10 @@ export class ChangelistStore {
             delete ownership.tracking;
             delete ownership.history;
         }
+        if (state.pendingTargetOperation)
+            state.targetOperationSummary = summarizeTargetOperation(state.pendingTargetOperation);
+        delete state.pendingTargetOperation;
+        delete state.targetOperationReceipts;
         return state;
     }
 
@@ -284,23 +904,54 @@ export class ChangelistStore {
         file: string,
         snapshot: RangeSnapshot,
         revision?: number,
+        epoch?: number,
     ): Promise<ChangelistState> {
-        const safe = assertRepoRelativePath(file);
+        return this.trackBatch(root, [{ file, snapshot }], revision, epoch);
+    }
+
+    /** Reconciles several host-captured snapshots in one write: one revision, save and notification. */
+    trackBatch(
+        root: string,
+        entries: readonly { file: string; snapshot: RangeSnapshot }[],
+        revision?: number,
+        epoch?: number,
+    ): Promise<ChangelistState> {
+        const safe = entries.map(({ file, snapshot }) => ({
+            file: assertRepoRelativePath(file),
+            snapshot,
+        }));
+        this.admitObserver(root, epoch);
         return this.write(root, revision, async (state) => {
-            const fallback = state.files[safe] ?? state.activeId;
-            state.files[safe] = fallback;
-            const previous = await this.hydrate(root, safe, state.changes[safe]);
-            state.changes[safe] = await this.compact(
-                root,
-                safe,
-                reconcileRanges(previous, snapshot, fallback, state.activeId),
-            );
+            let changed = false;
+            for (const { file, snapshot } of safe) {
+                const owner = state.files[file];
+                const ownership = JSON.stringify(state.changes[file]);
+                const fallback = owner ?? state.activeId;
+                state.files[file] = fallback;
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Evidence is hydrated and stored one file at a time under the lease.
+                const previous = await this.hydrate(root, file, state.changes[file]);
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Evidence is hydrated and stored one file at a time under the lease.
+                state.changes[file] = await this.compact(
+                    root,
+                    file,
+                    reconcileRanges(previous, snapshot, fallback, state.activeId),
+                );
+                // Only these two entries change, so comparing them matches a whole-state comparison.
+                changed ||= owner !== fallback || JSON.stringify(state.changes[file]) !== ownership;
+            }
+            return changed;
         });
     }
 
     /** Failed lifecycle reads retain evidence and prevent implicit whole-file commits. */
-    requireReview(root: string, file: string, unknown = false): Promise<ChangelistState> {
+    requireReview(
+        root: string,
+        file: string,
+        unknown = false,
+        epoch?: number,
+    ): Promise<ChangelistState> {
         const safe = assertRepoRelativePath(file);
+        this.admitObserver(root, epoch);
         return this.write(root, undefined, (state) => {
             const previous = state.changes[safe];
             if (previous || unknown)
@@ -317,15 +968,18 @@ export class ChangelistStore {
         return () => this.listeners.delete(listener);
     }
 
-    /** Reserves metadata after pending writes, preventing membership changes during a commit. */
+    /** Reserves authoritative metadata, refusing a targeted operation before a commit can mutate Git. */
     async beginCommit(root: string): Promise<() => Promise<void>> {
         const operation = this.writes.then(async () => {
+            if (this.targetLeases.has(root))
+                throw new Error("A targeted operation holds the metadata lease.");
             if (this.commitLeases.has(root))
                 throw new Error("A selected commit is already in progress.");
             const release = await this.durable.get(root)?.acquire();
             let state: ChangelistState;
             try {
                 state = this.get(root);
+                assertTargetOperationWriteAllowed(state);
             } catch (error) {
                 await release?.();
                 throw error;
@@ -352,8 +1006,998 @@ export class ChangelistStore {
         return this.commitLeases.has(root);
     }
 
-    /** Assigns new files and prunes consumed records, retaining clean history for stash/undo restoration. */
-    async reconcileFiles(root: string, paths: readonly string[]): Promise<ChangelistState> {
+    /** Acquire metadata first; named transaction methods reuse this lease without nested acquisition. */
+    async acquireTargetOperationLease(root: string): Promise<TargetOperationLease> {
+        const operation = this.writes.then(async () => {
+            if (this.commitLeases.has(root) || this.targetLeases.has(root))
+                throw new RepositoryLockBusyError();
+            const persistence = this.durable.get(root);
+            if (!persistence)
+                throw new Error("Target operations require connected durable metadata.");
+            const release = await persistence.acquire();
+            try {
+                this.get(root);
+            } catch (error) {
+                await release();
+                throw error;
+            }
+            let releasing: Promise<void> | undefined;
+            let ended!: () => void;
+            const released = new Promise<void>((resolve) => (ended = resolve));
+            const handle: TargetOperationLease = Object.freeze({
+                [targetOperationLeaseBrand]: true as const,
+                release: () => {
+                    if (releasing) return releasing;
+                    this.targetLeases.get(root)!.closing = true;
+                    releasing = this.writes.then(async () => {
+                        try {
+                            await release();
+                        } finally {
+                            this.targetLeases.delete(root);
+                            ended();
+                        }
+                    });
+                    this.writes = releasing.catch(() => undefined);
+                    return releasing;
+                },
+            });
+            this.targetLeases.set(root, { handle, closing: false, released });
+            return handle;
+        });
+        this.writes = operation.then(
+            () => undefined,
+            () => undefined,
+        );
+        return operation;
+    }
+
+    /** Prepare exactly one request, publishing any new inactive list with its durable replay fence. */
+    async prepareTargetOperation(
+        lease: TargetOperationLease,
+        request: PrepareTargetOperationRequest,
+    ): Promise<TargetOperationPreparation> {
+        const root = this.targetOperationRoot(lease);
+        const intent = structuredClone(request);
+        if (
+            !Number.isSafeInteger(intent.target.revision) ||
+            intent.target.revision < 0 ||
+            (intent.target.kind !== "existing" && intent.target.kind !== "new")
+        )
+            throw new Error("Invalid target operation request.");
+        const target = preparedTarget(intent.target);
+        const requestHash = targetRequestHash({ ...intent, target });
+        let status: TargetOperationPreparation["status"] = "prepared";
+        const state = await this.write(
+            root,
+            undefined,
+            async (state) => {
+                const known =
+                    state.pendingTargetOperation?.id === intent.id
+                        ? state.pendingTargetOperation
+                        : state.targetOperationReceipts?.[intent.id];
+                if (known) {
+                    if (known.requestHash !== requestHash)
+                        throw new Error("Target operation request identity changed.");
+                    status = "known";
+                    return;
+                }
+                if (state.pendingTargetOperation)
+                    throw new Error("A targeted operation is pending review.");
+                if (state.revision !== target.revision) throw new ChangelistRevisionError();
+                let destinationId: string;
+                let destinationCreation: TargetOperationRecord["destinationCreation"];
+                if (target.kind === "existing") {
+                    destinationId = requireList(state, target.id).id;
+                } else {
+                    if (state.lists.length >= MAX_LISTS) throw new Error("Too many changelists.");
+                    if (
+                        state.lists.some(
+                            (list) =>
+                                list.name.normalize("NFC").toLowerCase() ===
+                                target.name.toLowerCase(),
+                        )
+                    )
+                        throw new Error("A changelist with this name already exists.");
+                    destinationId = randomUUID();
+                    destinationCreation = { name: target.name, description: "", draft: "" };
+                }
+                const pending = parseTargetOperationRecord({
+                    version: 1,
+                    id: intent.id,
+                    requestHash,
+                    kind: intent.kind,
+                    phase: "prepared",
+                    destinationId,
+                    createdDestination: target.kind === "new",
+                    ...(destinationCreation ? { destinationCreation } : {}),
+                    headBefore: intent.headBefore,
+                    evidenceHash: intent.evidenceHash,
+                    beforeEvidenceHash: intent.evidenceHash,
+                    ...(intent.shelf ? { shelf: intent.shelf } : {}),
+                    ...(intent.commit ? { commit: intent.commit } : {}),
+                    ...(intent.draftChoice ? { draftChoice: intent.draftChoice } : {}),
+                    ...(intent.sourceDraft !== undefined
+                        ? { sourceDraft: intent.sourceDraft }
+                        : {}),
+                });
+                if (!pending) throw new Error("Invalid target operation request.");
+                const before = await this.durable
+                    .get(root)!
+                    .loadTargetOperationEvidence(intent.evidenceHash);
+                assertPreparedEvidence(pending, before);
+                if (
+                    before.wholeFileBefore?.some(
+                        (entry) => entry.unowned !== targetPathUnowned(state, entry.path),
+                    )
+                )
+                    throw new Error(
+                        "Target operation ownership observation changed before preparation.",
+                    );
+                const destinationDraft =
+                    destinationCreation?.draft ?? requireList(state, destinationId).draft;
+                if (
+                    intent.draftChoice?.kind === "copySource" &&
+                    intent.draftChoice.expectedDestinationDraft !== destinationDraft
+                )
+                    throw new Error("The destination draft changed. Review before copying.");
+                if (destinationCreation)
+                    state.lists.push({ id: destinationId, ...destinationCreation });
+                state.pendingTargetOperation = pending;
+            },
+            true,
+            undefined,
+            lease,
+        );
+        return { status, state };
+    }
+
+    /** Advance only the recorded operation and its exact affected set; no Git work runs here. */
+    async checkpointTargetOperation(
+        lease: TargetOperationLease,
+        checkpoint: TargetOperationCheckpoint,
+    ): Promise<ChangelistState> {
+        const root = this.targetOperationRoot(lease);
+        const expected = structuredClone(checkpoint);
+        return this.write(
+            root,
+            expected.revision,
+            async (state) => {
+                const pending = requireTargetOperation(state, expected);
+                assertCheckpointPhase(pending.phase, expected.phase);
+                const persistence = this.durable.get(root)!;
+                const [before, after] = await Promise.all([
+                    persistence.loadTargetOperationEvidence(pending.evidenceHash),
+                    persistence.loadTargetOperationEvidence(expected.evidenceHash),
+                ]);
+                assertCheckpointEvidence(pending, before, after, expected.phase);
+                const next = parseTargetOperationRecord({
+                    ...pending,
+                    phase: expected.phase,
+                    evidenceHash: expected.evidenceHash,
+                    headAfter: after.head,
+                });
+                if (!next) throw new Error("Invalid target operation checkpoint phase.");
+                state.pendingTargetOperation = next;
+            },
+            true,
+            undefined,
+            lease,
+        );
+    }
+
+    /** Acknowledge native cleanup without changing the accepted history result or attribution. */
+    async checkpointTargetNativeCompletionCleanup(
+        lease: TargetOperationLease,
+        request: TargetOperationExpectedState & { readonly evidenceHash: string },
+    ): Promise<ChangelistState> {
+        const root = this.targetOperationRoot(lease);
+        const captured = structuredClone(request);
+        return this.write(
+            root,
+            captured.revision,
+            async (state) => {
+                const pending = requireTargetOperation(state, captured);
+                if (
+                    pending.phase !== "gitApplied" ||
+                    !["cherryPick", "revert"].includes(pending.kind) ||
+                    pending.completion
+                )
+                    throw new Error(
+                        "Native completion cleanup requires an accepted history result.",
+                    );
+                const persistence = this.durable.get(root)!;
+                const [before, after] = await Promise.all([
+                    persistence.loadTargetOperationEvidence(pending.evidenceHash),
+                    persistence.loadTargetOperationEvidence(captured.evidenceHash),
+                ]);
+                const marker = pending.kind === "cherryPick" ? "cherryPickHead" : "revertHead";
+                if (
+                    after.previousEvidenceHash !== pending.evidenceHash ||
+                    !before.native.some((entry) => entry.present) ||
+                    before.native.some(
+                        (entry) =>
+                            entry.present && entry.name !== marker && entry.name !== "sequencer",
+                    ) ||
+                    after.native.some((entry) => entry.present) ||
+                    !isDeepStrictEqual(
+                        { ...before, native: [], previousEvidenceHash: undefined },
+                        { ...after, native: [], previousEvidenceHash: undefined },
+                    )
+                )
+                    throw new Error("Native cleanup changed the accepted history evidence.");
+                state.pendingTargetOperation = { ...pending, evidenceHash: captured.evidenceHash };
+            },
+            true,
+            undefined,
+            lease,
+        );
+    }
+
+    /**
+     * Publish proven operation-only ownership and the guarded captured draft in one CAS, retaining
+     * pending. The adapter supplies actual current evidence under its Git/shelf gates; this method
+     * does not observe or mutate Git. A durable completion makes every later call a metadata no-op.
+     */
+    async publishTargetOwnership(
+        lease: TargetOperationLease,
+        request: TargetOwnershipPublication,
+    ): Promise<ChangelistState> {
+        const root = this.targetOperationRoot(lease);
+        const captured = structuredClone(request);
+        return this.write(
+            root,
+            captured.revision,
+            async (state) => {
+                const pending = requireTargetOperation(state, captured);
+                if (pending.completion) return;
+                if (!targetOwnershipPhaseAllowed(pending, captured))
+                    throw new Error("Target ownership requires a completed Git checkpoint.");
+                const persistence = this.durable.get(root)!;
+                const chain = await persistence.loadTargetOperationEvidenceChain(
+                    pending.evidenceHash,
+                );
+                const after = chain.evidence;
+                const applied = after.entries
+                    .filter((entry) => entry.outcome === "applied")
+                    .map((entry) => entry.changeId);
+                if (!applied.length)
+                    throw new Error("Target ownership has no successful entries to publish.");
+                const review = () => {
+                    state.pendingTargetOperation = { ...pending, phase: "reviewRequired" };
+                };
+                const observed = await persistence.loadTargetOperationEvidence(
+                    captured.observedEvidenceHash,
+                );
+                const before = this.targetOperationBefore(pending, chain.root);
+                if (!before || !validOwnershipObservation(pending, captured, after, observed)) {
+                    review();
+                    return;
+                }
+                const references = after.attribution ?? [];
+                const wholeFiles = after.wholeFileAttribution ?? [];
+                if (
+                    !sameTargetSet(
+                        [...references, ...wholeFiles].flatMap((entry) => [...entry.changeIds]),
+                        applied,
+                    )
+                ) {
+                    review();
+                    return;
+                }
+                const updates = new Map<string, OwnershipPublication>();
+                if (
+                    !validWholeFileOwnership(
+                        state,
+                        before,
+                        after,
+                        captured.trustExecutableBit ?? true,
+                    )
+                ) {
+                    review();
+                    return;
+                }
+                const ids = new Set(state.lists.map((list) => list.id));
+                for (const reference of references) {
+                    const payload = await persistence.loadTargetOperationAttribution(
+                        reference,
+                        pending.id,
+                    );
+                    const prior = await this.hydrate(
+                        root,
+                        reference.path,
+                        state.changes[reference.path],
+                    );
+                    const fallback = state.files[reference.path] ?? state.activeId;
+                    if (
+                        payload.priorFileOwner !== fallback ||
+                        !validOwnership(payload.previous, ids, true) ||
+                        !isDeepStrictEqual(
+                            payload.previous,
+                            prior ?? reconcileRanges(undefined, payload.before, fallback, fallback),
+                        ) ||
+                        !snapshotMatchesOperationPath(payload.before, before, reference.path) ||
+                        !snapshotMatchesOperationPath(payload.after, after, reference.path)
+                    ) {
+                        review();
+                        return;
+                    }
+                    const attributed = attributeOperationChanges({
+                        ...payload,
+                        // A held observer may not have recorded the captured bytes; reconcile as it would.
+                        previous: reconcileRanges(
+                            payload.previous,
+                            payload.before,
+                            fallback,
+                            state.activeId,
+                        ),
+                        destinationId: pending.destinationId,
+                    });
+                    if (attributed.reviewRequired) {
+                        review();
+                        return;
+                    }
+                    updates.set(reference.path, {
+                        ownership: attributed.ownership,
+                        whole: !payload.before.anchors.length,
+                    });
+                }
+                const destination = requireList(state, pending.destinationId);
+                if (!targetDraftMatches(pending, destination.draft, captured.reviewedDraft)) {
+                    review();
+                    return;
+                }
+                for (const [file, publication] of updates) {
+                    const ownership = publishFileOwner(
+                        state,
+                        file,
+                        publication,
+                        pending.destinationId,
+                    );
+                    state.changes[file] = await this.compact(root, file, ownership);
+                }
+                publishWholeFileOwners(state, wholeFiles, pending.destinationId);
+                const draft = targetDraftDecision(pending, captured);
+                if (draft === "copied") destination.draft = pending.sourceDraft!;
+                state.pendingTargetOperation = {
+                    ...pending,
+                    phase: "ownershipPublished",
+                    completion: {
+                        appliedChangeIds: applied,
+                        ownershipRevision: state.revision + 1,
+                        draft,
+                        shelfPublication: pending.shelf?.removeFromShelf
+                            ? "pending"
+                            : "notRequired",
+                    },
+                };
+            },
+            true,
+            undefined,
+            lease,
+        );
+    }
+
+    /**
+     * Checkpoints the concrete terminal shelf receipt while retaining pending and the original
+     * ownership/draft decision. Caller holds the metadata lease then repository gate; the shelf
+     * lock spans storage publication, receipt validation, and the metadata CAS.
+     */
+    async publishTargetShelf(
+        lease: TargetOperationLease,
+        request: TargetOperationObservation,
+        shelfStore: ShelfStore,
+    ): Promise<ChangelistState> {
+        const root = this.targetOperationRoot(lease);
+        const captured = structuredClone(request);
+        await this.assertTargetShelfRepository(root, shelfStore);
+        return shelfStore.withLock(() =>
+            this.write(
+                root,
+                captured.revision,
+                async (state) => {
+                    const pending = requireTargetOperation(state, captured);
+                    if (
+                        !pending.shelf?.removeFromShelf ||
+                        !pending.completion ||
+                        (pending.phase !== "ownershipPublished" &&
+                            pending.phase !== "shelfPublished")
+                    )
+                        throw new Error(
+                            "Shelf publication requires the frozen ownership completion.",
+                        );
+                    const persistence = this.durable.get(root)!;
+                    const chain = await persistence.loadTargetOperationEvidenceChain(
+                        pending.evidenceHash,
+                    );
+                    const observed = await persistence.loadTargetOperationEvidence(
+                        captured.observedEvidenceHash,
+                    );
+                    const applied = chain.evidence.entries
+                        .filter((entry) => entry.outcome === "applied")
+                        .map((entry) => entry.changeId);
+                    if (
+                        !this.targetOperationBefore(pending, chain.root) ||
+                        !validAppliedObservation(pending, chain.evidence, observed) ||
+                        !applied.length ||
+                        !sameTargetSet(applied, pending.completion.appliedChangeIds)
+                    ) {
+                        state.pendingTargetOperation = { ...pending, phase: "reviewRequired" };
+                        return;
+                    }
+                    try {
+                        const publication = this.targetShelfRequest(pending);
+                        const manifest =
+                            pending.phase === "shelfPublished"
+                                ? await shelfStore.readTargetOperationReceipt(publication)
+                                : await shelfStore.publishTargetOperation(publication);
+                        // A successful callback is not proof: read the actual durable terminal receipt.
+                        const receipt = await shelfStore.readTargetOperationReceipt(publication);
+                        if (
+                            manifest.generation !== receipt.generation ||
+                            manifest.checksum !== receipt.checksum ||
+                            (pending.phase === "shelfPublished" &&
+                                (pending.completion.publishedGeneration !== receipt.generation ||
+                                    pending.completion.publishedChecksum !== receipt.checksum))
+                        ) {
+                            state.pendingTargetOperation = { ...pending, phase: "reviewRequired" };
+                            return;
+                        }
+                        state.pendingTargetOperation = {
+                            ...pending,
+                            phase: "shelfPublished",
+                            completion: {
+                                ...pending.completion,
+                                shelfPublication: "published",
+                                publishedGeneration: receipt.generation,
+                                publishedChecksum: receipt.checksum,
+                            },
+                        };
+                    } catch (error) {
+                        if (!shelfPublicationRequiresReview(error)) throw error;
+                        state.pendingTargetOperation = { ...pending, phase: "reviewRequired" };
+                    }
+                },
+                true,
+                undefined,
+                lease,
+            ),
+        );
+    }
+
+    /** Bind the concrete store to the canonical metadata worktree, never caller-provided path labels. */
+    private async assertTargetShelfRepository(root: string, shelfStore: ShelfStore): Promise<void> {
+        const paths = await resolveShelfPaths({
+            repositoryRoot: this.durable.get(root)!.root,
+            globalStoragePath: root,
+        });
+        if (shelfStore.repositoryId !== paths.repoId)
+            throw new Error("Shelf store belongs to another repository.");
+    }
+
+    /** Derives publication authority solely from durable intent and the frozen completion set. */
+    private targetShelfRequest(pending: TargetOperationRecord): ShelfTargetPublicationRequest {
+        if (!pending.shelf || !pending.completion)
+            throw new Error("Missing target shelf completion.");
+        return {
+            targetOperationId: pending.id,
+            shelfId: pending.shelf.id,
+            sourceGeneration: pending.shelf.generation,
+            sourceChecksum: pending.shelf.checksum,
+            appliedChangeIds: pending.completion.appliedChangeIds,
+        };
+    }
+
+    /** Publish a terminal receipt with pending clear only while actual shelf evidence remains locked and verified. */
+    async finishTargetOperation(
+        lease: TargetOperationLease,
+        request: TargetOperationObservation,
+        shelfStore?: ShelfStore,
+    ): Promise<ChangelistState> {
+        const root = this.targetOperationRoot(lease);
+        const captured = structuredClone(request);
+        if (shelfStore) await this.assertTargetShelfRepository(root, shelfStore);
+        const finish = () =>
+            this.write(
+                root,
+                captured.revision,
+                async (state) => {
+                    if (
+                        !state.pendingTargetOperation &&
+                        state.targetOperationReceipts?.[captured.id]
+                    )
+                        return;
+                    const pending = requireTargetOperation(state, captured);
+                    const persistence = this.durable.get(root)!;
+                    const chain = await persistence.loadTargetOperationEvidenceChain(
+                        pending.evidenceHash,
+                    );
+                    const before = this.targetOperationBefore(pending, chain.root);
+                    const observed = await persistence.loadTargetOperationEvidence(
+                        captured.observedEvidenceHash,
+                    );
+                    const applied = chain.evidence.entries
+                        .filter((entry) => entry.outcome === "applied")
+                        .map((entry) => entry.changeId);
+                    let outcome: "notApplied" | "applied";
+                    if (
+                        pending.phase === "prepared" ||
+                        (pending.phase === "gitApplied" && !applied.length)
+                    ) {
+                        if (
+                            !before ||
+                            !sameTargetObservation(before, observed) ||
+                            !sameTargetObservation(before, chain.evidence)
+                        ) {
+                            state.pendingTargetOperation = { ...pending, phase: "reviewRequired" };
+                            return;
+                        }
+                        outcome = "notApplied";
+                    } else {
+                        if (!pending.completion)
+                            throw new Error("Target completion requires published ownership.");
+                        assertTargetShelfCheckpoint(pending, shelfStore);
+                        if (
+                            !before ||
+                            !validAppliedObservation(pending, chain.evidence, observed) ||
+                            (!shelfStore && !sameTargetShelf(pending, captured.shelf)) ||
+                            (!pending.shelf?.removeFromShelf &&
+                                pending.completion.shelfPublication !== "notRequired") ||
+                            !applied.length ||
+                            !sameTargetSet(applied, pending.completion.appliedChangeIds)
+                        ) {
+                            state.pendingTargetOperation = { ...pending, phase: "reviewRequired" };
+                            return;
+                        }
+                        outcome = "applied";
+                    }
+                    if (
+                        shelfStore &&
+                        !(await this.matchesTargetCompletionShelf(pending, outcome, shelfStore))
+                    ) {
+                        state.pendingTargetOperation = { ...pending, phase: "reviewRequired" };
+                        return;
+                    }
+                    if (outcome === "notApplied")
+                        this.removeUnchangedTargetDestination(state, pending);
+                    state.targetOperationReceipts ??= {};
+                    state.targetOperationReceipts[pending.id] = {
+                        version: 1,
+                        id: pending.id,
+                        requestHash: pending.requestHash,
+                        outcome,
+                        ...retainedReceiptEvidence(pending),
+                    };
+                    delete state.pendingTargetOperation;
+                },
+                true,
+                undefined,
+                lease,
+            );
+        return shelfStore ? shelfStore.withLock(finish) : finish();
+    }
+
+    /**
+     * Closes a prepared Undo Commit as stale when Git refused its HEAD move because another process
+     * moved HEAD first. Only a moved HEAD with every other observation unchanged closes; anything
+     * else goes to review.
+     */
+    async closeStaleTargetOperation(
+        lease: TargetOperationLease,
+        request: TargetOperationObservation,
+    ): Promise<ChangelistState> {
+        const root = this.targetOperationRoot(lease);
+        const captured = structuredClone(request);
+        return this.write(
+            root,
+            captured.revision,
+            async (state) => {
+                if (!state.pendingTargetOperation && state.targetOperationReceipts?.[captured.id])
+                    return;
+                const pending = requireTargetOperation(state, captured);
+                const persistence = this.durable.get(root)!;
+                const chain = await persistence.loadTargetOperationEvidenceChain(
+                    pending.evidenceHash,
+                );
+                const before = this.targetOperationBefore(pending, chain.root);
+                const observed = await persistence.loadTargetOperationEvidence(
+                    captured.observedEvidenceHash,
+                );
+                if (
+                    pending.kind !== "undoCommit" ||
+                    pending.phase !== "prepared" ||
+                    !before ||
+                    observed.head === before.head ||
+                    !sameTargetObservation(before, { ...observed, head: before.head }) ||
+                    !sameTargetObservation(before, chain.evidence)
+                ) {
+                    state.pendingTargetOperation = { ...pending, phase: "reviewRequired" };
+                    return;
+                }
+                this.removeUnchangedTargetDestination(state, pending);
+                state.targetOperationReceipts ??= {};
+                state.targetOperationReceipts[pending.id] = {
+                    version: 1,
+                    id: pending.id,
+                    requestHash: pending.requestHash,
+                    outcome: "stale",
+                    ...retainedReceiptEvidence(pending),
+                };
+                delete state.pendingTargetOperation;
+            },
+            true,
+            undefined,
+            lease,
+        );
+    }
+
+    /** Reads concrete storage while its lock is held; missing/corrupt evidence preserves pending for review. */
+    private async matchesTargetCompletionShelf(
+        pending: TargetOperationRecord,
+        outcome: "applied" | "notApplied",
+        shelfStore: ShelfStore,
+    ): Promise<boolean> {
+        if (!pending.shelf) return true;
+        try {
+            if (outcome === "applied" && pending.shelf.removeFromShelf) {
+                const receipt = await shelfStore.readTargetOperationReceipt(
+                    this.targetShelfRequest(pending),
+                );
+                return (
+                    receipt.generation === pending.completion!.publishedGeneration &&
+                    receipt.checksum === pending.completion!.publishedChecksum
+                );
+            }
+            const source = await shelfStore.readCurrentShelfManifest(pending.shelf.id);
+            return (
+                source.generation === pending.shelf.generation &&
+                source.checksum === pending.shelf.checksum
+            );
+        } catch (error) {
+            if (!shelfPublicationRequiresReview(error)) throw error;
+            return false;
+        }
+    }
+
+    /** Recover metadata only: never repeat Git, overwrite a later draft, or infer shelf publication from phase text. */
+    async recoverTargetOperation(
+        lease: TargetOperationLease,
+        request: TargetOperationObservation,
+        shelfStore?: ShelfStore,
+    ): Promise<ChangelistState> {
+        const root = this.targetOperationRoot(lease);
+        const captured = structuredClone(request);
+        if (shelfStore) await this.assertTargetShelfRepository(root, shelfStore);
+        let current = await this.write(
+            root,
+            captured.revision,
+            (state) => {
+                if (!state.pendingTargetOperation && state.targetOperationReceipts?.[captured.id])
+                    return;
+                requireTargetOperation(state, captured);
+            },
+            true,
+            undefined,
+            lease,
+        );
+        let pending = current.pendingTargetOperation;
+        if (!pending || pending.phase === "prepared")
+            return this.finishTargetOperation(lease, captured, shelfStore);
+        if (pending.phase === "gitApplied") {
+            const saved = await this.durable
+                .get(root)!
+                .loadTargetOperationEvidence(pending.evidenceHash);
+            if (!saved.entries.some((entry) => entry.outcome === "applied"))
+                return this.finishTargetOperation(lease, captured, shelfStore);
+            current = await this.publishTargetOwnership(lease, captured);
+            pending = current.pendingTargetOperation!;
+        }
+        if (
+            pending.phase === "ownershipPublished" &&
+            pending.shelf?.removeFromShelf &&
+            shelfStore
+        ) {
+            current = await this.publishTargetShelf(
+                lease,
+                { ...captured, revision: current.revision, expectedPhase: pending.phase },
+                shelfStore,
+            );
+            pending = current.pendingTargetOperation!;
+        }
+        if (
+            pending.completion &&
+            (pending.phase === "ownershipPublished" || pending.phase === "shelfPublished") &&
+            (!pending.shelf?.removeFromShelf || shelfStore)
+        )
+            return this.finishTargetOperation(
+                lease,
+                { ...captured, revision: current.revision, expectedPhase: pending.phase },
+                shelfStore,
+            );
+        return current;
+    }
+
+    /** Bind native recovery to this exact live metadata lease, root, operation and revision. */
+    readTargetOperationRecovery(
+        lease: TargetOperationLease,
+        root: string,
+        expected: TargetOperationExpectedState,
+    ): ChangelistState {
+        if (this.targetOperationRoot(lease) !== root)
+            throw new Error("Recovery lease root changed.");
+        const state = this.get(root);
+        if (state.revision !== expected.revision) throw new ChangelistRevisionError();
+        const pending = requireTargetOperation(state, expected);
+        if (!["cherryPick", "revert"].includes(pending.kind) || pending.completion)
+            throw new Error("Native abort is unavailable after ownership publication.");
+        return state;
+    }
+
+    /** Publish only forward abort evidence; ordinary application checkpoints cannot enter this path. */
+    async checkpointTargetAbort(
+        lease: TargetOperationLease,
+        request: TargetOperationExpectedState & { readonly evidenceHash: string },
+    ): Promise<ChangelistState> {
+        const root = this.targetOperationRoot(lease);
+        const expected = structuredClone(request);
+        this.readTargetOperationRecovery(lease, root, expected);
+        return this.write(
+            root,
+            expected.revision,
+            async (state) => {
+                const pending = requireTargetOperation(state, expected);
+                const persistence = this.durable.get(root)!;
+                const chain = await persistence.loadTargetOperationEvidenceChain(
+                    expected.evidenceHash,
+                );
+                const next = chain.evidence;
+                const before = this.targetOperationBefore(pending, chain.root);
+                const previous = await persistence.loadTargetOperationEvidence(
+                    pending.evidenceHash,
+                );
+                const allowed: Record<string, readonly string[]> = {
+                    after: ["abortPrepared"],
+                    abortPrepared: ["abortPath", "abortPathsRestored"],
+                    abortPath: ["abortPath", "abortPathsRestored"],
+                    abortPathsRestored: ["abortIndexPrepared"],
+                    abortIndexPrepared: ["abortIndexPrepared", "abortIndexRestored"],
+                    abortIndexRestored: ["abortNativeCleared"],
+                };
+                if (
+                    !before ||
+                    pending.completion ||
+                    !["cherryPick", "revert"].includes(pending.kind) ||
+                    !allowed[previous.checkpoint]?.includes(next.checkpoint) ||
+                    next.previousEvidenceHash !== pending.evidenceHash ||
+                    next.operationId !== pending.id ||
+                    next.head !== pending.headBefore ||
+                    !sameTargetSet(
+                        before.paths.map((entry) => entry.path),
+                        next.paths.map((entry) => entry.path),
+                    ) ||
+                    !isDeepStrictEqual(previous.entries, next.entries) ||
+                    next.abortPaths?.some(
+                        (entry) =>
+                            !isDeepStrictEqual(
+                                entry.desiredBefore,
+                                before.paths.find((saved) => saved.path === entry.path)?.state,
+                            ),
+                    ) ||
+                    (previous.abortPaths &&
+                        next.abortPaths?.some((entry) => {
+                            const old = previous.abortPaths!.find(
+                                (saved) => saved.path === entry.path,
+                            );
+                            return (
+                                !old ||
+                                old.recoveryPath !== entry.recoveryPath ||
+                                !isDeepStrictEqual(old.expectedCurrent, entry.expectedCurrent) ||
+                                (old.move.state === "moved" &&
+                                    !isDeepStrictEqual(old.move, entry.move)) ||
+                                (old.install.state === "installed" &&
+                                    !isDeepStrictEqual(old.install, entry.install))
+                            );
+                        }))
+                )
+                    throw new Error("Native abort checkpoint evidence changed.");
+                if (
+                    next.checkpoint === "abortPrepared" &&
+                    next.abortPaths?.some(
+                        (entry) =>
+                            !isDeepStrictEqual(
+                                entry.expectedCurrent,
+                                previous.paths.find((saved) => saved.path === entry.path)?.state,
+                            ),
+                    )
+                )
+                    throw new Error("Native abort review changed.");
+                const phase =
+                    next.checkpoint === "abortPath"
+                        ? "abortPrepared"
+                        : next.checkpoint === "abortIndexPrepared"
+                          ? "abortPathsRestored"
+                          : next.checkpoint;
+                const record = parseTargetOperationRecord({
+                    ...pending,
+                    phase,
+                    evidenceHash: expected.evidenceHash,
+                });
+                if (!record) throw new Error("Invalid native abort phase.");
+                state.pendingTargetOperation = record;
+            },
+            true,
+            undefined,
+            lease,
+        );
+    }
+
+    /** Clear pending and write the aborted receipt atomically only after exact restoration and cleanup. */
+    async finishTargetAbort(
+        lease: TargetOperationLease,
+        expected: TargetOperationExpectedState,
+    ): Promise<ChangelistState> {
+        const root = this.targetOperationRoot(lease);
+        this.readTargetOperationRecovery(lease, root, expected);
+        return this.write(
+            root,
+            expected.revision,
+            async (state) => {
+                const pending = requireTargetOperation(state, expected);
+                const chain = await this.durable
+                    .get(root)!
+                    .loadTargetOperationEvidenceChain(pending.evidenceHash);
+                const evidence = chain.evidence;
+                const before = this.targetOperationBefore(pending, chain.root);
+                if (
+                    !before ||
+                    pending.phase !== "abortNativeCleared" ||
+                    evidence.checkpoint !== "abortNativeCleared" ||
+                    pending.completion ||
+                    evidence.head !== before.head ||
+                    evidence.native.some((entry) => entry.present) ||
+                    !isDeepStrictEqual(evidence.index, before.index) ||
+                    evidence.abortPaths?.some(
+                        (entry) =>
+                            entry.install.state !== "installed" ||
+                            !isDeepStrictEqual(
+                                entry.install.observed,
+                                evidence.paths.find((saved) => saved.path === entry.path)?.state,
+                            ),
+                    )
+                )
+                    throw new Error("Native abort is not durably complete.");
+                this.removeUnchangedTargetDestination(state, pending);
+                state.targetOperationReceipts ??= {};
+                state.targetOperationReceipts[pending.id] = {
+                    version: 1,
+                    id: pending.id,
+                    requestHash: pending.requestHash,
+                    outcome: "aborted",
+                    ...retainedReceiptEvidence(pending),
+                };
+                delete state.pendingTargetOperation;
+            },
+            true,
+            undefined,
+            lease,
+        );
+    }
+
+    /** Cleanup is limited to an unchanged, inactive, unused list created by this operation. */
+    private removeUnchangedTargetDestination(
+        state: ChangelistState,
+        pending: TargetOperationRecord,
+    ): void {
+        const id = pending.destinationId;
+        if (
+            !pending.createdDestination ||
+            !pending.destinationCreation ||
+            state.activeId === id ||
+            !isDeepStrictEqual(
+                state.lists.find((list) => list.id === id),
+                { id, ...pending.destinationCreation },
+            ) ||
+            Object.values(state.files).includes(id) ||
+            Object.values(state.changes).some(
+                (change) =>
+                    Object.values(change.lines).includes(id) ||
+                    Object.hasOwn(change.selections ?? {}, id) ||
+                    change.history?.some((history) => Object.values(history.lines).includes(id)),
+            )
+        )
+            return;
+        state.lists = state.lists.filter((list) => list.id !== id);
+    }
+
+    /** A before reference is authoritative only when it is the root of this retained operation chain. */
+    private targetOperationBefore(
+        pending: TargetOperationRecord,
+        validated: TargetOperationEvidenceChain["root"],
+    ): TargetOperationEvidence | undefined {
+        const { hash, evidence: current } = validated;
+        if (hash !== pending.beforeEvidenceHash) return undefined;
+        assertPreparedEvidence(pending, current);
+        return current;
+    }
+
+    /** Preserve intent and evidence when an uncertain mutation requires explicit review. */
+    async markTargetOperationReview(
+        lease: TargetOperationLease,
+        expected: TargetOperationExpectedState,
+    ): Promise<ChangelistState> {
+        const root = this.targetOperationRoot(lease);
+        const captured = structuredClone(expected);
+        return this.write(
+            root,
+            captured.revision,
+            (state) => {
+                const pending = requireTargetOperation(state, captured);
+                const next = parseTargetOperationRecord({ ...pending, phase: "reviewRequired" });
+                if (!next) throw new Error("This operation phase requires completion review.");
+                state.pendingTargetOperation = next;
+            },
+            true,
+            undefined,
+            lease,
+        );
+    }
+
+    /** Returns authoritative cloned metadata only for this store's live lease and exact root. */
+    inspectTargetOperationLease(root: string, lease: TargetOperationLease): ChangelistState {
+        if (this.targetOperationRoot(lease) !== root)
+            throw new Error("The metadata lease belongs to another repository.");
+        return this.get(root);
+    }
+
+    /** Hydrates only captured paths under a live metadata lease, rejecting concurrent revision changes. */
+    async readTargetOperationOwnership(
+        root: string,
+        lease: TargetOperationLease,
+        paths: readonly string[],
+    ): Promise<Readonly<Record<string, HydratedChangeOwnership | undefined>>> {
+        const state = this.inspectTargetOperationLease(root, lease);
+        const entries = await Promise.all(
+            paths.map(async (file) => {
+                const safe = assertRepoRelativePath(file);
+                return [safe, await this.hydrate(root, safe, state.changes[safe])] as const;
+            }),
+        );
+        if (this.inspectTargetOperationLease(root, lease).revision !== state.revision)
+            throw new ChangelistRevisionError();
+        return structuredClone(Object.fromEntries(entries));
+    }
+
+    /** An opaque handle authorizes only its owning store/root while still open. */
+    private targetOperationRoot(lease: TargetOperationLease): string {
+        for (const [root, active] of this.targetLeases)
+            if (active.handle === lease && !active.closing) return root;
+        throw new Error("The target operation metadata lease is invalid or released.");
+    }
+
+    /** Only a validated operation handle or the existing commit lease can avoid reacquiring metadata. */
+    private async acquireWriteLease(
+        root: string,
+        persistence: ChangelistPersistence | undefined,
+        targetLease: TargetOperationLease | undefined,
+    ): Promise<(() => Promise<void>) | undefined> {
+        const active = this.targetLeases.get(root);
+        if (targetLease ? active?.handle !== targetLease : active !== undefined)
+            throw new TargetOperationLeaseHeldError();
+        if (this.commitLeases.has(root) || targetLease) return undefined;
+        return persistence?.acquire();
+    }
+
+    /**
+     * Assigns new files and prunes consumed records, retaining clean history for stash/undo
+     * restoration. With `observed`, only a record still owned as observed is pruned, so another
+     * window's newer assignment survives an older pass.
+     */
+    async reconcileFiles(
+        root: string,
+        paths: readonly string[],
+        epoch?: number,
+        observed?: ReadonlyMap<string, string>,
+    ): Promise<ChangelistState> {
+        this.admitObserver(root, epoch);
         if (paths.length > MAX_FILES) throw new Error("Too many changelist files.");
         const safe = [...new Set(paths.map(assertRepoRelativePath))];
         if (safe.length > MAX_FILES) throw new Error("Too many changelist files.");
@@ -366,16 +2010,13 @@ export class ChangelistStore {
                     const change = state.changes[file];
                     const consumed =
                         change &&
-                        !change.stale &&
-                        change.totalChanges === 0 &&
-                        Object.keys(change.lines).length === 0 &&
-                        Object.keys(change.selections ?? {}).length === 0 &&
-                        !change.history?.some(
-                            ({ snapshot }) =>
-                                snapshot.baseHash === change.tracking?.baseHash &&
-                                snapshot.anchorCount > 0,
-                        );
-                    if (!current.has(file) && (!change || consumed)) {
+                        ownsNoLiveChange(change) &&
+                        Object.keys(change.selections ?? {}).length === 0;
+                    if (
+                        !current.has(file) &&
+                        (!change || consumed) &&
+                        (!observed || observed.get(file) === state.files[file])
+                    ) {
                         delete state.files[file];
                         delete state.changes[file];
                     }
@@ -517,7 +2158,7 @@ export class ChangelistStore {
         );
     }
 
-    /** Compare-and-swap prevents a delayed pane, native edit or AI result overwriting newer text. */
+    /** Compare-and-swap protects later drafts; a pending operation permits guarded edits only after ownership publication. */
     saveDraft(
         root: string,
         scope: string,
@@ -526,16 +2167,22 @@ export class ChangelistStore {
     ): Promise<ChangelistState> {
         if (text.length > MAX_DRAFT)
             return Promise.reject(new Error("The commit draft is too long."));
-        return this.write(root, undefined, (state) => {
-            const list = scope === "all" ? undefined : requireList(state, scope);
-            const previous = list ? (list.draft ?? "") : (state.allDraft ?? "");
-            if (expected !== undefined && previous !== expected)
-                throw new Error(
-                    "The commit draft changed. Review the latest text before retrying.",
-                );
-            if (list) list.draft = text;
-            else state.allDraft = text;
-        });
+        return this.write(
+            root,
+            undefined,
+            (state) => {
+                const list = scope === "all" ? undefined : requireList(state, scope);
+                const previous = list ? (list.draft ?? "") : (state.allDraft ?? "");
+                if (expected !== undefined && previous !== expected)
+                    throw new Error(
+                        "The commit draft changed. Review the latest text before retrying.",
+                    );
+                if (list) list.draft = text;
+                else state.allDraft = text;
+            },
+            true,
+            expected !== undefined ? "draft" : undefined,
+        );
     }
 
     /** Removes metadata only, remapping every owner and fencing ambiguous inclusion atomically. */
@@ -811,12 +2458,15 @@ export class ChangelistStore {
         );
     }
 
-    /** Serializes host-local mutations, checks revisions and commit leases, and publishes only after durable storage and migration backup succeed. */
+    /** Serializes lease-protected writes; pending target operations fence every observer and mutation except guarded post-ownership drafts. */
     private async write(
         root: string,
         revision: number | undefined,
-        mutate: (state: ChangelistState) => void | Promise<void>,
+        // A mutation that knows whether it changed anything returns it; the rest are compared whole.
+        mutate: (state: ChangelistState) => void | boolean | Promise<void | boolean>,
         userMutation = true,
+        pendingWrite?: "draft",
+        targetLease?: TargetOperationLease,
     ): Promise<ChangelistState> {
         const operation = this.writes
             .catch(() => undefined)
@@ -829,14 +2479,13 @@ export class ChangelistStore {
                     throw new Error(
                         "Changelist metadata requires a connected worktree before writing.",
                     );
-                const release = this.commitLeases.has(root)
-                    ? undefined
-                    : await persistence?.acquire();
+                const release = await this.acquireWriteLease(root, persistence, targetLease);
                 try {
                     const before = this.get(root);
                     if (revision !== undefined && revision !== before.revision) {
                         throw new ChangelistRevisionError();
                     }
+                    if (!targetLease) assertTargetOperationWriteAllowed(before, pendingWrite);
                     const next = structuredClone(before);
                     next.files = Object.assign(Object.create(null), next.files) as Record<
                         string,
@@ -846,9 +2495,11 @@ export class ChangelistStore {
                         string,
                         ChangeOwnership
                     >;
-                    await mutate(next);
+                    const changed = await mutate(next);
                     if (
-                        JSON.stringify(before) === JSON.stringify(next) &&
+                        (changed === false ||
+                            (changed === undefined &&
+                                JSON.stringify(before) === JSON.stringify(next))) &&
                         this.migrationSource === undefined &&
                         this.roots.has(root)
                     )
@@ -911,7 +2562,7 @@ export class ChangelistStore {
         if (backup === undefined) await this.storage?.update(BACKUP_KEY, this.migrationSource);
     }
 
-    /** Only known committed identities are consumed; unmatched remaining groups require review. */
+    /** Consumes known completed identities; an optional live lease permits selected removal reconciliation, never a pending target operation. */
     consumeCommitted(
         root: string,
         file: string,
@@ -921,12 +2572,16 @@ export class ChangelistStore {
         available: ReadonlySet<string>,
         total: number,
         snapshot?: RangeSnapshot,
+        lease?: TargetOperationLease,
     ): Promise<ChangelistState> {
         const safe = assertRepoRelativePath(file);
+        if (lease) this.inspectTargetOperationLease(root, lease);
         return this.write(
             root,
             undefined,
             async (state) => {
+                if (lease && state.pendingTargetOperation)
+                    throw new Error("A pending target operation prevents selected consumption.");
                 const previous = snapshot
                     ? await this.compact(
                           root,
@@ -958,6 +2613,8 @@ export class ChangelistStore {
                 };
             },
             false,
+            undefined,
+            lease,
         );
     }
 
@@ -1072,12 +2729,10 @@ export class ChangelistStore {
             ...(tracking ? { tracking: await save(tracking) } : {}),
             ...(history
                 ? {
-                      history: await Promise.all(
-                          history.map(async (entry) => ({
-                              snapshot: await save(entry.snapshot),
-                              lines: entry.lines,
-                          })),
-                      ),
+                      history: await mapDrained(history, history.length, async (entry) => ({
+                          snapshot: await save(entry.snapshot),
+                          lines: entry.lines,
+                      })),
                   }
                 : {}),
         };
@@ -1131,9 +2786,16 @@ export class ChangelistStore {
         state: HydratedChangelistState,
         persistence: ChangelistPersistence,
     ): Promise<ChangelistState> {
+        const entries = Object.entries(state.changes);
+        const compacted = await persistence.storeSnapshotBatch(() =>
+            mapDrained(entries, MIGRATION_CONCURRENCY, ([file, ownership]) =>
+                this.compact(root, file, ownership, persistence),
+            ),
+        );
         const changes = Object.create(null) as Record<string, ChangeOwnership>;
-        for (const [file, ownership] of Object.entries(state.changes))
-            changes[file] = await this.compact(root, file, ownership, persistence);
+        entries.forEach(([file], index) => {
+            changes[file] = compacted[index];
+        });
         return { ...state, changes };
     }
 
@@ -1239,7 +2901,8 @@ function validStateHeader(state: ChangelistState | HydratedChangelistState): boo
         state.lists.length > 0 &&
         state.lists.length <= MAX_LISTS &&
         metadataRecord(state.files) !== undefined &&
-        metadataRecord(state.changes) !== undefined
+        metadataRecord(state.changes) !== undefined &&
+        validTargetOperationMetadata(state)
     );
 }
 
@@ -1366,6 +3029,24 @@ function validRedirects(value: unknown, ids: ReadonlySet<string>): boolean {
                 ids.has(to),
         )
     );
+}
+
+/** Host-only operation state is exact, internally consistent and never accepts a public projection. */
+function validTargetOperationMetadata(state: ChangelistState | HydratedChangelistState): boolean {
+    if (state.targetOperationSummary !== undefined) return false;
+    const pending =
+        state.pendingTargetOperation === undefined
+            ? undefined
+            : parseTargetOperationRecord(state.pendingTargetOperation);
+    if (state.pendingTargetOperation !== undefined && !pending) return false;
+    if (state.targetOperationReceipts === undefined) return true;
+    const receipts = metadataRecord(state.targetOperationReceipts);
+    if (!receipts) return false;
+    for (const [id, value] of Object.entries(receipts)) {
+        const receipt = parseTargetOperationReceipt(value);
+        if (!receipt || receipt.id !== id || pending?.id === id) return false;
+    }
+    return true;
 }
 
 /** Creation-with-move and existing-list moves share the same atomic safety checks. */

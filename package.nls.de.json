@@ -38,6 +38,7 @@
     "command.rollback": "Rückgängigmachen",
     "command.jumpToSource": "Zum Quelltext springen",
     "command.stashChanges": "Stash-Änderungen",
+    "command.fileSaveToShelf": "Ganze Datei in Ablage speichern",
     "command.compareWithRevision": "Mit Revision vergleichen",
     "command.compareWithBranch": "Mit Branch oder Tag vergleichen",
     "command.compareWithLocal": "Mit lokaler Version vergleichen",
@@ -121,5 +122,8 @@
     "configuration.updateStrategy.markdownDescription": "Legt fest, wie die manuell ausgeführten Aktionen Pull und Aktualisieren auf dem aktuellen Branch eingehende Commits integrieren. Gilt für Repositories ohne und mit lokalen Änderungen. Konfigurieren Sie die Einstellung pro Arbeitsbereichsordner, um für verschiedene Repositories unterschiedliche Strategien zu verwenden. Synchronisieren und Aktualisieren auf anderen Branches behalten ihr bisheriges Verhalten bei.",
     "configuration.updateStrategy.rebase.description": "Wendet lokale Commits erneut auf die eingehenden Commits an, um einen linearen Verlauf beizubehalten.",
     "configuration.updateStrategy.merge.description": "Behält vorhandene Commits bei und erstellt bei auseinanderlaufenden Verläufen einen Merge-Commit; führt nach Möglichkeit einen Fast-Forward aus.",
-    "command.openPartialChanges": "Teiländerungen öffnen"
+    "command.openPartialChanges": "Teiländerungen öffnen",
+    "command.shelf.applyPatchToChangelist": "Patch auf Änderungsliste anwenden…",
+    "command.completeTargetedHistory": "Nicht committete Verlaufsaktion abschließen",
+    "command.discardTargetedHistory": "Nicht committete Verlaufsaktion verwerfen"
 }

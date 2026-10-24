@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, realpath, symlink } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -62,6 +63,61 @@ function twoHunkPatch(): Buffer {
 }
 
 describe("shelf import validation", () => {
+    it("accepts default Git quoted Unicode unified headers including spaces", async () => {
+        const directory = await temporaryDirectory();
+        const file = "第二 α file.txt";
+        await mkdir(path.join(directory, "a"));
+        await mkdir(path.join(directory, "b"));
+        await writeFile(path.join(directory, "a", file), "before\n");
+        await writeFile(path.join(directory, "b", file), "after\n");
+        let patch = Buffer.alloc(0);
+        try {
+            execFileSync(
+                "git",
+                [
+                    "-c",
+                    "core.quotePath=true",
+                    "diff",
+                    "--no-index",
+                    "--no-prefix",
+                    "--",
+                    `a/${file}`,
+                    `b/${file}`,
+                ],
+                { cwd: directory },
+            );
+        } catch (error) {
+            expect((error as { status: number }).status).toBe(1);
+            patch = (error as { stdout: Buffer }).stdout;
+        }
+        expect(patch.toString()).toContain('--- "a/');
+        expect(validateImportedPatch(patch).files[0].path).toBe(file);
+    });
+
+    it("preserves unquoted spaces and quoted timestamp boundaries", () => {
+        for (const [source, destination] of [
+            ["a/a file.txt\t2026-01-01", "b/a file.txt\t2026-01-01"],
+            ['"a/a file.txt"\t2026-01-01', '"b/a file.txt"\t2026-01-01'],
+        ]) {
+            const patch = Buffer.from(
+                `--- ${source}\n+++ ${destination}\n@@ -1 +1 @@\n-before\n+after\n`,
+            );
+            expect(validateImportedPatch(patch).files[0].path).toBe("a file.txt");
+        }
+    });
+
+    it.each([
+        '"a/file.txt',
+        '"a/file.txt" extra',
+        '"a/file.txt"suffix',
+        '"a/\\056\\056/outside"',
+        '"/absolute.txt"',
+        '"a/\\000file"',
+    ])("rejects malformed or unsafe quoted unified pathname %s", (source) => {
+        const patch = Buffer.from(`--- ${source}\n+++ b/file.txt\n@@ -1 +1 @@\n-before\n+after\n`);
+        expect(() => validateImportedPatch(patch)).toThrow(ShelfImportValidationError);
+    });
+
     it("accepts Git patch names only after strip-level normalization", async () => {
         const patch = textPatch("src/file.txt");
 

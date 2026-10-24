@@ -84,6 +84,7 @@ describe("Phase-1 shelf capture primitives", () => {
             globalStoragePath: path.join(repositoryRoot, "shelf-storage"),
         });
         const store = new ShelfStore(paths);
+        await store.withLock(() => store.migrateWithHeldLocks());
 
         const result = await captureWorktreeRawFidelity({
             materializedBytes: Buffer.from("base\n"),

@@ -1,4 +1,5 @@
 import { isUtf8 } from "node:buffer";
+import { createHash } from "node:crypto";
 import { lstat, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,6 +16,9 @@ const MARKERS = ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge"
 
 /** Known eligibility refusal; unlike an I/O or stale-snapshot failure, whole-file handling is defined. */
 export class PartialChangesUnsupportedError extends Error {}
+
+/** The file, index or branch moved during a capture, as an outside `git status` index rewrite does. */
+export class PartialSnapshotChangedError extends Error {}
 
 /** Host-only fences never travel through a browser message. */
 export interface PartialFileSnapshot {
@@ -99,33 +103,40 @@ export async function readPartialSnapshot(
 ): Promise<PartialFileSnapshot> {
     const file = assertRepoRelativePath(filePath);
     const root = await realpath(requestedRoot);
-    const actualRoot = await realpath(
-        (await executor.run(["rev-parse", "--show-toplevel"])).trim(),
+    // `--path-format` changes only the options after it, so the index path stays relative.
+    const [actualTop, actualGitDir, gitIndexPath, actualCommonDir, head] = await revParse(
+        executor,
+        [
+            "--show-toplevel",
+            "--absolute-git-dir",
+            "--git-path",
+            "index",
+            "--path-format=absolute",
+            "--git-common-dir",
+            "--verify",
+            "HEAD",
+        ],
+        5,
     );
-    if (actualRoot !== root) throw new Error("The repository changed.");
-    const gitDir = await realpath((await executor.run(["rev-parse", "--absolute-git-dir"])).trim());
-    const commonDir = await realpath(
-        (await executor.run(["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim(),
-    );
+    if ((await realpath(actualTop)) !== root) throw new Error("The repository changed.");
+    const gitDir = await realpath(actualGitDir);
+    const commonDir = await realpath(actualCommonDir);
     await assertPartialOperationIdle(gitDir);
-    const head = (await executor.run(["rev-parse", "--verify", "HEAD"])).trim();
     const ref = await readPartialRef(executor);
-    const indexPath = path.resolve(
-        root,
-        (await executor.run(["rev-parse", "--git-path", "index"])).trim(),
-    );
+    const indexPath = path.resolve(root, gitIndexPath);
     const indexHash = changeFingerprint(await readPartialIndex({ gitDir, indexPath }));
+    // `-v` prefixes each stage line with its tag, so one read gives the entry and its flags.
     const index = await executor.run([
         "--literal-pathspecs",
         "ls-files",
         "--stage",
+        "-v",
         "-z",
         "--",
         file,
     ]);
-    const entry = singleBlobEntry(index, file);
-    const flags = await executor.run(["--literal-pathspecs", "ls-files", "-v", "-z", "--", file]);
-    if (flags !== `H ${file}\0`)
+    const entry = singleBlobEntry(index.slice(2), file);
+    if (!index.startsWith("H "))
         throw new PartialChangesUnsupportedError(
             "Sparse and assume-unchanged files require whole-file handling.",
         );
@@ -137,7 +148,7 @@ export async function readPartialSnapshot(
         );
     }
     const base = await readPartialBlob(executor, original[2]);
-    const indexed = await readPartialBlob(executor, entry.oid);
+    const indexed = entry.oid === original[2] ? base : await readPartialBlob(executor, entry.oid);
     const raw = await readPartialWorktree(root, file);
     const attributes = await readAttributes(executor, file);
     const working = await canonicalWorktree(executor, file, raw);
@@ -203,20 +214,29 @@ export async function assertPartialSnapshotCurrent(
         attributes !== snapshot.attributes ||
         (await canonicalWorktree(executor, snapshot.view.path, raw)) !== snapshot.working
     ) {
-        throw new Error(
+        throw new PartialSnapshotChangedError(
             "The file, index or branch changed. Your selection is retained; reopen its changes.",
         );
     }
     if (!verifyRepository) return;
-    const root = await realpath((await executor.run(["rev-parse", "--show-toplevel"])).trim());
-    const gitDir = await realpath((await executor.run(["rev-parse", "--absolute-git-dir"])).trim());
-    const indexPath = path.resolve(
-        root,
-        (await executor.run(["rev-parse", "--git-path", "index"])).trim(),
+    const [top, actualGitDir, gitIndexPath] = await revParse(
+        executor,
+        ["--show-toplevel", "--absolute-git-dir", "--git-path", "index"],
+        3,
     );
+    const root = await realpath(top);
+    const gitDir = await realpath(actualGitDir);
+    const indexPath = path.resolve(root, gitIndexPath);
     if (root !== snapshot.root || gitDir !== snapshot.gitDir || indexPath !== snapshot.indexPath) {
         throw new Error("The repository changed.");
     }
+}
+
+/** Answers several `rev-parse` questions with one Git process, one line per answer. */
+async function revParse(executor: GitExecutor, args: string[], answers: number): Promise<string[]> {
+    const lines = (await executor.run(["rev-parse", ...args])).trim().split("\n");
+    if (lines.length !== answers) throw new Error("The repository changed.");
+    return lines;
 }
 
 /** Detached HEAD is a valid identity; symbolic refs must remain exact. */
@@ -300,12 +320,21 @@ async function canonicalWorktree(
     file: string,
     raw: Buffer,
 ): Promise<string> {
-    const hash = async (args: string[], bytes: Buffer) =>
-        (await executor.runBinary(args, { input: bytes })).stdout.toString("utf8").trim();
-    const clean = await hash(["hash-object", `--path=${file}`, "--stdin"], raw);
-    if (clean === (await hash(["hash-object", "--stdin"], raw))) return raw.toString("utf8");
+    const clean = (
+        await executor.runBinary(["hash-object", `--path=${file}`, "--stdin"], { input: raw })
+    ).stdout
+        .toString("utf8")
+        .trim();
+    // Git hashes unfiltered bytes as `blob <size>\0<bytes>`; the clean hash's length names the
+    // repository's object format, so this equals `git hash-object --stdin` without a process.
+    const unfiltered = (bytes: Buffer) =>
+        createHash(clean.length === 64 ? "sha256" : "sha1")
+            .update(`blob ${bytes.length}\0`)
+            .update(bytes)
+            .digest("hex");
+    if (clean === unfiltered(raw)) return raw.toString("utf8");
     const normalized = Buffer.from(raw.toString("utf8").replace(/\r\n/g, "\n"));
-    if (clean !== (await hash(["hash-object", "--stdin"], normalized))) {
+    if (clean !== unfiltered(normalized)) {
         throw new PartialChangesUnsupportedError(
             "Unsupported clean conversion. Use whole-file handling.",
         );

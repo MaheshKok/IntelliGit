@@ -38,6 +38,7 @@
     "command.rollback": "Cofnij",
     "command.jumpToSource": "Przejdź do źródła",
     "command.stashChanges": "Schowaj zmiany",
+    "command.fileSaveToShelf": "Zapisz cały plik na półce",
     "command.compareWithRevision": "Porównaj z wersją",
     "command.compareWithBranch": "Porównaj z gałęzią lub tagiem",
     "command.compareWithLocal": "Porównaj z lokalnym",
@@ -121,5 +122,8 @@
     "configuration.updateStrategy.markdownDescription": "Wybierz, jak ręcznie uruchamiane działania Pull i Aktualizacja na bieżącej gałęzi integrują przychodzące commity. Dotyczy repozytoriów zarówno bez lokalnych zmian, jak i z nimi. Skonfiguruj to ustawienie osobno dla każdego folderu obszaru roboczego, aby używać różnych strategii w różnych repozytoriach. Synchronizuj oraz Aktualizacja na innych gałęziach zachowują dotychczasowe działanie.",
     "configuration.updateStrategy.rebase.description": "Ponownie nakłada lokalne commity na przychodzące commity, aby zachować liniową historię.",
     "configuration.updateStrategy.merge.description": "Zachowuje istniejące commity i tworzy commit scalający, gdy historie się rozchodzą; wykonuje fast-forward, gdy jest to możliwe.",
-    "command.openPartialChanges": "Otwórz częściowe zmiany"
+    "command.openPartialChanges": "Otwórz częściowe zmiany",
+    "command.shelf.applyPatchToChangelist": "Zastosuj poprawkę do listy zmian…",
+    "command.completeTargetedHistory": "Zakończ niezatwierdzoną akcję historii",
+    "command.discardTargetedHistory": "Odrzuć niezatwierdzoną akcję historii"
 }

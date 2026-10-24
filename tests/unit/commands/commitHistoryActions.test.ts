@@ -49,11 +49,23 @@ vi.mock("../../../src/git/interactiveRebase/range", async (importOriginal) => {
     return { ...actual, loadInteractiveRebaseRange: vi.fn() };
 });
 
+vi.mock("../../../src/commands/changelistTarget", () => ({ pickChangelistTarget: vi.fn() }));
+
+vi.mock("../../../src/commands/targetHistoryActions", async (importOriginal) => {
+    const actual =
+        await importOriginal<typeof import("../../../src/commands/targetHistoryActions")>();
+    return { ...actual, undoCommitRoute: vi.fn() };
+});
+
 import * as vscode from "vscode";
 import {
     interactiveRebaseFromHere,
     squashCommits,
+    undoCommit,
 } from "../../../src/commands/commitHistoryActions";
+import { pickChangelistTarget } from "../../../src/commands/changelistTarget";
+import { undoCommitRoute } from "../../../src/commands/targetHistoryActions";
+import type { TargetHistoryRequest } from "../../../src/git/targetHistoryOperation";
 import type { CommitActionContext } from "../../../src/commands/commitActionContext";
 import {
     getCommitParentHashes,
@@ -671,5 +683,158 @@ describe("squashCommits", () => {
         expect(commands).not.toContainEqual(["stash", "drop", "stash@{2}"]);
         expect(errors).toHaveBeenCalledWith(expect.stringContaining("local changes were restored"));
         expect(errors).toHaveBeenCalledWith(expect.stringContaining("backup was retained"));
+    });
+});
+
+describe("undoCommit", () => {
+    const TARGET = { kind: "existing" as const, id: "default", revision: 3 };
+    const picker = asMock(pickChangelistTarget);
+    const warnings = asMock(vscode.window.showWarningMessage);
+    const routes = asMock(undoCommitRoute);
+
+    /** The fake adapter runs the real prompt callback; the command layer itself must never reset. */
+    function undoContext() {
+        const requests: TargetHistoryRequest[] = [];
+        const run = vi.fn(async (args: readonly string[]) => {
+            if (args[0] === "rev-list") return "1\n";
+            if (args[0] === "rev-parse") return `${HASH_B}\n`;
+            if (args[0] === "log") return "undone message\n";
+            return "";
+        });
+        const applyTargetHistory = vi.fn(
+            async (
+                _root: string,
+                _store: unknown,
+                prompt: (state: unknown) => Promise<TargetHistoryRequest | undefined>,
+            ) => {
+                const request = await prompt({ revision: 3, lists: [] });
+                if (!request) return { status: "cancelled" as const };
+                requests.push(request);
+                return {
+                    status: "handled" as const,
+                    result: { id: request.id, outcome: "applied" as const },
+                };
+            },
+        );
+        const refreshAll = vi.fn(async () => undefined);
+        const context = {
+            validatedHash: HASH_A,
+            short: HASH_A.slice(0, 8),
+            executor: { run },
+            gitOps: { applyTargetHistory },
+            repoRoot: "/repo",
+            changelists: {},
+            refreshAll,
+        } as unknown as CommitActionContext;
+        return { context, requests, run, applyTargetHistory, refreshAll };
+    }
+
+    beforeEach(() => {
+        warnings.mockResolvedValue("Undo");
+        routes.mockResolvedValue({ route: "targeted" });
+    });
+
+    it("declining the confirmation runs no preflight and no reset", async () => {
+        warnings.mockResolvedValue(undefined);
+        const f = undoContext();
+        await undoCommit(f.context);
+        expect(routes, "the plain reset may only run after consent").not.toHaveBeenCalled();
+        expect(f.applyTargetHistory).not.toHaveBeenCalled();
+    });
+
+    it("an undo the targeted rules refuse runs the plain soft reset without a destination prompt", async () => {
+        routes.mockResolvedValue({ route: "plainReset", path: "affected", reason: "localChanges" });
+        const f = undoContext();
+        await undoCommit(f.context);
+        expect(routes).toHaveBeenCalledWith(f.context, { commit: HASH_A, head: HASH_B });
+        expect(picker, "the fallback never offers a destination list").not.toHaveBeenCalled();
+        expect(
+            f.applyTargetHistory,
+            "the fallback never enters the targeted path",
+        ).not.toHaveBeenCalled();
+        expect(notificationsMock.showTimedInformationMessage).toHaveBeenCalledWith(
+            `Undid 1 commit(s) up to ${HASH_A.slice(0, 8)}.`,
+        );
+        expect(
+            f.refreshAll,
+            "the plain undo refreshes views like the previous release",
+        ).toHaveBeenCalledOnce();
+    });
+
+    it("a pending target operation blocks Undo Commit before any destination prompt", async () => {
+        routes.mockResolvedValue({ route: "busy" });
+        const f = undoContext();
+        await undoCommit(f.context);
+        expect(picker, "a busy undo never offers a destination list").not.toHaveBeenCalled();
+        expect(f.applyTargetHistory).not.toHaveBeenCalled();
+        expect(warnings, "busy uses the targeted path's message").toHaveBeenLastCalledWith(
+            `Another changelist or Git operation is running. Nothing was applied for ${HASH_A.slice(0, 8)}.`,
+        );
+        expect(notificationsMock.showTimedInformationMessage).not.toHaveBeenCalled();
+    });
+
+    it("a failed preflight reports Undo Commit failed and prompts for nothing", async () => {
+        routes.mockRejectedValue(new Error("capture failed"));
+        const f = undoContext();
+        await undoCommit(f.context);
+        expect(picker).not.toHaveBeenCalled();
+        expect(errors).toHaveBeenCalledWith("Undo Commit failed: capture failed");
+        expect(f.refreshAll).toHaveBeenCalledOnce();
+    });
+
+    it("cancel target leaves HEAD and metadata unchanged", async () => {
+        picker.mockResolvedValue(undefined);
+        const f = undoContext();
+        await undoCommit(f.context);
+        expect(f.requests).toHaveLength(0);
+        expect(f.run.mock.calls.filter(([args]) => args[0] === "reset")).toHaveLength(0);
+        expect(f.refreshAll).not.toHaveBeenCalled();
+        expect(notificationsMock.showTimedInformationMessage).not.toHaveBeenCalled();
+    });
+
+    it("undo sends one captured intent and copies the message only when chosen", async () => {
+        picker.mockImplementation(
+            async ({ sourceLists }: { sourceLists: readonly { id: string }[] }) => ({
+                target: TARGET,
+                draftChoice: { kind: "copySource", sourceListId: sourceLists[0].id },
+            }),
+        );
+        const f = undoContext();
+        await undoCommit(f.context);
+        expect(f.requests).toHaveLength(1);
+        expect(f.requests[0], "the undo request carries the captured HEAD and message").toEqual(
+            expect.objectContaining({
+                kind: "undoCommit",
+                commit: HASH_A,
+                head: HASH_B,
+                target: TARGET,
+                sourceDraft: "undone message",
+            }),
+        );
+        const headRead = f.run.mock.calls.findIndex(([args]) => args[0] === "rev-parse");
+        expect(
+            f.run.mock.invocationCallOrder[headRead],
+            "HEAD is read before the confirmation prompt",
+        ).toBeLessThan(warnings.mock.invocationCallOrder[0]);
+        expect(
+            routes.mock.invocationCallOrder[0],
+            "the route is decided after consent and before the destination prompt",
+        ).toBeGreaterThan(warnings.mock.invocationCallOrder[0]);
+        expect(routes.mock.invocationCallOrder[0]).toBeLessThan(picker.mock.invocationCallOrder[0]);
+        expect(
+            f.run.mock.calls.filter(([args]) => args[0] === "reset"),
+            "the command layer never soft-resets itself",
+        ).toHaveLength(0);
+        expect(notificationsMock.showTimedInformationMessage).toHaveBeenCalledWith(
+            `Undid 1 commit(s) up to ${HASH_A.slice(0, 8)}.`,
+        );
+    });
+
+    it("undo without a copy choice sends no draft", async () => {
+        picker.mockResolvedValue({ target: TARGET });
+        const f = undoContext();
+        await undoCommit(f.context);
+        expect(f.requests[0]).not.toHaveProperty("sourceDraft");
+        expect(f.requests[0]).not.toHaveProperty("draftChoice");
     });
 });

@@ -1,3 +1,4 @@
+import type { ChangelistStore } from "../changes/changelistStore";
 import * as vscode from "vscode";
 import { captureWebview } from "../e2e/webviewCapture";
 import { GitOps } from "../git/operations";
@@ -27,6 +28,7 @@ interface MergeConflictSessionLabels {
  * Host-side actions invoked by validated merge-conflict webview messages.
  */
 interface MergeConflictSessionCallbacks {
+    changelists: ChangelistStore;
     onOpenMergeConflict: (filePath: string) => Promise<void>;
     onConflictStateChanged: () => Promise<void>;
 }
@@ -252,10 +254,12 @@ export class MergeConflictSessionPanel {
 
     /** Confirms and aborts this session's active Git operation through its captured facade. */
     private async abortMerge(): Promise<void> {
-        const operation = await this.gitOps.getActiveOperation();
         await abortMergeWithConfirmation({
             gitOps: this.gitOps,
-            operation: operation === "rebase" ? "rebase" : "merge",
+            root: this.repoRoot,
+            changelists: this.callbacks.changelists,
+            operation: async () =>
+                (await this.gitOps.getActiveOperation()) === "rebase" ? "rebase" : "merge",
             onConflictStateChanged: () => this.notifyConflictStateChanged(),
             disposePanel: () => {
                 if (this.isAlive()) this.panel.dispose();

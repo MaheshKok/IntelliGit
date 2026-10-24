@@ -98,13 +98,22 @@ async function captureShelfFiles(
         globalStoragePath: workspace.shelfStorageRoot,
     });
     const entries = await inventoryDirectory({ root: shelfPaths.root });
-    return entries.map((entry) => normalizeShelfEntry(entry, roots));
+    // The repository id hashes the allocated root, and the migration journal seals the raw backup
+    // digest, so both are allocation variance once the backup itself is normalized.
+    const first = entries.map((entry) => normalizeShelfEntry(entry, roots, shelfPaths.repoId));
+    const digests = new Map(entries.map((entry, index) => [entry.digest, first[index]!.digest]));
+    return entries.map((entry) => normalizeShelfEntry(entry, roots, shelfPaths.repoId, digests));
 }
 
-function normalizeShelfEntry(entry: FsEntry, roots: PlaceholderRoots): FsEntry {
+function normalizeShelfEntry(
+    entry: FsEntry,
+    roots: PlaceholderRoots,
+    repoId?: string,
+    digests?: ReadonlyMap<string | null, string | null>,
+): FsEntry {
     const replacements = buildPlaceholderReplacements(roots);
     const relativePath = normalizeShelfToken(entry.relativePath);
-    const text = normalizeShelfText(entry.text, replacements);
+    const text = normalizeShelfText(entry.text, replacements, repoId, digests);
     const symlinkTarget =
         entry.symlinkTarget === null ? null : normalizeShelfText(entry.symlinkTarget, replacements);
     const digest = text !== null && text !== entry.text ? digestText(text) : entry.digest;
@@ -114,10 +123,15 @@ function normalizeShelfEntry(entry: FsEntry, roots: PlaceholderRoots): FsEntry {
 function normalizeShelfText(
     value: string | null,
     replacements: ReturnType<typeof buildPlaceholderReplacements>,
+    repoId?: string,
+    digests?: ReadonlyMap<string | null, string | null>,
 ): string | null {
     if (value === null) return null;
     const normalized = normalizeString(normalizeShelfToken(value), replacements);
-    return normalizeShelfMetadata(normalized);
+    return normalizeShelfMetadata(
+        repoId ? normalized.replaceAll(repoId, "<REPO-ID>") : normalized,
+        digests,
+    );
 }
 
 function normalizeShelfToken(value: string): string {
@@ -176,7 +190,10 @@ function normalizeWorktreePathVariance(
     };
 }
 
-function normalizeShelfMetadata(value: string): string {
+function normalizeShelfMetadata(
+    value: string,
+    digests?: ReadonlyMap<string | null, string | null>,
+): string {
     try {
         const parsed: unknown = JSON.parse(value);
         if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return value;
@@ -184,6 +201,9 @@ function normalizeShelfMetadata(value: string): string {
         const metadata = record.metadata;
         if (metadata !== null && typeof metadata === "object" && !Array.isArray(metadata)) {
             (metadata as Record<string, unknown>).createdAt = 0;
+        }
+        if (typeof record.backupChecksum === "string") {
+            record.backupChecksum = digests?.get(record.backupChecksum) ?? record.backupChecksum;
         }
         if (typeof record.checksum === "string") {
             record.checksum = digestText(JSON.stringify({ ...record, checksum: "" }));

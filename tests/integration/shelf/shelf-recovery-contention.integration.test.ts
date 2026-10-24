@@ -1,3 +1,4 @@
+import { connectedChangelists } from "../../helpers/connectedChangelists";
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -30,6 +31,7 @@ function runCrashWorker(
     repositoryRoot: string,
     storageRoot: string,
 ): Promise<{
+    readonly pid: number;
     readonly code: number | null;
     readonly signal: NodeJS.Signals | null;
     readonly stderr: string;
@@ -49,7 +51,12 @@ function runCrashWorker(
         worker.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
         worker.once("error", reject);
         worker.once("close", (code, signal) =>
-            resolve({ code, signal, stderr: Buffer.concat(stderr).toString("utf8") }),
+            resolve({
+                code,
+                signal,
+                pid: worker.pid ?? 0,
+                stderr: Buffer.concat(stderr).toString("utf8"),
+            }),
         );
     });
 }
@@ -71,7 +78,13 @@ function expectAbruptTermination(outcome: {
     ).toBe(true);
 }
 
-async function expireCrashLocks(repositoryRoot: string, storageRoot: string): Promise<void> {
+async function expireCrashLocks(
+    repositoryRoot: string,
+    storageRoot: string,
+    workerPid: number,
+): Promise<void> {
+    expect(workerPid).toBeGreaterThan(0);
+    expect(() => process.kill(workerPid, 0)).toThrow();
     const commonDir = path.resolve(
         repositoryRoot,
         (await git(repositoryRoot, ["rev-parse", "--git-common-dir"])).toString("utf8").trim(),
@@ -80,6 +93,7 @@ async function expireCrashLocks(repositoryRoot: string, storageRoot: string): Pr
     for (const lockPath of [
         path.join(commonDir, "intelligit", "repo.lock"),
         path.join(shelfPaths.root, ".store-lock", "store.lock"),
+        path.join(await gitDirectory(repositoryRoot), "intelligit", "changelists", "metadata.lock"),
     ]) {
         let serializedOwner: string;
         try {
@@ -93,6 +107,7 @@ async function expireCrashLocks(repositoryRoot: string, storageRoot: string): Pr
             throw error;
         }
         const owner = JSON.parse(serializedOwner) as Record<string, unknown>;
+        expect(owner.pid).toBe(workerPid);
         await writeFile(lockPath, JSON.stringify({ ...owner, heartbeatAt: 0 }));
     }
 }
@@ -105,7 +120,7 @@ describe("ShelfService recovery and real lock contention", () => {
 
         const outcome = await runCrashWorker(fixture.root, fixture.storageRoot);
         expectAbruptTermination(outcome);
-        await expireCrashLocks(fixture.root, fixture.storageRoot);
+        await expireCrashLocks(fixture.root, fixture.storageRoot, outcome.pid);
         const restarted = await createSecondService(fixture.root, fixture.storageRoot);
         await expect(restarted.service.resumePendingRecovery()).resolves.toMatchObject({
             rolledBackIds: [expect.any(String)],
@@ -123,7 +138,7 @@ describe("ShelfService recovery and real lock contention", () => {
         await writeFile(path.join(fixture.root, "tracked.txt"), "shelved bytes\n");
         const outcome = await runCrashWorker(fixture.root, fixture.storageRoot);
         expectAbruptTermination(outcome);
-        await expireCrashLocks(fixture.root, fixture.storageRoot);
+        await expireCrashLocks(fixture.root, fixture.storageRoot, outcome.pid);
         await writeFile(path.join(fixture.root, "tracked.txt"), "third party bytes\n");
 
         const restarted = await createSecondService(fixture.root, fixture.storageRoot);
@@ -155,6 +170,7 @@ describe("ShelfService recovery and real lock contention", () => {
             capacityAvailable: async () => false,
         });
         const service = new ShelfService({
+            changelists: await connectedChangelists(fixture.root),
             repositoryRoot: fixture.root,
             executor,
             store: fixture.store,
@@ -194,6 +210,7 @@ describe("ShelfService recovery and real lock contention", () => {
         await expect(restarted.service.resumePendingRecovery()).resolves.toEqual({
             rolledBackIds: [],
             retainedIds: [],
+            upgraded: false,
         });
         await expect(restarted.service.listShelves()).resolves.toMatchObject({
             shelves: [{ id: shelf.shelfId!, metadata: { lifecycle: "shelved" } }],

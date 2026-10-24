@@ -1,5 +1,7 @@
+import { controlTargetHistoryWithConfirmation } from "../views/targetHistoryControl";
 import * as path from "path";
 import * as vscode from "vscode";
+import { ChangelistStore } from "../changes/changelistStore";
 import { handleCommitContextAction } from "../commands/commitCommands";
 import { GitExecutor } from "../git/executor";
 import { RepositoryMutationCoordinator } from "../git/mutationCoordinator";
@@ -138,10 +140,19 @@ export async function activateRepositoryMode(
     const pendingRebaseDialogRequests = createPendingRebaseDialogRequests();
     const shelfSettings = readShelfSettings(vscode.workspace.getConfiguration("intelligit"));
     const shelfServices = new Map<string, ShelfService>();
+    const changelists = ChangelistStore.forStorage(context.workspaceState);
     const globalStoragePath = context.globalStorageUri?.fsPath;
     if (globalStoragePath) {
         await Promise.all(
             repositories.map(async (repository) => {
+                const shelfExecutor = new GitExecutor(repository.root, mutationGate);
+                try {
+                    const directories = await new GitOps(shelfExecutor).getGitDirectories();
+                    await changelists.connect(repository.root, directories.gitDir);
+                } catch (error) {
+                    // Targeted operations refuse unconnected metadata; activation goes on.
+                    logShelfWarning(`changelists connect for ${repository.root}`, error);
+                }
                 const shelfPaths = await resolveShelfPaths({
                     repositoryRoot: repository.root,
                     globalStoragePath,
@@ -151,9 +162,10 @@ export async function activateRepositoryMode(
                     repository.root,
                     new ShelfService({
                         repositoryRoot: repository.root,
-                        executor: new GitExecutor(repository.root, mutationGate),
+                        executor: shelfExecutor,
                         store: new ShelfStore(shelfPaths),
                         gate: mutationGate,
+                        changelists,
                         recordBaseRevisions: shelfSettings.recordBaseRevisions,
                         recoveryMinimumRetentionMs: shelfSettings.recoveryRetentionMs,
                     }),
@@ -165,11 +177,18 @@ export async function activateRepositoryMode(
         shelfServices.get(repositoryRoot);
     for (const [repositoryRoot, shelfService] of shelfServices) {
         void (async () => {
-            await shelfService.resumePendingRecovery();
+            const recovered = await shelfService.resumePendingRecovery();
             logShelfOperation(
                 { operation: "resumePendingRecovery", repositoryRoot },
                 { status: "ok" },
             );
+            // A panel listed before the upgrade still holds pre-upgrade generations.
+            if (recovered.upgraded)
+                void getRefreshService()
+                    .refreshCommitPanels()
+                    .catch((error: unknown) =>
+                        logShelfWarning("refresh after startup shelf upgrade failed", error),
+                    );
             const cleaned = await shelfService.cleanUpExpiredGhosts(shelfSettings.cleanupAfterDays);
             logShelfOperation({ operation: "cleanUpExpiredGhosts", repositoryRoot }, cleaned);
         })().catch((error: unknown) => {
@@ -397,7 +416,10 @@ export async function activateRepositoryMode(
     let refreshService = createRefreshService(repoRoot);
     let refreshServiceWatchersRegistered = false;
     /** Returns the currently active refresh coordinator after repository switches replace it. */
-    const getRefreshService = (): RefreshService => refreshService;
+    // A declaration, so startup shelf recovery above can call it once its first await has passed.
+    function getRefreshService(): RefreshService {
+        return refreshService;
+    }
     if (globalStoragePath) {
         void Promise.all(
             repositories.map((repository) =>
@@ -735,6 +757,7 @@ export async function activateRepositoryMode(
         labels: { sourceBranch?: string; targetBranch?: string },
     ): Promise<void> => {
         await MergeConflictSessionPanel.open(context.extensionUri, scopedGitOps, labels, {
+            changelists,
             onOpenMergeConflict: async (filePath) => {
                 await openBuiltInMergeEditorForFile(filePath, scopedGitOps, capturedRoot);
             },
@@ -956,6 +979,7 @@ export async function activateRepositoryMode(
                         gitOps: undockedGitOps.deriveFor(actionRoot),
                         mutationGate,
                         repoRoot: actionRoot,
+                        changelists,
                         currentBranches: undockedBranches,
                         refreshAll: async () => {
                             if (getUndockedSelectedRepositoryRoot() === repoRoot) {
@@ -1067,6 +1091,20 @@ export async function activateRepositoryMode(
                 try {
                     const controlExecutor = new GitExecutor(controlRoot, mutationGate);
                     const controlGitOps = new GitOps(controlExecutor);
+                    if (
+                        await controlTargetHistoryWithConfirmation({
+                            gitOps: controlGitOps,
+                            root: controlRoot,
+                            changelists,
+                            action,
+                            onConflictStateChanged: async () => {
+                                await refreshService.refreshCommitPanels();
+                                if (getRepoRoot() === controlRoot)
+                                    await refreshService.refreshConflictUi();
+                            },
+                        })
+                    )
+                        return;
                     const directories = await controlGitOps.getGitDirectories();
                     const dependencies = {
                         executor: controlExecutor,
@@ -1293,6 +1331,33 @@ export async function activateRepositoryMode(
             "intelligit.commitChecks.refreshBadges",
             refreshCommitCheckBadges,
         ),
+        ...(["continue", "abort"] as const).map((action) =>
+            vscode.commands.registerCommand(
+                action === "continue"
+                    ? "intelligit.completeTargetedHistory"
+                    : "intelligit.discardTargetedHistory",
+                async () => {
+                    // Captured before the review prompt so a repository switch cannot retarget it.
+                    const controlRoot = getRepoRoot();
+                    const handled = await controlTargetHistoryWithConfirmation({
+                        gitOps: new GitOps(new GitExecutor(controlRoot, mutationGate)),
+                        root: controlRoot,
+                        changelists,
+                        action,
+                        onConflictStateChanged: async () => {
+                            await refreshService.refreshCommitPanels();
+                            if (getRepoRoot() === controlRoot)
+                                await refreshService.refreshConflictUi();
+                        },
+                    });
+                    if (!handled)
+                        vscode.window.showInformationMessage(
+                            vscode.l10n.t("No uncommitted history action is waiting for review."),
+                        );
+                    await refreshService.refreshAll();
+                },
+            ),
+        ),
         vscode.authentication.onDidChangeSessions((event) => {
             if (event.provider.id !== "github") return;
             refreshCommitCheckBadges().catch((err) => {
@@ -1401,11 +1466,13 @@ export async function activateRepositoryMode(
         openConflictSessionForRepository,
         openVsCodeMergeEditorForFile,
         openPartialChanges: (root, filePath) => commitPanel.openPartialChanges(root, filePath),
+        saveWholeFileToShelf: (root, filePath) => commitPanel.saveWholeFileToShelf(root, filePath),
     });
     registerShelfCommands({
         context,
         getRepositories: () => repositories,
         shelfServiceForRepository,
+        changelists,
         refreshAfterMutation: () => getRefreshService().refreshCommitPanels(),
     });
 

@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { mkdir, mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { ChangelistStore } from "../../../src/changes/changelistStore";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { RepositoryLockBusyError } from "../../../src/git/repositoryLock";
 import { ShelfRecoveryFullError } from "../../../src/shelf/recovery";
 import { ShelfStoreCorruptionError } from "../../../src/shelf/store";
@@ -12,13 +17,25 @@ interface FakeJournal {
 }
 
 /** Real service over controllable fakes; only health-relevant collaborators are live. */
-function createHealthService(overrides?: {
+const directories: string[] = [];
+afterEach(async () => removeScratchDirectories(...directories.splice(0)));
+
+async function createHealthService(overrides?: {
     corruptShelfIds?: string[];
     gateError?: () => Error | undefined;
     lockError?: () => Error | undefined;
     journals?: () => FakeJournal[];
 }) {
+    const root = await mkdtemp(path.join(tmpdir(), "shelf-health-"));
+    directories.push(root);
+    const gitDir = path.join(root, ".git");
+    await mkdir(gitDir);
+    const changelists = new ChangelistStore();
+    await changelists.connect(root, gitDir);
     const store = {
+        hasCatalog: async () => true,
+        migrateWithHeldLocks: async () => {},
+        readCurrentManifest: async () => ({ generation: 1 }),
         withLock: async <T>(operation: () => Promise<T>): Promise<T> => {
             const error = overrides?.lockError?.();
             if (error) throw error;
@@ -40,11 +57,13 @@ function createHealthService(overrides?: {
         },
     };
     const gitOps = {
-        getGitDirectories: async () => ({ gitDir: "/repo/.git", commonDir: "/repo/.git" }),
+        getActiveOperation: async () => "none",
+        getGitDirectories: async () => ({ gitDir, commonDir: gitDir }),
     };
-    const reverter = { resumePending: async () => ({ rolledBackIds: [] }) };
+    const reverter = { resumePendingWithHeldLocks: async () => ({ rolledBackIds: [] }) };
     return new ShelfService({
-        repositoryRoot: "/repo",
+        repositoryRoot: root,
+        changelists,
         executor: {},
         store,
         gate,
@@ -74,7 +93,7 @@ describe("ShelfService health", () => {
     });
 
     it("surfaces every corrupt shelf id, not just the first", async () => {
-        const service = createHealthService({ corruptShelfIds: ["shelf-a", "shelf-b"] });
+        const service = await createHealthService({ corruptShelfIds: ["shelf-a", "shelf-b"] });
         await service.listShelves();
         const warnings = service.getHealthWarnings();
         expect(warnings.filter((warning) => warning.kind === "corruptShelf")).toHaveLength(2);
@@ -85,7 +104,7 @@ describe("ShelfService health", () => {
 
     it("records lockBusy from a busy gate and clears it on the next successful mutation", async () => {
         let busy = true;
-        const service = createHealthService({
+        const service = await createHealthService({
             gateError: () => (busy ? new RepositoryLockBusyError() : undefined),
         });
         await expect(service.cleanUpExpiredGhosts(30)).rejects.toBeInstanceOf(
@@ -99,7 +118,7 @@ describe("ShelfService health", () => {
 
     it("records recoveryFull from a failing mutation and clears it on the next success", async () => {
         let full = true;
-        const service = createHealthService({
+        const service = await createHealthService({
             lockError: () => (full ? new ShelfRecoveryFullError() : undefined),
         });
         await expect(service.cleanUpExpiredGhosts(30)).rejects.toBeInstanceOf(
@@ -113,7 +132,7 @@ describe("ShelfService health", () => {
 
     it("records checksumMismatch from store corruption and keeps it across later successes", async () => {
         let corrupt = true;
-        const service = createHealthService({
+        const service = await createHealthService({
             lockError: () =>
                 corrupt ? new ShelfStoreCorruptionError("catalog checksum mismatch") : undefined,
         });
@@ -135,7 +154,7 @@ describe("ShelfService health", () => {
         let journals: FakeJournal[] = [
             { id: "txn-1", state: "shelvePendingRevert", shelf: { id: "shelf-a", generation: 1 } },
         ];
-        const service = createHealthService({ journals: () => journals });
+        const service = await createHealthService({ journals: () => journals });
         await service.resumePendingRecovery();
         expect(service.getHealthWarnings()).toContainEqual(
             expect.objectContaining({

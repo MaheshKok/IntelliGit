@@ -15,7 +15,10 @@ import path from "node:path";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { ChangelistPersistence } from "../../../src/changes/changelistPersistence";
 import type { HydratedChangelistState } from "../../../src/changes/rangeMapping";
-import type { ChangelistState } from "../../../src/webviews/protocol/changeSelection";
+import type {
+    ChangelistState,
+    RangeSnapshot,
+} from "../../../src/webviews/protocol/changeSelection";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { changeFingerprint as hash, parseChangeDiff } from "../../../src/changes/parseDiff";
 import { rangeSnapshot } from "../../../src/changes/rangeMapping";
@@ -374,7 +377,7 @@ describe("range evidence integrity and lifecycle", () => {
             ),
         ).toBe(bytes);
         const manifest = await readFile(persistence.filename, "utf8");
-        expect(JSON.parse(manifest).schemaVersion).toBe(4);
+        expect(JSON.parse(manifest).schemaVersion).toBe(5);
         expect(manifest).not.toContain('"baseLines"');
         const reopened = new ChangelistStore();
         await reopened.connect(root, gitDir);
@@ -455,7 +458,7 @@ describe("range evidence integrity and lifecycle", () => {
         expect(second.get(root)).toEqual(first.get(root));
         await second.connect(root, gitDir);
         await second.saveDraft(root, "all", "Disconnected draft", "Durable draft");
-        expect(storage.get("intelligit.changelists.v1")).toMatchObject({ schemaVersion: 4 });
+        expect(storage.get("intelligit.changelists.v1")).toMatchObject({ schemaVersion: 5 });
         values.set("intelligit.changelists.v1", seed);
         const staleWorkspace = new ChangelistStore(storage);
         await staleWorkspace.connect(root, gitDir);
@@ -912,5 +915,348 @@ describe.skipIf(process.platform === "win32")("evidence directory publication du
         const recovered = new ChangelistStore();
         await recovered.connect(root, gitDir);
         expect(recovered.get(root).revision).toBe(7);
+    });
+});
+
+/** More files than migration workers, so the grouped upgrade overlaps files and still queues some. */
+const MIGRATED_FILES = 10;
+
+/** A schema-3 record whose every file holds distinct tracked and historical evidence. */
+function legacyFiles(count: number): HydratedChangelistState {
+    const files: HydratedChangelistState["files"] = {};
+    const changes: HydratedChangelistState["changes"] = {};
+    for (let index = 0; index < count; index++) {
+        const file = `migrated-${index}.txt`;
+        const current = snapshot(file, 20, 1);
+        files[file] = "default";
+        changes[file] = {
+            contentId: current.contentId,
+            lines: {},
+            stale: false,
+            totalChanges: 1,
+            tracking: current,
+            history: [{ snapshot: snapshot(file, 20, 0), lines: {} }],
+            selections: { all: { contentId: current.contentId, lineIds: [], total: 1 } },
+        };
+    }
+    return { ...new ChangelistStore().get(root), revision: 7, files, changes };
+}
+
+/** Bounds a migration so a hang fails on a named deadline instead of the runner timeout. */
+async function settle<T>(work: Promise<T>, label: string): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+        return await Promise.race([
+            work,
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(
+                    () => reject(new Error(`${label} did not settle within 15 s`)),
+                    15_000,
+                );
+            }),
+        ]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+type CrashPoint = "payload" | "barrier" | "validation" | "collection";
+
+/**
+ * Logs durability events and models a power loss: an evidence entry linked after the last
+ * completed evidence-directory fsync may vanish, so `powerLoss` removes every such entry.
+ */
+function durabilityLog(persistence: ChangelistPersistence, crash?: CrashPoint) {
+    const events: string[] = [];
+    const unsynced = new Set<string>();
+    let links = 0;
+    const { link, mkdir, open, rename } = fs;
+    vi.spyOn(fs, "mkdir").mockImplementation(async (...args) => {
+        const result = await mkdir(...args);
+        if (String(args[0]) === persistence.evidenceDirectory) events.push("evidence created");
+        return result;
+    });
+    vi.spyOn(fs, "link").mockImplementation(async (...args) => {
+        const target = String(args[1]);
+        const evidence = path.dirname(target) === persistence.evidenceDirectory;
+        if (evidence && crash === "payload" && ++links === 3)
+            throw new Error("crash after some payloads");
+        await link(...args);
+        if (!evidence) return;
+        unsynced.add(target);
+        events.push("payload linked");
+    });
+    vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+        const handle = await open(...args);
+        const filename = String(args[0]);
+        const sync = handle.sync.bind(handle);
+        vi.spyOn(handle, "sync").mockImplementation(async () => {
+            if (filename !== persistence.evidenceDirectory) {
+                await sync();
+                if (filename === persistence.directory) events.push("parent durable");
+                else if (path.dirname(filename) === persistence.evidenceDirectory)
+                    events.push("payload durable");
+                return;
+            }
+            if (crash === "barrier") throw new Error("crash before the evidence-directory barrier");
+            const covered = [...unsynced];
+            await sync();
+            for (const name of covered) unsynced.delete(name);
+            events.push("evidence directory durable");
+        });
+        return handle;
+    });
+    vi.spyOn(fs, "rename").mockImplementation(async (...args) => {
+        await rename(...args);
+        if (String(args[1]) === persistence.filename) events.push("manifest published");
+    });
+    if (crash === "validation")
+        vi.spyOn(ChangelistPersistence.prototype, "validateEvidence").mockRejectedValueOnce(
+            new Error("crash after the evidence-directory barrier"),
+        );
+    if (crash === "collection")
+        vi.spyOn(ChangelistPersistence.prototype, "collect").mockRejectedValueOnce(
+            new Error("crash after manifest publication"),
+        );
+    return {
+        events,
+        count: (event: string) => events.filter((entry) => entry === event).length,
+        /** Restores real I/O, then drops every directory entry no fsync has made durable. */
+        async powerLoss() {
+            vi.restoreAllMocks();
+            for (const filename of unsynced) await rm(filename, { force: true });
+            unsynced.clear();
+        },
+    };
+}
+
+/** One complete upgrade yields the expected state; the same legacy record is then restored on a clean disk. */
+async function uninterruptedMigration(state: HydratedChangelistState): Promise<ChangelistState> {
+    const persistence = await ChangelistPersistence.open(root, gitDir);
+    await publishLegacy(persistence, state);
+    const store = new ChangelistStore();
+    await settle(store.connect(root, gitDir), "uninterrupted migration");
+    const expected = store.get(root);
+    await removeScratchDirectories(persistence.directory);
+    await publishLegacy(await ChangelistPersistence.open(root, gitDir), state);
+    return expected;
+}
+
+describe.skipIf(process.platform === "win32")("grouped migration durability", () => {
+    it("syncs every payload but the evidence directory once per migration", async () => {
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        await publishLegacy(persistence, legacyFiles(MIGRATED_FILES));
+        const log = durabilityLog(persistence);
+        const store = new ChangelistStore();
+        await settle(store.connect(root, gitDir), "migration");
+        const payloads = liveBlobs(store.get(root)).length;
+        expect(payloads, "each file contributes tracked and historical evidence").toBe(
+            2 * MIGRATED_FILES,
+        );
+        expect(log.count("payload durable"), "each evidence payload keeps its own fsync").toBe(
+            payloads,
+        );
+        expect(
+            log.count("evidence directory durable"),
+            "migration must fsync the evidence directory once, not once per payload",
+        ).toBe(1);
+        const created = log.events.indexOf("evidence created");
+        const barrier = log.events.indexOf("evidence directory durable");
+        expect(
+            log.events.slice(created, barrier).filter((event) => event === "parent durable"),
+            "a newly created evidence directory keeps exactly one parent barrier",
+        ).toHaveLength(1);
+    });
+
+    it("publishes the schema-5 manifest only after the evidence-directory barrier", async () => {
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        await publishLegacy(persistence, legacyFiles(MIGRATED_FILES));
+        const log = durabilityLog(persistence);
+        await settle(new ChangelistStore().connect(root, gitDir), "migration");
+        const lastPayload = log.events.lastIndexOf("payload linked");
+        const manifest = log.events.indexOf("manifest published");
+        expect(lastPayload, "migration must publish evidence").toBeGreaterThanOrEqual(0);
+        expect(manifest, "the manifest must follow every payload").toBeGreaterThan(lastPayload);
+        expect(
+            log.events.slice(lastPayload, manifest),
+            "the evidence-directory barrier must fall between the last payload and the manifest",
+        ).toContain("evidence directory durable");
+    });
+
+    it("reuses already-published payloads and still covers them with the one barrier", async () => {
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        await publishLegacy(persistence, legacyFiles(MIGRATED_FILES));
+        vi.spyOn(ChangelistPersistence.prototype, "validateEvidence").mockRejectedValueOnce(
+            new Error("interrupted after payloads"),
+        );
+        await expect(
+            settle(new ChangelistStore().connect(root, gitDir), "first migration"),
+        ).rejects.toThrow("interrupted after payloads");
+        vi.restoreAllMocks();
+        const log = durabilityLog(persistence);
+        await settle(new ChangelistStore().connect(root, gitDir), "repeated migration");
+        expect(log.count("payload durable"), "byte-identical payloads must be reused").toBe(0);
+        expect(
+            log.count("evidence directory durable"),
+            "reused names must still cross one evidence-directory barrier",
+        ).toBe(1);
+    });
+
+    it("refuses a corrupt already-published payload instead of reusing it", async () => {
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        const legacy = await publishLegacy(persistence, legacyFiles(MIGRATED_FILES));
+        vi.spyOn(ChangelistPersistence.prototype, "validateEvidence").mockRejectedValueOnce(
+            new Error("interrupted after payloads"),
+        );
+        await expect(
+            settle(new ChangelistStore().connect(root, gitDir), "first migration"),
+        ).rejects.toThrow("interrupted after payloads");
+        vi.restoreAllMocks();
+        const [orphan] = await readdir(persistence.evidenceDirectory);
+        await writeFile(path.join(persistence.evidenceDirectory, orphan), "corrupt orphan");
+        await expect(
+            settle(new ChangelistStore().connect(root, gitDir), "repeated migration"),
+        ).rejects.toThrow("requires review");
+        expect(await readFile(persistence.filename, "utf8")).toBe(legacy);
+    });
+
+    it.each(["payload", "barrier", "validation", "collection"] as const)(
+        "a crash at %s leaves legacy or complete schema-5 state that restarts finish identically",
+        async (crash) => {
+            const expected = await uninterruptedMigration(legacyFiles(MIGRATED_FILES));
+            const persistence = await ChangelistPersistence.open(root, gitDir);
+            const legacy = await readFile(persistence.filename, "utf8");
+            const log = durabilityLog(persistence, crash);
+            const failure = await settle(
+                new ChangelistStore().connect(root, gitDir).then(
+                    () => undefined,
+                    (error: unknown) => error,
+                ),
+                "interrupted migration",
+            );
+            const causes: string[] = [];
+            for (let error = failure; error instanceof Error; error = error.cause)
+                causes.push(error.message);
+            expect(
+                causes.some((message) => message.startsWith("crash")),
+                `the injected crash must interrupt the migration, got ${JSON.stringify(causes)}`,
+            ).toBe(true);
+            await log.powerLoss();
+            const saved = await readFile(persistence.filename, "utf8");
+            const manifest = JSON.parse(saved) as { schemaVersion: number; state: ChangelistState };
+            if (manifest.schemaVersion === 5) {
+                const names = new Set(await readdir(persistence.evidenceDirectory));
+                expect(
+                    liveBlobs(manifest.state).filter((name) => !names.has(name)),
+                    "a durable manifest must never reference evidence a power loss dropped",
+                ).toEqual([]);
+            } else
+                expect(saved, "an incomplete migration must keep the complete legacy record").toBe(
+                    legacy,
+                );
+            for (const attempt of ["first restart", "second restart"]) {
+                const restarted = new ChangelistStore();
+                await settle(restarted.connect(root, gitDir), attempt);
+                expect(
+                    restarted.get(root),
+                    `the ${attempt} must load the uninterrupted migration's state`,
+                ).toEqual(expected);
+            }
+        },
+    );
+});
+
+/** Fails one evidence write mid-batch and records what was still running at release and at rejection. */
+async function failMidBatch(
+    state: HydratedChangelistState,
+    failing: string,
+    delayMs: (snapshot: RangeSnapshot) => number,
+) {
+    const persistence = await ChangelistPersistence.open(root, gitDir);
+    const legacy = await publishLegacy(persistence, state);
+    const running = new Map<string, number>();
+    const writes = () => [...running.values()].reduce((total, count) => total + count, 0);
+    let peakFiles = 0;
+    const storeSnapshot = ChangelistPersistence.prototype.storeSnapshot;
+    vi.spyOn(ChangelistPersistence.prototype, "storeSnapshot").mockImplementation(async function (
+        this: ChangelistPersistence,
+        file: string,
+        value: RangeSnapshot,
+    ) {
+        running.set(file, (running.get(file) ?? 0) + 1);
+        peakFiles = Math.max(peakFiles, running.size);
+        try {
+            if (value.contentId === failing) throw new Error("evidence write failed mid-batch");
+            await new Promise((resolve) => setTimeout(resolve, delayMs(value)));
+            return await storeSnapshot.call(this, file, value);
+        } finally {
+            const left = running.get(file)! - 1;
+            if (left) running.set(file, left);
+            else running.delete(file);
+        }
+    });
+    const atRelease: number[] = [];
+    const acquire = ChangelistPersistence.prototype.acquire;
+    vi.spyOn(ChangelistPersistence.prototype, "acquire").mockImplementation(async function (
+        this: ChangelistPersistence,
+    ) {
+        const release = await acquire.call(this);
+        return async () => {
+            atRelease.push(writes());
+            await release();
+        };
+    });
+    const outcome = await settle(
+        new ChangelistStore().connect(root, gitDir).then(
+            () => ({ error: undefined, atRejection: writes() }),
+            (error: unknown) => ({ error, atRejection: writes() }),
+        ),
+        "failed migration",
+    );
+    vi.restoreAllMocks();
+    expect(outcome.error, "the injected write failure must surface").toMatchObject({
+        message: "evidence write failed mid-batch",
+    });
+    expect(await readFile(persistence.filename, "utf8")).toBe(legacy);
+    return { ...outcome, atRelease, peakFiles };
+}
+
+describe("grouped migration failure draining", () => {
+    it("drains every in-flight file before a failure releases the metadata lease", async () => {
+        const state = legacyFiles(12);
+        const result = await failMidBatch(
+            state,
+            state.changes["migrated-0.txt"].tracking!.contentId,
+            () => 100,
+        );
+        expect(
+            result.atRelease,
+            "the metadata lease must be released only after every worker drained",
+        ).toEqual([0]);
+        expect(
+            result.atRejection,
+            "no evidence write may still be running when the failure surfaces",
+        ).toBe(0);
+        expect(result.peakFiles, "migration must publish files in parallel").toBeGreaterThan(1);
+        expect(
+            result.peakFiles,
+            "migration must never run more than eight files at once",
+        ).toBeLessThanOrEqual(8);
+    });
+
+    it("drains a failed file's own sibling history writes before releasing the lease", async () => {
+        const state = legacyFiles(1);
+        const ownership = state.changes["migrated-0.txt"];
+        const late = snapshot("migrated-0.txt", 20, 2);
+        const failing = ownership.history![0].snapshot.contentId;
+        ownership.history = [{ snapshot: late, lines: {} }, ...ownership.history!];
+        const result = await failMidBatch(state, failing, (value) =>
+            value.contentId === late.contentId ? 300 : 0,
+        );
+        expect(
+            result.atRelease,
+            "a sibling history write must finish before the lease is released",
+        ).toEqual([0]);
+        expect(result.atRejection, "no sibling history write may outlive the failure").toBe(0);
     });
 });

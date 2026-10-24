@@ -128,6 +128,11 @@ export interface MultiRepositoryCommitPanelState {
  */
 export type CommitPanelAction =
     | {
+          type: "SET_WORKING_FILE_STATS";
+          repositoryRoot: string;
+          reply: import("../../protocol/workingFileStats").WorkingFileStatsReply;
+      }
+    | {
           type: "SET_REPOSITORIES";
           repositories: CommitPanelRepositorySummary[];
           activeRepositoryRoot: string | null;

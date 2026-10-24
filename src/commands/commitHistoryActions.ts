@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import { getErrorMessage } from "../utils/errors";
 import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
@@ -20,13 +21,21 @@ import type {
     InteractiveRebaseRangeRejectionReason,
 } from "../git/interactiveRebase/types";
 import type { CommitActionContext } from "./commitActionContext";
+import {
+    applyHistoryToChangelist,
+    showTargetHistoryResult,
+    undoCommitRoute,
+} from "./targetHistoryActions";
 
 /**
  * Soft-resets unpushed commits through the selected commit back into the index.
  *
  * The command is allowed only for non-merge commits reachable from the current branch. It leaves the
- * working tree intact, moves `HEAD` to the selected commit's parent, keeps the undone changes staged,
- * shows Git failures in VS Code, and refreshes views after the reset attempt.
+ * working tree intact, moves `HEAD` to the selected commit's parent, keeps the undone changes staged
+ * in a chosen changelist (optionally copying the commit message to its draft), shows Git failures in
+ * VS Code, and refreshes views after the reset attempt. Cancelling the destination changes nothing.
+ * When an undone file has local edits or belongs to a list, the previous release's plain soft reset
+ * runs instead, without a destination prompt. A pending target operation blocks both paths.
  */
 export async function undoCommit(ctx: CommitActionContext): Promise<void> {
     if (
@@ -54,6 +63,11 @@ export async function undoCommit(ctx: CommitActionContext): Promise<void> {
         return;
     }
     const undoCount = await getUndoCommitCount(ctx.validatedHash, ctx.executor);
+    // HEAD and message are captured before any prompt; the adapter refuses if HEAD moved meanwhile.
+    const head = (await ctx.executor.run(["rev-parse", "--verify", "HEAD"])).trim();
+    const message = (
+        await ctx.executor.run(["log", "-1", "--format=%B", ctx.validatedHash])
+    ).trim();
     const undoLabel = vscode.l10n.t("Undo");
     const confirm = await vscode.window.showWarningMessage(
         vscode.l10n.t("Undo {count} commit(s) up to {short} (soft reset)?", {
@@ -64,18 +78,40 @@ export async function undoCommit(ctx: CommitActionContext): Promise<void> {
         undoLabel,
     );
     if (confirm !== undoLabel) return;
+    const undone = vscode.l10n.t("Undid {count} commit(s) up to {short}.", {
+        count: undoCount,
+        short: ctx.short,
+    });
     try {
-        await ctx.executor.run(["reset", "--soft", `${ctx.validatedHash}^`]);
-        showTimedInformationMessage(
-            vscode.l10n.t("Undid {count} commit(s) up to {short}.", {
-                count: undoCount,
-                short: ctx.short,
-            }),
+        // Typed route, decided after consent and before any destination prompt.
+        const route = await undoCommitRoute(ctx, { commit: ctx.validatedHash, head });
+        if (route.route === "busy") {
+            showTargetHistoryResult(ctx.short, "undoCommit", { outcome: "busy" });
+            return;
+        }
+        if (route.route === "plainReset") {
+            showTimedInformationMessage(undone);
+            await ctx.refreshAll();
+            return;
+        }
+        const result = await applyHistoryToChangelist(
+            ctx,
+            { kind: "undoCommit", commit: ctx.validatedHash, head },
+            message
+                ? [
+                      {
+                          id: randomUUID(),
+                          name: vscode.l10n.t("Commit {short}", { short: ctx.short }),
+                          draft: message,
+                      },
+                  ]
+                : [],
         );
+        if (result?.outcome === "applied") showTimedInformationMessage(undone);
+        else if (result) showTargetHistoryResult(ctx.short, "undoCommit", result);
     } catch (err) {
         const message = getErrorMessage(err);
         vscode.window.showErrorMessage(vscode.l10n.t("Undo Commit failed: {message}", { message }));
-    } finally {
         await ctx.refreshAll();
     }
 }

@@ -1,3 +1,4 @@
+import { connectedChangelists } from "../../helpers/connectedChangelists";
 /**
  * Phase 2c-v-d's recorder: records the `shelf-conflicted` scenario for the internally-created
  * `shelf-conflict-editor` panel (`src/views/ShelfConflictEditorPanel.ts`). The scenario shelves the
@@ -157,6 +158,7 @@ async function createShelfService(options: {
     return {
         store,
         service: new ShelfService({
+            changelists: await connectedChangelists(options.repoRoot),
             repositoryRoot: options.repoRoot,
             executor,
             store,

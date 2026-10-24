@@ -100,6 +100,40 @@ describe("ShelfConflictEditorPanel message core", () => {
         expect(deps.postConflictData).toHaveBeenCalledWith({ ignoreWhitespace: true });
     });
 
+    it("carries the host restore operation and never offers overwrite once it is stale", async () => {
+        const apply = vi.fn(async () => ({
+            status: "stale" as const,
+            reason: "operation" as const,
+        }));
+        const deps = {
+            ...makeDeps({ apply }),
+            payload: { ...payload, operationId: "operation-1" },
+        };
+        const handle = createShelfConflictEditorMessageHandler(deps);
+
+        await expect(handle({ type: "applyResolution", content: "merged\n" })).rejects.toThrow(
+            "restore changed",
+        );
+
+        expect(apply).toHaveBeenCalledExactlyOnceWith({
+            id: "shelf-a",
+            changeId: "change-a",
+            content: "merged\n",
+            expectedShelfGeneration: 4,
+            expectedPathFingerprint: "644:fingerprint",
+            operationId: "operation-1",
+        });
+        expect(
+            deps.chooseStaleResolution,
+            "a stale targeted restore must never overwrite later edits",
+        ).not.toHaveBeenCalled();
+        expect(deps.onApplied).not.toHaveBeenCalled();
+        expect(
+            deps.dispose,
+            "closing is the user's choice; the restore stays pending",
+        ).not.toHaveBeenCalled();
+    });
+
     it("disposes on close and abort without applying or restoring anything", async () => {
         const deps = makeDeps();
         const handle = createShelfConflictEditorMessageHandler(deps);

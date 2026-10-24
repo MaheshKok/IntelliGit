@@ -97,6 +97,15 @@ export class IntelliGitView {
         return this.frameOwning(SIDEBAR_MARKER, timeoutMs);
     }
 
+    /** Like `reveal`, but never the undocked workbench, which renders the same commit tab row. */
+    public async revealDocked(timeoutMs = DEFAULT_REVEAL_TIMEOUT_MS): Promise<FrameLocator> {
+        await new Workbench(this.page).runCommand("View: Show IntelliGit");
+        return this.frameOwning(
+            `body:not(:has([data-testid="undocked-graph-section"])) ${SIDEBAR_MARKER}`,
+            timeoutMs,
+        );
+    }
+
     /** Returns the full-width commit-graph panel's webview document. The caller opens the panel
      * first (`IntelliGit: Show Git Log`). */
     public async revealPanel(timeoutMs = DEFAULT_REVEAL_TIMEOUT_MS): Promise<FrameLocator> {

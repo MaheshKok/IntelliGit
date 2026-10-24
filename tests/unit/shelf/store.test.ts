@@ -31,7 +31,9 @@ async function makeStore() {
         globalStoragePath: path.join(temporary, "storage"),
     });
     await ensureShelfRoot(paths);
-    return { paths, store: new ShelfStore(paths) };
+    const store = new ShelfStore(paths);
+    await store.withLock(() => store.migrateWithHeldLocks());
+    return { paths, store };
 }
 
 function persistedShelfInput() {
@@ -143,6 +145,7 @@ describe("ShelfStore", () => {
         const catalog = await makeStore();
         const catalogOutside = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-outside-"));
         directories.push(catalogOutside);
+        await removeScratchDirectories(path.join(catalog.paths.root, "catalog.json"));
         await symlink(
             path.join(catalogOutside, "catalog.json"),
             path.join(catalog.paths.root, "catalog.json"),
@@ -324,12 +327,50 @@ describe("ShelfStore", () => {
         await writeFile(path.join(broken, "gen-1", "manifest.json"), "{not json");
 
         const listed = await store.listShelves();
+        await expect(store.collectGarbage("shelf-one")).rejects.toThrow();
+        expect(await store.readObject("shelf-one", dead.hash)).toEqual(Buffer.from("dead"));
+        await removeScratchDirectories(broken);
         const removed = await store.collectGarbage("shelf-one");
 
         expect(listed.corruptShelfIds).toContain("broken");
         expect(removed).toEqual([dead.hash]);
         await expect(store.readObject("shelf-one", dead.hash)).rejects.toThrow();
         expect(await store.readObject("shelf-one", live.hash)).toEqual(Buffer.from("live"));
+    });
+
+    it("collects garbage past a generation a crash left without its manifest, never past a corrupt one", async () => {
+        const { paths, store } = await makeStore();
+        const older = await store.putObject("shelf-one", Buffer.from("older"));
+        const live = await store.putObject("shelf-one", Buffer.from("live"));
+        const dead = await store.putObject("shelf-one", Buffer.from("dead"));
+        // The first save crashed after creating its generation folder.
+        const interrupted = path.join(paths.root, "shelves", "shelf-one", "gen-1");
+        await mkdir(interrupted);
+        // Later saves skip the empty folder's number.
+        const first = await store.writeGeneration("shelf-one", {
+            schemaVersion: 1,
+            objectHashes: [older.hash],
+            files: [],
+        });
+        expect(first.generation).toBe(2);
+        const current = await store.writeGeneration("shelf-one", {
+            schemaVersion: 1,
+            objectHashes: [live.hash],
+            files: [],
+        });
+        expect(current.generation).toBe(3);
+
+        const removed = await store.collectGarbage("shelf-one");
+
+        // Only gen-2's manifest keeps `older`: the current gen-3 does not list it.
+        expect(removed).toEqual([dead.hash]);
+        expect(await store.readObject("shelf-one", older.hash)).toEqual(Buffer.from("older"));
+        expect(await store.readObject("shelf-one", live.hash)).toEqual(Buffer.from("live"));
+
+        const unread = await store.putObject("shelf-one", Buffer.from("unread"));
+        await writeFile(path.join(interrupted, "manifest.json"), "{not json");
+        await expect(store.collectGarbage("shelf-one")).rejects.toThrow();
+        expect(await store.readObject("shelf-one", unread.hash)).toEqual(Buffer.from("unread"));
     });
 
     it("serializes store mutations and records all Phase-1 journal transition states", async () => {
@@ -495,6 +536,7 @@ describe("ShelfStore", () => {
             ["shelf-three", "tracked.txt:stream"],
             ["shelf-four", "aux.txt"],
         ]) {
+            const { paths, store } = await makeStore();
             await store.writeShelfGeneration(shelfId, input);
             const shelfPath = path.join(paths.root, "shelves", shelfId, "gen-1", "manifest.json");
             const shelfManifest = JSON.parse(await readFile(shelfPath, "utf8")) as {
@@ -612,6 +654,7 @@ describe("ShelfStore", () => {
         await expect(store.listShelves()).resolves.toEqual({
             shelfIds: [],
             corruptShelfIds: [],
+            // The write and the delete each advance it; upgrading an empty store does not.
             catalogGeneration: 2,
         });
         await expect(store.readCurrentShelfManifest("shelf-one")).rejects.toMatchObject({

@@ -52,6 +52,11 @@ export function getCommitMenuItems(
             disabled: !canCherryPick,
             icon: iconCherry(),
         },
+        {
+            label: t("commit.menu.cherryPickToChangelist"),
+            action: "cherryPickToChangelist",
+            disabled: !canCherryPick,
+        },
         { separator: true, label: "", action: "sep-checkout" },
     ];
 
@@ -64,6 +69,7 @@ export function getCommitMenuItems(
         icon: iconReset(),
     });
     items.push({ label: t("commit.menu.revertCommit"), action: "revertCommit" });
+    items.push({ label: t("commit.menu.revertToChangelist"), action: "revertToChangelist" });
     items.push({
         label: t("commit.menu.pushAllUpToHere"),
         action: "pushAllUpToHere",

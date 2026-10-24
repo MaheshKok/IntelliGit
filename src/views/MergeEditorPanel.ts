@@ -1,3 +1,4 @@
+import { ChangelistStore } from "../changes/changelistStore";
 // Hosts IntelliGit's native three-way merge editor webview for one conflicted file.
 // Loads base/ours/theirs from Git index stages, streams parsed segments to the
 // webview, and applies resolutions by writing the merged file and staging it.
@@ -503,6 +504,8 @@ export class MergeEditorPanel {
     private async abortMerge(): Promise<void> {
         await abortMergeWithConfirmation({
             gitOps: this.gitOps,
+            root: this.repoRoot,
+            changelists: ChangelistStore.forStorage(this.draftStore),
             onConflictStateChanged: () => this.notifyConflictStateChanged(),
             disposePanel: () => {
                 if (this.isAlive()) this.panel.dispose();

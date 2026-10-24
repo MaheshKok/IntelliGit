@@ -780,7 +780,7 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
     {
         id: "shelf-apply",
         scenario: "shelf-populated",
-        action: async ({ frame, fixtureWorkspace }) => {
+        action: async ({ page, frame, fixtureWorkspace }) => {
             const shelfTab = frame.getByRole("tab", { name: /^Shelf(?: \(\d+\))?$/ });
             await shelfTab.click();
             const shelfList = frame.getByTestId("shelf-list");
@@ -806,6 +806,13 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
                 unshelveDialog.getByRole("checkbox", { name: SHELFED_PATH, exact: true }),
             ).toBeChecked();
             await unshelveDialog.getByRole("button", { name: "Unshelve", exact: true }).click();
+            // Unshelve asks for a destination changelist before it applies anything.
+            const destination = page.locator(".quick-input-widget");
+            await expect(destination.locator(".quick-input-box input")).toHaveAttribute(
+                "placeholder",
+                "Select a destination changelist",
+            );
+            await destination.getByRole("option", { name: /^Changes\b/ }).click();
             await expect
                 .poll(
                     () =>

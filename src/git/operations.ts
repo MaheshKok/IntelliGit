@@ -1,3 +1,17 @@
+import type { ChangelistStore } from "../changes/changelistStore";
+import {
+    captureTargetHistoryReview,
+    continueReviewedTargetHistoryOperation,
+    abortReviewedTargetHistoryOperation,
+    type TargetHistoryReview,
+} from "./targetHistoryRecovery";
+import { ChangelistPersistence } from "../changes/changelistPersistence";
+import {
+    applyTargetHistoryOperation,
+    type TargetHistoryRequest,
+    type TargetHistoryResult,
+} from "./targetHistoryOperation";
+import type { ChangelistState } from "../webviews/protocol/changeSelection";
 import {
     access,
     copyFile,
@@ -73,6 +87,11 @@ import {
 } from "./workingTree";
 import { parseStashFiles } from "./stashFiles";
 import { normalizeGitNumstatPath } from "./numstat";
+import {
+    LAZY_WORKING_FILE_THRESHOLD,
+    readWorkingFileStats,
+    readWorkingFileStatsBasis,
+} from "./workingFileStats";
 import { applyPatchTextToRepo } from "./patchApplication";
 import { EMPTY_TREE_HASH } from "../utils/constants";
 import {
@@ -350,6 +369,57 @@ export class GitOps {
      */
     deriveFor(repoRoot: string): GitOps {
         return new GitOps(this.executor.deriveFor(repoRoot), this.confirmSetUpstreamPush);
+    }
+    /** Inspect authoritative targeted history before ordinary native control; consent binds exact bytes. */
+    async controlTargetHistory(
+        root: string,
+        store: ChangelistStore,
+        action: "continue" | "abort",
+        confirm: (review: TargetHistoryReview) => Promise<boolean>,
+    ): Promise<
+        | { status: "noPending" }
+        | { status: "cancelled"; id: string }
+        | { status: "handled"; result: TargetHistoryResult }
+    > {
+        const git = this.executor.deriveFor(root);
+        const directories = await new GitOps(git).getGitDirectories();
+        await store.connect(directories.root, directories.gitDir);
+        const persistence = await ChangelistPersistence.open(directories.root, directories.gitDir);
+        const review = await captureTargetHistoryReview(git, persistence, store, action);
+        if (!review) return { status: "noPending" };
+        if (!(await confirm(review))) return { status: "cancelled", id: review.id };
+        const result = await (action === "continue"
+            ? continueReviewedTargetHistoryOperation(git, persistence, store, review)
+            : abortReviewedTargetHistoryOperation(git, persistence, store, review));
+        return { status: "handled", result };
+    }
+    /**
+     * Run one uncommitted history intent at the captured root. The prompt sees authoritative lists
+     * for that root; the adapter rechecks the captured revision and HEAD under its lease and gate.
+     * Observer writes are held from before the prompt until the operation ends.
+     */
+    async applyTargetHistory(
+        root: string,
+        store: ChangelistStore,
+        prompt: (state: ChangelistState) => Promise<TargetHistoryRequest | undefined>,
+    ): Promise<{ status: "cancelled" } | { status: "handled"; result: TargetHistoryResult }> {
+        const git = this.executor.deriveFor(root);
+        const directories = await new GitOps(git).getGitDirectories();
+        await store.connect(directories.root, directories.gitDir);
+        const release = await store.holdObservers(directories.root);
+        try {
+            await store.settled(directories.root);
+            const request = await prompt(store.get(directories.root));
+            if (!request) return { status: "cancelled" };
+            const persistence = await ChangelistPersistence.open(
+                directories.root,
+                directories.gitDir,
+            );
+            const result = await applyTargetHistoryOperation(git, persistence, store, request);
+            return { status: "handled", result };
+        } finally {
+            release();
+        }
     }
     /** Creates a captured-root partial workflow sharing the activation-owned mutation gate. */
     partialChangesFor(repoRoot: string): PartialChanges {
@@ -746,7 +816,7 @@ export class GitOps {
      * can return large ignored directories.
      */
     async getStatus(
-        options: { includeIgnored?: boolean; withStats?: boolean } = {},
+        options: { includeIgnored?: boolean; withStats?: boolean | "lazy" } = {},
     ): Promise<WorkingFile[]> {
         const statusArgs = ["status", "--porcelain=v1", "-z", "-uall"];
         if (options.includeIgnored) statusArgs.push("--ignored");
@@ -756,6 +826,13 @@ export class GitOps {
         // row counts) pass `withStats: false` to skip the two numstat subprocesses,
         // turning a three-process status into a single one per repository.
         if (options.withStats === false) return files;
+        if (options.withStats === "lazy" && files.length > LAZY_WORKING_FILE_THRESHOLD) {
+            return files.map((file) =>
+                file.status === "?" || file.status === "!"
+                    ? file
+                    : { ...file, statsState: "pending" },
+            );
+        }
         const applyNumstat = (
             output: string,
             staged: boolean,
@@ -786,6 +863,25 @@ export class GitOps {
         applyNumstat(unstagedStat, false, "unstaged", unstagedStatsUnavailableMessage());
         applyNumstat(stagedStat, true, "staged", stagedStatsUnavailableMessage());
         return files;
+    }
+
+    /**
+     * Reads line counts only for requested paths in an already captured status snapshot.
+     *
+     * The delegated reader validates known paths, literal pathspec bytes, output size, and
+     * cancellation before returning advisory viewport statistics.
+     */
+    getWorkingFileStats(
+        files: readonly WorkingFile[],
+        paths: readonly string[],
+        signal?: AbortSignal,
+    ): Promise<WorkingFile[]> {
+        return readWorkingFileStats(this.executor, files, paths, signal);
+    }
+
+    /** Reads what staged and unstaged counts depend on besides each file: the index and HEAD. */
+    getWorkingFileStatsBasis(): Promise<{ indexPath: string; head: string }> {
+        return readWorkingFileStatsBasis(this.executor);
     }
 
     /** Returns whether porcelain status reports any working-tree entry without loading numstat. */

@@ -18,7 +18,9 @@ export type HydratedChangelistState = Omit<ChangelistState, "changes"> & {
 };
 
 /** Captures coordinates plus cryptographic content/context evidence from a host-validated diff. */
-export function rangeSnapshot(snapshot: PartialFileSnapshot): RangeSnapshot {
+export function rangeSnapshot(
+    snapshot: Pick<PartialFileSnapshot, "view" | "working" | "contentId" | "head" | "indexHash">,
+): RangeSnapshot {
     const baseLines = hashes(snapshot.view.base);
     const workingLines = hashes(snapshot.working);
     return {

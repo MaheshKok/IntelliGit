@@ -253,6 +253,39 @@ const makeDeps = (gitOps: GitOps) => {
 };
 
 describe("registerRepositoryCommands", () => {
+    // The resolver keeps its real contract: only a Uri (or no context) resolves; a row payload does not.
+    const resolveUriOnly = (resolved: { repoRoot: string; repoRelativePath: string }) =>
+        mocks.resolveFileCommandContext.mockImplementation(async (ctx: unknown) =>
+            ctx instanceof mocks.FakeUri ? resolved : undefined,
+        );
+
+    it("native whole-file Save from a Changes row saves for the row's repository and path", async () => {
+        const deps = makeDeps(makeGitOps());
+        deps.isKnownRepositoryRoot = (root: string) => root === "/repo" || root === "/repo-b";
+        const saveWholeFileToShelf = vi.fn().mockResolvedValue(undefined);
+        Object.assign(deps, { saveWholeFileToShelf });
+        resolveUriOnly({ repoRoot: "/repo", repoRelativePath: "active.ts" });
+        registerRepositoryCommands(deps);
+        const command = mocks.commands.get("intelligit.fileSaveToShelf");
+        expect(command, "native whole-file Save must be registered").toBeTypeOf("function");
+        await command?.({ filePath: "src/selected.ts", repositoryRoot: "/repo-b" });
+        expect(mocks.showErrorMessage).not.toHaveBeenCalled();
+        expect(saveWholeFileToShelf).toHaveBeenCalledExactlyOnceWith("/repo-b", "src/selected.ts");
+        expect(deps.setActiveRepository).not.toHaveBeenCalled();
+        expect(mocks.commands.has("intelligit.fileShelve")).toBe(true);
+    });
+
+    it("native whole-file Save from an Explorer Uri saves for the resolved repository", async () => {
+        const deps = makeDeps(makeGitOps());
+        const saveWholeFileToShelf = vi.fn().mockResolvedValue(undefined);
+        Object.assign(deps, { saveWholeFileToShelf });
+        resolveUriOnly({ repoRoot: "/repo-b", repoRelativePath: "selected.ts" });
+        registerRepositoryCommands(deps);
+        await mocks.commands.get("intelligit.fileSaveToShelf")?.(
+            mocks.FakeUri.file("/repo-b/selected.ts"),
+        );
+        expect(saveWholeFileToShelf).toHaveBeenCalledExactlyOnceWith("/repo-b", "selected.ts");
+    });
     describe("native partial command", () => {
         beforeEach(() => {
             mocks.l10nT.mockImplementation((message: string, values: Record<string, string> = {}) =>

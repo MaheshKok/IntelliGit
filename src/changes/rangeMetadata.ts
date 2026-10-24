@@ -1,6 +1,120 @@
 import type { RangeSnapshot, RangeSnapshotReference } from "../webviews/protocol/changeSelection";
+import type { HydratedChangeOwnership } from "./rangeMapping";
 
 const HASH = /^[a-f0-9]{64}$/;
+const OWNER = /^(?:default|[a-f0-9-]{36})$/;
+
+/** Immutable, repository-bound input to operation attribution; snapshots contain hashes, not file text. */
+export interface TargetOperationAttribution {
+    readonly version: 1;
+    readonly root: string;
+    readonly gitDir: string;
+    readonly operationId: string;
+    readonly path: string;
+    readonly priorFileOwner: string;
+    readonly previous: HydratedChangeOwnership;
+    readonly before: RangeSnapshot;
+    readonly after: RangeSnapshot;
+    readonly operation: RangeSnapshot;
+}
+
+/** Reject a checksum-valid payload unless its binding and every inline ownership snapshot are valid. */
+export function parseTargetOperationAttribution(
+    input: unknown,
+    root: string,
+    gitDir: string,
+    operationId: string,
+    file: string,
+): TargetOperationAttribution | undefined {
+    if (
+        !record(input) ||
+        Object.keys(input).length !== 10 ||
+        input.version !== 1 ||
+        input.root !== root ||
+        input.gitDir !== gitDir ||
+        input.operationId !== operationId ||
+        input.path !== file ||
+        typeof input.priorFileOwner !== "string" ||
+        !OWNER.test(input.priorFileOwner) ||
+        !validSnapshot(input.before) ||
+        !validSnapshot(input.after) ||
+        !validSnapshot(input.operation) ||
+        !validCapturedOwnership(input.previous)
+    )
+        return undefined;
+    return input as unknown as TargetOperationAttribution;
+}
+
+/** Captured owners must be syntactically valid; the publishing transaction checks live list membership. */
+function validCapturedOwnership(input: unknown): input is HydratedChangeOwnership {
+    if (
+        !record(input) ||
+        !Object.keys(input).every((key) =>
+            [
+                "contentId",
+                "lines",
+                "stale",
+                "totalChanges",
+                "tracking",
+                "history",
+                "selections",
+            ].includes(key),
+        ) ||
+        typeof input.contentId !== "string" ||
+        !HASH.test(input.contentId) ||
+        !record(input.lines) ||
+        (input.stale !== undefined && typeof input.stale !== "boolean") ||
+        (input.totalChanges !== undefined &&
+            (!Number.isSafeInteger(input.totalChanges) ||
+                (input.totalChanges as number) < 0 ||
+                (input.totalChanges as number) > 100_000))
+    )
+        return false;
+    const owners = new Set<string>();
+    const lines = (value: unknown): boolean =>
+        record(value) &&
+        Object.entries(value).every(([hash, owner]) => {
+            if (!HASH.test(hash) || typeof owner !== "string" || !OWNER.test(owner)) return false;
+            owners.add(owner);
+            return true;
+        });
+    if (!lines(input.lines)) return false;
+    if (
+        input.history !== undefined &&
+        (!Array.isArray(input.history) ||
+            input.history.length > 2 ||
+            !input.history.every((entry) => record(entry) && lines(entry.lines)))
+    )
+        return false;
+    return validCapturedSelections(input.selections) && validRangeMetadata(input, owners, true);
+}
+
+/** Explicit inclusion records remain bounded and cannot introduce malformed owner identifiers. */
+function validCapturedSelections(selections: unknown): boolean {
+    if (selections !== undefined) {
+        if (!record(selections)) return false;
+        for (const [scope, selection] of Object.entries(selections)) {
+            if (
+                (scope !== "all" && !OWNER.test(scope)) ||
+                !record(selection) ||
+                typeof selection.contentId !== "string" ||
+                !HASH.test(selection.contentId) ||
+                (selection.reviewRequired !== undefined &&
+                    typeof selection.reviewRequired !== "boolean") ||
+                !Array.isArray(selection.lineIds) ||
+                selection.lineIds.length > 100_000 ||
+                selection.lineIds.some(
+                    (id) => typeof id !== "string" || !/^\d{1,5}:\d{1,6}$/.test(id),
+                ) ||
+                !Number.isSafeInteger(selection.total) ||
+                (selection.total as number) < selection.lineIds.length ||
+                (selection.total as number) > 100_000
+            )
+                return false;
+        }
+    }
+    return true;
+}
 
 /** Reject malformed, unbounded or internally inconsistent persisted range evidence. */
 export function validRangeMetadata(

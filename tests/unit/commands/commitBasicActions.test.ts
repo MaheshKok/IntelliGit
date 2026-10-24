@@ -272,6 +272,28 @@ describe("cherryPick", () => {
     });
 });
 
+describe("ordinary history actions stay auto-committing", () => {
+    it("ordinary cherry-pick still creates a commit", async () => {
+        warn.mockResolvedValue("Cherry-pick");
+        mockedPickParent.mockResolvedValue({ kind: "notMerge" });
+        const ctx = makeCtx();
+        await cherryPick(ctx);
+        expect(runOf(ctx).mock.calls, "plain cherry-pick never adds --no-commit").toEqual([
+            [["cherry-pick", HASH]],
+        ]);
+    });
+
+    it("ordinary revert still creates a commit", async () => {
+        warn.mockResolvedValue("Revert");
+        mockedPickParent.mockResolvedValue({ kind: "notMerge" });
+        const ctx = makeCtx();
+        await revertCommit(ctx);
+        expect(runOf(ctx).mock.calls, "plain revert never adds --no-commit").toEqual([
+            [["revert", "--no-edit", HASH]],
+        ]);
+    });
+});
+
 describe("checkoutRevision", () => {
     it("does nothing when the confirmation is dismissed", async () => {
         warn.mockResolvedValue(undefined);

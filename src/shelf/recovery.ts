@@ -1,6 +1,16 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { chmod, lstat, open, readFile, readdir, rename, rm, stat } from "node:fs/promises";
+import {
+    chmod,
+    lstat,
+    open,
+    readFile,
+    readdir,
+    realpath,
+    rename,
+    rm,
+    stat,
+} from "node:fs/promises";
 import path from "node:path";
 import { GitExecutor } from "../git/executor";
 import type { RepositoryMutationGate } from "../git/repositoryMutationGate";
@@ -29,6 +39,8 @@ export type { ShelfRecoveryGit } from "./recoveryGit";
 /** Fault-injection boundaries around each durable destructive transition. */
 export type RevertCheckpoint =
     | "journal-created"
+    | "original-durable"
+    | "worktree-installed"
     | "source-moved"
     | "base-written"
     | "index-updated"
@@ -110,6 +122,29 @@ interface RevertState {
     expectedIndex: string | undefined;
 }
 
+/** Host-validated selected content; callbacks run only while repository and store locks are held. */
+interface WorktreeRemoval {
+    readonly before: Buffer;
+    readonly after: Buffer;
+    readonly validateBefore: () => Promise<void>;
+    readonly validateAfter: () => Promise<void>;
+}
+
+/** Removal completed durably; reconciliation/notification failure must not repeat the Git action. */
+export class ShelfWorktreeRemovalCompletedError extends Error {
+    readonly completed = true;
+    /** Keeps recovery location available to the host after a post-publication failure. */
+    constructor(
+        readonly recoveryDirectory: string,
+        cause: unknown,
+    ) {
+        super("Selected removal completed. Do not repeat it; review its recovery and metadata.", {
+            cause,
+        });
+        this.name = "ShelfWorktreeRemovalCompletedError";
+    }
+}
+
 /** Performs one journaled revert transaction or restart-time recovery under the repository gate. */
 export class ShelfReverter {
     private readonly git: ShelfRecoveryGit;
@@ -118,6 +153,60 @@ export class ShelfReverter {
     constructor(private readonly options: ShelfReverterOptions) {
         this.git =
             options.git ?? new GitExecutorRecoveryGit(new GitExecutor(options.repositoryRoot));
+    }
+
+    /**
+     * Installs reviewed remaining bytes without changing the index or linking a disposable shelf.
+     * The caller retains its metadata lease; schema migration must precede this entry point.
+     */
+    async revertWorktree(
+        input: WorktreeRemoval & {
+            readonly repositoryRoot: string;
+            readonly transactionId: string;
+            readonly relativePath: string;
+        },
+    ): Promise<{ readonly baseOid: string; readonly recoveryDirectory: string }> {
+        if (
+            (await realpath(input.repositoryRoot)) !== (await realpath(this.options.repositoryRoot))
+        )
+            throw new RecoverySafetyError("Selected removal belongs to a different repository.");
+        const directories = await this.options.gitOps.getGitDirectories();
+        let completedDirectory: string | undefined;
+        try {
+            return await this.options.gate.run(
+                this.options.repositoryRoot,
+                directories.commonDir,
+                async () =>
+                    this.options.store.withLock(async () => {
+                        await input.validateBefore();
+                        try {
+                            const result = await this.revertWithHeldLocks(
+                                {
+                                    transactionId: input.transactionId,
+                                    files: [
+                                        {
+                                            relativePath: input.relativePath,
+                                            baseBytes: input.after,
+                                        },
+                                    ],
+                                },
+                                input,
+                            );
+                            completedDirectory = result.recoveryDirectory;
+                            return result;
+                        } catch (error) {
+                            if (error instanceof ShelfWorktreeRemovalCompletedError)
+                                completedDirectory = error.recoveryDirectory;
+                            throw error;
+                        }
+                    }),
+            );
+        } catch (error) {
+            // Either lock release may replace the callback's already-completed outcome.
+            if (completedDirectory && !(error instanceof ShelfWorktreeRemovalCompletedError))
+                throw new ShelfWorktreeRemovalCompletedError(completedDirectory, error);
+            throw error;
+        }
     }
 
     /** Moves originals to recovery and restores each requested path to its pinned base state. */
@@ -142,12 +231,15 @@ export class ShelfReverter {
      * the journal can link the destructive recovery transaction to that generation without
      * re-entering either serialization primitive.
      */
-    async revertWithHeldLocks(input: {
-        readonly transactionId: string;
-        readonly baseOid?: string;
-        readonly files: readonly RevertFile[];
-        readonly shelf?: ShelfJournalShelfLink;
-    }): Promise<{ readonly baseOid: string; readonly recoveryDirectory: string }> {
+    async revertWithHeldLocks(
+        input: {
+            readonly transactionId: string;
+            readonly baseOid?: string;
+            readonly files: readonly RevertFile[];
+            readonly shelf?: ShelfJournalShelfLink;
+        },
+        worktree?: WorktreeRemoval,
+    ): Promise<{ readonly baseOid: string; readonly recoveryDirectory: string }> {
         const directories = await this.options.gitOps.getGitDirectories();
         if (
             !(await (this.options.sameFilesystem ?? isSameFilesystem)(
@@ -161,49 +253,55 @@ export class ShelfReverter {
             throw new ShelfRecoveryFullError();
         }
         const recoveryDirectory = recoveryDirectoryFor(directories.gitDir, input.transactionId);
-        return this.revertUnderGate(input, recoveryDirectory, directories.gitDir);
+        return this.revertUnderGate(input, recoveryDirectory, directories.gitDir, worktree);
     }
 
     /** Safely rolls back only incomplete shelf-revert journals after a process restart. */
     async resumePending(): Promise<PendingShelfRecoveryResult> {
         const directories = await this.options.gitOps.getGitDirectories();
         return this.options.gate.run(this.options.repositoryRoot, directories.commonDir, async () =>
-            this.options.store.withLock(async () => {
-                const rolledBackIds: string[] = [];
-                const retainedIds: string[] = [];
-                for (const journal of await this.options.store.readJournals()) {
-                    if (journal.state !== "shelvePendingRevert") continue;
-                    try {
-                        if (!isIndexFingerprint(journal.expectedIndexFingerprint)) {
-                            throw new RecoverySafetyError(
-                                "Pending recovery journal has no valid index fingerprint.",
-                            );
-                        }
-                        // Roll back one journal at a time under the repository gate and store lock.
-                        // react-doctor-disable-next-line react-doctor/async-await-in-loop
-                        const moved = await this.pendingMovedPaths(journal, directories.gitDir);
-                        const retained = await rollbackMovedPaths(
-                            moved,
-                            this.options.repositoryRoot,
-                            directories.gitDir,
-                            this.git,
-                            journal.expectedIndexFingerprint,
-                        );
-                        if (retained.length > 0) {
-                            await this.options.store.transitionJournal(journal.id, "ghost");
-                            retainedIds.push(journal.id);
-                        } else {
-                            await this.options.store.deleteJournal(journal.id);
-                            rolledBackIds.push(journal.id);
-                        }
-                    } catch {
-                        await this.options.store.transitionJournal(journal.id, "ghost");
-                        retainedIds.push(journal.id);
-                    }
-                }
-                return { rolledBackIds, retainedIds };
-            }),
+            this.options.store.withLock(() => this.resumePendingWithHeldLocks()),
         );
+    }
+
+    /** Continues existing journals while the host retains metadata, repository and shelf locks. */
+    async resumePendingWithHeldLocks(): Promise<PendingShelfRecoveryResult> {
+        const directories = await this.options.gitOps.getGitDirectories();
+        const rolledBackIds: string[] = [];
+        const retainedIds: string[] = [];
+        for (const journal of await this.options.store.readJournals()) {
+            if (journal.state !== "shelvePendingRevert") continue;
+            await this.options.store.withPendingRecovery(journal.id, async (journal) => {
+                try {
+                    if (!isIndexFingerprint(journal.expectedIndexFingerprint)) {
+                        throw new RecoverySafetyError(
+                            "Pending recovery journal has no valid index fingerprint.",
+                        );
+                    }
+                    // Roll back one journal at a time under the repository gate and store lock.
+                    // react-doctor-disable-next-line react-doctor/async-await-in-loop
+                    const moved = await this.pendingMovedPaths(journal, directories.gitDir);
+                    const retained = await rollbackMovedPaths(
+                        moved,
+                        this.options.repositoryRoot,
+                        directories.gitDir,
+                        this.git,
+                        journal.expectedIndexFingerprint,
+                    );
+                    if (retained.length > 0) {
+                        await this.options.store.finishPendingRecovery(journal.id, "retained");
+                        retainedIds.push(journal.id);
+                    } else {
+                        await this.options.store.finishPendingRecovery(journal.id, "rolledBack");
+                        rolledBackIds.push(journal.id);
+                    }
+                } catch {
+                    await this.options.store.finishPendingRecovery(journal.id, "retained");
+                    retainedIds.push(journal.id);
+                }
+            });
+        }
+        return { rolledBackIds, retainedIds };
     }
 
     private async revertUnderGate(
@@ -215,6 +313,7 @@ export class ShelfReverter {
         },
         recoveryDirectory: string,
         gitDirectory: string,
+        worktree?: WorktreeRemoval,
     ): Promise<{ readonly baseOid: string; readonly recoveryDirectory: string }> {
         const originalHead = await this.currentHead();
         const state: RevertState = {
@@ -241,14 +340,18 @@ export class ShelfReverter {
             for (const file of input.files) {
                 // Per-path journal checkpoints and index fingerprints make this transaction ordered.
                 // react-doctor-disable-next-line react-doctor/async-await-in-loop
-                await this.revertFile(file, state, recoveryDirectory, gitDirectory);
+                await this.revertFile(file, state, recoveryDirectory, gitDirectory, worktree);
             }
             await this.commitJournal(state);
             committed = true;
             await this.checkpoint("journal-committed");
             return { baseOid: state.baseOid, recoveryDirectory };
         } catch (error) {
-            if (committed) throw error;
+            if (committed) {
+                if (worktree)
+                    throw new ShelfWorktreeRemovalCompletedError(recoveryDirectory, error);
+                throw error;
+            }
             const retained = await rollbackMovedPaths(
                 state.moved,
                 this.options.repositoryRoot,
@@ -267,6 +370,7 @@ export class ShelfReverter {
         state: RevertState,
         recoveryDirectory: string,
         gitDirectory: string,
+        worktree?: WorktreeRemoval,
     ): Promise<void> {
         const relativePath = assertRepositoryRelativePath(file.relativePath);
         if (state.seenPaths.has(relativePath)) {
@@ -301,11 +405,27 @@ export class ShelfReverter {
         // Persist the planned state before a source move can make recovery necessary.
         // react-doctor-disable-next-line react-doctor/async-parallel, react-doctor/async-defer-await
         await this.writePendingJournal(state);
-        await this.moveOriginal(entry, state, gitDirectory);
+        const mode = worktree ? (await lstat(target)).mode & 0o777 : undefined;
+        if (worktree) {
+            await worktree.validateBefore();
+            if (!(await readFile(target)).equals(worktree.before))
+                throw new RecoverySafetyError("Selected worktree changed before removal.");
+            const backup = await this.options.store.putObject(
+                "recovery-" + state.transactionId,
+                worktree.before,
+            );
+            await this.options.store.readObject("recovery-" + state.transactionId, backup.hash);
+            state.recoveryObjectHashes.push(backup.hash);
+            await this.writePendingJournal(state);
+            await this.checkpoint("original-durable");
+            await worktree.validateBefore();
+        }
+        await this.moveOriginal(entry, state, gitDirectory, Boolean(worktree));
 
         const baseEntry = await this.git.getBaseEntry(state.baseOid, relativePath);
-        await this.writeBase(entry, baseEntry, file.baseBytes, state);
-        await this.updateIndex(entry, baseEntry, state);
+        await this.writeBase(entry, baseEntry, file.baseBytes, state, mode);
+        if (worktree) await worktree.validateAfter();
+        else await this.updateIndex(entry, baseEntry, state);
         if (entry.hadOriginal && (await fingerprint(recoveryPath)) === "absent") {
             throw new RecoverySafetyError("Recovery object disappeared before journal commit.");
         }
@@ -317,6 +437,7 @@ export class ShelfReverter {
         entry: MovedPath,
         state: RevertState,
         gitDirectory: string,
+        originalDurable = false,
     ): Promise<void> {
         if (!entry.hadOriginal) {
             state.moved.push(entry);
@@ -347,6 +468,7 @@ export class ShelfReverter {
         // Re-check recovery containment after rename before preserving a recovery snapshot.
         // react-doctor-disable-next-line react-doctor/async-parallel
         await assertContainedParent(gitDirectory, entry.recoveryPath);
+        if (originalDurable) return;
         const snapshot = await this.options.store.putObject(
             "recovery-" + state.transactionId,
             await readFile(entry.recoveryPath),
@@ -362,6 +484,7 @@ export class ShelfReverter {
         baseEntry: ShelfJournalIndexEntry | undefined,
         suppliedBaseBytes: Uint8Array | undefined,
         state: RevertState,
+        mode?: number,
     ): Promise<void> {
         if (baseEntry && !isRegularFileMode(baseEntry.mode)) {
             throw new RecoverySafetyError("Only regular-file base entries can be restored.");
@@ -372,6 +495,10 @@ export class ShelfReverter {
                 entry.target,
                 suppliedBaseBytes ?? (await this.git.readBlob(baseEntry.oid)),
             );
+            if (mode !== undefined) {
+                await chmod(entry.target, mode);
+                await this.checkpoint("worktree-installed");
+            }
             entry.writtenFingerprint = await fingerprint(entry.target);
         }
         state.pathProgress[entry.relativePath] = journalProgress(entry, "written");
@@ -390,7 +517,9 @@ export class ShelfReverter {
         state: RevertState,
     ): Promise<void> {
         await this.verifyGitPreconditions(state.originalHead, state.expectedIndex);
-        await this.git.writeIndexEntry(entry.relativePath, baseEntry);
+        await this.git.writeIndexEntry(entry.relativePath, baseEntry, () =>
+            this.verifyGitPreconditions(state.originalHead, state.expectedIndex),
+        );
         entry.writtenIndexEntry = await this.git.getIndexEntry(entry.relativePath);
         entry.writtenIndexFingerprint = await this.git.getIndexPathFingerprint(entry.relativePath);
         if (!sameIndexEntry(entry.writtenIndexEntry, baseEntry)) {
@@ -599,7 +728,21 @@ async function rollbackMovedPaths(
 
             // Restore the index first so a later filesystem failure leaves the recovery copy intact.
             // react-doctor-disable-next-line react-doctor/async-defer-await
-            await git.writeIndexEntry(entry.relativePath, entry.originalIndexEntry);
+            if (
+                entry.originalIndexFingerprint === undefined ||
+                entry.writtenIndexFingerprint !== entry.originalIndexFingerprint ||
+                !sameIndexEntry(entry.writtenIndexEntry, entry.originalIndexEntry)
+            )
+                await git.writeIndexEntry(
+                    entry.relativePath,
+                    entry.originalIndexEntry,
+                    async () => {
+                        if (!(await matchesWrittenIndexState(entry, git, expectedIndexFingerprint)))
+                            throw new RecoverySafetyError(
+                                "A rolled-back path changed in the index.",
+                            );
+                    },
+                );
             if (!(await matchesOriginalIndexState(entry, git))) {
                 retained.push(entry.relativePath);
                 continue;

@@ -25,6 +25,8 @@ export interface ShelfConflictSessionPayload {
     readonly patchedBase: string;
     readonly worktreeFingerprint: string;
     readonly shelfGeneration: number;
+    /** Host-read pending targeted restore this conflict belongs to; never supplied by a webview. */
+    readonly operationId?: string;
 }
 
 /** Request opening the content-backed session for one already-conflicted entry. */
@@ -39,12 +41,21 @@ export interface ApplyShelfConflictResolutionInput extends OpenShelfConflictSess
     readonly expectedShelfGeneration: number;
     readonly expectedPathFingerprint: string;
     readonly staleOverride?: "overwriteParkingCurrent";
+    /** Continues this pending targeted restore instead of the legacy shelf lifecycle update. */
+    readonly operationId?: string;
 }
 
 /** Explicit result lets the host distinguish a stale prompt from a successful mutation. */
 export type ApplyShelfConflictResolutionResult =
-    | { readonly status: "applied"; readonly newGeneration: number }
+    | {
+          readonly status: "applied";
+          readonly newGeneration: number;
+          /** Files changed, but the targeted restore stopped for review before it finished. */
+          readonly needsReview?: true;
+      }
     | { readonly status: "stale"; readonly reason: "shelf" | "path" }
+    /** The targeted restore moved on; overwriting is never offered for it. */
+    | { readonly status: "stale"; readonly reason: "operation" }
     | { readonly status: "refused"; readonly reason: string };
 
 interface MaterializeInput {

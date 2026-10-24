@@ -1,3 +1,4 @@
+import * as captureModule from "../../../src/e2e/webviewCapture";
 // Spec-derived tests for the webview capture boundary (its 9 resolved host contexts, and the
 // exact-set-equality drift guard). Every test here is written to be able to fail: the
 // tee/delivery/return-value tests exercise `wrapWebviewForCapture` against a fake `vscode.Webview`
@@ -7,6 +8,7 @@
 // files from disk so deleting or duplicating a wiring site changes its input rather than a
 // hand-copied fixture.
 
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type * as vscode from "vscode";
@@ -102,6 +104,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    vi.unstubAllEnvs();
     resetE2eWebviewCaptureSinkForTests();
     setE2eControlChannelActive(false);
 });
@@ -373,6 +376,75 @@ describe("wrapWebviewForCapture: handshake trace", () => {
     });
 });
 
+describe("wrapWebviewForCapture: opted-in working-file statistics trace", () => {
+    beforeEach(() => {
+        resetWebviewWrapperNumberingForTests();
+    });
+
+    it("acknowledges exact hashed incoming paths and distinguishes ready from unavailable", () => {
+        vi.stubEnv("INTELLIGIT_E2E_TRACE_WORKING_FILE_STATS", "1");
+        const fake = makeFakeWebview();
+        const wrapped = wrapWebviewForCapture(
+            fake.webview,
+            "commit-panel",
+            new WebviewCaptureSink(),
+        );
+        const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            fake.receive({
+                type: "requestWorkingFileStats",
+                repositoryRoot: "/secret/repo",
+                revision: "private-revision",
+                paths: ["secret-first.txt", "secret-second.txt"],
+            });
+            fake.receive({
+                type: "requestWorkingFileStats",
+                repositoryRoot: "/secret/repo",
+                revision: "private-revision",
+                paths: ["secret-second.txt", "secret-third.txt"],
+            });
+            void wrapped.postMessage({
+                type: "workingFileStats",
+                repositoryRoot: "/secret/repo",
+                revision: "private-revision",
+                files: [
+                    { path: "secret-first.txt", statsState: "ready" },
+                    { path: "secret-second.txt", statsState: "unavailable" },
+                    { path: "secret-third.txt", statsState: "pending" },
+                ],
+            });
+            const lines = spy.mock.calls.map((call) => call.map(String).join(" "));
+            const hashes = ["secret-first.txt", "secret-second.txt", "secret-third.txt"].map(
+                (path) => createHash("sha256").update(path).digest("hex"),
+            );
+            expect(lines).toEqual([
+                `[intelligit-e2e] working-file-stats commit-panel#1.1 in requestWorkingFileStats revision=1 unique=2 hashes=${hashes[0]},${hashes[1]}`,
+                `[intelligit-e2e] working-file-stats commit-panel#1.1 in requestWorkingFileStats revision=1 unique=3 hashes=${hashes[1]},${hashes[2]}`,
+                "[intelligit-e2e] working-file-stats commit-panel#1.1 out workingFileStats revision=1 terminal=2 ready=1 unavailable=1",
+            ]);
+            expect(lines.join("\n")).not.toMatch(/secret|private-revision/);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it("stays quiet when the scale fixture did not opt in", () => {
+        const fake = makeFakeWebview();
+        wrapWebviewForCapture(fake.webview, "commit-panel", new WebviewCaptureSink());
+        const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            fake.receive({
+                type: "requestWorkingFileStats",
+                revision: "revision",
+                paths: ["file.txt"],
+            });
+            expect(spy).not.toHaveBeenCalled();
+        } finally {
+            spy.mockRestore();
+        }
+    });
+});
+
 describe("wrapWebviewForCapture: tee", () => {
     it("records every postMessage in call order, tagged with the right context id", () => {
         const fake = makeFakeWebview();
@@ -641,5 +713,97 @@ describe("WEBVIEW_CONTEXT_IDS: type-level guard", () => {
         const ids: readonly WebviewContextId[] = WEBVIEW_CONTEXT_IDS;
         expect(ids).toHaveLength(11);
         expect(new Set(ids).size).toBe(11);
+    });
+});
+
+describe("benchmark IPC accounting", () => {
+    const snapshot = () =>
+        (
+            captureModule as unknown as { getE2eBenchmarkMetrics?: () => unknown }
+        ).getE2eBenchmarkMetrics?.();
+    it("counts each boundary direction once using exact UTF-8 JSON bytes", () => {
+        vi.stubEnv("INTELLIGIT_E2E_BENCHMARK", "1");
+        setE2eControlChannelActive(true);
+        const fake = makeFakeWebview();
+        const wrapped = wrapWebviewForCapture(
+            fake.webview,
+            "commit-panel",
+            new WebviewCaptureSink(),
+        );
+        wrapped.onDidReceiveMessage(() => undefined);
+        wrapped.onDidReceiveMessage(() => undefined);
+        const inbound = { type: "fixture", text: "雪😀" };
+        const outbound = { type: "fixture", values: [1, "é"] };
+        fake.receive(inbound);
+        fake.receive(inbound);
+        const result = Promise.resolve(false);
+        fake.setPostMessageResult(result);
+        expect(wrapped.postMessage(outbound)).toBe(result);
+        expect(fake.delivered).toEqual([outbound]);
+        expect(snapshot()).toEqual({
+            in: {
+                count: 2,
+                serializedBytes: 2 * Buffer.byteLength(JSON.stringify(inbound)),
+                serializationFailures: 0,
+            },
+            out: {
+                count: 1,
+                serializedBytes: Buffer.byteLength(JSON.stringify(outbound)),
+                serializationFailures: 0,
+            },
+        });
+    });
+    it("does not allocate benchmark counters when opted out or outside the E2E gate", () => {
+        vi.stubEnv("INTELLIGIT_E2E_BENCHMARK", "1");
+        const fake = makeFakeWebview();
+        const original = { webview: fake.webview };
+        expect(captureWebview(original, "commit-panel")).toBe(original);
+        expect(getE2eWebviewCaptureSink()).toBeUndefined();
+        expect(snapshot()).toBeUndefined();
+        vi.stubEnv("INTELLIGIT_E2E_BENCHMARK", "0");
+        setE2eControlChannelActive(true);
+        wrapWebviewForCapture(fake.webview, "commit-panel", new WebviewCaptureSink()).postMessage({
+            type: "fixture",
+        });
+        expect(snapshot()).toBeUndefined();
+    });
+    it("keeps only a bounded tail plus per-type counts in benchmark mode", () => {
+        vi.stubEnv("INTELLIGIT_E2E_BENCHMARK", "1");
+        const sink = new WebviewCaptureSink();
+        const total = captureModule.BENCHMARK_CAPTURE_TAIL * 3;
+        for (let i = 0; i < total; i++)
+            sink.record("commit-panel", { type: i % 2 === 0 ? "even" : "odd", i });
+        const tail = sink.getMessages().map((entry) => (entry.message as { i: number }).i);
+        expect(tail).toEqual(
+            Array.from(
+                { length: captureModule.BENCHMARK_CAPTURE_TAIL },
+                (_, k) => total - captureModule.BENCHMARK_CAPTURE_TAIL + k,
+            ),
+        );
+        expect(sink.getCountsByType()).toEqual({ even: total / 2, odd: total / 2 });
+    });
+    it("keeps every message outside benchmark mode", () => {
+        vi.stubEnv("INTELLIGIT_E2E_BENCHMARK", "0");
+        const sink = new WebviewCaptureSink();
+        const total = captureModule.BENCHMARK_CAPTURE_TAIL * 3;
+        for (let i = 0; i < total; i++) sink.record("commit-panel", { type: "fixture", i });
+        expect(sink.getMessages()).toHaveLength(total);
+    });
+    it("reports unmeasurable serialization without changing transport delivery", () => {
+        vi.stubEnv("INTELLIGIT_E2E_BENCHMARK", "1");
+        setE2eControlChannelActive(true);
+        const fake = makeFakeWebview();
+        const value = { type: "fixture", value: 1n };
+        expect(() =>
+            wrapWebviewForCapture(
+                fake.webview,
+                "commit-panel",
+                new WebviewCaptureSink(),
+            ).postMessage(value),
+        ).not.toThrow();
+        expect(fake.delivered).toEqual([value]);
+        expect(snapshot()).toMatchObject({
+            out: { count: 1, serializedBytes: 0, serializationFailures: 1 },
+        });
     });
 });

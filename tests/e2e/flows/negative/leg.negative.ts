@@ -1,3 +1,4 @@
+import { connectedChangelists } from "../../../helpers/connectedChangelists";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -158,6 +159,7 @@ async function applySeededShelf(workspace: FixtureWorkspace): Promise<void> {
     });
     const store = new ShelfStore(shelfPaths);
     const service = new ShelfService({
+        changelists: await connectedChangelists(workspace.root),
         repositoryRoot: workspace.root,
         executor: new GitExecutor(workspace.root, undefined, definedEnv(workspace.env)),
         store,

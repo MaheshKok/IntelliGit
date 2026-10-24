@@ -106,6 +106,8 @@ interface RepositoryCommandsDeps {
     openVsCodeMergeEditorForFile: (filePath: string) => Promise<void>;
     /** Opens the resolved local file through its known repository's shared partial workflow. */
     openPartialChanges: (repositoryRoot: string, filePath: string) => Promise<void>;
+    /** Saves one explicitly resolved whole file without changing repository selection or local bytes. */
+    saveWholeFileToShelf?: (repositoryRoot: string, filePath: string) => Promise<void>;
 }
 
 /** Narrows command payloads from tree rows before file operations touch the repository. */
@@ -869,6 +871,27 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
             } catch (error) {
                 await vscode.window.showErrorMessage(
                     vscode.l10n.t("Open Partial Changes failed: {message}", {
+                        message: getErrorMessage(error),
+                    }),
+                );
+            }
+        }),
+        vscode.commands.registerCommand("intelligit.fileSaveToShelf", async (ctx: unknown) => {
+            try {
+                const resolved = isFilePathContext(ctx)
+                    ? {
+                          repoRoot: captureContextRepositoryRoot(deps, ctx),
+                          repoRelativePath: assertRepoRelativePath(ctx.filePath),
+                      }
+                    : await resolveFileCommandContext(ctx, gitOps);
+                if (!resolved || !deps.saveWholeFileToShelf)
+                    throw new Error(
+                        "Save to Shelf is only available for a local file in a known repository.",
+                    );
+                await deps.saveWholeFileToShelf(resolved.repoRoot, resolved.repoRelativePath);
+            } catch (error) {
+                await vscode.window.showErrorMessage(
+                    vscode.l10n.t("Save to Shelf failed: {message}", {
                         message: getErrorMessage(error),
                     }),
                 );

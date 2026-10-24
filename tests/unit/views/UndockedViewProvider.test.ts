@@ -53,9 +53,17 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { CommitDetail } from "../../../src/types";
+import type { CommitDetail, WorkingFile } from "../../../src/types";
+import type { WorkingFileStatsLoader } from "../../../src/views/workingFileStatsLoader";
 import { GitExecutor } from "../../../src/git/executor";
+import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { GitOps } from "../../../src/git/operations";
+import { RepositoryLock } from "../../../src/git/repositoryLock";
+import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
+import { ShelfService } from "../../../src/services/shelfService";
+import { resolveShelfPaths } from "../../../src/shelf/paths";
+import { ShelfStore } from "../../../src/shelf/store";
+import { connectedChangelists } from "../../helpers/connectedChangelists";
 import { UndockedViewProvider } from "../../../src/views/UndockedViewProvider";
 import { seedFixtureTemplate } from "../../fixtures/repo/seed";
 import { toGitEnvironment } from "../../visual/recorder/recordingGitEnvironment";
@@ -110,6 +118,17 @@ function setCommitDetailMessages(posted: readonly unknown[]): Record<string, unk
         (message): message is Record<string, unknown> =>
             isRecord(message) && message.type === "setCommitDetail",
     );
+}
+
+function pendingStatsFile(path: string): WorkingFile {
+    return {
+        path,
+        status: "M",
+        staged: false,
+        additions: 0,
+        deletions: 0,
+        statsState: "pending",
+    };
 }
 
 interface BridgeHarness {
@@ -576,4 +595,183 @@ describe("UndockedViewProvider native commit bridge wiring", () => {
         expect(bridge.disposed).toBe(true);
         resetCreatedWebviewPanelsForTests();
     });
+
+    it("closing the panel aborts queued working-file statistics", async () => {
+        const { provider, root, gitOps } = createBridgeProvider();
+        const panel = openTestPanel(provider);
+        const posted = attachPostedMessageRecorder(panel);
+        const privateProvider = provider as unknown as {
+            fileStats: WorkingFileStatsLoader;
+            files: WorkingFile[];
+        };
+        privateProvider.files = privateProvider.fileStats.reset([
+            pendingStatsFile("first.txt"),
+            pendingStatsFile("second.txt"),
+        ]);
+        const revision = privateProvider.files[0]?.statsRevision;
+        let blockedSignal: AbortSignal | undefined;
+        const read = vi.fn(
+            (_files: readonly WorkingFile[], _paths: readonly string[], signal: AbortSignal) =>
+                new Promise<WorkingFile[]>((resolve) => {
+                    blockedSignal = signal;
+                    signal.addEventListener("abort", () => resolve([]), { once: true });
+                }),
+        );
+        const deriveFor = vi
+            .spyOn(gitOps, "deriveFor")
+            .mockReturnValue({ getWorkingFileStats: read } as GitOps);
+
+        const first = panel.receiveMessage({
+            type: "requestWorkingFileStats",
+            repositoryRoot: root,
+            revision,
+            paths: ["first.txt"],
+        });
+        const second = panel.receiveMessage({
+            type: "requestWorkingFileStats",
+            repositoryRoot: root,
+            revision,
+            paths: ["second.txt"],
+        });
+        await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+
+        panel.dispose();
+
+        expect(
+            blockedSignal?.aborted,
+            "the registered panel-disposal callback must abort the active statistics read",
+        ).toBe(true);
+        await Promise.all([first, second]);
+        expect(
+            read,
+            "the queued second read must never start after disposal",
+        ).toHaveBeenCalledTimes(1);
+        expect(
+            posted.filter((message) => isRecord(message) && message.type === "workingFileStats"),
+            "a closed panel must not receive a late statistics reply",
+        ).toEqual([]);
+        deriveFor.mockRestore();
+        provider.dispose();
+        resetCreatedWebviewPanelsForTests();
+    });
+});
+
+it("targeted host Abort retains its captured repository and never falls through after cancellation", async () => {
+    const control = vi
+        .spyOn(GitOps.prototype, "controlTargetHistory")
+        .mockResolvedValue({ status: "cancelled", id: "pending" });
+    const abort = vi.spyOn(GitOps.prototype, "abortMerge").mockResolvedValue();
+    const { provider, workspace, root } = createBridgeProvider();
+    try {
+        await (
+            provider as unknown as { handleMessage(message: { type: "abortMerge" }): Promise<void> }
+        ).handleMessage({ type: "abortMerge" });
+        expect(
+            control,
+            "host must consult authoritative targeted recovery before ordinary abort",
+        ).toHaveBeenCalledWith(
+            root,
+            ChangelistStore.forStorage(workspace.state),
+            "abort",
+            expect.any(Function),
+        );
+        expect(
+            abort,
+            "cancelled pending target must never fall through to native abort/reset",
+        ).not.toHaveBeenCalled();
+    } finally {
+        control.mockRestore();
+        abort.mockRestore();
+    }
+});
+
+/** Same race as the docked provider test of the same name: the panel must be re-sent a rewrite. */
+describe("UndockedViewProvider shelf listing after a host-side rewrite", () => {
+    it("re-sends the Shelf tab the generation a history-base rewrite published", async () => {
+        const parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-undocked-shelf-"));
+        resetCreatedWebviewPanelsForTests();
+        resetFakeWorkspaceConfigurationForTests();
+        try {
+            const template = await seedFixtureTemplate(path.join(parentDir, "repo"), {
+                homeParent: parentDir,
+            });
+            const env = toGitEnvironment(template.env);
+            const changelists = await connectedChangelists(template.root);
+            const store = new ShelfStore(
+                await resolveShelfPaths({
+                    repositoryRoot: template.root,
+                    globalStoragePath: path.join(parentDir, "shelf-storage"),
+                }),
+            );
+            const service = new ShelfService({
+                changelists,
+                repositoryRoot: template.root,
+                executor: new GitExecutor(template.root, undefined, env),
+                store,
+                gate: new RepositoryMutationGate(
+                    new RepositoryMutationCoordinator(),
+                    new RepositoryLock(),
+                ),
+            });
+            const shelfId = (
+                await service.shelve({
+                    name: "scenario-seeded-shelf",
+                    paths: ["untracked.txt"],
+                    silent: true,
+                    keepLocal: false,
+                })
+            ).shelfId!;
+            const lease = await changelists.acquireTargetOperationLease(template.root);
+            setFakeWorkspaceConfiguration(buildUndockedWorkspaceConfiguration());
+            const args = [
+                ...buildUndockedProviderConstructorArguments({
+                    repoRoot: template.root,
+                    gitOps: new GitOps(new GitExecutor(template.root, undefined, env)),
+                }),
+            ];
+            args[7] = { ...(args[7] as object), shelfServiceForRepository: () => service };
+            const provider = createTestUndockedViewProvider(...args);
+            try {
+                const panel = openTestPanel(provider);
+                const posted = attachPostedMessageRecorder(panel);
+                const listed = () =>
+                    (
+                        posted
+                            .filter(
+                                (message): message is Record<string, unknown> =>
+                                    isRecord(message) && message.type === "update",
+                            )
+                            .at(-1)?.shelves as
+                            readonly { id: string; generation: number }[] | undefined
+                    )?.find((shelf) => shelf.id === shelfId)?.generation;
+                await panel.receiveMessage({ type: "ready" });
+                await vi.waitFor(() =>
+                    expect(
+                        listed(),
+                        "the startup listing ran while the lease refused the rewrite",
+                    ).toBe(1),
+                );
+                await lease.release();
+
+                await service.listShelves();
+                const { generation } = await store.readCurrentShelfManifest(shelfId);
+                expect(generation, "the history-base downgrade publishes a new generation").toBe(2);
+                await vi.waitFor(
+                    () =>
+                        expect(
+                            listed(),
+                            "the Shelf tab must be re-sent the generation the store now holds",
+                        ).toBe(generation),
+                    { timeout: 5_000 },
+                );
+            } finally {
+                provider.dispose();
+            }
+        } finally {
+            for (const createdPanel of getCreatedWebviewPanels()) createdPanel.dispose();
+            resetCreatedWebviewPanelsForTests();
+            resetFakeWorkspaceConfigurationForTests();
+            await removeScratchDirectories(parentDir);
+        }
+    }, 30_000);
 });

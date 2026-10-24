@@ -223,3 +223,12 @@ describe("response builders", () => {
         });
     });
 });
+
+describe("benchmark metric request", () => {
+    it("accepts only a numeric snapshot request, never metric mutation", () => {
+        const request = { nonce: "bench", store: "metrics", operation: "snapshot" };
+        expect(parseE2eRequest(request)).toEqual(request);
+        for (const operation of ["seed", "reset"])
+            expect(() => parseE2eRequest({ ...request, operation })).toThrow();
+    });
+});

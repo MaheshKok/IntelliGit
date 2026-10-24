@@ -19,6 +19,9 @@ import {
     type ShelfService,
 } from "../services/shelfService";
 import { logShelfOperation, logShelfWarning } from "../services/shelfObservability";
+import type { TargetShelfMutationResult } from "../services/shelfTargetRestore";
+import type { ChangelistStore } from "../changes/changelistStore";
+import { prepareShelfRestore, type ShelfRestoreRequest } from "../commands/shelfRestoreTarget";
 import { promptRebaseAfterPushRejection } from "../services/gitHelpers";
 import { assertValidBranchName } from "../utils/gitRefs";
 import type {
@@ -350,6 +353,8 @@ export async function executeStashMutationRequest(
 /** Narrow host dependency surface used by both commit-panel providers for shelf requests. */
 export interface ShelfActionDeps {
     shelfService: ShelfService;
+    /** Shared metadata store; restore destinations are read for the service's repository only. */
+    changelists: ChangelistStore;
     refreshData: () => Promise<void>;
     fireWorkingTreeChanged: () => void;
     /** Resolves an export destination from a host-owned picker, never from webview input. */
@@ -380,6 +385,128 @@ export async function openShelfConflictEditorFromMessage(
 
 type ShelfMutationCompleted = Extract<InboundMessage, { type: "shelfMutationCompleted" }>;
 
+/** Renderer restore requests already admitted per repository service; duplicates never repeat Git. */
+type KnownRestoreRequest = {
+    readonly key: string;
+    readonly completion: Promise<ShelfMutationCompleted>;
+};
+const restoreRequests = new WeakMap<ShelfService, Map<string, KnownRestoreRequest>>();
+const MAX_KNOWN_RESTORE_REQUESTS = 64;
+
+const TARGETED_RESTORE_STATUS: Record<TargetShelfMutationResult["status"], ShelfMutationStatus> = {
+    applied: "ok",
+    notApplied: "partial",
+    conflicted: "conflicts",
+    stale: "staleShelf",
+    busy: "busy",
+    appliedNeedsReview: "needsReview",
+};
+
+/**
+ * Validates a renderer restore synchronously, then admits it once per request ID. A repeated ID
+ * with the same intent shares the first completion; a reused ID with different intent is stale.
+ */
+function admitShelfRestore(
+    deps: ShelfActionDeps,
+    message: Record<string, unknown>,
+    requestId: string,
+): { readonly first: boolean; readonly completion: Promise<ShelfMutationCompleted> } {
+    if ("targetOperation" in message || "operationId" in message)
+        throw new Error("Restore operations are issued by the host.");
+    const request: ShelfRestoreRequest = {
+        shelfId: assertShelfId(message.shelfId, "shelfId"),
+        expectedShelfGeneration: assertShelfGeneration(
+            message.expectedGeneration,
+            "expectedGeneration",
+        ),
+        ...(message.changeIds === undefined
+            ? {}
+            : {
+                  changeIds: assertStringArray(message.changeIds, "changeIds").map((id) =>
+                      assertShelfChangeId(id, "changeIds"),
+                  ),
+              }),
+        removeFromShelf: assertBoolean(message.removeFromShelf, "removeFromShelf"),
+        mode: assertUnshelveMode(message.mode),
+    };
+    const key = JSON.stringify(request);
+    let known = restoreRequests.get(deps.shelfService);
+    if (!known)
+        restoreRequests.set(deps.shelfService, (known = new Map<string, KnownRestoreRequest>()));
+    const previous = known.get(requestId);
+    if (previous)
+        return {
+            first: false,
+            completion:
+                previous.key === key
+                    ? previous.completion
+                    : Promise.resolve({
+                          type: "shelfMutationCompleted",
+                          requestId,
+                          status: "staleShelf",
+                          entries: [],
+                          message: vscode.l10n.t(
+                              "This request ID was already used for a different restore.",
+                          ),
+                      }),
+        };
+    const completion = runShelfRestore(deps, request, requestId);
+    known.set(requestId, { key, completion });
+    if (known.size > MAX_KNOWN_RESTORE_REQUESTS) known.delete(known.keys().next().value!);
+    return { first: true, completion };
+}
+
+/** Captures source and destination before Git; every failure becomes the request's completion. */
+async function runShelfRestore(
+    deps: ShelfActionDeps,
+    request: ShelfRestoreRequest,
+    requestId: string,
+): Promise<ShelfMutationCompleted> {
+    try {
+        await assertExistingShelf(deps.shelfService, request.shelfId);
+        const result = await prepareShelfRestore(
+            deps.shelfService,
+            deps.changelists,
+            request,
+            (input) => deps.shelfService.unshelve(input),
+        );
+        if (!result)
+            return {
+                type: "shelfMutationCompleted",
+                requestId,
+                status: "ok",
+                entries: [],
+                message: vscode.l10n.t("Unshelve cancelled."),
+            };
+        const catalogGeneration = await deps.shelfService.listShelves().then(
+            (catalog) => catalog.catalogGeneration,
+            (error: unknown) => {
+                logShelfWarning("shelf catalog read after unshelve failed", error);
+                return undefined;
+            },
+        );
+        return {
+            type: "shelfMutationCompleted",
+            requestId,
+            status: TARGETED_RESTORE_STATUS[result.status],
+            entries: result.entries.map(protocolEntry),
+            shelfId: result.shelfId,
+            newGeneration: result.newGeneration,
+            ...(catalogGeneration === undefined ? {} : { newCatalogGeneration: catalogGeneration }),
+            ...(result.status === "stale"
+                ? {
+                      message: vscode.l10n.t(
+                          "The shelf or changelists changed. Nothing was unshelved; try again.",
+                      ),
+                  }
+                : {}),
+        };
+    } catch (error) {
+        logShelfWarning("unshelve failed", error);
+        return completionForShelfError(requestId, error);
+    }
+}
+
 /** Executes all correlated shelf mutations and posts a typed completion even after failures. */
 export async function executeShelfMutationRequest(
     deps: ShelfActionDeps,
@@ -394,23 +521,24 @@ export async function executeShelfMutationRequest(
         entries: [],
     };
     let workingTreeChanged = false;
+    const isPatchExport =
+        message.type === "shelfExportPatch" || message.type === "shelfCopyPatchToClipboard";
     try {
-        const exportFileUri =
-            message.type === "shelfExportPatch"
-                ? await deps.selectExportDestination?.()
-                : undefined;
-        const importFileUris =
-            message.type === "shelfImportPatch" ? await deps.selectImportSources?.() : undefined;
-        if (message.type === "shelfExportPatch" && exportFileUri === undefined) {
-            completion = {
-                type: "shelfMutationCompleted",
-                requestId,
-                status: "ok",
-                entries: [],
-                message: "Patch export cancelled.",
-            };
+        if (isPatchExport) {
+            completion = await exportShelfPatchFromMessage(deps, message, requestId);
             return;
         }
+        if (message.type === "unshelve") {
+            const admitted = admitShelfRestore(deps, message, requestId);
+            completion = await admitted.completion;
+            workingTreeChanged =
+                admitted.first &&
+                completion.message === undefined &&
+                !["staleShelf", "busy", "error"].includes(completion.status);
+            return;
+        }
+        const importFileUris =
+            message.type === "shelfImportPatch" ? await deps.selectImportSources?.() : undefined;
         if (message.type === "shelfImportPatch" && importFileUris === undefined) {
             completion = {
                 type: "shelfMutationCompleted",
@@ -421,12 +549,7 @@ export async function executeShelfMutationRequest(
             };
             return;
         }
-        const result = await shelfMutationFromMessage(
-            deps.shelfService,
-            message,
-            exportFileUri,
-            importFileUris,
-        );
+        const result = await shelfMutationFromMessage(deps.shelfService, message, importFileUris);
         workingTreeChanged = changesWorkingTree(message.type) && result.status !== "error";
         completion = await shelfCompletion(requestId, result, deps.shelfService);
     } catch (error) {
@@ -439,7 +562,11 @@ export async function executeShelfMutationRequest(
             completion,
         );
         try {
-            await deps.refreshData();
+            // A refresh failure is reported separately and never relabels the mutation outcome.
+            if (!isPatchExport)
+                await deps.refreshData().catch((error: unknown) => {
+                    logShelfWarning(`refresh after ${String(message.type)} failed`, error);
+                });
             if (workingTreeChanged) deps.fireWorkingTreeChanged();
         } finally {
             postCompleted(completion);
@@ -447,13 +574,71 @@ export async function executeShelfMutationRequest(
     }
 }
 
+/** Exports a captured immutable generation without updating shelf history or repository state. */
+async function exportShelfPatchFromMessage(
+    deps: ShelfActionDeps,
+    message: Record<string, unknown>,
+    requestId: string,
+): Promise<ShelfMutationCompleted> {
+    const completion: ShelfMutationCompleted = {
+        type: "shelfMutationCompleted",
+        requestId,
+        status: "ok",
+        entries: [],
+    };
+    const toFile = message.type === "shelfExportPatch";
+    const destination = toFile ? await deps.selectExportDestination?.() : undefined;
+    if (toFile && destination === undefined) return completion;
+    const shelfId = assertShelfId(message.shelfId, "shelfId");
+    const expectedGeneration = assertShelfGeneration(
+        message.expectedGeneration,
+        "expectedGeneration",
+    );
+    const manifest = await deps.shelfService.getShelfManifest(shelfId);
+    if (manifest.generation !== expectedGeneration) {
+        throw new ShelfStaleShelfError(expectedGeneration, manifest.generation);
+    }
+    const changeIds =
+        message.changeIds === undefined
+            ? undefined
+            : assertStringArray(message.changeIds, "changeIds").map((id) =>
+                  assertShelfChangeId(id, "changeIds"),
+              );
+    const known = new Set(manifest.files.map((entry) => entry.changeId));
+    if (changeIds?.some((id) => !known.has(id))) throw new Error("Shelf change ID does not exist.");
+    if (manifest.metadata.selection) {
+        const action = toFile ? vscode.l10n.t("Export Patch") : vscode.l10n.t("Copy Patch");
+        const selected = await vscode.window.showInformationMessage(
+            vscode.l10n.t(
+                "Plain patches include file changes only. Changelist names and draft messages stay in the shelf.",
+            ),
+            { modal: true },
+            action,
+        );
+        if (selected !== action) return completion;
+    }
+    const patch = await deps.shelfService.exportPatch({
+        id: shelfId,
+        changeIds,
+        expectedShelfGeneration: manifest.generation,
+        expectedShelfChecksum: manifest.checksum,
+    });
+    if (toFile) await writeFile(assertAbsolutePath(destination, "host export destination"), patch);
+    else await vscode.env.clipboard.writeText(patch.toString("utf8"));
+    return completion;
+}
+
+/** A service result in the panel's status vocabulary, which also covers a restore's outcomes. */
+type ShelfMutationReply = Omit<ShelfMutationResult, "status"> & {
+    readonly status: ShelfMutationStatus;
+};
+
 /** Validates and executes a single shelf request without pre-checking any service CAS input. */
 async function shelfMutationFromMessage(
     shelfService: ShelfService,
     message: Record<string, unknown>,
-    hostExportFileUri?: string,
     hostImportFileUris?: readonly string[],
-): Promise<ShelfMutationResult> {
+): Promise<ShelfMutationReply> {
     switch (message.type) {
         case "shelveSave": {
             if ("shelfId" in message) throw new Error("Shelf IDs are generated by the host.");
@@ -467,24 +652,6 @@ async function shelfMutationFromMessage(
                     message.expectedCatalogGeneration,
                     "expectedCatalogGeneration",
                 ),
-            });
-        }
-        case "unshelve": {
-            const shelfId = await assertExistingShelf(shelfService, message.shelfId);
-            const changeIds = await assertExistingChangeIds(
-                shelfService,
-                shelfId,
-                message.changeIds,
-            );
-            return shelfService.unshelve({
-                id: shelfId,
-                expectedShelfGeneration: assertShelfGeneration(
-                    message.expectedGeneration,
-                    "expectedGeneration",
-                ),
-                changeIds,
-                removeFromShelf: assertBoolean(message.removeFromShelf, "removeFromShelf"),
-                mode: assertUnshelveMode(message.mode),
             });
         }
         case "shelfDelete":
@@ -504,30 +671,6 @@ async function shelfMutationFromMessage(
                 ),
                 name: assertShelfName(message.name, "name"),
             });
-        case "shelfExportPatch": {
-            const shelfId = await assertExistingShelf(shelfService, message.shelfId);
-            const changeIds = await assertExistingChangeIds(
-                shelfService,
-                shelfId,
-                message.changeIds,
-            );
-            assertShelfGeneration(message.expectedGeneration, "expectedGeneration");
-            const fileUri = assertAbsolutePath(hostExportFileUri, "host export destination");
-            await writeFile(fileUri, await shelfService.exportPatch({ id: shelfId, changeIds }));
-            return { status: "ok", entries: [], shelfId };
-        }
-        case "shelfCopyPatchToClipboard": {
-            const shelfId = await assertExistingShelf(shelfService, message.shelfId);
-            const changeIds = await assertExistingChangeIds(
-                shelfService,
-                shelfId,
-                message.changeIds,
-            );
-            assertShelfGeneration(message.expectedGeneration, "expectedGeneration");
-            const patch = await shelfService.exportPatch({ id: shelfId, changeIds });
-            await vscode.env.clipboard.writeText(patch.toString("utf8"));
-            return { status: "ok", entries: [], shelfId };
-        }
         case "shelfImportPatch":
             return shelfService.importPatch({
                 fileUris: assertAbsolutePaths(hostImportFileUris, "host import sources"),
@@ -564,7 +707,7 @@ async function shelfMutationFromMessage(
             const shelfId = await assertExistingShelf(shelfService, message.shelfId);
             const changeId = assertShelfChangeId(message.changeId, "changeId");
             await assertExistingChangeIds(shelfService, shelfId, [changeId]);
-            return shelfService.resolveStructural({
+            const result = await shelfService.resolveStructural({
                 id: shelfId,
                 changeId,
                 expectedShelfGeneration: assertShelfGeneration(
@@ -581,6 +724,10 @@ async function shelfMutationFromMessage(
                         ? undefined
                         : assertRepoPathArray([message.targetPath], "targetPath")[0],
             });
+            // A choice that ended a pending restore reports that restore's outcome.
+            return "operationId" in result
+                ? { ...result, status: TARGETED_RESTORE_STATUS[result.status] }
+                : result;
         }
         case "shelfPurgeRecovery":
             await shelfService.purgeRecovery();
@@ -626,7 +773,7 @@ export async function shelfReadFromMessage(
 /** Converts service outcomes into the protocol's explicit per-entry contract. */
 async function shelfCompletion(
     requestId: string,
-    result: ShelfMutationResult,
+    result: ShelfMutationReply,
     shelfService: ShelfService,
 ): Promise<ShelfMutationCompleted> {
     const catalog = await shelfService.listShelves();
@@ -664,7 +811,7 @@ function shelfStatusForError(error: unknown): ShelfMutationStatus {
 }
 
 function changesWorkingTree(type: unknown): boolean {
-    return type === "shelveSave" || type === "unshelve" || type === "shelfResolveStructural";
+    return type === "shelveSave" || type === "shelfResolveStructural";
 }
 
 async function assertExistingShelf(shelfService: ShelfService, value: unknown): Promise<string> {

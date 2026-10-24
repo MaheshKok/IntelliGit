@@ -1,5 +1,95 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
+import { changeFingerprint } from "../../../src/changes/parseDiff";
+import { rangeSnapshot } from "../../../src/changes/rangeMapping";
+
+function snapshotOf(file: string) {
+    return rangeSnapshot({
+        view: { base: "", blocks: [] },
+        working: `${file}\n`,
+        contentId: changeFingerprint(file),
+        head: "a".repeat(40),
+        indexHash: changeFingerprint("index"),
+    } as unknown as Parameters<typeof rangeSnapshot>[0]);
+}
+
+describe("range tracking writes", () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it("never serializes the whole state to detect an unchanged range write", async () => {
+        const store = new ChangelistStore();
+        await store.track("/one", "seed.txt", snapshotOf("seed.txt"));
+        const stringify = vi.spyOn(JSON, "stringify");
+
+        const changed = await store.track("/one", "a.txt", snapshotOf("a.txt"));
+        const unchanged = await store.track("/one", "a.txt", snapshotOf("a.txt"));
+
+        const wholeState = stringify.mock.calls.filter(
+            ([value]) =>
+                typeof value === "object" &&
+                value !== null &&
+                "changes" in value &&
+                "revision" in value,
+        );
+        expect(
+            wholeState.length,
+            "a range write must not serialize the whole changelist state",
+        ).toBe(0);
+        expect(unchanged.revision, "re-tracking an identical snapshot must not bump").toBe(
+            changed.revision,
+        );
+    });
+
+    it("tracks a batch in one revision and one notification", async () => {
+        const store = new ChangelistStore();
+        for (const file of ["seed1.txt", "seed2.txt"])
+            await store.track("/one", file, snapshotOf(file));
+        const notified: number[] = [];
+        store.subscribe((_root, state) => notified.push(state.revision));
+        const start = store.revision("/one");
+
+        const batch = ["a.txt", "b.txt", "c.txt"].map((file) => ({
+            file,
+            snapshot: snapshotOf(file),
+        }));
+        const tracked = await store.trackBatch("/one", batch, start);
+        const unchanged = await store.trackBatch("/one", batch, tracked.revision);
+
+        expect(tracked.revision, "one batch is one revision").toBe(start + 1);
+        expect(Object.keys(tracked.changes).sort()).toEqual([
+            "a.txt",
+            "b.txt",
+            "c.txt",
+            "seed1.txt",
+            "seed2.txt",
+        ]);
+        expect(unchanged.revision, "re-tracking identical snapshots must not bump").toBe(
+            tracked.revision,
+        );
+        expect(notified, "one batch notifies once").toEqual([start + 1]);
+    });
+
+    it("saves a batch whose last file is unchanged", async () => {
+        const store = new ChangelistStore();
+        const first = await store.trackBatch(
+            "/one",
+            ["a.txt", "b.txt"].map((file) => ({ file, snapshot: snapshotOf(file) })),
+        );
+
+        const next = await store.trackBatch(
+            "/one",
+            [
+                { file: "a.txt", snapshot: snapshotOf("a.txt edited") },
+                { file: "b.txt", snapshot: snapshotOf("b.txt") },
+            ],
+            first.revision,
+        );
+
+        expect(next.revision, "an earlier file's change must survive an unchanged last file").toBe(
+            first.revision + 1,
+        );
+    });
+});
 
 describe("worktree changelist metadata", () => {
     it("prepares only the staging scope with revision CAS under a shared lease", async () => {
@@ -113,6 +203,22 @@ describe("worktree changelist metadata", () => {
         expect(state.lists[0].name).toBe("Changes");
         expect(state.activeId).not.toBe("default");
         expect(state.files["one.txt"]).toBe(state.activeId);
+    });
+
+    it("prunes only records still owned as observed", async () => {
+        const store = new ChangelistStore();
+        let state = await store.create("/one", 0, "Feature");
+        const feature = state.lists[1].id;
+        state = await store.reconcileFiles("/one", ["unchanged.txt", "moved.txt"]);
+        const observed = new Map(Object.entries(state.files));
+        state = await store.moveFiles("/one", state.revision, feature, ["moved.txt"]);
+        state = await store.reconcileFiles("/one", [], undefined, observed);
+        expect(state.files["unchanged.txt"], "a record still owned as observed is pruned").toBe(
+            undefined,
+        );
+        expect(state.files["moved.txt"], "a record moved since it was observed survives").toBe(
+            feature,
+        );
     });
 
     it("marks per-line ownership stale after content changes and requires explicit review", async () => {
