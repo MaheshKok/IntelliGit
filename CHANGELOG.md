@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.39.1] - 2026-10-24
+
+### Fixed
+
+- An unshelve into a changelist no longer gets stuck when it stops on a deleted, added or renamed file. Choosing keep, delete, rename or use shelved for that file now finishes the unshelve, keeps that file's change on the shelf, and lets other shelf actions run again.
+
 ## [0.39.0] - 2026-10-17
 
 This release delivers the changelist shelf and history phase. Phase 3B drag-and-drop work, amend with changelists and Phase 5 remain planned.
