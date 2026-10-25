@@ -180,10 +180,15 @@ test("partial selections preserve their IDs, read-only preview and commit draft 
     await expect(page.getByRole("textbox", { name: "Commit message", exact: true })).toHaveValue(
         "Selected draft",
     );
-    await expect(page.getByLabel("Selection preview", { exact: true })).toHaveAttribute(
-        "contenteditable",
-        "false",
-    );
+    const preview = page.getByLabel("Selection preview", { exact: true });
+    const toggle = page.getByRole("button", { name: "Show selection preview", exact: true });
+    await expect(preview).toHaveCount(0);
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(preview).toHaveAttribute("contenteditable", "false");
+    await toggle.click();
+    await expect(preview).toHaveCount(0);
 });
 
 test("a thousand-file commit queue stays bounded and reachable by scroll and keyboard", async ({

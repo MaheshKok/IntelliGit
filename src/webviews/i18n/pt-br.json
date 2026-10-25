@@ -506,5 +506,6 @@
     "changes.exportPatch": "Exportar Patch",
     "changes.saveAndRemoveSelection": "Salvar e remover",
     "changes.rollbackSelection": "Reverter alterações selecionadas",
-    "changes.statsUnavailable": "Contagem de linhas indisponível"
+    "changes.statsUnavailable": "Contagem de linhas indisponível",
+    "changes.togglePreview": "Mostrar prévia da seleção"
 }

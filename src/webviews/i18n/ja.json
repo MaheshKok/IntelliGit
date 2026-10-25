@@ -486,5 +486,6 @@
     "changes.exportPatch": "パッチをエクスポート",
     "changes.saveAndRemoveSelection": "保存して削除",
     "changes.rollbackSelection": "選択した変更をロールバック",
-    "changes.statsUnavailable": "行数を取得できません"
+    "changes.statsUnavailable": "行数を取得できません",
+    "changes.togglePreview": "選択のプレビューを表示"
 }

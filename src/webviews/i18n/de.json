@@ -496,5 +496,6 @@
     "changes.exportPatch": "Patch exportieren",
     "changes.saveAndRemoveSelection": "Speichern und entfernen",
     "changes.rollbackSelection": "Ausgewählte Änderungen zurücksetzen",
-    "changes.statsUnavailable": "Zeilenanzahl nicht verfügbar"
+    "changes.statsUnavailable": "Zeilenanzahl nicht verfügbar",
+    "changes.togglePreview": "Auswahlvorschau anzeigen"
 }

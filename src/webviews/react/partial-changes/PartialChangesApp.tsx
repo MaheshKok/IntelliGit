@@ -17,6 +17,7 @@ import {
     VscArrowDown,
     VscArrowRight,
     VscDiff,
+    VscOpenPreview,
 } from "react-icons/vsc";
 import { getVsCodeApi } from "../shared/vscodeApi";
 import { t } from "../shared/i18n";
@@ -33,6 +34,7 @@ interface SavedSelection {
     contentId?: string;
     ids?: string[];
     message?: string;
+    showPreview?: boolean;
 }
 type DiffRow = { kind: "block"; block: ChangeBlock } | { kind: "line"; line: ChangeLine };
 const ROW_HEIGHT = 22;
@@ -97,6 +99,30 @@ function SelectionPreview({ content, filePath }: { content: string; filePath: st
         }
     }, [content]);
     return <div ref={root} className="partial-preview" />;
+}
+
+/** Unmounted while hidden, so toggling lines never rebuilds a file nobody is looking at. */
+function PreviewPane({
+    shown,
+    data,
+    selected,
+}: {
+    shown: boolean;
+    data: FileData | null;
+    selected: ReadonlySet<string>;
+}) {
+    const content = useMemo(
+        () =>
+            shown && data ? selectedContent(data.file.base, data.file.blocks, [...selected]) : "",
+        [shown, data, selected],
+    );
+    if (!shown) return null;
+    return (
+        <section className="partial-pane">
+            <div className="partial-pane-title">{t("changes.preview")}</div>
+            <SelectionPreview content={content} filePath={data?.file.path ?? ""} />
+        </section>
+    );
 }
 
 /** Virtual rows keep even large ordinary-text diffs bounded in DOM size. */
@@ -326,6 +352,8 @@ export function PartialChangesApp() {
     const [side, setSide] = useState<"working" | "index">("working");
     const [targetList, setTargetList] = useState("default");
     const [message, setMessage] = useState(() => api.getState()?.message ?? "");
+    // The preview repeats the diff for simple edits, so it stays out of the way until asked for.
+    const [showPreview, setShowPreview] = useState(() => api.getState()?.showPreview === true);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
     const [commit, setCommit] = useState("");
@@ -384,16 +412,13 @@ export function PartialChangesApp() {
                     contentId: data?.contentId,
                     ids: [...selected],
                     message,
+                    showPreview,
                 }),
             150,
         );
         return () => window.clearTimeout(timer);
-    }, [api, data?.contentId, message, selected]);
+    }, [api, data?.contentId, message, selected, showPreview]);
     const deferred = useDeferredValue(selected);
-    const preview = useMemo(() => {
-        if (!data) return "";
-        return selectedContent(data.file.base, data.file.blocks, [...deferred]);
-    }, [data, deferred]);
     const toggle = (ids: string[]) => {
         setSelected((previous) => {
             const next = new Set(previous);
@@ -466,6 +491,14 @@ export function PartialChangesApp() {
                     <VscRefresh />
                 </button>
                 <button
+                    title={t("changes.togglePreview")}
+                    aria-label={t("changes.togglePreview")}
+                    aria-pressed={showPreview}
+                    onClick={() => setShowPreview((shown) => !shown)}
+                >
+                    <VscOpenPreview />
+                </button>
+                <button
                     title={t("changes.fullDiff")}
                     aria-label={t("changes.fullDiff")}
                     onClick={() => api.postMessage({ type: "openNative" })}
@@ -474,7 +507,7 @@ export function PartialChangesApp() {
                 </button>
             </header>
             <PartialStatus data={data} error={error} />
-            <div className="partial-panes">
+            <div className={showPreview ? "partial-panes" : "partial-panes partial-panes-single"}>
                 <section className="partial-pane">
                     <div className="partial-pane-title">
                         {data ? (
@@ -505,10 +538,7 @@ export function PartialChangesApp() {
                         <div role="status">{t("changes.loading")}</div>
                     )}
                 </section>
-                <section className="partial-pane">
-                    <div className="partial-pane-title">{t("changes.preview")}</div>
-                    <SelectionPreview content={preview} filePath={data?.file.path ?? ""} />
-                </section>
+                <PreviewPane shown={showPreview} data={data} selected={deferred} />
             </div>
             <footer className="partial-footer">
                 <div className="partial-actions">

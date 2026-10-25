@@ -743,6 +743,9 @@ test.describe("Selected changes and changelists", () => {
             const editor = await view.revealPartialChanges(FILE);
             await expect(editor.locator(".partial-block")).toHaveCount(2);
             await editor.getByRole("checkbox", { name: "Select block 1", exact: true }).uncheck();
+            await editor
+                .getByRole("button", { name: "Show selection preview", exact: true })
+                .click();
             await expect(editor.getByLabel("Selection preview", { exact: true })).toContainText(
                 "first = 3",
             );
@@ -880,6 +883,9 @@ test.describe("Selected changes and changelists", () => {
             await expect(
                 editor.getByRole("button", { name: "Use selection for commit", exact: true }),
             ).toBeEnabled();
+            await editor
+                .getByRole("button", { name: "Show selection preview", exact: true })
+                .click();
             const preview = editor.getByLabel("Selection preview", { exact: true });
             await expect(preview.locator('span[style*="color"]')).not.toHaveCount(0);
             await expect(preview).toHaveAttribute("contenteditable", "false");

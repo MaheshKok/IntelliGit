@@ -463,6 +463,7 @@
     "changes.reviewAssignments": "Change assignments need review",
     "changes.selected": "Selected changes",
     "changes.preview": "Selection preview",
+    "changes.togglePreview": "Show selection preview",
     "changes.loading": "Loading changes...",
     "changes.selectBlock": "Select block",
     "changes.includeLine": "Include line",

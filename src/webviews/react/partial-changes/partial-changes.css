@@ -200,3 +200,10 @@
         flex-wrap: wrap;
     }
 }
+.partial-panes.partial-panes-single {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+}
+.partial-toolbar button[aria-pressed="true"] {
+    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+}

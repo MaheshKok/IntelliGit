@@ -516,5 +516,6 @@
     "changes.exportPatch": "Eksportuj poprawkę",
     "changes.saveAndRemoveSelection": "Zapisz i usuń",
     "changes.rollbackSelection": "Wycofaj wybrane zmiany",
-    "changes.statsUnavailable": "Liczba wierszy niedostępna"
+    "changes.statsUnavailable": "Liczba wierszy niedostępna",
+    "changes.togglePreview": "Pokaż podgląd wyboru"
 }

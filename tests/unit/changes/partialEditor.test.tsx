@@ -161,6 +161,13 @@ describe("selected change editor protocol", () => {
         const mounted = mount(<PartialChangesApp />);
         try {
             receive(data);
+            const toggle = mounted.container.querySelector<HTMLButtonElement>(
+                'button[aria-label="Show selection preview"]',
+            )!;
+            expect(mounted.container.querySelector(".cm-editor")).toBeNull();
+            expect(toggle.getAttribute("aria-pressed")).toBe("false");
+            act(() => toggle.click());
+            expect(toggle.getAttribute("aria-pressed")).toBe("true");
             const editor = EditorView.findFromDOM(
                 mounted.container.querySelector<HTMLElement>(".cm-editor")!,
             )!;
@@ -176,6 +183,18 @@ describe("selected change editor protocol", () => {
             });
         } finally {
             unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("reopens with the preview shown when the pane last left it open", () => {
+        api.getState.mockReturnValue({ showPreview: true });
+        const mounted = mount(<PartialChangesApp />);
+        try {
+            receive(data);
+            expect(mounted.container.querySelector(".cm-editor")).not.toBeNull();
+        } finally {
+            unmount(mounted.root, mounted.container);
+            api.getState.mockReturnValue({});
         }
     });
 
