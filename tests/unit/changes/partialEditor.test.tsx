@@ -198,6 +198,30 @@ describe("selected change editor protocol", () => {
         }
     });
 
+    it("keeps the shown preview rendering when a reload drops previously selected IDs", () => {
+        api.getState.mockReturnValue({ showPreview: true });
+        const mounted = mount(<PartialChangesApp />);
+        try {
+            receive(data);
+            // Staging reloads the same file with a new snapshot whose only change is a pure addition.
+            const added = "one\ntwo\nthree\nfour\n";
+            receive({
+                ...data,
+                file: {
+                    ...data.file,
+                    blocks: parseChangeDiff("@@ -3,0 +4 @@\n+four\n", base, added),
+                },
+                contentId: "reloaded",
+            });
+            const editor = mounted.container.querySelector<HTMLElement>(".cm-editor");
+            expect(editor, "the preview survives the reload").not.toBeNull();
+            expect(EditorView.findFromDOM(editor!)!.state.doc.toString()).toBe(added);
+        } finally {
+            unmount(mounted.root, mounted.container);
+            api.getState.mockReturnValue({});
+        }
+    });
+
     it("retains selection after an error and initializes an expired persisted inclusion as empty", () => {
         const mounted = mount(<PartialChangesApp />);
         try {

@@ -418,7 +418,9 @@ export function PartialChangesApp() {
         );
         return () => window.clearTimeout(timer);
     }, [api, data?.contentId, message, selected, showPreview]);
-    const deferred = useDeferredValue(selected);
+    // A reload replaces the file and its selection together; deferring them apart pairs new blocks with stale IDs.
+    const view = useMemo(() => ({ data, selected }), [data, selected]);
+    const deferred = useDeferredValue(view);
     const toggle = (ids: string[]) => {
         setSelected((previous) => {
             const next = new Set(previous);
@@ -461,7 +463,7 @@ export function PartialChangesApp() {
     const locked = busy || commit.length > 0 || removed;
     const mutable = !locked && selected.size > 0;
     const assignable = mutable && side === "working";
-    const committable = mutable && message.trim().length > 0 && deferred === selected;
+    const committable = mutable && message.trim().length > 0 && deferred === view;
     return (
         <main className="partial-changes">
             <header className="partial-toolbar">
@@ -538,7 +540,11 @@ export function PartialChangesApp() {
                         <div role="status">{t("changes.loading")}</div>
                     )}
                 </section>
-                <PreviewPane shown={showPreview} data={data} selected={deferred} />
+                <PreviewPane
+                    shown={showPreview}
+                    data={deferred.data}
+                    selected={deferred.selected}
+                />
             </div>
             <footer className="partial-footer">
                 <div className="partial-actions">

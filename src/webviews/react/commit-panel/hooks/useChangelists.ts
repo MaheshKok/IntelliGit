@@ -139,10 +139,16 @@ export function useChangelists(props: CommitTabProps) {
                                   previous.metadata?.revision === message.state.revision
                                       ? previous.metadata
                                       : message.state,
-                              filter: resolveViewScope(
+                              // A view saved while several lists existed must not scope plain mode, even for one render.
+                              filter: changelistsInUse(
                                   message.state,
-                                  previous.root === root ? previous.filter : saved.filter,
-                              ),
+                                  message.hasRecoveryIssues === true,
+                              )
+                                  ? resolveViewScope(
+                                        message.state,
+                                        previous.root === root ? previous.filter : saved.filter,
+                                    )
+                                  : "all",
                               checked: previous.root === root ? previous.checked : saved.checked,
                               busy: message.busy === true || pendingSave.current?.root === root,
                               hasRecoveryIssues: message.hasRecoveryIssues === true,

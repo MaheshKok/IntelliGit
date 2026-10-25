@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useRef } from "react";
 import { Box, Flex } from "@chakra-ui/react";
 import { AmendContextSection } from "./AmendContextSection";
 import { CommitArea } from "./CommitArea";
@@ -67,11 +67,7 @@ function CommitTabLayout({
     const listsInUse =
         workflow.metadata !== undefined &&
         changelistsInUse(workflow.metadata, workflow.hasRecoveryIssues);
-    const { metadata, filter, choose } = workflow;
-    useEffect(() => {
-        // A view saved while several lists existed must not keep a single list scoped to its id.
-        if (metadata && !listsInUse && filter !== "all") choose("all");
-    }, [metadata, listsInUse, filter, choose]);
+    const { metadata, filter } = workflow;
     const tree: React.ComponentProps<typeof FileTree> = {
         repositoryRoot: props.repositoryRoot,
         files: workflow.files,
