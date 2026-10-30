@@ -62,6 +62,13 @@ and author; hover for the full commit and message. The source remains editable,
 and annotations refresh after buffer edits, saves, and repository changes.
 Unsaved lines are labeled **Uncommitted changes**, without writing the file.
 
+Committed annotations also show age through their background: the oldest author
+date present in the file blends into the active editor background, and the most
+recent is green (`#83bf54`). Equal timestamps share a shade; a single-age file is all
+green. Uncommitted or unknown dates stay neutral. Untinted annotations keep the
+theme's muted label text; tinted annotations use contrasting text. Colors follow
+theme changes and custom editor backgrounds without another Git read.
+
 VS Code's public extension API places this column inside the text area, after
 the line numbers; it cannot add a separate JetBrains-style gutter outside them.
 

@@ -134,6 +134,76 @@ const change = () => {
 };
 
 describe("FileBlameAnnotations", () => {
+    it("inherits muted theme text for neutral annotations", () => {
+        expect(mocks.createDecoration).toHaveBeenCalledWith(
+            expect.objectContaining({
+                before: expect.objectContaining({
+                    color: expect.objectContaining({ id: "descriptionForeground" }),
+                }),
+            }),
+        );
+    });
+
+    it("shades committed annotations by author time without treating unsaved lines as recent commits", async () => {
+        text = "old\nmiddle\nnew\nunsaved\n";
+        (document as { lineCount: number }).lineCount = 5;
+        const records = [
+            [commit, 946684800],
+            ["b".repeat(40), 1104537600],
+            ["c".repeat(40), 1262304000],
+            ["0".repeat(40), 1893456000],
+        ] as const;
+        mocks.runBinary.mockResolvedValue(
+            result(
+                records
+                    .map(([hash, time], index) =>
+                        output(hash, index + 1).replace(
+                            "author-time 946684800",
+                            `author-time ${time}`,
+                        ),
+                    )
+                    .join(""),
+            ),
+        );
+        await service.toggle(target);
+        const shades = latest().map(
+            (entry: vscode.DecorationOptions) => entry.renderOptions?.before,
+        );
+        expect(shades[0]?.backgroundColor).toBe("var(--vscode-editor-background)");
+        expect(shades[0]?.color).toBe("var(--vscode-descriptionForeground)");
+        expect(shades[1]?.backgroundColor).toBe(
+            "color-mix(in srgb, #83bf54 50%, var(--vscode-editor-background))",
+        );
+        expect(shades[2]?.backgroundColor).toBe("#83bf54");
+        expect(shades[2]?.color).toBe("#000000");
+        expect(shades[3]?.backgroundColor).toBeUndefined();
+        expect(shades[3]?.color).toBeUndefined();
+        expect(shades[3]?.contentText).toContain("Uncommitted changes");
+    });
+
+    it("uses the newest green for a file with only one committed age", async () => {
+        mocks.runBinary.mockResolvedValue(result(output() + `${commit} 2 2\n\t\n`));
+        await service.toggle(target);
+        for (const entry of latest() as vscode.DecorationOptions[]) {
+            expect(entry.renderOptions?.before?.backgroundColor).toBe("#83bf54");
+        }
+    });
+
+    it("does not let records outside the displayed document change its age range", async () => {
+        mocks.runBinary.mockResolvedValue(
+            result(
+                output() +
+                    output("b".repeat(40), 999).replace(
+                        "author-time 946684800",
+                        "author-time 1893456000",
+                    ),
+            ),
+        );
+        await service.toggle(target);
+        expect(latest()).toHaveLength(1);
+        expect(latest()[0].renderOptions.before.backgroundColor).toBe("#83bf54");
+    });
+
     it("decorates the editable source with a fixed-width before attachment and escaped hover", async () => {
         await service.toggle(target);
         expect(mocks.roots).toEqual(["/repo"]);

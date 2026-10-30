@@ -3,6 +3,7 @@ import { blameDate, parseBlame, type BlameLine } from "../git/blame";
 import { GitExecutor } from "../git/executor";
 import { getErrorMessage } from "../utils/errors";
 import { subscribeToRepositoryWorkingTreeChanges } from "./repositoryChangeEvents";
+import { blameAgeRange, blameAnnotationColors } from "./blameAnnotationColors";
 
 /** Captured local file identity supplied by the existing file-context resolver. */
 export interface BlameTarget {
@@ -55,7 +56,7 @@ export class FileBlameAnnotations implements vscode.Disposable {
                 width: "38ch",
                 margin: "0 1.5em 0 0",
                 color: new vscode.ThemeColor("descriptionForeground"),
-                backgroundColor: new vscode.ThemeColor("editorGutter.background"),
+                backgroundColor: new vscode.ThemeColor("editor.background"),
                 textDecoration:
                     "none; white-space: pre; overflow: hidden; text-overflow: ellipsis; vertical-align: middle;",
             },
@@ -208,28 +209,32 @@ export class FileBlameAnnotations implements vscode.Disposable {
 
     private render(session: BlameSession): void {
         if (session.version !== session.document.version) return;
-        const decorations = session.lines
-            .filter((line) => line.line >= 0 && line.line < session.document.lineCount)
-            .map((line): vscode.DecorationOptions => {
-                const uncommitted = /^0+$/.test(line.commit);
-                const author = uncommitted ? vscode.l10n.t("Uncommitted changes") : line.author;
-                const date = uncommitted ? "" : blameDate(line);
-                const commit = uncommitted ? "" : line.commit.slice(0, 8);
-                const label = `${commit.padEnd(8)} ${date.padEnd(10)} ${author}`;
-                const hover = new vscode.MarkdownString();
-                hover.appendText(uncommitted ? author : `${line.author} (${date})`);
-                if (!uncommitted) {
-                    hover.appendMarkdown("\n\n");
-                    hover.appendText(line.commit);
-                    hover.appendMarkdown("\n\n");
-                    hover.appendText(line.summary);
-                }
-                return {
-                    range: new vscode.Range(line.line, 0, line.line, 0),
-                    hoverMessage: hover,
-                    renderOptions: { before: { contentText: label } },
-                };
-            });
+        const lines = session.lines.filter(
+            (line) => line.line >= 0 && line.line < session.document.lineCount,
+        );
+        const ages = blameAgeRange(lines);
+        const decorations = lines.map((line): vscode.DecorationOptions => {
+            const uncommitted = /^0+$/.test(line.commit);
+            const author = uncommitted ? vscode.l10n.t("Uncommitted changes") : line.author;
+            const date = uncommitted ? "" : blameDate(line);
+            const commit = uncommitted ? "" : line.commit.slice(0, 8);
+            const label = `${commit.padEnd(8)} ${date.padEnd(10)} ${author}`;
+            const hover = new vscode.MarkdownString();
+            hover.appendText(uncommitted ? author : `${line.author} (${date})`);
+            if (!uncommitted) {
+                hover.appendMarkdown("\n\n");
+                hover.appendText(line.commit);
+                hover.appendMarkdown("\n\n");
+                hover.appendText(line.summary);
+            }
+            return {
+                range: new vscode.Range(line.line, 0, line.line, 0),
+                hoverMessage: hover,
+                renderOptions: {
+                    before: { contentText: label, ...blameAnnotationColors(line, ages) },
+                },
+            };
+        });
         for (const editor of vscode.window.visibleTextEditors) {
             if (editor.document === session.document) {
                 session.editors.add(editor);

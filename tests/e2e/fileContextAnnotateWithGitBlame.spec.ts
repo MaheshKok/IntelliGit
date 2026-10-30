@@ -10,6 +10,8 @@ import {
     launchFixtureWorkspace,
 } from "./hostFixtures/electronLaunchHelpers";
 import { resolveVSCodeExecutable } from "./hostFixtures/resolveVSCodeExecutable";
+import { expectBlameAgeColors } from "./pageObjects/blameAnnotations";
+import { Workbench } from "./pageObjects/workbench";
 
 test.use({ scenario: "dirty" });
 
@@ -49,7 +51,11 @@ test("annotates source lines, follows edits and commits, and toggles across spli
     const unsavedText = committedText.replace("committed-disk-content", "unsaved-buffer-content");
     const gitOptions = {
         cwd: fixtureWorkspace.workspace.root,
-        env: { ...fixtureWorkspace.workspace.env, GIT_AUTHOR_NAME: "Ada Lovelace" },
+        env: {
+            ...fixtureWorkspace.workspace.env,
+            GIT_AUTHOR_NAME: "Ada Lovelace",
+            GIT_AUTHOR_DATE: "2000-01-01T00:00:00+00:00",
+        },
     };
 
     await writeFile(filePath, originalText);
@@ -58,7 +64,11 @@ test("annotates source lines, follows edits and commits, and toggles across spli
     await writeFile(filePath, committedText);
     execFileSync("git", ["commit", "--only", targetPath, "-m", "Second author"], {
         ...gitOptions,
-        env: { ...gitOptions.env, GIT_AUTHOR_NAME: "Grace Hopper" },
+        env: {
+            ...gitOptions.env,
+            GIT_AUTHOR_NAME: "Grace Hopper",
+            GIT_AUTHOR_DATE: "2010-01-01T00:00:00+00:00",
+        },
     });
 
     const app = await launchFixtureWorkspace({
@@ -102,6 +112,7 @@ test("annotates source lines, follows edits and commits, and toggles across spli
                 expect.stringContaining("Grace Hopper"),
             ]);
         await expect(page.getByRole("tab").filter({ hasText: ".blame" })).toHaveCount(0);
+        await expectBlameAgeColors(editor, [0, 0, 100]);
         await page.screenshot({ path: testInfo.outputPath("blame-source-editor.png") });
 
         const annotationClass = await editor
@@ -131,13 +142,18 @@ test("annotates source lines, follows edits and commits, and toggles across spli
                 expect.stringContaining("Grace Hopper"),
             ]);
         expect(await readFile(filePath, "utf8")).toBe(committedText);
+        await expectBlameAgeColors(editor, [null, 0, 100]);
         await page.screenshot({ path: testInfo.outputPath("blame-unsaved-edit.png") });
 
         await page.keyboard.press(`${modifier}+S`);
         await expect.poll(() => readFile(filePath, "utf8")).toBe(unsavedText);
         execFileSync("git", ["commit", "--only", targetPath, "-m", "Commit edited source"], {
             ...gitOptions,
-            env: { ...gitOptions.env, GIT_AUTHOR_NAME: "Katherine Johnson" },
+            env: {
+                ...gitOptions.env,
+                GIT_AUTHOR_NAME: "Katherine Johnson",
+                GIT_AUTHOR_DATE: "2020-01-01T00:00:00+00:00",
+            },
         });
         const committedLabels = [
             expect.stringContaining("Katherine Johnson"),
@@ -147,11 +163,13 @@ test("annotates source lines, follows edits and commits, and toggles across spli
         await expect
             .poll(() => annotationLabels(editor), { timeout: 15_000 })
             .toEqual(committedLabels);
+        await expectBlameAgeColors(editor, [100, 0, 50]);
 
         await page.keyboard.press(`${modifier}+\\`);
         await expect(editors).toHaveCount(2);
         for (const splitEditor of await editors.all()) {
             await expect.poll(() => annotationLabels(splitEditor)).toEqual(committedLabels);
+            await expectBlameAgeColors(splitEditor, [100, 0, 50]);
         }
         await page.screenshot({ path: testInfo.outputPath("blame-split-editors.png") });
         await toggleFromPalette(page);
@@ -167,21 +185,29 @@ test("annotates source lines, follows edits and commits, and toggles across spli
         for (const splitEditor of await editors.all()) {
             await expect.poll(() => annotationLabels(splitEditor)).toEqual(committedLabels);
         }
-        await page.keyboard.press(`${modifier}+Shift+P`);
-        await expect(input).toBeVisible();
-        await input.fill(">Preferences: Color Theme");
-        await page
-            .getByRole("option")
-            .filter({ hasText: "Preferences: Color Theme" })
-            .first()
-            .click();
-        await input.fill("Light Modern");
-        await page.getByRole("option").filter({ hasText: "Light Modern" }).first().click();
-        await expect(input).toBeHidden();
-        for (const splitEditor of await editors.all()) {
-            await expect.poll(() => annotationLabels(splitEditor)).toEqual(committedLabels);
+        for (const theme of [
+            "Light Modern",
+            "Dark High Contrast",
+            "Light High Contrast",
+            "Dark Modern",
+        ]) {
+            await new Workbench(page).runCommand("Preferences: Color Theme");
+            await expect(input).toBeVisible();
+            await input.fill(theme);
+            await page.getByRole("option").filter({ hasText: theme }).first().click();
+            await expect(input).toBeHidden();
+            for (const splitEditor of await editors.all()) {
+                await expect.poll(() => annotationLabels(splitEditor)).toEqual(committedLabels);
+                const probe = await expectBlameAgeColors(splitEditor, [100, 0, 50]);
+                await testInfo.attach(`blame-colors-${theme.replaceAll(" ", "-")}.json`, {
+                    body: JSON.stringify(probe),
+                    contentType: "application/json",
+                });
+            }
+            await page.screenshot({
+                path: testInfo.outputPath(`blame-${theme.replaceAll(" ", "-")}.png`),
+            });
         }
-        await page.screenshot({ path: testInfo.outputPath("blame-light-theme.png") });
     } finally {
         await app.close();
     }

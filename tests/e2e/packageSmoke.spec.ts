@@ -30,6 +30,8 @@ import { runGitRaw } from "../fixtures/repo/gitRun";
 import { readPackageSmokeHostLogs } from "./hostFixtures/packageSmokeLogs";
 import { selectSoleVsix, verifyVsixPackage } from "../../scripts/verifyVsixPackage.js";
 import en from "../../src/webviews/i18n/en.json";
+import { createBlameAgeFixture } from "./hostFixtures/blameAgeFixture";
+import { expectBlameAgeColors } from "./pageObjects/blameAnnotations";
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(__dirname, "../..");
@@ -116,6 +118,7 @@ test.describe("installed VSIX package smoke", () => {
                 cwd: workspacePath,
                 env: environment,
             });
+            const blameFile = await createBlameAgeFixture(workspacePath, environment);
             userDataDir = await mkdtemp(path.join(tmpdir(), "intelligit-package-smoke-profile-"));
             const extensionsDir = await mkdtemp(
                 path.join(tmpdir(), "intelligit-package-smoke-extensions-"),
@@ -202,7 +205,30 @@ test.describe("installed VSIX package smoke", () => {
             console.log(
                 `[package smoke] IntelliGit activity-bar webview mounted (#root children: ${childCount})`,
             );
-            await new Workbench(window).openFile("package-smoke.ts");
+            const workbench = new Workbench(window);
+            await workbench.openFile(blameFile);
+            await workbench.runCommand("IntelliGit: Annotate with Git Blame");
+            const nativeEditor = window
+                .locator(".editor-group-container .monaco-editor:visible")
+                .first();
+            // This intermediate shade needs dark text even in Dark Modern, exercising relative-color support.
+            const blameColors = await expectBlameAgeColors(nativeEditor, [0, 65, 100]);
+            const runtime = await electronApp.evaluate(({ app }) => ({
+                applicationVersion: app.getVersion(),
+                node: process.versions.node,
+                electron: process.versions.electron,
+                chrome: process.versions.chrome,
+            }));
+            await testInfo.attach("installed-blame-age-colors.json", {
+                body: JSON.stringify({ runtime, ...blameColors }),
+                contentType: "application/json",
+            });
+            console.log(
+                `[package smoke] installed blame age colors and contrast verified: ${JSON.stringify(runtime)}`,
+            );
+            await workbench.runCommand("IntelliGit: Annotate with Git Blame");
+            await expectBlameAgeColors(nativeEditor, []);
+            await workbench.openFile("package-smoke.ts");
             const [historyWindow] = await Promise.all([
                 electronApp.waitForEvent("window", { timeout: 30_000 }),
                 new Workbench(window).runCommand("IntelliGit: Show File History"),
