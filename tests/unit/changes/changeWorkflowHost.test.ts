@@ -2517,6 +2517,74 @@ describe("root-bound selected-change host", () => {
         expect(store.get(root).lists.map((list) => list.name)).toContain("Mid-scan");
     });
 
+    /** The revision a webview click carries: the last state the host posted once loading settled. */
+    async function shownRevision(): Promise<number> {
+        posted.length = 0;
+        await host.handle({ type: "loadChangelists", repositoryRoot: root });
+        await host.settled();
+        const shown = posted.filter(
+            (message) => (message as { type: string }).type === "setChangelists",
+        );
+        expect(shown, "loading must post the lists").not.toHaveLength(0);
+        return (shown.at(-1) as { state: { revision: number } }).state.revision;
+    }
+
+    it("creates a list when the range scan wrote after the webview read its revision", async () => {
+        const revision = await shownRevision();
+        await writeFile(path.join(root, "file.txt"), `scan edit\n${working}`);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
+        expect(store.get(root).revision, "the scan must write before the click").toBeGreaterThan(
+            revision,
+        );
+        createPrompts(async () => undefined);
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "create",
+            revision,
+        });
+        expect(
+            posted
+                .filter((message) => (message as { type: string }).type === "error")
+                .map((message) => (message as { message: string }).message),
+            "a range write before the click must not refuse the new list",
+        ).toEqual([]);
+        expect(store.get(root).lists.map((list) => list.name)).toContain("Mid-scan");
+    });
+
+    it.each([
+        ["another list is created", () => store.create(root, store.revision(root), "Elsewhere")],
+        [
+            "the active list changes",
+            () => store.activate(root, store.revision(root), store.get(root).lists[1].id),
+        ],
+    ])("refuses a new list when %s after the webview read its revision", async (_, interfere) => {
+        await store.create(root, store.revision(root), "Existing");
+        const revision = await shownRevision();
+        await interfere();
+        const lists = store.get(root).lists.map((list) => list.name);
+        createPrompts(async () => undefined);
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "create",
+            revision,
+        });
+        expect(posted, "a list change the webview never saw must refuse the create").toContainEqual(
+            expect.objectContaining({
+                type: "error",
+                message: expect.stringContaining("Changelists changed"),
+            }),
+        );
+        expect(
+            store.get(root).lists.map((list) => list.name),
+            "a refused create must write nothing",
+        ).toEqual(lists);
+    });
+
     it.each([
         ["another list is created", () => store.create(root, store.revision(root), "Elsewhere")],
         [
