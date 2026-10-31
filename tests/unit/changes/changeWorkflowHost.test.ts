@@ -2236,7 +2236,10 @@ describe("root-bound selected-change host", () => {
                 };
             });
         refreshes.push(host.reconcile(later));
-        await vi.waitFor(() => expect(store.get(root).files["moved.txt"]).toBeDefined());
+        // The write takes a real lease on disk, which a slow Windows CI shard stretched past 1s.
+        await vi.waitFor(() => expect(store.get(root).files["moved.txt"]).toBeDefined(), {
+            timeout: 15000,
+        });
         expect(lease, "the later refresh's write holds the lease").toHaveBeenCalledOnce();
         expect(
             membership.mock.calls.map((call) => call[2]),

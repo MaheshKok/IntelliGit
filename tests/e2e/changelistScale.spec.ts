@@ -1011,8 +1011,15 @@ test.describe("lazy statistics lifecycle", () => {
             evidence.detachedHeldPids = detachedHeldPids;
             await commitPane.getByRole("button", { name: "Dock IntelliGit", exact: true }).click();
             // In CI, the palette key pressed while this focused frame closed never returned.
-            await expect(commitPane).toHaveCount(0);
-            const restored = await view.reveal();
+            // The closing frame can also drop its debugging session mid-query, which Playwright
+            // reports as a hard error rather than as no match, so an unreachable frame counts as
+            // closed, as `IntelliGitView.findFrame` already treats it.
+            await expect
+                .poll(() => commitPane.count().catch(() => 0), {
+                    message: "docking must close the detached workbench",
+                })
+                .toBe(0);
+            const restored = await view.revealDocked();
             await expect(
                 (await showLifecycleEdge(restored, "first", first)).getByRole("status"),
             ).toHaveText("...");
