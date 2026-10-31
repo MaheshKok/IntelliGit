@@ -260,7 +260,9 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                vscode_version: ["1.107.0", "1.137.0"]
+                # "pinned" runs the build tests/e2e/hostFixtures/vscodeVersion.ts names, so a pin bump
+                # needs no edit here and the required check keeps its name.
+                vscode_version: ["1.107.0", "pinned"]
 
         steps:
             - name: Checkout code
@@ -277,7 +279,7 @@ jobs:
               uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
               with:
                   path: ~/.cache/intelligit-e2e-container/vscode
-                  key: ${{ runner.os }}-package-smoke-vscode-${{ matrix.vscode_version }}
+                  key: ${{ runner.os }}-package-smoke-vscode-${{ matrix.vscode_version }}-${{ hashFiles('tests/e2e/hostFixtures/vscodeVersion.ts') }}
 
             - name: Verify downloaded VSIX and checksum
               shell: bash
@@ -295,8 +297,9 @@ jobs:
                   fi
                   sha256sum --check "${checksum_files[0]}"
 
+            # The pinned leg passes an empty version, which resolveVSCodeVersion reads as "use the pin".
             - name: Run installed package smoke in the pinned container
-              run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && INTELLIGIT_VSCODE_VERSION=${{ matrix.vscode_version }} xvfb-run -a bun run test:package-smoke'
+              run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && INTELLIGIT_VSCODE_VERSION=${{ matrix.vscode_version != 'pinned' && matrix.vscode_version || '' }} xvfb-run -a bun run test:package-smoke'
 
             # Without this the only evidence a package-smoke failure leaves is the log: Playwright
             # writes its screenshot, error context, and trace inside the container, and the job ends

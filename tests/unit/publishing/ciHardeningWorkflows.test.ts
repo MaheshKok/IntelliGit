@@ -271,17 +271,19 @@ describe("CI quality hardening workflows", () => {
         const releaseJob = extractJobBlock(publish, "release");
 
         expect(packageSmokeJob).toContain("needs: build");
-        expect(packageSmokeJob).toContain('vscode_version: ["1.107.0", "1.137.0"]');
+        expect(packageSmokeJob).toContain('vscode_version: ["1.107.0", "pinned"]');
         expect(packageSmokeJob).toContain("actions/download-artifact@");
         expect(packageSmokeJob).toContain("actions/cache@");
         expect(packageSmokeJob).toContain(
-            "key: ${{ runner.os }}-package-smoke-vscode-${{ matrix.vscode_version }}",
+            "key: ${{ runner.os }}-package-smoke-vscode-${{ matrix.vscode_version }}-${{ hashFiles('tests/e2e/hostFixtures/vscodeVersion.ts') }}",
         );
+        // `!= 'pinned' && version || ''`, not `== 'pinned' && '' || version`: an empty string is
+        // falsy in Actions expressions, so the second form would hand "pinned" to the downloader.
         expect(packageSmokeJob).toMatch(
-            /INTELLIGIT_VSCODE_VERSION=\$\{\{ matrix\.vscode_version \}\} xvfb-run -a bun run test:package-smoke/,
+            /INTELLIGIT_VSCODE_VERSION=\$\{\{ matrix\.vscode_version != 'pinned' && matrix\.vscode_version \|\| '' \}\} xvfb-run -a bun run test:package-smoke/,
         );
         expect(packageSmokeJob).toContain(
-            "bun install --frozen-lockfile && bun run build && INTELLIGIT_VSCODE_VERSION=${{ matrix.vscode_version }} xvfb-run -a bun run test:package-smoke",
+            "bun install --frozen-lockfile && bun run build && INTELLIGIT_VSCODE_VERSION=${{ matrix.vscode_version != 'pinned' && matrix.vscode_version || '' }} xvfb-run -a bun run test:package-smoke",
         );
         expect(eligibilityJob).toContain("version_changed");
         expect(eligibilityJob).toContain("new_version");
