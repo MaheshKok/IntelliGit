@@ -40,7 +40,7 @@ describe("resolveVSCodeVersion", () => {
         ) as { readonly engines: { readonly vscode: string } };
 
         expect(packageJson.engines.vscode).toBe("^1.107.0");
-        expect(VSCODE_VERSION).toBe("1.137.0");
+        expect(VSCODE_VERSION).toBe("1.144.0");
     });
 
     it("uses the pinned version when the override is unset", () => {
