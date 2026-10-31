@@ -91,6 +91,11 @@ function saveIntent(state: ChangelistState): string {
     ]);
 }
 
+/** What a list action reads from the shown lists; an ownership write leaves it unchanged. */
+function listsIntent(state: ChangelistState): string {
+    return JSON.stringify([state.lists, state.activeId]);
+}
+
 /** A refresh's paths and epoch, plus each file's owner once its own membership write landed. */
 interface Observation {
     readonly paths: readonly string[];
@@ -113,6 +118,8 @@ export class ChangeWorkflowHost {
     private readonly poll: ReturnType<typeof setInterval>;
     private lastRevision = -1;
     private lastPollError?: string;
+    /** The lists last posted, the oldest revision a click may carry for them, and the highest posted. */
+    private shown?: { lists: string; since: number; highest: number };
     private savingShelf = false;
     private readonly shelfRequests = new Map<
         string,
@@ -135,7 +142,7 @@ export class ChangeWorkflowHost {
                 this.deps.post({
                     type: "setChangelists",
                     repositoryRoot: root,
-                    state: this.store.view(root),
+                    state: this.show(),
                     busy: this.reconciling > 0 || this.committing || this.store.isCommitting(root),
                     ...(this.partial.recoveryIssues().length ? { hasRecoveryIssues: true } : {}),
                 });
@@ -425,13 +432,49 @@ export class ChangeWorkflowHost {
         }
     }
 
+    /** The browser snapshot to post, remembering since which revision its lists have been shown. */
+    private show(): ChangelistState {
+        const state = this.store.view(this.deps.root);
+        const lists = listsIntent(state);
+        const previous = this.shown ?? { lists, since: state.revision, highest: state.revision };
+        // Below a posted revision the metadata was replaced, and the webview keeps its higher
+        // revision with the older lists, so no click from before the replacement may match.
+        const since =
+            state.revision < previous.highest
+                ? previous.highest + 1
+                : lists === previous.lists
+                  ? previous.since
+                  : state.revision;
+        this.shown = {
+            lists,
+            since: Math.max(since, previous.since),
+            highest: Math.max(state.revision, previous.highest),
+        };
+        return state;
+    }
+
+    /**
+     * Ownership writes advance the revision after a post without changing any list, so a click
+     * may carry an older revision while the lists and active list it showed are still current.
+     * Another window's write is read before its post, so the current lists are compared too.
+     */
+    private showsCurrentLists(revision: number, state: ChangelistState): boolean {
+        return (
+            revision === state.revision ||
+            (this.shown !== undefined &&
+                this.shown.since <= revision &&
+                revision <= state.revision &&
+                this.shown.lists === listsIntent(state))
+        );
+    }
+
     /** Reports this root's authoritative metadata, cross-host busy state, and recovery needs; read failures stay root-scoped. */
     private post(): void {
         try {
             this.deps.post({
                 type: "setChangelists",
                 repositoryRoot: this.deps.root,
-                state: this.store.view(this.deps.root),
+                state: this.show(),
                 busy:
                     this.reconciling > 0 ||
                     this.committing ||
@@ -579,7 +622,13 @@ export class ChangeWorkflowHost {
                 movePaths.map((file) => [state.files[file], state.changes[file]]),
             ]);
         const before = this.store.get(this.deps.root);
-        if (before.revision !== revision) throw new ChangelistRevisionError();
+        // Moved files also depend on their ownership, which only the exact revision vouches for.
+        if (
+            movePaths.length
+                ? before.revision !== revision
+                : !this.showsCurrentLists(revision, before)
+        )
+            throw new ChangelistRevisionError();
         const name = await vscode.window.showInputBox({
             title:
                 action === "create"

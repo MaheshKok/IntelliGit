@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile, chmod, readdir, mkdir, link } from "node:fs/promises";
+import {
+    mkdtemp,
+    readFile,
+    writeFile,
+    chmod,
+    readdir,
+    mkdir,
+    link,
+    realpath,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setFlagsFromString } from "node:v8";
@@ -2554,11 +2563,162 @@ describe("root-bound selected-change host", () => {
         expect(store.get(root).lists.map((list) => list.name)).toContain("Mid-scan");
     });
 
+    it("renames a list when the range scan wrote after the webview read its revision", async () => {
+        const id = (await store.create(root, store.revision(root), "Existing")).lists[1].id;
+        const revision = await shownRevision();
+        await writeFile(path.join(root, "file.txt"), `scan edit\n${working}`);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
+        expect(store.get(root).revision, "the scan must write before the click").toBeGreaterThan(
+            revision,
+        );
+        createPrompts(async () => undefined);
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "rename",
+            listId: id,
+            revision,
+        });
+        expect(
+            posted
+                .filter((message) => (message as { type: string }).type === "error")
+                .map((message) => (message as { message: string }).message),
+            "a range write before the click must not refuse the rename",
+        ).toEqual([]);
+        expect(store.get(root).lists.find((list) => list.id === id)?.name).toBe("Mid-scan");
+    });
+
+    it("refuses moving a file to a new list when the scan rewrote it after the webview read its revision", async () => {
+        const revision = await shownRevision();
+        await writeFile(path.join(root, "file.txt"), `scan edit\n${working}`);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
+        const lists = store.get(root).lists.map((list) => list.name);
+        createPrompts(async () => undefined);
+        Object.defineProperty(vscode.window, "showQuickPick", {
+            configurable: true,
+            value: vi.fn(async (items: readonly { id?: string }[]) =>
+                items.find((item) => item.id === "new"),
+            ),
+        });
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "move",
+            paths: ["file.txt"],
+            revision,
+        });
+        expect(posted, "a moved file the webview saw before the scan must refuse").toContainEqual(
+            expect.objectContaining({
+                type: "error",
+                message: expect.stringContaining("Changelists changed"),
+            }),
+        );
+        expect(
+            store.get(root).lists.map((list) => list.name),
+            "a refused move must write nothing",
+        ).toEqual(lists);
+    });
+
+    it("refuses a new list carrying a revision the metadata never reached", async () => {
+        const revision = await shownRevision();
+        const lists = store.get(root).lists.map((list) => list.name);
+        createPrompts(async () => undefined);
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "create",
+            revision: revision + 1,
+        });
+        expect(
+            posted,
+            "a revision the metadata never reached must refuse the create",
+        ).toContainEqual(
+            expect.objectContaining({
+                type: "error",
+                message: expect.stringContaining("Changelists changed"),
+            }),
+        );
+        expect(
+            store.get(root).lists.map((list) => list.name),
+            "a refused create must write nothing",
+        ).toEqual(lists);
+    });
+
+    it.each([
+        ["climbs past the webview's revision", async (_revision: number) => undefined],
+        [
+            "changes a list at the webview's revision, then climbs past it",
+            async (revision: number) => {
+                while (store.revision(root) < revision)
+                    await store.create(root, store.revision(root), `Again ${store.revision(root)}`);
+            },
+        ],
+    ])("refuses a new list after replaced metadata %s", async (_, replay) => {
+        const metadata = path.join(
+            await realpath(path.join(root, ".git")),
+            "intelligit",
+            "changelists",
+            "state.json",
+        );
+        const replaced = await readFile(metadata);
+        await store.create(root, store.revision(root), "Existing");
+        const revision = await shownRevision();
+        // The older file lowers the revision; the webview keeps its higher one and the lists it showed.
+        await writeFile(metadata, replaced);
+        expect(
+            await shownRevision(),
+            "the replaced metadata must post a lower revision",
+        ).toBeLessThan(revision);
+        await replay(revision);
+        for (let edit = 0; store.revision(root) <= revision && edit < 5; edit++) {
+            await writeFile(path.join(root, "file.txt"), `edit ${edit}\n${working}`);
+            await host.reconcile(await gitOps.getStatus({ withStats: false }));
+            await host.settled();
+        }
+        expect(
+            store.revision(root),
+            "ownership writes must climb past the webview",
+        ).toBeGreaterThan(revision);
+        const lists = store.get(root).lists.map((list) => list.name);
+        createPrompts(async () => undefined);
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "create",
+            revision,
+        });
+        expect(posted, "lists the webview never displayed must refuse the create").toContainEqual(
+            expect.objectContaining({
+                type: "error",
+                message: expect.stringContaining("Changelists changed"),
+            }),
+        );
+        expect(
+            store.get(root).lists.map((list) => list.name),
+            "a refused create must write nothing",
+        ).toEqual(lists);
+    });
+
     it.each([
         ["another list is created", () => store.create(root, store.revision(root), "Elsewhere")],
         [
             "the active list changes",
             () => store.activate(root, store.revision(root), store.get(root).lists[1].id),
+        ],
+        [
+            "another window creates a list",
+            async () => {
+                // A second store over the same metadata file posts nothing to this host.
+                const foreign = new ChangelistStore();
+                await foreign.connect(root, path.join(root, ".git"));
+                await foreign.create(root, foreign.revision(root), "Elsewhere");
+            },
         ],
     ])("refuses a new list when %s after the webview read its revision", async (_, interfere) => {
         await store.create(root, store.revision(root), "Existing");
