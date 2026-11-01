@@ -3077,15 +3077,16 @@ function moveWholeFiles(
     for (const value of paths) {
         const file = assertRepoRelativePath(value);
         if (!Object.hasOwn(state.files, file)) throw new Error("The file list changed.");
-        // A file another window moved out of the shown list is no longer the one that was clicked.
-        if (source !== undefined && source !== "all" && state.files[file] !== source)
-            throw new ChangelistRevisionError();
+        // Partial files first: a list can show a file only through its lines, and no refresh changes that.
         const ownership = state.changes[file];
         if (
             ownership &&
             (Object.keys(ownership.lines).length || Object.keys(ownership.selections ?? {}).length)
         )
             throw new Error("Move partial selections through their partial editor.");
+        // A file another window moved out of the shown list is no longer the one that was clicked.
+        if (source !== undefined && source !== "all" && state.files[file] !== source)
+            throw new ChangelistRevisionError();
         state.files[file] = id;
     }
 }
