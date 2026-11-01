@@ -284,7 +284,14 @@ export function useChangelists(props: CommitTabProps) {
                 ...(action === "move" ? { sourceListId: filter } : {}),
                 ...(action !== "create" && action !== "move" ? { listId } : {}),
                 ...(action === "move" || action === "resetSelection"
-                    ? { paths: [...checkedPaths] }
+                    ? {
+                          // Reset sends only what showed a selection, so one added since stays.
+                          paths: [...checkedPaths].filter(
+                              (file) =>
+                                  action === "move" ||
+                                  metadata.changes[file]?.selections?.[filter] !== undefined,
+                          ),
+                      }
                     : {}),
             });
         },

@@ -12,6 +12,7 @@ import {
     ChangelistRevisionError,
     ChangelistStore,
     TargetOperationLeaseHeldError,
+    listsIntent,
     type TargetOperationLease,
 } from "../changes/changelistStore";
 import { ShelfWorktreeRemovalCompletedError } from "../shelf/recovery";
@@ -89,11 +90,6 @@ function saveIntent(state: ChangelistState): string {
             state.changes[file]?.stale === true,
         ]),
     ]);
-}
-
-/** What a list action reads from the shown lists; an ownership write leaves it unchanged. */
-function listsIntent(state: ChangelistState): string {
-    return JSON.stringify([state.lists, state.activeId]);
 }
 
 /** A refresh's paths and epoch, plus each file's owner once its own membership write landed. */
@@ -522,7 +518,7 @@ export class ChangeWorkflowHost {
         }
     }
 
-    /** Validates webview list commands against their captured revision; partial ownership requires the range editor rather than a whole-file move. */
+    /** Validates webview list commands; moves, resets and removals check what they act on inside the store's write, and partial ownership requires the range editor rather than a whole-file move. */
     private async changeList(
         message: Extract<ChangelistOutbound, { type: "changelistAction" }>,
     ): Promise<void> {
@@ -546,7 +542,7 @@ export class ChangeWorkflowHost {
             case "resetSelection":
                 await this.store.resetSelection(
                     this.deps.root,
-                    revision,
+                    undefined,
                     id,
                     assertRepoPathArray(message.paths, "paths"),
                 );
@@ -580,13 +576,13 @@ export class ChangeWorkflowHost {
                             { title: vscode.l10n.t("Move selected changes") },
                         )
                     )?.id;
-                if (chosen === "new") await this.editList("create", revision, "", paths);
+                if (chosen === "new") await this.editList("create", revision, "", paths, source);
                 else if (chosen)
-                    await this.store.moveFiles(this.deps.root, revision, chosen, paths);
+                    await this.store.moveFiles(this.deps.root, undefined, chosen, paths, source);
                 break;
             }
             case "remove":
-                await this.removeList(revision, id);
+                await this.removeList(id);
                 break;
             default:
                 throw new Error("Unknown changelist action.");
@@ -612,23 +608,13 @@ export class ChangeWorkflowHost {
         revision: number,
         id: string,
         movePaths: readonly string[] = [],
+        source?: string,
     ): Promise<void> {
         // The range scan may advance ownership revisions while the prompts are open. Preserve
-        // those writes, but never apply over an intervening list, active-list or moved-file change.
-        const intent = (state: ChangelistState) =>
-            JSON.stringify([
-                state.lists,
-                state.activeId,
-                movePaths.map((file) => [state.files[file], state.changes[file]]),
-            ]);
+        // those writes, but never apply over an intervening list or active-list change; the
+        // store checks moved files against `source` inside its write.
         const before = this.store.get(this.deps.root);
-        // Moved files also depend on their ownership, which only the exact revision vouches for.
-        if (
-            movePaths.length
-                ? before.revision !== revision
-                : !this.showsCurrentLists(revision, before)
-        )
-            throw new ChangelistRevisionError();
+        if (!this.showsCurrentLists(revision, before)) throw new ChangelistRevisionError();
         const name = await vscode.window.showInputBox({
             title:
                 action === "create"
@@ -657,7 +643,7 @@ export class ChangeWorkflowHost {
         if (description === undefined) return;
         const latest = () => {
             const state = this.store.get(this.deps.root);
-            if (intent(state) !== intent(before)) throw new ChangelistRevisionError();
+            if (listsIntent(state) !== listsIntent(before)) throw new ChangelistRevisionError();
             return state.revision;
         };
         if (action === "create") {
@@ -682,12 +668,13 @@ export class ChangeWorkflowHost {
                 description,
                 active.active,
                 movePaths,
+                source,
             );
         } else await this.store.edit(this.deps.root, latest(), id, name, description);
     }
 
     /** Names a surviving destination and resolves draft conflicts before removing any metadata. */
-    private async removeList(revision: number, id: string): Promise<void> {
+    private async removeList(id: string): Promise<void> {
         const state = this.store.get(this.deps.root);
         const source = state.lists.find((list) => list.id === id);
         if (!source) throw new Error("The changelist no longer exists.");
@@ -741,7 +728,14 @@ export class ChangeWorkflowHost {
             vscode.l10n.t("Remove"),
         );
         if (confirm) {
-            await this.store.remove(this.deps.root, revision, id, target?.list.id, draftChoice);
+            await this.store.remove(
+                this.deps.root,
+                undefined,
+                id,
+                target?.list.id,
+                draftChoice,
+                state,
+            );
             const scope = this.store.mirrorScope(this.deps.root);
             this.deps.mirrorDraft?.(scope, this.store.draft(this.deps.root, scope));
         }

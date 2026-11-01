@@ -507,3 +507,113 @@ describe("CommitTab shelving", () => {
         unmount(root, container);
     });
 });
+
+describe("CommitTab changelist actions", () => {
+    it("Select whole file sends only the checked files that showed a selection", () => {
+        vscode.postMessage.mockReset();
+        const { root, container } = renderCommitTab({
+            checkedPaths: new Set(["src/a.ts", "src/b.ts"]),
+        });
+        act(() =>
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "setChangelists",
+                        repositoryRoot: "/repo",
+                        state: {
+                            revision: 3,
+                            activeId: "default",
+                            lists: twoLists,
+                            files: { "src/a.ts": "default", "src/b.ts": "default" },
+                            changes: {
+                                "src/a.ts": {
+                                    contentId: "a",
+                                    lines: {},
+                                    selections: { all: { contentId: "a", lineIds: [], total: 1 } },
+                                },
+                                "src/b.ts": { contentId: "b", lines: {} },
+                            },
+                        },
+                    },
+                }),
+            ),
+        );
+        const reset = container.querySelector<HTMLButtonElement>(
+            'button[aria-label="Select whole file"]',
+        );
+        expect(reset?.disabled, "a shown selection enables Select whole file").toBe(false);
+        click(reset!);
+        expect(
+            vscode.postMessage,
+            "a file shown without a selection must not be sent, so a selection added since stays",
+        ).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                type: "changelistAction",
+                action: "resetSelection",
+                listId: "all",
+                paths: ["src/a.ts"],
+            }),
+        );
+        unmount(root, container);
+    });
+
+    it("Select whole file sends only the files that showed a selection in the shown list", () => {
+        vscode.postMessage.mockReset();
+        vscode.getState.mockReturnValue({
+            changelistViews: {
+                "/repo": { filter: "feature", checked: { feature: ["src/a.ts", "src/b.ts"] } },
+            },
+        });
+        const { root, container } = renderCommitTab({ checkedPaths: new Set() });
+        try {
+            act(() =>
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "setChangelists",
+                            repositoryRoot: "/repo",
+                            state: {
+                                revision: 3,
+                                activeId: "default",
+                                lists: twoLists,
+                                files: { "src/a.ts": "feature", "src/b.ts": "feature" },
+                                changes: {
+                                    "src/a.ts": {
+                                        contentId: "a",
+                                        lines: {},
+                                        selections: {
+                                            feature: { contentId: "a", lineIds: [], total: 1 },
+                                        },
+                                    },
+                                    // Selected only in the All view, so this list shows it whole.
+                                    "src/b.ts": {
+                                        contentId: "b",
+                                        lines: {},
+                                        selections: {
+                                            all: { contentId: "b", lineIds: [], total: 1 },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    }),
+                ),
+            );
+            click(container.querySelector('button[aria-label="Select whole file"]')!);
+            expect(
+                vscode.postMessage,
+                "only a selection shown in this list may be sent",
+            ).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    type: "changelistAction",
+                    action: "resetSelection",
+                    listId: "feature",
+                    paths: ["src/a.ts"],
+                }),
+            );
+        } finally {
+            vscode.getState.mockReturnValue({});
+            unmount(root, container);
+        }
+    });
+});

@@ -2590,37 +2590,270 @@ describe("root-bound selected-change host", () => {
         expect(store.get(root).lists.find((list) => list.id === id)?.name).toBe("Mid-scan");
     });
 
-    it("refuses moving a file to a new list when the scan rewrote it after the webview read its revision", async () => {
-        const revision = await shownRevision();
+    /** The error texts the host posted since `posted` was last cleared. */
+    function postedErrors(): string[] {
+        return (posted as { type?: string; message?: string }[])
+            .filter((message) => message.type === "error")
+            .map((message) => message.message ?? "");
+    }
+
+    /** Rewrites file.txt and lets the range scan record it, returning the revision it reached. */
+    async function scanEdit(): Promise<number> {
         await writeFile(path.join(root, "file.txt"), `scan edit\n${working}`);
         await host.reconcile(await gitOps.getStatus({ withStats: false }));
         await host.settled();
-        const lists = store.get(root).lists.map((list) => list.name);
-        createPrompts(async () => undefined);
+        return store.revision(root);
+    }
+
+    /** Picks the move target `target`, and the first item of every later picker. */
+    function pickTarget(target: string) {
         Object.defineProperty(vscode.window, "showQuickPick", {
             configurable: true,
-            value: vi.fn(async (items: readonly { id?: string }[]) =>
-                items.find((item) => item.id === "new"),
+            value: vi.fn(
+                async (items: readonly { id?: string }[]) =>
+                    items.find((item) => item.id === target) ?? items[0],
             ),
         });
+    }
+
+    it.each(["an existing list", "a new list"] as const)(
+        "moves a file to %s when the range scan wrote after the webview read its revision",
+        async (kind) => {
+            const feature = (await store.create(root, store.revision(root), "Feature")).lists[1].id;
+            const revision = await shownRevision();
+            expect(await scanEdit(), "the scan must write before the click").toBeGreaterThan(
+                revision,
+            );
+            createPrompts(async () => undefined);
+            pickTarget(kind === "a new list" ? "new" : feature);
+            posted.length = 0;
+            await host.handle({
+                type: "changelistAction",
+                repositoryRoot: root,
+                action: "move",
+                sourceListId: "default",
+                paths: ["file.txt"],
+                revision,
+            });
+            expect(
+                postedErrors(),
+                "a range write before the click must not refuse the move",
+            ).toEqual([]);
+            const state = store.get(root);
+            expect(state.files["file.txt"], "the file must land in the chosen list").toBe(
+                kind === "a new list"
+                    ? state.lists.find((list) => list.name === "Mid-scan")?.id
+                    : feature,
+            );
+        },
+    );
+
+    it.each(["an existing list", "a new list"] as const)(
+        "refuses moving a file to %s after another window moved it out of the shown list",
+        async (kind) => {
+            const made = await store.create(root, store.revision(root), "Feature");
+            const feature = made.lists[1].id;
+            const other = (await store.create(root, made.revision, "Other")).lists[2].id;
+            const revision = await shownRevision();
+            await store.moveFiles(root, store.revision(root), other, ["file.txt"]);
+            const lists = store.get(root).lists.map((list) => list.name);
+            createPrompts(async () => undefined);
+            pickTarget(kind === "a new list" ? "new" : feature);
+            posted.length = 0;
+            await host.handle({
+                type: "changelistAction",
+                repositoryRoot: root,
+                action: "move",
+                sourceListId: "default",
+                paths: ["file.txt"],
+                revision,
+            });
+            expect(posted, "a file that left the shown list must refuse the move").toContainEqual(
+                expect.objectContaining({
+                    type: "error",
+                    message: expect.stringContaining("Changelists changed"),
+                }),
+            );
+            expect(
+                store.get(root).files["file.txt"],
+                "a refused move must leave the file where the other window put it",
+            ).toBe(other);
+            expect(
+                store.get(root).lists.map((list) => list.name),
+                "a refused move must write no list",
+            ).toEqual(lists);
+        },
+    );
+
+    it("points a file shown only through its changed lines to the partial editor", async () => {
+        const original = store.get(root).activeId;
+        const later = (await store.create(root, store.revision(root), "Later")).lists[1].id;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "activate",
+            listId: later,
+            revision: store.revision(root),
+        });
+        await writeFile(path.join(root, "file.txt"), `later edit\n${working}`);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
+        expect(store.get(root).files["file.txt"], "the file must stay in the old active list").toBe(
+            original,
+        );
+        expect(
+            [...new Set(Object.values(store.get(root).changes["file.txt"].lines))],
+            "only the shown list may own the file's changed lines",
+        ).toEqual([later]);
+        const revision = await shownRevision();
+        pickTarget(original);
         posted.length = 0;
         await host.handle({
             type: "changelistAction",
             repositoryRoot: root,
             action: "move",
+            sourceListId: later,
             paths: ["file.txt"],
             revision,
         });
-        expect(posted, "a moved file the webview saw before the scan must refuse").toContainEqual(
-            expect.objectContaining({
-                type: "error",
-                message: expect.stringContaining("Changelists changed"),
-            }),
+        expect(
+            postedErrors(),
+            "a partial file must name its partial editor, not ask for a refresh that cannot help",
+        ).toEqual([
+            "Changelist action failed: Move partial selections through their partial editor.",
+        ]);
+        expect(store.get(root).files["file.txt"], "a refused move must leave the file").toBe(
+            original,
+        );
+    });
+
+    it("resets a selection when the range scan wrote after the webview read its revision", async () => {
+        const ownership = store.get(root).changes["file.txt"];
+        await store.recordSelection(root, "file.txt", ownership.contentId, "all", [], 4);
+        const revision = await shownRevision();
+        expect(await scanEdit(), "the scan must write before the click").toBeGreaterThan(revision);
+        expect(
+            store.get(root).changes["file.txt"].selections?.all,
+            "the scan must keep the selection the panel showed",
+        ).toBeDefined();
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "resetSelection",
+            listId: "all",
+            paths: ["file.txt"],
+            revision,
+        });
+        expect(postedErrors(), "a range write before the click must not refuse the reset").toEqual(
+            [],
         );
         expect(
-            store.get(root).lists.map((list) => list.name),
-            "a refused move must write nothing",
-        ).toEqual(lists);
+            store.get(root).changes["file.txt"].selections?.all,
+            "the reset must clear the shown selection",
+        ).toBeUndefined();
+    });
+
+    /** Answers the remove prompts with the first destination, running `during` in the dialog. */
+    function removePrompts(during: () => Promise<unknown>) {
+        Object.defineProperty(vscode.window, "showQuickPick", {
+            configurable: true,
+            value: vi.fn(async (items: readonly unknown[]) => items[0]),
+        });
+        vi.mocked(vscode.window.showWarningMessage).mockImplementationOnce(async () => {
+            await during();
+            return "Remove" as never;
+        });
+    }
+
+    it.each([
+        ["before the click", true],
+        ["while its dialog was open", false],
+    ] as const)("removes a list when the range scan wrote %s", async (_, early) => {
+        const feature = (await store.create(root, store.revision(root), "Feature")).lists[1].id;
+        const revision = await shownRevision();
+        let scanned = early ? await scanEdit() : revision;
+        removePrompts(async () => {
+            if (!early) scanned = await scanEdit();
+        });
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "remove",
+            listId: feature,
+            revision,
+        });
+        expect(scanned, "the scan must write").toBeGreaterThan(revision);
+        expect(postedErrors(), "a range write must not refuse the remove").toEqual([]);
+        expect(
+            store.get(root).lists.map((list) => list.id),
+            "the list must be removed",
+        ).not.toContain(feature);
+    });
+
+    it.each([
+        [
+            "renamed its destination",
+            (_feature: string) => store.rename(root, store.revision(root), "default", "Renamed"),
+        ],
+        [
+            "changed the active list",
+            (feature: string) => store.activate(root, store.revision(root), feature),
+        ],
+        [
+            "edited its destination's draft",
+            (_feature: string) =>
+                store.saveDraft(root, "default", store.draft(root, "default"), "typed elsewhere"),
+        ],
+    ])(
+        "refuses removing a list when another window %s while its dialog was open",
+        async (_, change) => {
+            const feature = (await store.create(root, store.revision(root), "Feature")).lists[1].id;
+            const revision = await shownRevision();
+            removePrompts(() => change(feature));
+            posted.length = 0;
+            await host.handle({
+                type: "changelistAction",
+                repositoryRoot: root,
+                action: "remove",
+                listId: feature,
+                revision,
+            });
+            expect(posted, "a list change during the dialog must refuse the remove").toContainEqual(
+                expect.objectContaining({
+                    type: "error",
+                    message: expect.stringContaining("Changelists changed"),
+                }),
+            );
+            expect(
+                store.get(root).lists.map((list) => list.id),
+                "a refused remove must keep the list",
+            ).toContain(feature);
+        },
+    );
+
+    it("moves a file that joined the list while its dialog was open to the destination", async () => {
+        const feature = (await store.create(root, store.revision(root), "Feature")).lists[1].id;
+        const revision = await shownRevision();
+        removePrompts(() => store.moveFiles(root, store.revision(root), feature, ["file.txt"]));
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "remove",
+            listId: feature,
+            revision,
+        });
+        expect(postedErrors(), "a file joining the list must not refuse the remove").toEqual([]);
+        const state = store.get(root);
+        expect(
+            state.lists.map((list) => list.id),
+            "the list must be removed",
+        ).not.toContain(feature);
+        expect(state.files["file.txt"], "the joined file must move to the destination").toBe(
+            "default",
+        );
     });
 
     it("refuses a new list carrying a revision the metadata never reached", async () => {

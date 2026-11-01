@@ -147,6 +147,11 @@ export class ChangelistRevisionError extends Error {
     }
 }
 
+/** What a list action reads from the shown lists; an ownership write leaves it unchanged. */
+export function listsIntent(state: Pick<ChangelistState, "lists" | "activeId">): string {
+    return JSON.stringify([state.lists, state.activeId]);
+}
+
 /** A targeted operation leases or holds this root's metadata; observers re-observe once it releases. */
 export class TargetOperationLeaseHeldError extends Error {
     /** Keeps the message callers already showed for a write refused by another operation's lease. */
@@ -2043,6 +2048,7 @@ export class ChangelistStore {
         description = "",
         makeActive = false,
         movePaths: readonly string[] = [],
+        source?: string,
     ): Promise<ChangelistState> {
         return this.write(root, revision, (state) => {
             if (state.lists.length >= MAX_LISTS) throw new Error("Too many changelists.");
@@ -2061,7 +2067,7 @@ export class ChangelistStore {
                 description: descriptionFor(description),
                 draft: "",
             });
-            moveWholeFiles(state, id, movePaths);
+            moveWholeFiles(state, id, movePaths, source);
             if (makeActive) state.activeId = id;
         });
     }
@@ -2095,13 +2101,14 @@ export class ChangelistStore {
     /** Moves only whole files atomically, preserving every saved inclusion and partial owner. */
     moveFiles(
         root: string,
-        revision: number,
+        revision: number | undefined,
         id: string,
         paths: readonly string[],
+        source?: string,
     ): Promise<ChangelistState> {
         return this.write(root, revision, (state) => {
             requireList(state, id);
-            moveWholeFiles(state, id, paths);
+            moveWholeFiles(state, id, paths, source);
         });
     }
 
@@ -2194,12 +2201,16 @@ export class ChangelistStore {
     /** Removes metadata only, remapping every owner and fencing ambiguous inclusion atomically. */
     remove(
         root: string,
-        revision: number,
+        revision: number | undefined,
         id: string,
         targetId?: string,
         draftChoice?: "source" | "target" | "append",
+        shown?: Pick<ChangelistState, "lists" | "activeId">,
     ): Promise<ChangelistState> {
         return this.write(root, revision, (state) => {
+            // The confirmation named these lists and drafts; files that joined the list since move with it.
+            if (shown && listsIntent(state) !== listsIntent(shown))
+                throw new ChangelistRevisionError();
             const source = requireList(state, id);
             const survivors = state.lists.filter((list) => list.id !== id);
             if (targetId === id) throw new Error("Choose a surviving destination changelist.");
@@ -2362,7 +2373,7 @@ export class ChangelistStore {
     /** The explicit whole-file action removes only the current view's partial inclusion. */
     resetSelection(
         root: string,
-        revision: number,
+        revision: number | undefined,
         scope: string,
         paths: readonly string[],
     ): Promise<ChangelistState> {
@@ -3056,17 +3067,26 @@ function validTargetOperationMetadata(state: ChangelistState | HydratedChangelis
 }
 
 /** Creation-with-move and existing-list moves share the same atomic safety checks. */
-function moveWholeFiles(state: ChangelistState, id: string, paths: readonly string[]): void {
+function moveWholeFiles(
+    state: ChangelistState,
+    id: string,
+    paths: readonly string[],
+    source?: string,
+): void {
     if (paths.length > MAX_FILES) throw new Error("Too many changelist files.");
     for (const value of paths) {
         const file = assertRepoRelativePath(value);
         if (!Object.hasOwn(state.files, file)) throw new Error("The file list changed.");
+        // Partial files first: a list can show a file only through its lines, and no refresh changes that.
         const ownership = state.changes[file];
         if (
             ownership &&
             (Object.keys(ownership.lines).length || Object.keys(ownership.selections ?? {}).length)
         )
             throw new Error("Move partial selections through their partial editor.");
+        // A file another window moved out of the shown list is no longer the one that was clicked.
+        if (source !== undefined && source !== "all" && state.files[file] !== source)
+            throw new ChangelistRevisionError();
         state.files[file] = id;
     }
 }
