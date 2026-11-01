@@ -1079,12 +1079,16 @@ test.describe("lazy statistics lifecycle", () => {
             // Its first request under that revision can arrive after the release, and a read held
             // since before the undock is answered under it too, so the restored revision is taken
             // from a request sent after the dock rather than from the last request before release.
+            // Docking can start more than one refresh, so a later lookup could return a newer
+            // revision than the one this poll validated; the checks below reuse the validated key.
+            let restoredKey = "";
             await expect
                 .poll(
                     () => {
-                        const key = trace.latest("commit-panel", dockedAt);
+                        restoredKey = trace.latest("commit-panel", dockedAt) ?? "";
                         return (
-                            key !== undefined && trace.replies(key).some((event) => event.ready > 0)
+                            restoredKey !== "" &&
+                            trace.replies(restoredKey).some((event) => event.ready > 0)
                         );
                     },
                     {
@@ -1093,7 +1097,6 @@ test.describe("lazy statistics lifecycle", () => {
                     },
                 )
                 .toBe(true);
-            const restoredKey = trace.latest("commit-panel", dockedAt)!;
             evidence.restoredKey = restoredKey;
             evidence.restoredRepliesBeforeRelease = trace.replies(restoredKey, releasedAt);
             expect(
