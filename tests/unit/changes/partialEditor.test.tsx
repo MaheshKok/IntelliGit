@@ -259,6 +259,43 @@ describe("selected change editor protocol", () => {
         }
     });
 
+    // A failed load answers with partialError instead of partialFile, so only the reset at load start can clear it.
+    it.each([
+        [
+            "switching the source",
+            (container: HTMLElement) => {
+                const select = container.querySelector<HTMLSelectElement>(
+                    'select[aria-label="Change source"]',
+                )!;
+                select.value = "index";
+                select.dispatchEvent(new Event("change", { bubbles: true }));
+            },
+            "index",
+        ],
+        [
+            "reloading",
+            (container: HTMLElement) =>
+                container
+                    .querySelector<HTMLButtonElement>('button[aria-label="Reload changes"]')!
+                    .click(),
+            "working",
+        ],
+    ])("drops the previous result from the status when %s fails", (_label, start, side) => {
+        const mounted = mount(<PartialChangesApp />);
+        const status = () => mounted.container.querySelector('[role="status"]')?.textContent;
+        try {
+            receive({ ...data, selectedOperations: true });
+            receive({ type: "partialOperationCompleted", message: "Shelved A", removed: false });
+            expect(status()).toBe("Shelved A");
+            act(() => start(mounted.container));
+            expect(api.postMessage).toHaveBeenLastCalledWith({ type: "ready", side });
+            receive({ type: "partialError", message: "failed" });
+            expect(status(), "the earlier result is not announced again").toBe("");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
     it("retains selection after an error and initializes an expired persisted inclusion as empty", () => {
         const mounted = mount(<PartialChangesApp />);
         try {
