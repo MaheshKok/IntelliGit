@@ -27,7 +27,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
   <a href="package.json"><img alt="Package version" src="https://img.shields.io/github/package-json/v/MaheshKok/IntelliGit?label=version&color=2ea043" /></a>
-  <a href="package.json"><img alt="VS Code 1.137+" src="https://img.shields.io/badge/VS%20Code-1.137%2B-007ACC.svg" /></a>
+  <a href="package.json"><img alt="Supported VS Code versions" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FMaheshKok%2FIntelliGit%2Fmain%2Fpackage.json&query=%24.engines.vscode&label=VS%20Code&color=007ACC" /></a>
 </p>
 
 <p align="center">

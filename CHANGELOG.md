@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **New changelist**, **Rename** and **Set active** no longer fail with "Changelists changed. Refresh before retrying." right after you switch repositories while IntelliGit is still reading your changes. They still stop when a changelist really changed since you last saw it.
+- In the High Contrast Light theme, tags and the orange toolbar icons are orange again. Since VS Code 1.143 they had turned the same blue as branch names.
 
 ## [0.40.0] - 2026-10-24
 
