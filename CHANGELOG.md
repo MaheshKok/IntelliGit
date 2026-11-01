@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **New changelist** and **Rename** no longer fail with "Changelists changed. Refresh before retrying." right after you switch repositories while IntelliGit is still reading your changes. They still stop when a changelist really changed since you last saw it.
+- **New changelist**, **Rename** and **Set active** no longer fail with "Changelists changed. Refresh before retrying." right after you switch repositories while IntelliGit is still reading your changes. They still stop when a changelist really changed since you last saw it.
 
 ## [0.40.0] - 2026-10-24
 

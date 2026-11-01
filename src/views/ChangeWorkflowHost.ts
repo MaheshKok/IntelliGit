@@ -596,7 +596,7 @@ export class ChangeWorkflowHost {
     /** Observe existing edits under the old active list before changing only future attribution. */
     private async activate(revision: number, id: string): Promise<void> {
         const before = this.store.get(this.deps.root);
-        if (before.revision !== revision) throw new ChangelistRevisionError();
+        if (!this.showsCurrentLists(revision, before)) throw new ChangelistRevisionError();
         const epoch = this.store.observerEpoch(this.deps.root);
         await this.tracker.reconcile(await this.deps.gitOps.getStatus({ withStats: false }), epoch);
         const latest = this.store.get(this.deps.root);
