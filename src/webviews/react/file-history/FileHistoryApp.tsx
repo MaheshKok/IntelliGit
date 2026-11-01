@@ -5,6 +5,7 @@ import { DiffViewer } from "../diff-viewer/DiffViewer";
 import { CommitMessageCell } from "../commit-list/CommitRow";
 import { ContextMenu } from "../shared/components/ContextMenu";
 import { t } from "../shared/i18n";
+import { HC_LIGHT_ORANGE_CSS } from "../shared/tokens";
 import { useFileHistory } from "./useFileHistory";
 import "./file-history.css";
 
@@ -147,6 +148,7 @@ export function App(): React.ReactElement {
 
     return (
         <main className="file-history">
+            <style>{HC_LIGHT_ORANGE_CSS}</style>
             <div
                 className="file-history-layout"
                 ref={layoutRef}

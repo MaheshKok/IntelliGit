@@ -230,10 +230,10 @@ export const ICON_ACCENTS = {
     orange: iconAccent("--vscode-charts-orange", "#ff9e64"),
     /**
      * The fill of the sidebar Graph title's Pull, a static SVG no token can
-     * reach, so every Pull glyph can match it (#218). `orange` cannot: Dark
-     * Modern and Light Modern ship `--vscode-charts-orange` at 33% alpha,
-     * which thins it to a see-through brown. `NATIVE_ORANGE_CSS` supplies the
-     * light fill.
+     * reach, so every Pull glyph can match it (#218). `orange` cannot: before
+     * VS Code 1.143, Dark Modern and Light Modern ship `--vscode-charts-orange`
+     * at 33% alpha, which thins it to a see-through brown. `NATIVE_ORANGE_CSS`
+     * supplies the light fill.
      */
     nativeOrange: "var(--intelligit-native-orange, #ff9e64)",
     sky: iconAccent("--vscode-charts-blue", "#8fd5ff"),
@@ -244,12 +244,27 @@ export const ICON_ACCENTS = {
     danger: iconAccent("--vscode-charts-red", "#ff4d4f"),
 } as const;
 
+/** The fill of `media/icons/git-pull-color-light.svg`. */
+const PULL_LIGHT_FILL = "#b35300";
+
 /**
  * Gives `ICON_ACCENTS.nativeOrange` the light SVG's fill on the theme kinds VS
  * Code paints that file on. Every view that shows the accent renders it once.
  */
-export const NATIVE_ORANGE_CSS =
-    "body.vscode-light,body.vscode-high-contrast-light{--intelligit-native-orange:#b35300}";
+export const NATIVE_ORANGE_CSS = `body.vscode-light,body.vscode-high-contrast-light{--intelligit-native-orange:${PULL_LIGHT_FILL}}`;
+
+/**
+ * From VS Code 1.143, High Contrast Light ships `--vscode-charts-orange` as
+ * `#0f4a85`, the blue of the minimap marker it was copied from, so `tag` and
+ * `ICON_ACCENTS.orange` wore the same blue as branch refs. On that theme alone
+ * they take the light Pull fill. The Chakra theme's global styles carry the
+ * object form; File History, which has no Chakra, renders the CSS form.
+ */
+const HC_LIGHT_BODY = "body.vscode-high-contrast-light";
+export const HC_LIGHT_ORANGE = {
+    [HC_LIGHT_BODY]: { "--vscode-charts-orange": PULL_LIGHT_FILL },
+} as const;
+export const HC_LIGHT_ORANGE_CSS = `${HC_LIGHT_BODY}{--vscode-charts-orange:${PULL_LIGHT_FILL}}`;
 
 /**
  * The accent each toolbar action wears, and the rule that keeps them apart.
