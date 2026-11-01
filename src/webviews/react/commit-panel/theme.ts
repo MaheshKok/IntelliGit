@@ -2,7 +2,7 @@
 
 import { extendTheme } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../utils/constants";
-import { JETBRAINS_UI } from "../shared/tokens";
+import { HC_LIGHT_ORANGE, JETBRAINS_UI } from "../shared/tokens";
 
 const { color, size } = JETBRAINS_UI;
 
@@ -60,6 +60,7 @@ const theme = extendTheme({
     styles: {
         global: {
             ":root": HOST_TOKENS,
+            ...HC_LIGHT_ORANGE,
             "@keyframes intelligit-tab-enter": {
                 from: { opacity: 0.94 },
                 to: { opacity: 1 },
