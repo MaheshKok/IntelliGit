@@ -2803,15 +2803,36 @@ describe("root-bound selected-change host", () => {
         expect(store.get(root).activeId).toBe(id);
     });
 
-    it("refuses activation when another window activated a list after the webview read its revision", async () => {
+    it.each([
+        [
+            "another window activated a list",
+            async (other: string) => {
+                const foreign = new ChangelistStore();
+                await foreign.connect(root, path.join(root, ".git"));
+                await foreign.activate(root, foreign.revision(root), other);
+            },
+        ],
+        [
+            "this host posted another activation",
+            async (other: string) => {
+                posted.length = 0;
+                await store.activate(root, store.revision(root), other);
+                await host.settled();
+                expect(posted, "the host must post the activation before the click").toContainEqual(
+                    expect.objectContaining({
+                        type: "setChangelists",
+                        state: expect.objectContaining({ activeId: other }),
+                    }),
+                );
+            },
+        ],
+    ])("refuses activation when %s after the webview read its revision", async (_, interfere) => {
         let state = await store.create(root, store.revision(root), "Requested");
         const requested = state.lists[1].id;
         state = await store.create(root, state.revision, "Other window");
         const other = state.lists[2].id;
         const revision = await shownRevision();
-        const foreign = new ChangelistStore();
-        await foreign.connect(root, path.join(root, ".git"));
-        await foreign.activate(root, foreign.revision(root), other);
+        await interfere(other);
         posted.length = 0;
         await host.handle({
             type: "changelistAction",
@@ -2826,7 +2847,7 @@ describe("root-bound selected-change host", () => {
                 message: expect.stringContaining("Changelists changed"),
             }),
         );
-        expect(store.get(root).activeId, "the other window's choice must stand").toBe(other);
+        expect(store.get(root).activeId, "the intervening activation must stand").toBe(other);
     });
 
     it("captures pending edits under the old active list before switching future attribution", async () => {
