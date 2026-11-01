@@ -2750,29 +2750,46 @@ describe("root-bound selected-change host", () => {
         ).not.toContain(feature);
     });
 
-    it("refuses removing a list when another window renamed its destination while its dialog was open", async () => {
-        const feature = (await store.create(root, store.revision(root), "Feature")).lists[1].id;
-        const revision = await shownRevision();
-        removePrompts(() => store.rename(root, store.revision(root), "default", "Renamed"));
-        posted.length = 0;
-        await host.handle({
-            type: "changelistAction",
-            repositoryRoot: root,
-            action: "remove",
-            listId: feature,
-            revision,
-        });
-        expect(posted, "a list change during the dialog must refuse the remove").toContainEqual(
-            expect.objectContaining({
-                type: "error",
-                message: expect.stringContaining("Changelists changed"),
-            }),
-        );
-        expect(
-            store.get(root).lists.map((list) => list.name),
-            "a refused remove must keep the list",
-        ).toEqual(["Renamed", "Feature"]);
-    });
+    it.each([
+        [
+            "renamed its destination",
+            (_feature: string) => store.rename(root, store.revision(root), "default", "Renamed"),
+        ],
+        [
+            "changed the active list",
+            (feature: string) => store.activate(root, store.revision(root), feature),
+        ],
+        [
+            "edited its destination's draft",
+            (_feature: string) =>
+                store.saveDraft(root, "default", store.draft(root, "default"), "typed elsewhere"),
+        ],
+    ])(
+        "refuses removing a list when another window %s while its dialog was open",
+        async (_, change) => {
+            const feature = (await store.create(root, store.revision(root), "Feature")).lists[1].id;
+            const revision = await shownRevision();
+            removePrompts(() => change(feature));
+            posted.length = 0;
+            await host.handle({
+                type: "changelistAction",
+                repositoryRoot: root,
+                action: "remove",
+                listId: feature,
+                revision,
+            });
+            expect(posted, "a list change during the dialog must refuse the remove").toContainEqual(
+                expect.objectContaining({
+                    type: "error",
+                    message: expect.stringContaining("Changelists changed"),
+                }),
+            );
+            expect(
+                store.get(root).lists.map((list) => list.id),
+                "a refused remove must keep the list",
+            ).toContain(feature);
+        },
+    );
 
     it("moves a file that joined the list while its dialog was open to the destination", async () => {
         const feature = (await store.create(root, store.revision(root), "Feature")).lists[1].id;

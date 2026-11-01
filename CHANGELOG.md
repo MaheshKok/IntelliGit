@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **New changelist** and **Rename** no longer fail with "Changelists changed. Refresh before retrying." right after you switch repositories while IntelliGit is still reading your changes. They still stop when a changelist really changed since you last saw it.
+- **Move selected changes**, **Select whole file** and **Remove changelist** no longer fail with "Changelists changed. Refresh before retrying." when IntelliGit was still reading your changes in the background. Move still stops if another window already moved the file out of the list you were looking at, and Remove still stops if another window changed your changelists while its confirmation was open.
 
 ## [0.40.0] - 2026-10-24
 
