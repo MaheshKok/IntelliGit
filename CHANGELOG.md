@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-11-01
+
 ### Added
 
 - Editor blame annotations now use green shading to distinguish newer commits from older ones. Uncommitted lines remain untinted.
