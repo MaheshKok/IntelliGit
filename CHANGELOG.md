@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New changelist**, **Rename** and **Set active** no longer fail with "Changelists changed. Refresh before retrying." right after you switch repositories while IntelliGit is still reading your changes. They still stop when a changelist really changed since you last saw it.
 - In the High Contrast Light theme, tags and the orange toolbar icons are orange again. Since VS Code 1.143 they had turned the same blue as branch names.
 - **Move selected changes**, **Select whole file** and **Remove changelist** no longer fail with "Changelists changed. Refresh before retrying." when IntelliGit was still reading your changes in the background. Move still stops if another window already moved the file out of the list you were looking at, and Remove still stops if another window changed your changelists while its confirmation was open.
+- The **Selected changes** editor no longer keeps showing the result of an earlier action. For example, after **Save to Shelf** and then **Stage selected**, it no longer still says the changes were saved in a shelf, and screen readers no longer read that old message out again.
 
 ## [0.40.0] - 2026-10-24
 

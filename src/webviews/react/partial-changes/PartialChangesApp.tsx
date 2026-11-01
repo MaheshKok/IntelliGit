@@ -389,6 +389,7 @@ export function PartialChangesApp() {
                 setSide(reply.file.side);
                 setBusy(false);
                 setError("");
+                setOperationMessage("");
             } else if (reply.type === "partialError") {
                 setError(reply.message);
                 setBusy(false);
@@ -437,6 +438,7 @@ export function PartialChangesApp() {
         const selection = { snapshotId: data.file.snapshotId, lineIds: [...selected] };
         setBusy(true);
         setError("");
+        setOperationMessage("");
         if (kind === "use") api.postMessage({ type: "useSelection", selection });
         else if (kind === "stage") api.postMessage({ type: "stageSelection", selection });
         else if (kind === "commit")
@@ -455,6 +457,7 @@ export function PartialChangesApp() {
         if (!data?.selectedOperations || !mutable) return;
         setBusy(true);
         setError("");
+        setOperationMessage("");
         api.postMessage({
             type,
             selection: { snapshotId: data.file.snapshotId, lineIds: [...selected] },
