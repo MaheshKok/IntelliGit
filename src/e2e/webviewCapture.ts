@@ -174,6 +174,22 @@ function traceWorkingFileStats(
     }
 }
 
+/** Lets the scale fixture wait for a document's startup refresh to end before it pauses `git status`. */
+function traceRefreshing(
+    contextId: WebviewContextId,
+    instance: number,
+    generation: number,
+    message: unknown,
+): void {
+    if (process.env[WORKING_STATS_TRACE_ENV] !== "1") return;
+    if (typeof message !== "object" || message === null) return;
+    const { type, active } = message as { type?: unknown; active?: unknown };
+    if (type !== "refreshing") return;
+    console.error(
+        `${WORKING_STATS_TRACE_PREFIX} ${contextId}#${instance}.${generation} out refreshing active=${String(active)}`,
+    );
+}
+
 /**
  * Whether `message` is a document announcing itself for the first time.
  *
@@ -386,6 +402,7 @@ export function wrapWebviewForCapture(
                 message,
                 workingStatsRevisions,
             );
+            traceRefreshing(contextId, instance, documentGeneration(), message);
             return webview.postMessage(message);
         },
     };

@@ -86,8 +86,6 @@ if [ "$status" = "1" ] && [ -f "${statusGate.replaceAll('"', '\\"')}" ] && [ ! -
     trap - EXIT TERM INT
 fi
 if [ "$numstat" = "1" ] && [ "$working_stats" = "1" ]; then
-    # Initial status has reached the real viewport reader; hold later refreshes for this experiment.
-    touch "${statusGate.replaceAll('"', '\\"')}"
     active_marker="${heldProcessesDir.replaceAll('"', '\\"')}/$$"
     trap 'rm -f "$active_marker"' EXIT
     trap 'exit 143' TERM
@@ -138,15 +136,31 @@ exec "${realGit.replaceAll('"', '\\"')}" "$@"
         const geometry: unknown[] = [];
         const evidence: Record<string, unknown> = {};
         const startedAt = Date.now();
+        // The panel can load twice at startup; each load runs its own refresh behind the Refresh button.
+        let newestPanel: string | undefined;
+        const panelRefresh = new Map<string, { started: boolean; active: boolean }>();
         try {
             const page = await app.firstWindow();
             page.on("console", (message) => {
                 const raw = message.text();
                 const traceOffset = raw.indexOf(TRACE_PREFIX);
                 if (traceOffset < 0) return;
+                const traced = raw.slice(traceOffset + TRACE_PREFIX.length);
+                const refreshing =
+                    /^ (commit-panel#\d+\.\d+) out refreshing active=(true|false)/.exec(traced);
+                if (refreshing) {
+                    const panel = refreshing[1]!;
+                    const active = refreshing[2] === "true";
+                    if (!panelRefresh.has(panel)) newestPanel = panel;
+                    // The previous load's late "off" can arrive under the new load's label,
+                    // so only an "off" after this load's own "on" ends its refresh.
+                    const started = panelRefresh.get(panel)?.started === true || active;
+                    panelRefresh.set(panel, { started, active });
+                    return;
+                }
                 const fields =
                     /^ [a-z-]+#\d+\.\d+ (?:in requestWorkingFileStats revision=\d+ unique=\d+ hashes=[a-f0-9,]+|out workingFileStats revision=\d+ terminal=\d+ ready=\d+ unavailable=\d+)/.exec(
-                        raw.slice(traceOffset + TRACE_PREFIX.length),
+                        traced,
                     )?.[0];
                 if (!fields) return;
                 const line = TRACE_PREFIX + fields;
@@ -206,6 +220,20 @@ exec "${realGit.replaceAll('"', '\\"')}" "$@"
             const tree = frame.getByTestId("virtual-commit-tree");
             await expect(tree).toBeVisible();
             await expandLifecyclePane(page, frame);
+
+            // Hold later refreshes only after the newest load's startup refresh has ended: a pause set
+            // earlier holds that refresh's `git status`, and the Refresh button never re-enables (#367).
+            await expect
+                .poll(
+                    () => {
+                        const refresh = newestPanel ? panelRefresh.get(newestPanel) : undefined;
+                        return refresh?.started === true && !refresh.active;
+                    },
+                    { timeout: 10_000 },
+                )
+                .toBe(true);
+            await writeFile(statusGate, "");
+            evidence.statusGateAtMs = Date.now() - startedAt;
 
             await expect.poll(() => latestRevision, { timeout: 5_000 }).toBeDefined();
             sweepRevision = latestRevision;
