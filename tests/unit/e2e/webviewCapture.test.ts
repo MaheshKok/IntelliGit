@@ -428,6 +428,42 @@ describe("wrapWebviewForCapture: opted-in working-file statistics trace", () => 
         }
     });
 
+    it("reports each refreshing on and off with the document it was posted to", () => {
+        vi.stubEnv("INTELLIGIT_E2E_TRACE_WORKING_FILE_STATS", "1");
+        const fake = makeFakeWebview();
+        const wrapped = wrapWebviewForCapture(
+            fake.webview,
+            "commit-panel",
+            new WebviewCaptureSink(),
+        );
+        const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            void wrapped.postMessage({
+                type: "refreshing",
+                repositoryRoot: "/secret/repo",
+                active: true,
+            });
+            void wrapped.postMessage({
+                type: "update",
+                repositoryRoot: "/secret/repo",
+                refreshing: false,
+            });
+            void wrapped.postMessage({
+                type: "refreshing",
+                repositoryRoot: "/secret/repo",
+                active: false,
+            });
+            const lines = spy.mock.calls.map((call) => call.map(String).join(" "));
+            expect(lines).toEqual([
+                "[intelligit-e2e] working-file-stats commit-panel#1.1 out refreshing active=true",
+                "[intelligit-e2e] working-file-stats commit-panel#1.1 out refreshing active=false",
+            ]);
+            expect(lines.join("\n")).not.toMatch(/secret/);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
     it("stays quiet when the scale fixture did not opt in", () => {
         const fake = makeFakeWebview();
         wrapWebviewForCapture(fake.webview, "commit-panel", new WebviewCaptureSink());
