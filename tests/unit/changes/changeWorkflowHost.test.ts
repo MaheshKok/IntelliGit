@@ -2685,6 +2685,48 @@ describe("root-bound selected-change host", () => {
         },
     );
 
+    it("points a file shown only through its changed lines to the partial editor", async () => {
+        const original = store.get(root).activeId;
+        const later = (await store.create(root, store.revision(root), "Later")).lists[1].id;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "activate",
+            listId: later,
+            revision: store.revision(root),
+        });
+        await writeFile(path.join(root, "file.txt"), `later edit\n${working}`);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
+        expect(store.get(root).files["file.txt"], "the file must stay in the old active list").toBe(
+            original,
+        );
+        expect(
+            [...new Set(Object.values(store.get(root).changes["file.txt"].lines))],
+            "only the shown list may own the file's changed lines",
+        ).toEqual([later]);
+        const revision = await shownRevision();
+        pickTarget(original);
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "move",
+            sourceListId: later,
+            paths: ["file.txt"],
+            revision,
+        });
+        expect(
+            postedErrors(),
+            "a partial file must name its partial editor, not ask for a refresh that cannot help",
+        ).toEqual([
+            "Changelist action failed: Move partial selections through their partial editor.",
+        ]);
+        expect(store.get(root).files["file.txt"], "a refused move must leave the file").toBe(
+            original,
+        );
+    });
+
     it("resets a selection when the range scan wrote after the webview read its revision", async () => {
         const ownership = store.get(root).changes["file.txt"];
         await store.recordSelection(root, "file.txt", ownership.contentId, "all", [], 4);
