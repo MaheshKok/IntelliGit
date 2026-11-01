@@ -222,6 +222,43 @@ describe("selected change editor protocol", () => {
         }
     });
 
+    // A failed reply leaves the status to operationMessage alone, so it isolates the reset at operation start.
+    it.each([
+        ["Stage selected", "stageSelection"],
+        ["Save to Shelf", "saveSelection"],
+    ])("drops the previous result from the status when %s starts", (label, type) => {
+        const mounted = mount(<PartialChangesApp />);
+        const status = () => mounted.container.querySelector('[role="status"]')?.textContent;
+        try {
+            receive({ ...data, selectedOperations: true });
+            receive({ type: "partialOperationCompleted", message: "Shelved A", removed: false });
+            expect(status()).toBe("Shelved A");
+            const button = [...mounted.container.querySelectorAll("button")].find(
+                (item) => item.textContent === label,
+            )!;
+            act(() => button.click());
+            expect(api.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ type }));
+            receive({ type: "partialError", message: "failed" });
+            expect(status(), "the earlier result is not announced again").toBe("");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("does not carry the previous result over to a newly loaded file", () => {
+        const mounted = mount(<PartialChangesApp />);
+        const status = () => mounted.container.querySelector('[role="status"]')?.textContent;
+        try {
+            receive({ ...data, selectedOperations: true });
+            receive({ type: "partialOperationCompleted", message: "Shelved A", removed: false });
+            expect(status()).toBe("Shelved A");
+            receive({ ...data, contentId: "reloaded" });
+            expect(status(), "the earlier result is not announced again").toBe("");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
     it("retains selection after an error and initializes an expired persisted inclusion as empty", () => {
         const mounted = mount(<PartialChangesApp />);
         try {
