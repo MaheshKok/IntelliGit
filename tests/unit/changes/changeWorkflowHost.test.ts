@@ -2777,6 +2777,58 @@ describe("root-bound selected-change host", () => {
         expect(lists(), "a refused create must write nothing").toEqual(seen);
     });
 
+    it("sets the active list when the range scan wrote after the webview read its revision", async () => {
+        const id = (await store.create(root, store.revision(root), "Later")).lists[1].id;
+        const revision = await shownRevision();
+        await writeFile(path.join(root, "file.txt"), `scan edit\n${working}`);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
+        expect(store.get(root).revision, "the scan must write before the click").toBeGreaterThan(
+            revision,
+        );
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "activate",
+            listId: id,
+            revision,
+        });
+        expect(
+            posted
+                .filter((message) => (message as { type: string }).type === "error")
+                .map((message) => (message as { message: string }).message),
+            "a range write before the click must not refuse the activation",
+        ).toEqual([]);
+        expect(store.get(root).activeId).toBe(id);
+    });
+
+    it("refuses activation when another window activated a list after the webview read its revision", async () => {
+        let state = await store.create(root, store.revision(root), "Requested");
+        const requested = state.lists[1].id;
+        state = await store.create(root, state.revision, "Other window");
+        const other = state.lists[2].id;
+        const revision = await shownRevision();
+        const foreign = new ChangelistStore();
+        await foreign.connect(root, path.join(root, ".git"));
+        await foreign.activate(root, foreign.revision(root), other);
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "activate",
+            listId: requested,
+            revision,
+        });
+        expect(posted, "an activation the webview never saw must refuse").toContainEqual(
+            expect.objectContaining({
+                type: "error",
+                message: expect.stringContaining("Changelists changed"),
+            }),
+        );
+        expect(store.get(root).activeId, "the other window's choice must stand").toBe(other);
+    });
+
     it("captures pending edits under the old active list before switching future attribution", async () => {
         const created = await store.create(root, store.get(root).revision, "Later");
         const id = created.lists[1].id;
