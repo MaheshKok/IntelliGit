@@ -507,3 +507,53 @@ describe("CommitTab shelving", () => {
         unmount(root, container);
     });
 });
+
+describe("CommitTab changelist actions", () => {
+    it("Select whole file sends only the checked files that showed a selection", () => {
+        vscode.postMessage.mockReset();
+        const { root, container } = renderCommitTab({
+            checkedPaths: new Set(["src/a.ts", "src/b.ts"]),
+        });
+        act(() =>
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "setChangelists",
+                        repositoryRoot: "/repo",
+                        state: {
+                            revision: 3,
+                            activeId: "default",
+                            lists: twoLists,
+                            files: { "src/a.ts": "default", "src/b.ts": "default" },
+                            changes: {
+                                "src/a.ts": {
+                                    contentId: "a",
+                                    lines: {},
+                                    selections: { all: { contentId: "a", lineIds: [], total: 1 } },
+                                },
+                                "src/b.ts": { contentId: "b", lines: {} },
+                            },
+                        },
+                    },
+                }),
+            ),
+        );
+        const reset = container.querySelector<HTMLButtonElement>(
+            'button[aria-label="Select whole file"]',
+        );
+        expect(reset?.disabled, "a shown selection enables Select whole file").toBe(false);
+        click(reset!);
+        expect(
+            vscode.postMessage,
+            "a file shown without a selection must not be sent, so a selection added since stays",
+        ).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                type: "changelistAction",
+                action: "resetSelection",
+                listId: "all",
+                paths: ["src/a.ts"],
+            }),
+        );
+        unmount(root, container);
+    });
+});
