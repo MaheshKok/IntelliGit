@@ -478,6 +478,7 @@ export function PartialChangesApp() {
                     onChange={(event) => {
                         const value = event.currentTarget.value as "working" | "index";
                         setBusy(true);
+                        setOperationMessage("");
                         api.postMessage({ type: "ready", side: value });
                     }}
                 >
@@ -490,6 +491,7 @@ export function PartialChangesApp() {
                     disabled={locked}
                     onClick={() => {
                         setBusy(true);
+                        setOperationMessage("");
                         api.postMessage({ type: "ready", side });
                     }}
                 >
