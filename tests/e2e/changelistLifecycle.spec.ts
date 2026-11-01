@@ -631,6 +631,10 @@ test.describe("Changelists in two windows", () => {
             await first.page
                 .getByRole("option", { name: new RegExp(`^${hostText("Create New Changelist…")}`) })
                 .click();
+            // The name box opens in the picker's widget after it closes; text typed before that is lost (#370).
+            await expect(first.page.locator(".quick-input-widget")).toContainText(
+                hostText("Name the new destination changelist"),
+            );
             await quickInput(first.page).fill("Picked 名前 conflict");
             await quickInput(first.page).press("Enter");
             await expect(
