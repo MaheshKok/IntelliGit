@@ -681,6 +681,18 @@ test.describe("Selected changes and changelists", () => {
             ).toBeVisible();
             expect((await store.listShelves()).shelfIds).toHaveLength(0);
             expect(await readFile(path.join(workspace.root, FILE), "utf8")).toBe(working);
+            // VS Code refocuses the panel 50 ms after the box closes (microsoft/vscode#75209), or
+            // skips it when its 250 ms focus poll saw the box open. A box opened before that refocus
+            // lands loses focus and closes as cancelled, so wait for it or until it must have passed.
+            await editor.locator("body").evaluate(
+                (_body, deadlineMs) =>
+                    document.hasFocus() ||
+                    new Promise((resolve) => {
+                        window.addEventListener("focus", resolve, { once: true });
+                        setTimeout(resolve, deadlineMs);
+                    }),
+                1000,
+            );
             await save.focus();
             await page.keyboard.press("Enter");
             await expect(input).toBeVisible();
