@@ -655,12 +655,18 @@ function collectLifecycleStats(page: Page) {
     });
     return {
         events,
-        latest: (context: string) =>
-            events.findLast(
-                (event) => event.direction === "in" && event.key.startsWith(`${context}#`),
-            )?.key,
-        replies: (key: string) =>
-            events.filter((event) => event.direction === "out" && event.key === key),
+        // `from` and `until` are `events.length` values saved earlier, to look only after or before
+        // a step such as a dock or a release.
+        latest: (context: string, from = 0) =>
+            events
+                .slice(from)
+                .findLast(
+                    (event) => event.direction === "in" && event.key.startsWith(`${context}#`),
+                )?.key,
+        replies: (key: string, until = events.length) =>
+            events
+                .slice(0, until)
+                .filter((event) => event.direction === "out" && event.key === key),
     };
 }
 
@@ -1037,6 +1043,7 @@ test.describe("lazy statistics lifecycle", () => {
                 )
                 .toBe(2);
             evidence.detachedHeldPids = detachedHeldPids;
+            const dockedAt = trace.events.length;
             await commitPane.getByRole("button", { name: "Dock IntelliGit", exact: true }).click();
             // In CI, the palette key pressed while this focused frame closed never returned.
             // The closing frame can also drop its debugging session mid-query, which Playwright
@@ -1058,10 +1065,7 @@ test.describe("lazy statistics lifecycle", () => {
                 })
                 .toEqual([]);
             evidence.detachedProcessesSettledBeforeRelease = true;
-            const restoredKey = trace.latest("commit-panel")!;
-            evidence.restoredKey = restoredKey;
-            evidence.restoredRepliesBeforeRelease = trace.replies(restoredKey);
-            expect(trace.replies(restoredKey)).toEqual([]);
+            const releasedAt = trace.events.length;
             await writeFile(fixture.release, "release\n");
             await expect(restored.getByTitle(first, { exact: true })).toContainText("+1");
             await expect(
@@ -1071,8 +1075,35 @@ test.describe("lazy statistics lifecycle", () => {
                 trace.replies(detachedKey),
                 "no observed terminal message is tagged with the retired detached-view revision",
             ).toEqual([]);
+            // The docked view outlives the undock, and docking refreshes it under a new revision.
+            // Its first request under that revision can arrive after the release, and a read held
+            // since before the undock is answered under it too, so the restored revision is taken
+            // from a request sent after the dock rather than from the last request before release.
+            // Docking can start more than one refresh, so a later lookup could return a newer
+            // revision than the one this poll validated; the checks below reuse the validated key.
+            let restoredKey = "";
+            await expect
+                .poll(
+                    () => {
+                        restoredKey = trace.latest("commit-panel", dockedAt) ?? "";
+                        return (
+                            restoredKey !== "" &&
+                            trace.replies(restoredKey).some((event) => event.ready > 0)
+                        );
+                    },
+                    {
+                        message:
+                            "a request the docked view sent after the dock is answered with ready counts",
+                    },
+                )
+                .toBe(true);
+            evidence.restoredKey = restoredKey;
+            evidence.restoredRepliesBeforeRelease = trace.replies(restoredKey, releasedAt);
+            expect(
+                trace.replies(restoredKey, releasedAt),
+                "the restored revision is not answered before the release",
+            ).toEqual([]);
             const restoredReplies = trace.replies(restoredKey);
-            expect(restoredReplies.some((event) => event.ready > 0)).toBe(true);
             expect(restoredReplies.filter((event) => event.unavailable > 0)).toEqual([]);
             evidence.restoredRepliesAfterSettlement = restoredReplies;
             evidence.restoredCount = 1;
