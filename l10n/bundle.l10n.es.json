@@ -962,7 +962,6 @@
     "Targeted history changes discarded.": "Cambios del historial dirigidos descartados.",
     "Targeted history completed without a commit.": "Historial dirigido completado sin commit.",
     "Targeted history operation {id} requires review: {message}": "La operación de historial dirigida {id} requiere revisión: {message}",
-    "Targeted history recovery requires review: {message}": "La recuperación del historial dirigido requiere revisión: {message}",
     "This save request is already in progress or stale.": "Esta solicitud de guardado ya está en curso o está obsoleta.",
     "Save cancelled.": "Guardado cancelado.",
     "Another save is in progress. Wait for its result.": "Hay otro guardado en curso. Espere a su resultado.",
@@ -978,5 +977,7 @@
     "Selected changes removed. Recovery shelf {shelfId} is retained.": "Cambios seleccionados eliminados. El estante de recuperación {shelfId} se conserva.",
     "Shelf {shelfId} was saved. Local changes are unchanged.": "Se guardó el estante {shelfId}. Los cambios locales no cambian.",
     "Unshelve cancelled.": "Restauración del estante cancelada.",
-    "This request ID was already used for a different restore.": "Este ID de solicitud ya se usó para otra restauración."
+    "This request ID was already used for a different restore.": "Este ID de solicitud ya se usó para otra restauración.",
+    "Another IntelliGit operation is using this repository. Nothing was changed. Try again in a moment.": "Otra operación de IntelliGit está usando este repositorio. No se modificó nada; inténtalo de nuevo en un momento.",
+    "Git was not changed because IntelliGit cannot confirm that no targeted history operation is pending. To go ahead without IntelliGit, run the Git command in a terminal; that skips IntelliGit's targeted recovery. Details: {message}": "No se modificó Git porque IntelliGit no puede confirmar que no haya ninguna operación del historial dirigido pendiente. Para continuar sin IntelliGit, ejecuta el comando de Git en un terminal; eso omite la recuperación del historial dirigido de IntelliGit. Detalles: {message}"
 }

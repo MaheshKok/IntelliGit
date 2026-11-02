@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- When a rebase or merge **Continue** or **Abort** can't go ahead because IntelliGit's changelist data is busy or unreadable, the message now tells you what to do. If another IntelliGit action is running, it asks you to try again in a moment. If the data can't be read, it explains that you can finish the step with Git in a terminal, which skips IntelliGit's own recovery.
+
 ## [0.41.0] - 2026-11-01
 
 ### Added

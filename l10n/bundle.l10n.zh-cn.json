@@ -962,7 +962,6 @@
     "Targeted history changes discarded.": "已放弃目标历史更改。",
     "Targeted history completed without a commit.": "目标历史已完成，未创建提交。",
     "Targeted history operation {id} requires review: {message}": "目标历史操作 {id} 需要审查：{message}",
-    "Targeted history recovery requires review: {message}": "目标历史恢复需要审查：{message}",
     "This save request is already in progress or stale.": "此保存请求已在进行中或已过期。",
     "Save cancelled.": "已取消保存。",
     "Another save is in progress. Wait for its result.": "另一个保存正在进行中。请等待其结果。",
@@ -978,5 +977,7 @@
     "Selected changes removed. Recovery shelf {shelfId} is retained.": "已移除所选更改。恢复搁置架 {shelfId} 已保留。",
     "Shelf {shelfId} was saved. Local changes are unchanged.": "搁置架 {shelfId} 已保存。本地更改保持不变。",
     "Unshelve cancelled.": "已取消从搁置架恢复。",
-    "This request ID was already used for a different restore.": "此请求 ID 已用于其他恢复操作。"
+    "This request ID was already used for a different restore.": "此请求 ID 已用于其他恢复操作。",
+    "Another IntelliGit operation is using this repository. Nothing was changed. Try again in a moment.": "另一个 IntelliGit 操作正在使用此仓库。未进行任何更改；请稍后重试。",
+    "Git was not changed because IntelliGit cannot confirm that no targeted history operation is pending. To go ahead without IntelliGit, run the Git command in a terminal; that skips IntelliGit's targeted recovery. Details: {message}": "由于 IntelliGit 无法确认没有待处理的目标历史操作，Git 未被更改。若要在不使用 IntelliGit 的情况下继续，请在终端中运行 Git 命令；这会跳过 IntelliGit 的目标历史恢复。详细信息：{message}"
 }

@@ -962,7 +962,6 @@
     "Targeted history changes discarded.": "Modifications de l'historique ciblées abandonnées.",
     "Targeted history completed without a commit.": "Historique ciblé terminé sans commit.",
     "Targeted history operation {id} requires review: {message}": "L'opération d'historique ciblée {id} nécessite une vérification : {message}",
-    "Targeted history recovery requires review: {message}": "La récupération de l'historique ciblé nécessite une vérification : {message}",
     "This save request is already in progress or stale.": "Cette demande d'enregistrement est déjà en cours ou obsolète.",
     "Save cancelled.": "Enregistrement annulé.",
     "Another save is in progress. Wait for its result.": "Un autre enregistrement est en cours. Attendez son résultat.",
@@ -978,5 +977,7 @@
     "Selected changes removed. Recovery shelf {shelfId} is retained.": "Modifications sélectionnées supprimées. L'étagère de récupération {shelfId} est conservée.",
     "Shelf {shelfId} was saved. Local changes are unchanged.": "L'étagère {shelfId} a été enregistrée. Les modifications locales sont inchangées.",
     "Unshelve cancelled.": "Restauration de l'étagère annulée.",
-    "This request ID was already used for a different restore.": "Cet ID de demande a déjà été utilisé pour une autre restauration."
+    "This request ID was already used for a different restore.": "Cet ID de demande a déjà été utilisé pour une autre restauration.",
+    "Another IntelliGit operation is using this repository. Nothing was changed. Try again in a moment.": "Une autre opération IntelliGit utilise ce dépôt. Rien n'a été modifié ; réessayez dans un instant.",
+    "Git was not changed because IntelliGit cannot confirm that no targeted history operation is pending. To go ahead without IntelliGit, run the Git command in a terminal; that skips IntelliGit's targeted recovery. Details: {message}": "Git n'a pas été modifié, car IntelliGit ne peut pas confirmer qu'aucune opération d'historique ciblé n'est en attente. Pour continuer sans IntelliGit, exécutez la commande Git dans un terminal ; cela ignore la récupération de l'historique ciblé d'IntelliGit. Détails : {message}"
 }

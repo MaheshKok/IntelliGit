@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { ChangelistStore } from "../changes/changelistStore";
 import type { GitOps } from "../git/operations";
+import { RepositoryLockBusyError } from "../git/repositoryLock";
 import { getErrorMessage } from "../utils/errors";
 import { showTimedInformationMessage } from "../utils/notifications";
 
@@ -65,10 +66,16 @@ export async function controlTargetHistoryWithConfirmation(
         await options.onConflictStateChanged();
         return true;
     } catch (error) {
+        // Still consumed: without readable metadata, absence of a markerless pending operation is unproven.
         vscode.window.showErrorMessage(
-            vscode.l10n.t("Targeted history recovery requires review: {message}", {
-                message: getErrorMessage(error),
-            }),
+            error instanceof RepositoryLockBusyError
+                ? vscode.l10n.t(
+                      "Another IntelliGit operation is using this repository. Nothing was changed. Try again in a moment.",
+                  )
+                : vscode.l10n.t(
+                      "Git was not changed because IntelliGit cannot confirm that no targeted history operation is pending. To go ahead without IntelliGit, run the Git command in a terminal; that skips IntelliGit's targeted recovery. Details: {message}",
+                      { message: getErrorMessage(error) },
+                  ),
         );
         return true;
     }

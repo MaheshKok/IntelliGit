@@ -962,7 +962,6 @@
     "Targeted history changes discarded.": "対象の履歴の変更を破棄しました。",
     "Targeted history completed without a commit.": "対象の履歴をコミットせずに完了しました。",
     "Targeted history operation {id} requires review: {message}": "対象の履歴操作 {id} には確認が必要です: {message}",
-    "Targeted history recovery requires review: {message}": "対象の履歴の復旧には確認が必要です: {message}",
     "This save request is already in progress or stale.": "この保存リクエストは既に処理中か、古くなっています。",
     "Save cancelled.": "保存をキャンセルしました。",
     "Another save is in progress. Wait for its result.": "別の保存が進行中です。その結果を待ってください。",
@@ -978,5 +977,7 @@
     "Selected changes removed. Recovery shelf {shelfId} is retained.": "選択した変更を削除しました。復旧用シェルフ {shelfId} は保持されます。",
     "Shelf {shelfId} was saved. Local changes are unchanged.": "シェルフ {shelfId} を保存しました。ローカルの変更はそのままです。",
     "Unshelve cancelled.": "シェルフからの復元をキャンセルしました。",
-    "This request ID was already used for a different restore.": "このリクエスト ID は別の復元で既に使用されています。"
+    "This request ID was already used for a different restore.": "このリクエスト ID は別の復元で既に使用されています。",
+    "Another IntelliGit operation is using this repository. Nothing was changed. Try again in a moment.": "別の IntelliGit 操作がこのリポジトリを使用しています。何も変更されていません。しばらくしてからもう一度お試しください。",
+    "Git was not changed because IntelliGit cannot confirm that no targeted history operation is pending. To go ahead without IntelliGit, run the Git command in a terminal; that skips IntelliGit's targeted recovery. Details: {message}": "IntelliGit は対象の履歴操作が保留中でないことを確認できないため、Git は変更されていません。IntelliGit を使わずに進めるには、ターミナルで Git コマンドを実行してください。その場合、IntelliGit の対象の履歴の復旧はスキップされます。詳細: {message}"
 }
