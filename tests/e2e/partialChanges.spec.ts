@@ -37,7 +37,30 @@ async function chooseFile(frame: FrameLocator): Promise<void> {
     await frame.getByRole("checkbox", { name: FILE, exact: true }).first().check();
 }
 
+/**
+ * VS Code focuses a webview's inner frame 50 ms after the webview takes focus, as it does when the
+ * view is revealed or a quick input over it closes (microsoft/vscode#75209). It skips that when its
+ * 250 ms focus poll saw a box open. A box opened before that refocus lands loses focus and closes
+ * as cancelled, so wait for the refocus, or until it must have passed. Right after a reveal the
+ * panel can still replace its document (a rebind, or new resource roots), which detaches the wait,
+ * so wait again in the new document.
+ */
+async function waitForLateRefocus(frame: FrameLocator): Promise<void> {
+    await expect(async () => {
+        await frame.locator("body").evaluate(
+            (_body, deadlineMs) =>
+                document.hasFocus() ||
+                new Promise((resolve) => {
+                    window.addEventListener("focus", resolve, { once: true });
+                    setTimeout(resolve, deadlineMs);
+                }),
+            1000,
+        );
+    }).toPass({ timeout: 10_000, intervals: [100] });
+}
+
 async function createList(page: Page, frame: FrameLocator, name: string): Promise<void> {
+    await waitForLateRefocus(frame);
     await frame.getByRole("button", { name: "New changelist", exact: true }).click();
     const input = page.locator(".quick-input-widget .quick-input-box input");
     await expect(input).toBeVisible();
@@ -681,18 +704,7 @@ test.describe("Selected changes and changelists", () => {
             ).toBeVisible();
             expect((await store.listShelves()).shelfIds).toHaveLength(0);
             expect(await readFile(path.join(workspace.root, FILE), "utf8")).toBe(working);
-            // VS Code refocuses the panel 50 ms after the box closes (microsoft/vscode#75209), or
-            // skips it when its 250 ms focus poll saw the box open. A box opened before that refocus
-            // lands loses focus and closes as cancelled, so wait for it or until it must have passed.
-            await editor.locator("body").evaluate(
-                (_body, deadlineMs) =>
-                    document.hasFocus() ||
-                    new Promise((resolve) => {
-                        window.addEventListener("focus", resolve, { once: true });
-                        setTimeout(resolve, deadlineMs);
-                    }),
-                1000,
-            );
+            await waitForLateRefocus(editor);
             await save.focus();
             await page.keyboard.press("Enter");
             await expect(input).toBeVisible();
