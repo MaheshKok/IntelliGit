@@ -1679,7 +1679,7 @@
         "@types/react": "^18.2.48",
         "@types/react-dom": "^19.2.7",
         "@types/vscode": "1.107.0",
-        "@vitest/coverage-v8": "4.1.10",
+        "@vitest/coverage-v8": "4.1.11",
         "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "^2.22.0",
         "dependency-cruiser": "^18.2.0",
@@ -1703,7 +1703,7 @@
         "shiki": "4.4.3",
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.70.0",
-        "vitest": "4.1.10"
+        "vitest": "4.1.11"
     },
     "dependencies": {
         "@plist/xml.parse": "1.1.0",
