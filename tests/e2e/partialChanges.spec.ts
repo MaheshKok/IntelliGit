@@ -41,18 +41,22 @@ async function chooseFile(frame: FrameLocator): Promise<void> {
  * VS Code focuses a webview's inner frame 50 ms after the webview takes focus, as it does when the
  * view is revealed or a quick input over it closes (microsoft/vscode#75209). It skips that when its
  * 250 ms focus poll saw a box open. A box opened before that refocus lands loses focus and closes
- * as cancelled, so wait for the refocus, or until it must have passed.
+ * as cancelled, so wait for the refocus, or until it must have passed. Right after a reveal the
+ * panel can still replace its document (a rebind, or new resource roots), which detaches the wait,
+ * so wait again in the new document.
  */
 async function waitForLateRefocus(frame: FrameLocator): Promise<void> {
-    await frame.locator("body").evaluate(
-        (_body, deadlineMs) =>
-            document.hasFocus() ||
-            new Promise((resolve) => {
-                window.addEventListener("focus", resolve, { once: true });
-                setTimeout(resolve, deadlineMs);
-            }),
-        1000,
-    );
+    await expect(async () => {
+        await frame.locator("body").evaluate(
+            (_body, deadlineMs) =>
+                document.hasFocus() ||
+                new Promise((resolve) => {
+                    window.addEventListener("focus", resolve, { once: true });
+                    setTimeout(resolve, deadlineMs);
+                }),
+            1000,
+        );
+    }).toPass({ timeout: 10_000, intervals: [100] });
 }
 
 async function createList(page: Page, frame: FrameLocator, name: string): Promise<void> {
