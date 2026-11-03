@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.1] - 2026-11-03
+
+### Fixed
+
+- The end-to-end checks for moving the Commit panel out of its dock and back, creating a changelist, and saving selected lines to a shelf a second time no longer fail now and then. A shelf recovery test also no longer counts something that could never change, so it now checks only what matters: the shelf comes back with exactly the content it had. Nothing changes in the extension itself.
+
 ## [0.41.0] - 2026-11-01
 
 ### Added
