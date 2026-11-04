@@ -896,6 +896,12 @@ vi.mock("../../../src/services/reviewPrompt", () => ({
     registerReviewPrompt: vi.fn(async () => undefined),
 }));
 
+// The Git version check owns its own suite and would spawn the real Git; activation only
+// needs to fire it.
+vi.mock("../../../src/services/gitVersionCheck", () => ({
+    warnIfGitTooOld: vi.fn(async () => undefined),
+}));
+
 vi.mock("../../../src/git/operations", async (importOriginal) => {
     const actual = await importOriginal<typeof import("../../../src/git/operations")>();
     return {

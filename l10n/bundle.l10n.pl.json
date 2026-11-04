@@ -983,5 +983,6 @@
     "Git was not changed because an IntelliGit Unshelve is still unfinished in this repository. Continue and Abort cannot finish it.": "Git nie został zmieniony, ponieważ przywracanie z półki w IntelliGit nie zostało jeszcze ukończone w tym repozytorium. Kontynuuj i Przerwij nie mogą go ukończyć.",
     "Git was not changed because an IntelliGit Undo Commit is still unfinished in this repository. Continue and Abort cannot finish it.": "Git nie został zmieniony, ponieważ cofnięcie zatwierdzenia w IntelliGit nie zostało jeszcze ukończone w tym repozytorium. Kontynuuj i Przerwij nie mogą go ukończyć.",
     "Git was not changed because another IntelliGit operation is still unfinished in this repository. Continue and Abort cannot finish it.": "Git nie został zmieniony, ponieważ inna operacja IntelliGit nie została jeszcze ukończona w tym repozytorium. Kontynuuj i Przerwij nie mogą jej ukończyć.",
-    "The view could not refresh after the targeted history step: {message}": "Nie można odświeżyć widoku po kroku wskazanej historii: {message}"
+    "The view could not refresh after the targeted history step: {message}": "Nie można odświeżyć widoku po kroku wskazanej historii: {message}",
+    "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "IntelliGit wymaga Git {0} lub nowszego do rozwiązywania scalania, częściowych zatwierdzeń i przywracania z półki, ale znaleziono Git {1}. Zaktualizuj Git, aby korzystać z tych funkcji."
 }

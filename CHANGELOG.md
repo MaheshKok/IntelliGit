@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-11-04
+
+### Added
+
+- IntelliGit now warns you at startup when your Git is older than 2.31. Merge resolution, partial commits and shelf restore need Git 2.31 or later, and on older Git they used to fail with an unclear error. The warning names your Git version and the features affected. Everything else keeps working, and the README now lists Git 2.31 as the minimum.
+
 ## [0.41.4] - 2026-11-04
 
 ### Changed

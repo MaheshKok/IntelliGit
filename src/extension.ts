@@ -10,6 +10,7 @@ import { activateNoWorkspaceMode } from "./activation/onboarding";
 import { activateRepositoryMode } from "./activation/repositoryMode";
 import { registerCommitChecksAuthCommands } from "./activation/commitChecksAuthCommands";
 import { registerReviewPrompt } from "./services/reviewPrompt";
+import { warnIfGitTooOld } from "./services/gitVersionCheck";
 import { activateE2eControlChannel } from "./e2e/controlChannel";
 import { setDiffViewerExtensionUri } from "./diff/diffViewerOpener";
 import { registerDiffViewSwitch } from "./diff/diffViewSwitch";
@@ -42,6 +43,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     registerDiffViewSwitch(context);
     registerCommitChecksAuthCommands(context);
     void registerReviewPrompt(context);
+    void warnIfGitTooOld();
     void setViewContext(HAS_MERGE_CONFLICTS_CONTEXT, false);
 
     if (!vscode.workspace.workspaceFolders?.length) {
