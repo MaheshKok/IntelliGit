@@ -962,7 +962,6 @@
     "Targeted history changes discarded.": "Odrzucono zmiany z wskazanej historii.",
     "Targeted history completed without a commit.": "Wskazana historia zakończona bez commita.",
     "Targeted history operation {id} requires review: {message}": "Operacja historii {id} wymaga sprawdzenia: {message}",
-    "Targeted history recovery requires review: {message}": "Odzyskiwanie wskazanej historii wymaga sprawdzenia: {message}",
     "This save request is already in progress or stale.": "To żądanie zapisu jest już w toku lub jest nieaktualne.",
     "Save cancelled.": "Zapisywanie anulowane.",
     "Another save is in progress. Wait for its result.": "Trwa inny zapis. Poczekaj na jego wynik.",
@@ -978,5 +977,11 @@
     "Selected changes removed. Recovery shelf {shelfId} is retained.": "Usunięto wybrane zmiany. Półka odzyskiwania {shelfId} zostaje zachowana.",
     "Shelf {shelfId} was saved. Local changes are unchanged.": "Zapisano półkę {shelfId}. Zmiany lokalne pozostają bez zmian.",
     "Unshelve cancelled.": "Przywracanie z półki anulowane.",
-    "This request ID was already used for a different restore.": "Ten identyfikator żądania został już użyty do innego przywracania."
+    "This request ID was already used for a different restore.": "Ten identyfikator żądania został już użyty do innego przywracania.",
+    "Another IntelliGit operation is using this repository. Nothing was changed. Try again in a moment.": "Inna operacja IntelliGit używa tego repozytorium. Nic nie zostało zmienione; spróbuj ponownie za chwilę.",
+    "Git was not changed because IntelliGit cannot confirm that no targeted history operation is pending. To go ahead without IntelliGit, run the Git command in a terminal; that skips IntelliGit's targeted recovery. Details: {message}": "Git nie został zmieniony, ponieważ IntelliGit nie może potwierdzić, że żadna operacja wskazanej historii nie oczekuje. Aby kontynuować bez IntelliGit, uruchom polecenie Git w terminalu; pominie to odzyskiwanie wskazanej historii w IntelliGit. Szczegóły: {message}",
+    "Git was not changed because an IntelliGit Unshelve is still unfinished in this repository. Continue and Abort cannot finish it.": "Git nie został zmieniony, ponieważ przywracanie z półki w IntelliGit nie zostało jeszcze ukończone w tym repozytorium. Kontynuuj i Przerwij nie mogą go ukończyć.",
+    "Git was not changed because an IntelliGit Undo Commit is still unfinished in this repository. Continue and Abort cannot finish it.": "Git nie został zmieniony, ponieważ cofnięcie zatwierdzenia w IntelliGit nie zostało jeszcze ukończone w tym repozytorium. Kontynuuj i Przerwij nie mogą go ukończyć.",
+    "Git was not changed because another IntelliGit operation is still unfinished in this repository. Continue and Abort cannot finish it.": "Git nie został zmieniony, ponieważ inna operacja IntelliGit nie została jeszcze ukończona w tym repozytorium. Kontynuuj i Przerwij nie mogą jej ukończyć.",
+    "The view could not refresh after the targeted history step: {message}": "Nie można odświeżyć widoku po kroku wskazanej historii: {message}"
 }

@@ -962,7 +962,6 @@
     "Targeted history changes discarded.": "已捨棄目標歷史變更。",
     "Targeted history completed without a commit.": "目標歷史已完成，未建立提交。",
     "Targeted history operation {id} requires review: {message}": "目標歷史操作 {id} 需要檢視：{message}",
-    "Targeted history recovery requires review: {message}": "目標歷史復原需要檢視：{message}",
     "This save request is already in progress or stale.": "此儲存要求已在進行中或已過期。",
     "Save cancelled.": "已取消儲存。",
     "Another save is in progress. Wait for its result.": "另一個儲存正在進行中。請等待其結果。",
@@ -978,5 +977,11 @@
     "Selected changes removed. Recovery shelf {shelfId} is retained.": "已移除所選變更。復原擱置架 {shelfId} 已保留。",
     "Shelf {shelfId} was saved. Local changes are unchanged.": "擱置架 {shelfId} 已儲存。本機變更保持不變。",
     "Unshelve cancelled.": "已取消從擱置架還原。",
-    "This request ID was already used for a different restore.": "此要求 ID 已用於其他還原作業。"
+    "This request ID was already used for a different restore.": "此要求 ID 已用於其他還原作業。",
+    "Another IntelliGit operation is using this repository. Nothing was changed. Try again in a moment.": "另一個 IntelliGit 操作正在使用此存放庫。未進行任何變更；請稍後再試一次。",
+    "Git was not changed because IntelliGit cannot confirm that no targeted history operation is pending. To go ahead without IntelliGit, run the Git command in a terminal; that skips IntelliGit's targeted recovery. Details: {message}": "由於 IntelliGit 無法確認沒有待處理的目標歷史操作，Git 未被變更。若要在不使用 IntelliGit 的情況下繼續，請在終端機中執行 Git 命令；這會略過 IntelliGit 的目標歷史復原。詳細資訊：{message}",
+    "Git was not changed because an IntelliGit Unshelve is still unfinished in this repository. Continue and Abort cannot finish it.": "由於此存放庫中 IntelliGit 的從擱置架還原尚未完成，Git 未被變更。「繼續」和「中止」無法完成它。",
+    "Git was not changed because an IntelliGit Undo Commit is still unfinished in this repository. Continue and Abort cannot finish it.": "由於此存放庫中 IntelliGit 的復原提交尚未完成，Git 未被變更。「繼續」和「中止」無法完成它。",
+    "Git was not changed because another IntelliGit operation is still unfinished in this repository. Continue and Abort cannot finish it.": "由於此存放庫中另一個 IntelliGit 操作尚未完成，Git 未被變更。「繼續」和「中止」無法完成它。",
+    "The view could not refresh after the targeted history step: {message}": "目標歷史步驟之後無法重新整理檢視：{message}"
 }

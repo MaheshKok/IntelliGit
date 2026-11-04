@@ -962,7 +962,6 @@
     "Targeted history changes discarded.": "Alterações do histórico direcionado descartadas.",
     "Targeted history completed without a commit.": "Histórico direcionado concluído sem commit.",
     "Targeted history operation {id} requires review: {message}": "A operação de histórico direcionada {id} requer revisão: {message}",
-    "Targeted history recovery requires review: {message}": "A recuperação do histórico direcionado requer revisão: {message}",
     "This save request is already in progress or stale.": "Esta solicitação de salvamento já está em andamento ou desatualizada.",
     "Save cancelled.": "Salvamento cancelado.",
     "Another save is in progress. Wait for its result.": "Outro salvamento está em andamento. Aguarde o resultado.",
@@ -978,5 +977,11 @@
     "Selected changes removed. Recovery shelf {shelfId} is retained.": "Alterações selecionadas removidas. A prateleira de recuperação {shelfId} é mantida.",
     "Shelf {shelfId} was saved. Local changes are unchanged.": "A prateleira {shelfId} foi salva. As alterações locais não foram alteradas.",
     "Unshelve cancelled.": "Restauração da prateleira cancelada.",
-    "This request ID was already used for a different restore.": "Este ID de solicitação já foi usado para outra restauração."
+    "This request ID was already used for a different restore.": "Este ID de solicitação já foi usado para outra restauração.",
+    "Another IntelliGit operation is using this repository. Nothing was changed. Try again in a moment.": "Outra operação do IntelliGit está usando este repositório. Nada foi alterado; tente novamente em instantes.",
+    "Git was not changed because IntelliGit cannot confirm that no targeted history operation is pending. To go ahead without IntelliGit, run the Git command in a terminal; that skips IntelliGit's targeted recovery. Details: {message}": "O Git não foi alterado porque o IntelliGit não consegue confirmar que nenhuma operação do histórico direcionado está pendente. Para continuar sem o IntelliGit, execute o comando do Git em um terminal; isso ignora a recuperação do histórico direcionado do IntelliGit. Detalhes: {message}",
+    "Git was not changed because an IntelliGit Unshelve is still unfinished in this repository. Continue and Abort cannot finish it.": "O Git não foi alterado porque uma restauração da prateleira do IntelliGit ainda não foi concluída neste repositório. Continuar e Abortar não podem concluí-la.",
+    "Git was not changed because an IntelliGit Undo Commit is still unfinished in this repository. Continue and Abort cannot finish it.": "O Git não foi alterado porque uma ação de desfazer o commit do IntelliGit ainda não foi concluída neste repositório. Continuar e Abortar não podem concluí-la.",
+    "Git was not changed because another IntelliGit operation is still unfinished in this repository. Continue and Abort cannot finish it.": "O Git não foi alterado porque outra operação do IntelliGit ainda não foi concluída neste repositório. Continuar e Abortar não podem concluí-la.",
+    "The view could not refresh after the targeted history step: {message}": "Não foi possível atualizar a visualização após a etapa do histórico direcionado: {message}"
 }
