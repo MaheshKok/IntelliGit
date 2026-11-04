@@ -126,12 +126,10 @@ describe("durable target shelf publication", () => {
     });
 
     it.each(["journal", "manifest", "pointer", "terminal"] as const)(
-        "reopens after %s with exactly the intended generation and bytes and one Git mutation",
+        "reopens after %s with exactly the intended generation and bytes",
         async (phase) => {
             const f = await fixture();
             const request = { ...f.request, appliedChangeIds: ["one", "two"] };
-            let gitMutations = 0;
-            gitMutations += 1; // The adapter has durably recorded Git completion before entering storage.
             await interrupt(f, phase, request);
             const journals = await f.reopen().readJournals();
             const intended = journals[0].targetPublication!.manifest;
@@ -144,7 +142,6 @@ describe("durable target shelf publication", () => {
             expect(resumed.metadata.lifecycle).toBe("applied");
             expect((await f.reopen().readJournals())[0].state).toBe("ghost");
             expect(await f.reopen().publishTargetOperation(request)).toEqual(resumed);
-            expect(gitMutations).toBe(1);
             expect(resumed.generation).toBe(f.source.generation + 1);
         },
     );
