@@ -1,20 +1,14 @@
 import { createHash } from "node:crypto";
-import { access } from "node:fs/promises";
+import { copyFile, open, rename, rm } from "node:fs/promises";
 import { acquireWithBoundedWait } from "../git/boundedLockRetry";
 import { readEmptyTreeOid } from "../git/emptyTree";
 import { GitExecutor } from "../git/executor";
+import { isExclusiveCreateBlocked } from "../git/repositoryLock";
 import { REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS } from "../git/repositoryMutationGate";
 import type { ShelfJournalIndexEntry } from "./store";
 
 /** Git's stable empty-tree object ID used when a repository is unborn. */
 export const EMPTY_TREE_OID = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-
-/**
- * Git's refusal while another process holds the index lock; it names the lock file's absolute
- * path. It matches Git's English text, so a localized Git skips the wait and fails at once as
- * before; pin `LC_ALL=C` if that matters.
- */
-const INDEX_LOCK_EXISTS = /Unable to create '(.*index\.lock)': File exists/s;
 
 /** Raised when recovery cannot establish a safe filesystem or Git state. */
 export class RecoverySafetyError extends Error {
@@ -38,13 +32,13 @@ export interface ShelfRecoveryGit {
     getIndexEntry(relativePath: string): Promise<ShelfJournalIndexEntry | undefined>;
     readBlob(oid: string): Promise<Buffer>;
     /**
-     * `beforeRetry` runs before each retry of a write refused by a held index.lock; a rejection
-     * ends the write.
+     * `verify` runs once this call holds index.lock and before it writes, so no other Git process
+     * can change the index between the two; a rejection ends the write.
      */
     writeIndexEntry(
         relativePath: string,
         entry: ShelfJournalIndexEntry | undefined,
-        beforeRetry?: () => Promise<void>,
+        verify?: () => Promise<void>,
     ): Promise<void>;
 }
 
@@ -133,59 +127,88 @@ export class GitExecutorRecoveryGit implements ShelfRecoveryGit {
         return (await this.executor.runBinary(["cat-file", "blob", assertOid(oid)])).stdout;
     }
 
-    /** Updates one index entry via Git's own index.lock protocol. */
+    /**
+     * Updates one index entry under an index.lock this call takes first, as Git itself does:
+     * `verify` runs while the lock is held, Git edits a copy of the index inside the lock file,
+     * and the lock file is renamed onto the index.
+     */
     async writeIndexEntry(
         relativePath: string,
         entry: ShelfJournalIndexEntry | undefined,
-        beforeRetry?: () => Promise<void>,
+        verify?: () => Promise<void>,
     ): Promise<void> {
         const record = entry
             ? `${assertMode(entry.mode)} ${assertOid(entry.oid)}\t${relativePath}\0`
             : `0 ${"0".repeat((await this.emptyTreeOid()).length)}\t${relativePath}\0`;
-        // Another Git process (VS Code's own refresh) may hold index.lock briefly; Git takes the
-        // lock before writing anything, so the refused write is safe to repeat. That process may
-        // also change the index, so the caller re-checks before every repeat, and only once the
-        // lock is gone: a re-check while it is held reads the index the holder is about to replace.
-        let refused: Error | undefined;
-        await acquireWithBoundedWait(
-            async () => {
-                if (refused) {
-                    if (await lockStillHeld(refused)) throw refused;
-                    await beforeRetry?.();
-                }
-                try {
-                    return await this.executor.runBinary(["update-index", "-z", "--index-info"], {
-                        input: Buffer.from(record),
-                    });
-                } catch (error) {
-                    if (isIndexLockRefusal(error)) refused = error;
-                    throw error;
-                }
-            },
-            {
-                timeoutMs: REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS,
-                retryDelayMs: 50,
-                isBusy: isIndexLockRefusal,
-            },
+        const index = (
+            await this.executor.runBinary([
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-path",
+                "index",
+            ])
+        ).stdout
+            .toString("utf8")
+            .replace(/\n$/, "");
+        const lock = `${index}.lock`;
+        await takeIndexLock(lock);
+        let published = false;
+        try {
+            await verify?.();
+            // A repository where nothing was ever staged has no index, which Git reads as empty,
+            // so Git then writes an empty index into the lock to start from.
+            await copyFile(index, lock).catch(async (error: NodeJS.ErrnoException) => {
+                if (error.code !== "ENOENT") throw error;
+                await this.executor.runBinary(["read-tree", "--empty"], {
+                    env: { GIT_INDEX_FILE: lock },
+                });
+            });
+            await this.executor.runBinary(["update-index", "-z", "--index-info"], {
+                input: Buffer.from(record),
+                env: { GIT_INDEX_FILE: lock },
+            });
+            await renameOntoIndex(lock, index);
+            published = true;
+        } finally {
+            // A failed cleanup must not replace the error that got here; a lock left behind gets
+            // the "File exists" advice on the next write.
+            if (!published) await rm(lock, { force: true }).catch(() => undefined);
+        }
+    }
+}
+
+/**
+ * Creates the index lock exclusively, waiting out another Git process (VS Code's own refresh)
+ * that holds it briefly. Past the bound it fails with Git's own wording.
+ */
+async function takeIndexLock(lock: string): Promise<void> {
+    try {
+        await acquireWithBoundedWait(async () => (await open(lock, "wx")).close(), {
+            timeoutMs: REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS,
+            retryDelayMs: 50,
+            isBusy: isExclusiveCreateBlocked,
+        });
+    } catch (error) {
+        if (!isExclusiveCreateBlocked(error)) throw error;
+        throw new Error(
+            `Unable to create '${lock}': File exists. Another Git process seems to be running in this repository; if none is, remove that file and try again.`,
+            { cause: error },
         );
     }
 }
 
-function isIndexLockRefusal(error: unknown): error is Error {
-    return error instanceof Error && INDEX_LOCK_EXISTS.test(error.message);
-}
-
 /**
- * Whether the lock file named in Git's refusal still exists. Only "not found" proves it gone; any
- * other error (EACCES once this process loses search permission on a parent) counts as held.
+ * Windows refuses to rename onto a file another process has open, and Git readers open the index
+ * briefly; Git retries that refusal when it publishes an index, so this does too.
  */
-async function lockStillHeld(refusal: Error): Promise<boolean> {
-    try {
-        await access(INDEX_LOCK_EXISTS.exec(refusal.message)![1]);
-        return true;
-    } catch (error) {
-        return (error as NodeJS.ErrnoException).code !== "ENOENT";
-    }
+async function renameOntoIndex(lock: string, index: string): Promise<void> {
+    await acquireWithBoundedWait(() => rename(lock, index), {
+        timeoutMs: REPOSITORY_GATE_ACQUIRE_TIMEOUT_MS,
+        retryDelayMs: 50,
+        isBusy: (error) =>
+            process.platform === "win32" &&
+            ["EPERM", "EACCES", "EBUSY"].includes((error as NodeJS.ErrnoException).code ?? ""),
+    });
 }
 
 function parseTreeEntry(bytes: Buffer): ShelfJournalIndexEntry | undefined {
