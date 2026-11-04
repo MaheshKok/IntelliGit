@@ -49,6 +49,30 @@ it("runs a fixed number of git apply processes however many files a capture hold
     expect(twenty.applies, counts).toBeLessThanOrEqual(2);
 });
 
+/** Refuses any apply check whose patch carries `name`, as Git does for a hunk that misses. */
+function refuseApplyChecksFor(name: string): void {
+    const original = GitExecutor.prototype.runBinary;
+    vi.spyOn(GitExecutor.prototype, "runBinary").mockImplementation(function (
+        this: GitExecutor,
+        args,
+        options,
+    ) {
+        if (
+            args.includes("apply") &&
+            args.includes("--check") &&
+            Buffer.isBuffer(options?.input) &&
+            options.input.includes(`b/${name}`)
+        )
+            return Promise.resolve({
+                stdout: Buffer.alloc(0),
+                stderr: Buffer.from(`error: patch failed: ${name}:1\n`),
+                exitCode: 1,
+                truncated: false,
+            });
+        return original.call(this, args, options);
+    });
+}
+
 it("keeps every other file's raw fidelity when one file's patch does not apply", async () => {
     const plain = ["plain-0.txt", "plain-1.txt"];
     const crlf = ["crlf-0.txt", "crlf-1.txt", "crlf-2.txt"];
@@ -63,27 +87,7 @@ it("keeps every other file's raw fidelity when one file's patch does not apply",
     for (const name of plain) await writeFile(path.join(fixture.root, name), "incoming\n");
     for (const name of [...crlf, bad])
         await writeFile(path.join(fixture.root, name), "incoming\r\n");
-    const original = GitExecutor.prototype.runBinary;
-    // Refuse any apply check whose patch carries the bad file, as Git does for a hunk that misses.
-    vi.spyOn(GitExecutor.prototype, "runBinary").mockImplementation(function (
-        this: GitExecutor,
-        args,
-        options,
-    ) {
-        if (
-            args.includes("apply") &&
-            args.includes("--check") &&
-            Buffer.isBuffer(options?.input) &&
-            options.input.includes(`b/${bad}`)
-        )
-            return Promise.resolve({
-                stdout: Buffer.alloc(0),
-                stderr: Buffer.from(`error: patch failed: ${bad}:1\n`),
-                exitCode: 1,
-                truncated: false,
-            });
-        return original.call(this, args, options);
-    });
+    refuseApplyChecksFor(bad);
     const saved = await fixture.service.shelve({
         name: "S",
         paths: names,
@@ -112,6 +116,51 @@ it("keeps every other file's raw fidelity when one file's patch does not apply",
     // The file whose patch was refused is still shelved, only without raw artefacts.
     expect(entries.get(bad), bad).toMatchObject({ exactReconstruction: true });
     expect(entries.get(bad)?.worktreeBlock?.rawAfterObjectHash, bad).toBeUndefined();
+});
+
+it("gives each file its own raw fidelity when files without a batch slot sort before it", async () => {
+    // The untracked file has no materialize request and the refused one falls out of its group,
+    // so batch slots, split-group positions and entry positions all differ for the CRLF file.
+    const untracked = "a-new.txt";
+    const bad = "b-bad.txt";
+    const crlf = "c-crlf.txt";
+    const plain = "d-plain.txt";
+    const fixture = await createShelfFixture({
+        initialFiles: {
+            [bad]: "base\n",
+            [crlf]: "base\n",
+            [plain]: "base\n",
+            ".gitattributes": "c-crlf.txt text eol=crlf\n",
+        },
+    });
+    await writeFile(path.join(fixture.root, untracked), "new\n");
+    await writeFile(path.join(fixture.root, bad), "incoming\n");
+    await writeFile(path.join(fixture.root, crlf), "incoming\r\n");
+    await writeFile(path.join(fixture.root, plain), "incoming\n");
+    refuseApplyChecksFor(bad);
+    const saved = await fixture.service.shelve({
+        name: "S",
+        paths: [untracked, bad, crlf, plain],
+        silent: true,
+        keepLocal: true,
+    });
+    const entries = new Map(
+        (await fixture.service.getShelfFiles(saved.shelfId!)).map((entry) => [
+            entry.worktreeBlock?.path,
+            entry,
+        ]),
+    );
+    expect([...entries.keys()].sort()).toEqual([untracked, bad, crlf, plain]);
+    expect(entries.get(crlf), crlf).toMatchObject({
+        exactReconstruction: false,
+        worktreeBlock: {
+            rawBeforeObjectHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+            rawAfterObjectHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
+    });
+    expect(entries.get(plain), plain).toMatchObject({ exactReconstruction: true });
+    for (const name of [untracked, bad])
+        expect(entries.get(name)?.worktreeBlock?.rawAfterObjectHash, name).toBeUndefined();
 });
 
 it("layers a file's staged and unstaged patches inside the batch", async () => {
