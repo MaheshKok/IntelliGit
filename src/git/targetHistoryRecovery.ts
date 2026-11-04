@@ -3,6 +3,7 @@ import type { ChangelistStore, TargetOperationLease } from "../changes/changelis
 import type {
     TargetOperationExpectedState,
     TargetOperationEvidence,
+    TargetOperationRecord,
 } from "../changes/targetOperation";
 import { isUtf8 } from "node:buffer";
 import { lstat } from "node:fs/promises";
@@ -23,6 +24,15 @@ import {
     quitCompletedHistory,
     type TargetHistoryResult,
 } from "./targetHistoryOperation";
+
+/** A known pending operation that history Continue/Abort cannot finish, unlike unreadable metadata. */
+export class PendingTargetOperationKindError extends Error {
+    /** Keeps the pending kind so the caller can name the operation to the user. */
+    constructor(readonly kind: TargetOperationRecord["kind"]) {
+        super("The pending target operation requires its own recovery workflow.");
+        this.name = "PendingTargetOperationKindError";
+    }
+}
 
 /** Host-only review identity binds explicit completion/discard consent to exact observed bytes. */
 export interface TargetHistoryReview extends TargetOperationExpectedState {
@@ -45,7 +55,7 @@ export async function captureTargetHistoryReview(
         const pending = state.pendingTargetOperation;
         if (!pending) return undefined;
         if (!["cherryPick", "revert"].includes(pending.kind))
-            throw new Error("The pending target operation requires its own recovery workflow.");
+            throw new PendingTargetOperationKindError(pending.kind);
         const git = executor.deriveFor(persistence.root);
         return await git.runWithinMutationGate(async () => {
             const saved = await persistence.loadTargetOperationEvidence(pending.evidenceHash);

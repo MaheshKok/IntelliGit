@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Restoring or rolling back a shelf no longer overwrites a change another Git tool staged at the same moment. IntelliGit now takes Git's index lock before it checks the index, the same way Git does, so no other Git process can slip in between the check and the write. If another Git process holds the lock for more than a few seconds, the message now says so in Git's own words and tells you which lock file to remove if no Git process is running.
 
+## [0.41.2] - 2026-11-04
+
+### Fixed
+
+- When a rebase or merge **Continue** or **Abort** can't go ahead because IntelliGit's changelist data is busy or unreadable, the message now tells you what to do. If another IntelliGit action is running, it asks you to try again in a moment. If the data can't be read, it explains that you can finish the step with Git in a terminal, which skips IntelliGit's own recovery. If an IntelliGit Unshelve or Undo Commit is still unfinished, it now names that action instead of pointing you to a terminal. And if the view fails to refresh after the step, it no longer claims that Git was not changed.
+
 ## [0.41.1] - 2026-11-03
 
 ### Fixed
