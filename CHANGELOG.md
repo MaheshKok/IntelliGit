@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.4] - 2026-11-04
+
+### Changed
+
+- Shelving many modified files is faster. IntelliGit used to start two Git processes per file to check whether it must keep each file's exact bytes, so shelving 10,000 files started about 20,000 of them. It now checks and rebuilds all files in one go. If Git refuses part of the batch, IntelliGit splits it and falls back to the old one-file path only where needed, so each file still gets its own result. Saved shelves are unchanged.
+
 ## [0.41.3] - 2026-11-04
 
 ### Fixed

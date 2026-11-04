@@ -29,18 +29,23 @@ export interface ShelfCaptureArtifacts {
     }[])[];
 }
 
+/** One modified file whose base and patches the host rebuilds to compare with the raw worktree bytes. */
+export interface ShelfMaterializeRequest {
+    readonly relativePath: string;
+    readonly base: Buffer;
+    readonly indexPatch?: Buffer;
+    readonly worktreePatch?: Buffer;
+}
+
 /** Dependencies owned by the host service while capture persists one shelf generation. */
 export interface ShelfCaptureDependencies {
     readonly repositoryRoot: string;
     readonly executor: GitExecutor;
     readonly store: ShelfStore;
     readonly recordBaseRevisions: boolean;
-    readonly materializeEntry: (
-        relativePath: string,
-        base: Buffer,
-        indexPatch: Buffer | undefined,
-        worktreePatch: Buffer | undefined,
-    ) => Promise<Buffer | undefined>;
+    readonly materializeEntries: (
+        requests: readonly ShelfMaterializeRequest[],
+    ) => Promise<readonly (Buffer | undefined)[]>;
 }
 
 /** Captures selected Git layers and records all immutable shelf artifacts before returning. */
@@ -159,6 +164,10 @@ async function persistCaptureSource(
         readonly { readonly relativePath: string; readonly baseBytes?: Uint8Array }[]
     > = [];
     const objectHashes = new Set<string>();
+    const materializations: {
+        readonly entryIndex: number;
+        readonly request: ShelfMaterializeRequest;
+    }[] = [];
     const sortedPatches = Array.from(source.patchByPath.entries());
     sortedPatches.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     for (const [relativePath, patches] of sortedPatches) {
@@ -173,8 +182,35 @@ async function persistCaptureSource(
         );
         entries.push(captured.entry);
         revertFiles.push(captured.revertFiles);
+        if (captured.materializeRequest)
+            materializations.push({
+                entryIndex: entries.length - 1,
+                request: captured.materializeRequest,
+            });
     }
     if (entries.length === 0) throw new Error("No selected changes to shelve.");
+    if (materializations.length > 0) {
+        const results = await dependencies.materializeEntries(
+            materializations.map(({ request }) => request),
+        );
+        for (let index = 0; index < materializations.length; index++) {
+            const materialized = results[index];
+            if (materialized === undefined) continue;
+            const { entryIndex, request } = materializations[index];
+            const fidelity = await captureWorktreeRawFidelity({
+                materializedBytes: materialized,
+                preimageBytes: request.base,
+                repositoryRoot: dependencies.repositoryRoot,
+                relativePath: request.relativePath,
+                shelfId,
+                store: dependencies.store,
+                entry: entries[entryIndex],
+            });
+            if (fidelity.rawBeforeObjectHash) objectHashes.add(fidelity.rawBeforeObjectHash);
+            if (fidelity.rawAfterObjectHash) objectHashes.add(fidelity.rawAfterObjectHash);
+            entries[entryIndex] = fidelity.entry;
+        }
+    }
     return { baseCommit: source.baseCommit, entries, objectHashes: [...objectHashes], revertFiles };
 }
 
@@ -187,6 +223,7 @@ async function persistCaptureEntry(
     objectHashes: Set<string>,
 ): Promise<{
     readonly entry: ShelfFileEntry;
+    readonly materializeRequest?: ShelfMaterializeRequest;
     readonly revertFiles: readonly {
         readonly relativePath: string;
         readonly baseBytes?: Uint8Array;
@@ -218,19 +255,19 @@ async function persistCaptureEntry(
         objectHashes,
         dependencies.recordBaseRevisions,
     );
-    let entry = createEntry(relativePath, patches, indexBlock, worktreeBlock, base, baseCommit);
-    entry = await captureRawFidelity(
-        shelfId,
-        entry,
-        relativePath,
-        patches,
-        base,
-        dependencies,
-        objectHashes,
-    );
+    const entry = createEntry(relativePath, patches, indexBlock, worktreeBlock, base, baseCommit);
     const blockForRevert = worktreeBlock ?? indexBlock;
     return {
         entry,
+        materializeRequest:
+            base && worktreeBlock?.status === "M"
+                ? {
+                      relativePath,
+                      base: base.bytes,
+                      indexPatch: patches.index,
+                      worktreePatch: patches.worktree,
+                  }
+                : undefined,
         revertFiles:
             blockForRevert?.status === "R" && blockForRevert.renamedFrom
                 ? [
@@ -285,37 +322,6 @@ function createEntry(
         exactReconstruction: true,
         lifecycle: "shelved",
     };
-}
-
-async function captureRawFidelity(
-    shelfId: string,
-    entry: ShelfFileEntry,
-    relativePath: string,
-    patches: LayerPatches,
-    base: { readonly bytes: Buffer } | undefined,
-    dependencies: ShelfCaptureDependencies,
-    objectHashes: Set<string>,
-): Promise<ShelfFileEntry> {
-    if (!base || entry.worktreeBlock?.status !== "M") return entry;
-    const materialized = await dependencies.materializeEntry(
-        relativePath,
-        base.bytes,
-        patches.index,
-        patches.worktree,
-    );
-    if (!materialized) return entry;
-    const fidelity = await captureWorktreeRawFidelity({
-        materializedBytes: materialized,
-        preimageBytes: base.bytes,
-        repositoryRoot: dependencies.repositoryRoot,
-        relativePath,
-        shelfId,
-        store: dependencies.store,
-        entry,
-    });
-    if (fidelity.rawBeforeObjectHash) objectHashes.add(fidelity.rawBeforeObjectHash);
-    if (fidelity.rawAfterObjectHash) objectHashes.add(fidelity.rawAfterObjectHash);
-    return fidelity.entry;
 }
 
 async function persistBlock(

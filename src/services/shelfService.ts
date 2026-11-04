@@ -45,7 +45,7 @@ import {
     type ShelfListResult,
     type StructuralResolutionInput,
 } from "./shelfServiceOperations";
-import { captureShelfArtifacts } from "./shelfServiceCapture";
+import { captureShelfArtifacts, type ShelfMaterializeRequest } from "./shelfServiceCapture";
 import {
     ShelfConflictSessionService,
     type ApplyShelfConflictResolutionInput,
@@ -214,8 +214,7 @@ export class ShelfService {
                 executor: this.options.executor,
                 store: this.options.store,
                 recordBaseRevisions: this.recordBaseRevisions,
-                materializeEntry: (file, base, index, working) =>
-                    this.materializeEntry(file, base, index, working),
+                materializeEntries: (requests) => this.materializeEntries(requests),
             });
             savedId = captured.shelfId;
             this.scopedCaptures.set(input, { ...captured, planDigest, scope });
@@ -1011,8 +1010,7 @@ export class ShelfService {
             executor: this.options.executor,
             store: this.options.store,
             recordBaseRevisions: this.recordBaseRevisions,
-            materializeEntry: (relativePath, base, indexPatch, worktreePatch) =>
-                this.materializeEntry(relativePath, base, indexPatch, worktreePatch),
+            materializeEntries: (requests) => this.materializeEntries(requests),
         });
         if (!input.keepLocal) {
             await this.reverter.revertWithHeldLocks({
@@ -1338,6 +1336,77 @@ export class ShelfService {
             input: patch,
         });
         return true;
+    }
+
+    private async materializeEntries(
+        requests: readonly ShelfMaterializeRequest[],
+    ): Promise<readonly (Buffer | undefined)[]> {
+        const temp = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-materialize-"));
+        try {
+            const results = Array.from<Buffer | undefined>({ length: requests.length });
+            const pending: {
+                readonly index: number;
+                readonly target: string;
+                readonly request: ShelfMaterializeRequest;
+            }[] = [];
+            for (const [index, request] of requests.entries()) {
+                const target = path.join(temp, validateShelfManifestPath(request.relativePath));
+                await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+                try {
+                    await writeFile(target, request.base, { flag: "wx" });
+                } catch (error) {
+                    if (
+                        typeof error !== "object" ||
+                        error === null ||
+                        !("code" in error) ||
+                        error.code !== "EEXIST"
+                    )
+                        throw error;
+                    results[index] = await this.materializeEntry(
+                        request.relativePath,
+                        request.base,
+                        request.indexPatch,
+                        request.worktreePatch,
+                    );
+                    continue;
+                }
+                pending.push({ index, target, request });
+            }
+            const materializeGroup = async (group: typeof pending): Promise<void> => {
+                const input = Buffer.concat(
+                    group.flatMap(({ request }) => [
+                        request.indexPatch ?? Buffer.alloc(0),
+                        request.worktreePatch ?? Buffer.alloc(0),
+                    ]),
+                );
+                // 128 covers Git refusing a patch of about 1 GiB: halving brings each group under it,
+                // and a single entry falls back to the per-file path and its old semantics.
+                const checked = await this.options.executor.runBinary(
+                    ["-C", temp, "apply", "--check", "-"],
+                    { input, expectedExitCodes: [0, 1, 128] },
+                );
+                if (checked.exitCode === 0) {
+                    await this.options.executor.runBinary(["-C", temp, "apply", "-"], { input });
+                    for (const { index, target } of group) results[index] = await readFile(target);
+                } else if (group.length === 1) {
+                    const { index, request } = group[0];
+                    results[index] = await this.materializeEntry(
+                        request.relativePath,
+                        request.base,
+                        request.indexPatch,
+                        request.worktreePatch,
+                    );
+                } else {
+                    const middle = Math.ceil(group.length / 2);
+                    await materializeGroup(group.slice(0, middle));
+                    await materializeGroup(group.slice(middle));
+                }
+            };
+            if (pending.length > 0) await materializeGroup(pending);
+            return results;
+        } finally {
+            await rm(temp, { recursive: true, force: true });
+        }
     }
 
     private async materializeEntry(
