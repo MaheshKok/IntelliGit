@@ -516,7 +516,6 @@ export class ShelfReverter {
         baseEntry: ShelfJournalIndexEntry | undefined,
         state: RevertState,
     ): Promise<void> {
-        await this.verifyGitPreconditions(state.originalHead, state.expectedIndex);
         await this.git.writeIndexEntry(entry.relativePath, baseEntry, () =>
             this.verifyGitPreconditions(state.originalHead, state.expectedIndex),
         );

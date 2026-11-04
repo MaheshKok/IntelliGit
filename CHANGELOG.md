@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.3] - 2026-11-04
+
+### Fixed
+
+- Restoring or rolling back a shelf no longer overwrites a change another Git tool staged at the same moment. IntelliGit now takes Git's index lock before it checks the index, the same way Git does, so no other Git process can slip in between the check and the write. If another Git process holds the lock for more than a few seconds, the message now says so in Git's own words and tells you which lock file to remove if no Git process is running.
+
 ## [0.41.2] - 2026-11-04
 
 ### Fixed
