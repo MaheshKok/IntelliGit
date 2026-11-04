@@ -983,5 +983,6 @@
     "Git was not changed because an IntelliGit Unshelve is still unfinished in this repository. Continue and Abort cannot finish it.": "由於此存放庫中 IntelliGit 的從擱置架還原尚未完成，Git 未被變更。「繼續」和「中止」無法完成它。",
     "Git was not changed because an IntelliGit Undo Commit is still unfinished in this repository. Continue and Abort cannot finish it.": "由於此存放庫中 IntelliGit 的復原提交尚未完成，Git 未被變更。「繼續」和「中止」無法完成它。",
     "Git was not changed because another IntelliGit operation is still unfinished in this repository. Continue and Abort cannot finish it.": "由於此存放庫中另一個 IntelliGit 操作尚未完成，Git 未被變更。「繼續」和「中止」無法完成它。",
-    "The view could not refresh after the targeted history step: {message}": "目標歷史步驟之後無法重新整理檢視：{message}"
+    "The view could not refresh after the targeted history step: {message}": "目標歷史步驟之後無法重新整理檢視：{message}",
+    "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "IntelliGit 需要 Git {0} 或更新版本才能使用合併解決、部分提交和擱置架還原功能，但偵測到的是 Git {1}。請更新 Git 以使用這些功能。"
 }
