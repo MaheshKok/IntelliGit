@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.1] - 2026-11-05
+
+### Fixed
+
+- Releases recover by themselves from two slow-registry hiccups that used to need a manual rerun, sometimes several. If a rerun finds the VS Code Marketplace already holds the version but its public listing hasn't caught up, the release waits up to ten minutes for it, checks the uploaded file is byte-for-byte the one being released, and carries on. If Open VSX stops answering mid-upload, the release checks whether the upload landed anyway and tries again up to two more times if it didn't.
+
 ## [0.42.0] - 2026-11-04
 
 ### Added

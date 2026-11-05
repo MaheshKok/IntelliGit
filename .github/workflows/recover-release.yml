@@ -224,10 +224,50 @@ jobs:
 
             - name: Publish to VS Code Marketplace
               if: steps.publish-status.outputs.vsce_published != 'true'
-              run: bunx vsce publish --packagePath "$VSIX_PATH" -p "$VSCE_PAT"
+              shell: bash
               env:
                   VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
                   VSCE_PAT: ${{ secrets.VSCE_PAT }}
+                  EXTENSION_ID: ${{ steps.release-artifact.outputs.publisher }}.${{ steps.release-artifact.outputs.name }}
+                  EXTENSION_PUBLISHER: ${{ steps.release-artifact.outputs.publisher }}
+                  EXTENSION_NAME: ${{ steps.release-artifact.outputs.name }}
+                  NEW_VERSION: ${{ steps.release-artifact.outputs.version }}
+              run: |
+                  publish_log=$(mktemp)
+                  if bunx vsce publish --packagePath "$VSIX_PATH" -p "$VSCE_PAT" > "$publish_log" 2>&1; then
+                    cat "$publish_log"
+                    exit 0
+                  fi
+                  cat "$publish_log" >&2
+                  if ! grep -q "v$NEW_VERSION already exists" "$publish_log"; then
+                    exit 1
+                  fi
+
+                  # An earlier attempt's upload can exist before the public listing shows it, so the
+                  # status check called it unpublished. Release run 41933517823 waited about four minutes.
+                  echo "The Marketplace already holds v$NEW_VERSION; waiting for its listing to verify the bytes."
+                  for poll in $(seq 1 20); do
+                    metadata_file=$(mktemp)
+                    if bunx vsce show "$EXTENSION_ID" --json > "$metadata_file" 2>/dev/null && node -e '
+                      const metadata = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+                      if (!(metadata.versions ?? []).some((entry) => entry?.version === process.argv[2])) process.exit(1);
+                    ' "$metadata_file" "$NEW_VERSION"; then
+                      registry_vsix=$(mktemp "${TMPDIR:-/tmp}/registry-vsix.XXXXXX")
+                      # The download server can trail the listing too, so a failed download polls again.
+                      if ! curl --fail --location --silent --show-error --compressed --output "$registry_vsix" "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/$EXTENSION_PUBLISHER/vsextensions/$EXTENSION_NAME/$NEW_VERSION/vspackage"; then
+                        echo "The Marketplace lists v$NEW_VERSION but does not serve its VSIX yet; polling again." >&2
+                      elif ! cmp --silent "$VSIX_PATH" "$registry_vsix"; then
+                        echo "VS Code Marketplace artifact does not match the selected artifact; failing closed." >&2
+                        exit 1
+                      else
+                        echo "VS Code Marketplace already contains byte-identical v$NEW_VERSION after poll $poll; skipping it."
+                        exit 0
+                      fi
+                    fi
+                    sleep 30
+                  done
+                  echo "The Marketplace still does not serve v$NEW_VERSION after ten minutes; rerun the failed job once it does." >&2
+                  exit 1
 
             - name: Publish to Open VSX
               if: steps.publish-status.outputs.ovsx_published != 'true'
@@ -241,7 +281,7 @@ jobs:
                   NEW_VERSION: ${{ steps.release-artifact.outputs.version }}
               run: |
                   is_transient_open_vsx_error() {
-                    grep -Eiq '(^|[^0-9])(408|429|5[0-9]{2})([^0-9]|$)|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|network|socket hang up|fetch failed|connection reset|timed out' "$1"
+                    grep -Eiq '(^|[^0-9])(408|429|5[0-9]{2})([^0-9]|$)|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|network|socket hang up|fetch failed|connection reset|timed out|no response from' "$1"
                   }
 
                   probe_open_vsx() {
