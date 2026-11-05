@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.3] - 2026-11-05
+
+### Fixed
+
+- The Git Log branch list now updates by itself when a worktree is added or deleted outside IntelliGit, such as from a terminal or VS Code's own Git commands. Before, a deleted worktree stayed listed until you pressed Refresh.
+
 ## [0.42.2] - 2026-11-05
 
 ### Fixed

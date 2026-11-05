@@ -41,6 +41,8 @@ const mocks = vi.hoisted(() => ({
     fsWatchers: [] as unknown[],
     /** Every directory handed to a watcher, by whichever route the platform takes. */
     watchedPaths: [] as string[],
+    /** Directories `fs.watch` refuses with ENOENT, as Node does for a path that does not exist. */
+    missingPaths: new Set<string>(),
     /** Per-root overrides for the two Git directory resolvers, keyed by normalized root. */
     gitDirs: {} as Record<string, string>,
     commonDirs: {} as Record<string, string>,
@@ -113,6 +115,8 @@ vi.mock("fs", async () => {
     const { EventEmitter: NodeEventEmitter } = await import("node:events");
     return {
         watch: vi.fn((target: string, ...rest: unknown[]) => {
+            if (mocks.missingPaths.has(target))
+                throw Object.assign(new Error(`ENOENT: ${target}`), { code: "ENOENT" });
             mocks.watchedPaths.push(target);
             const watcher = Object.assign(new NodeEventEmitter(), { close: vi.fn(), target });
             const listener = rest.find(
@@ -137,6 +141,7 @@ afterEach(() => {
     mocks.watchers.length = 0;
     mocks.fsWatchers.length = 0;
     mocks.watchedPaths.length = 0;
+    mocks.missingPaths.clear();
     for (const key of Object.keys(mocks.gitDirs)) delete mocks.gitDirs[key];
     for (const key of Object.keys(mocks.commonDirs)) delete mocks.commonDirs[key];
     mocks.documentChangeHandlers.length = 0;
@@ -238,6 +243,72 @@ describe("repository working-tree changes", () => {
                 listener,
                 "the main checkout's HEAD moved and refreshed a worktree whose HEAD did not",
             ).not.toHaveBeenCalled();
+        } finally {
+            subscription.dispose();
+        }
+    });
+
+    // Git lists linked worktrees as entries of `<common dir>/worktrees`. `git worktree remove`
+    // run outside IntelliGit -- a terminal, VS Code's own Git -- deletes one entry and touches no
+    // file the other watchers see, so the branch column kept showing the deleted worktree until
+    // a manual refresh (#264).
+    it("publishes a git-state change when a worktree entry is added or removed outside IntelliGit", () => {
+        const worktreesDir = path.join("/repo/.git", "worktrees");
+        const listener = vi.fn();
+        const subscription = subscribeToRepositoryWorkingTreeChanges(REPO, listener);
+        try {
+            const worktreesWatcher = fsWatchers().find(
+                (watcher) => watcher.target === worktreesDir,
+            );
+            expect(
+                worktreesWatcher,
+                "nothing watches the worktrees directory, so a removed worktree stays listed",
+            ).toBeDefined();
+
+            worktreesWatcher?.emit("change", "rename", "feature-wt");
+            expect(
+                listener,
+                "a removed worktree entry published no git-state change, so the worktree list never reloads",
+            ).toHaveBeenCalledWith({ repoRoot: REPO, source: "git-state" });
+
+            listener.mockClear();
+            worktreesWatcher?.emit("change", "change", "feature-wt");
+            expect(
+                listener,
+                "a write inside another worktree's entry refreshed a list that did not change",
+            ).not.toHaveBeenCalled();
+        } finally {
+            subscription.dispose();
+        }
+    });
+
+    // Git creates `worktrees` with the first linked worktree and deletes it with the last, so a
+    // repository opened with none has nothing to watch yet. Once one is added, removing it while
+    // another remains must still refresh.
+    it("starts watching the worktrees directory once Git creates it", () => {
+        const commonDir = "/repo/.git";
+        const worktreesDir = path.join(commonDir, "worktrees");
+        mocks.missingPaths.add(worktreesDir);
+        const listener = vi.fn();
+        const subscription = subscribeToRepositoryWorkingTreeChanges(REPO, listener);
+        try {
+            mocks.missingPaths.delete(worktreesDir);
+            fsWatchers()
+                .find((watcher) => watcher.target === commonDir)
+                ?.emit("change", "rename", "worktrees");
+            expect(
+                listener,
+                "creating the worktrees directory published no git-state change",
+            ).toHaveBeenCalledWith({ repoRoot: REPO, source: "git-state" });
+
+            listener.mockClear();
+            fsWatchers()
+                .find((watcher) => watcher.target === worktreesDir)
+                ?.emit("change", "rename", "feature-wt");
+            expect(
+                listener,
+                "the worktrees directory was never watched after Git created it, so a later removal stays listed",
+            ).toHaveBeenCalledWith({ repoRoot: REPO, source: "git-state" });
         } finally {
             subscription.dispose();
         }
