@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.2] - 2026-11-05
+
+### Fixed
+
+- Right-clicking the left (older) side of a Git diff no longer offers Open Partial Changes. That side shows the committed copy, not your local file, so the action could only answer with "only available for local files". It is still offered on the right side and in normal editors.
+
 ## [0.42.1] - 2026-11-05
 
 ### Fixed

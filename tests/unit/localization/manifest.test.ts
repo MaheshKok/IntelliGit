@@ -85,9 +85,13 @@ describe("extension manifest", () => {
             manifest.contributes?.commands?.filter((entry) => entry.command === command),
         ).toEqual([{ command, title: "%command.openPartialChanges%", category: "%intelligit%" }]);
         const menus = manifest.contributes?.menus ?? {};
-        for (const surface of ["intelligit.editorContext", "editor/title/context"]) {
+        // A Git diff's left side reports the right side's file scheme, so it needs its own guard.
+        for (const [surface, when] of [
+            ["intelligit.editorContext", "resourceScheme == file && !isInDiffLeftEditor"],
+            ["editor/title/context", "resourceScheme == file"],
+        ] as const) {
             expect(menus[surface]?.filter((entry) => entry.command === command)).toEqual([
-                { command, when: "resourceScheme == file", group: "0_commit@3" },
+                { command, when, group: "0_commit@3" },
             ]);
         }
         for (const surface of [

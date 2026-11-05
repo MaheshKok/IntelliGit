@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.42.1",
+    "version": "0.42.2",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -1173,7 +1173,7 @@
                 },
                 {
                     "command": "intelligit.openPartialChanges",
-                    "when": "resourceScheme == file",
+                    "when": "resourceScheme == file && !isInDiffLeftEditor",
                     "group": "0_commit@3"
                 }
             ],
