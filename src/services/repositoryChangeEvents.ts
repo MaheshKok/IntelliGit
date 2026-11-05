@@ -248,7 +248,14 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
      * IntelliGit changes without touching any file the other Git watchers see (#264).
      */
     private watchWorktreesDir(commonDir: string): void {
-        this.worktreesWatcher?.close();
+        const retired = this.worktreesWatcher;
+        if (retired) {
+            retired.close();
+            // Each unnamed Git-directory event replaces this watch, so a retired handle left
+            // in `fsWatchers` would accumulate until the repository is closed.
+            const index = this.fsWatchers.indexOf(retired);
+            if (index >= 0) this.fsWatchers.splice(index, 1);
+        }
         this.worktreesWatcher = undefined;
         try {
             const watcher = fs.watch(path.join(commonDir, "worktrees"), (event) => {

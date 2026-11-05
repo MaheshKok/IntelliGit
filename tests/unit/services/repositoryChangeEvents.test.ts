@@ -311,6 +311,28 @@ describe("repository working-tree changes", () => {
         }
     });
 
+    // Every unnamed event replaces the worktrees watch, so a retired handle kept until dispose
+    // would pile up for as long as the repository stays open.
+    it("releases each replaced worktrees watcher instead of retaining it until dispose", () => {
+        const commonDir = "/repo/.git";
+        const worktreesDir = path.join(commonDir, "worktrees");
+        const subscription = subscribeToRepositoryWorkingTreeChanges(REPO, vi.fn());
+        const gitDirWatcher = fsWatchers().find((watcher) => watcher.target === commonDir);
+        for (let event = 0; event < 3; event++) gitDirWatcher?.emit("change", "rename", null);
+        const retired = fsWatchers()
+            .filter((watcher) => watcher.target === worktreesDir)
+            .slice(0, -1);
+        subscription.dispose();
+
+        expect(retired.length, "the unnamed events replaced no worktrees watcher").toBe(3);
+        for (const [index, watcher] of retired.entries()) {
+            expect(
+                watcher.close,
+                `replaced worktrees watcher ${index} was still retained and closed again on dispose`,
+            ).toHaveBeenCalledTimes(1);
+        }
+    });
+
     it("keeps a linked worktree's worktrees watch armed after an unnamed event in its own Git directory", () => {
         const worktree = fixtureRoot("/wt");
         const commonDir = path.join(fixtureRoot("/main"), ".git");
