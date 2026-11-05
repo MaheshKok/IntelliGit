@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing changes in the extension itself. An automated screenshot test of the merge editor's scrollbar no longer fails at random, so real problems are easier to spot.
 
+## [0.42.4] - 2026-11-05
+
+### Changed
+
+- Nothing changes in the extension itself. A new automated test deletes a worktree from its right-click menu in both the docked Git Log and the undocked Git Log tab, and checks that its row disappears straight away, so this stays working in future releases.
+
 ## [0.42.3] - 2026-11-05
 
 ### Fixed
