@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.5] - 2026-11-05
+
+### Changed
+
+- Nothing changes in the extension itself. An automated screenshot test of the merge editor's scrollbar no longer fails at random, so real problems are easier to spot.
+
 ## [0.42.3] - 2026-11-05
 
 ### Fixed
