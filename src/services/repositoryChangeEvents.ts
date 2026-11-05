@@ -63,6 +63,7 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
     private readonly emitter = new vscode.EventEmitter<RepositoryWorkingTreeChange>();
     private readonly disposables: vscode.Disposable[] = [];
     private readonly fsWatchers: fs.FSWatcher[] = [];
+    private worktreesWatcher?: fs.FSWatcher;
     private references = 0;
 
     constructor(readonly repoRoot: string) {
@@ -175,13 +176,18 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
             "REBASE_HEAD",
             "index",
         ]);
+        // Only the common directory holds `worktrees`; a linked worktree's own Git directory
+        // re-arming that watch would close it and find nothing to watch.
+        if (commonDir === gitDir) gitStateFiles.add("worktrees");
 
         this.watchGitStateFiles(gitDir, gitStateFiles);
+        this.watchWorktreesDir(commonDir);
         // A linked worktree's Git directory has no `packed-refs`: Git keeps the one file every
         // worktree shares in the common directory, beside `refs`. That directory also holds the
         // main checkout's own `HEAD` and `index`, so only `packed-refs` is taken from it. In a
         // plain checkout the two are one directory, already watched above.
-        if (commonDir !== gitDir) this.watchGitStateFiles(commonDir, new Set(["packed-refs"]));
+        if (commonDir !== gitDir)
+            this.watchGitStateFiles(commonDir, new Set(["packed-refs", "worktrees"]));
 
         try {
             // Refs are shared state, so they live in the common directory. A linked worktree's
@@ -217,6 +223,11 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
             this.retainFsWatcher(
                 fs.watch(dir, (_event, filename) => {
                     const name = filename?.toString();
+                    // Git creates `worktrees` with the first linked worktree and deletes it with
+                    // the last, so its own watcher is re-armed whenever it may have reappeared,
+                    // including on an event Node could not name.
+                    if (names.has("worktrees") && (!name || name === "worktrees"))
+                        this.watchWorktreesDir(dir);
                     if (!name) {
                         this.fire({ repoRoot: this.repoRoot, source: "git-state" });
                     } else if (names.has(name)) {
@@ -229,6 +240,33 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
             );
         } catch {
             /* .git may not be watchable for virtual roots or isolated test fixtures. */
+        }
+    }
+
+    /**
+     * Watches Git's list of linked worktrees, which `git worktree add` or `remove` run outside
+     * IntelliGit changes without touching any file the other Git watchers see (#264).
+     */
+    private watchWorktreesDir(commonDir: string): void {
+        const retired = this.worktreesWatcher;
+        if (retired) {
+            retired.close();
+            // Each unnamed Git-directory event replaces this watch, so a retired handle left
+            // in `fsWatchers` would accumulate until the repository is closed.
+            const index = this.fsWatchers.indexOf(retired);
+            if (index >= 0) this.fsWatchers.splice(index, 1);
+        }
+        this.worktreesWatcher = undefined;
+        try {
+            const watcher = fs.watch(path.join(commonDir, "worktrees"), (event) => {
+                // `rename` is an entry added or removed. `change` is a write inside one, such as
+                // a commit in that worktree, which leaves the list as it was.
+                if (event === "rename") this.fire({ repoRoot: this.repoRoot, source: "git-state" });
+            });
+            this.retainFsWatcher(watcher);
+            this.worktreesWatcher = watcher;
+        } catch {
+            /* No linked worktree exists yet; the common-directory watcher re-arms this. */
         }
     }
 
