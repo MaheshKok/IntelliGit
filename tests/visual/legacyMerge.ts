@@ -29,6 +29,12 @@ export async function mountLegacyMerge(
         { payload: data, sessionKind },
     );
     await page.locator(".merge-editor").waitFor();
+    // The shared horizontal bar is sized one animation frame after mount; until then it has nothing to scroll.
+    await page.waitForFunction(
+        () =>
+            (document.querySelector<HTMLElement>(".merge-horizontal-scroll-inner")?.style.width ??
+                "") !== "",
+    );
 }
 
 /** Exercises the workbench through the same host context as the retained Shelf renderer. */
