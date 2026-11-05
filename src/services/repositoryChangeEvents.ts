@@ -175,8 +175,10 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
             "MERGE_HEAD",
             "REBASE_HEAD",
             "index",
-            "worktrees",
         ]);
+        // Only the common directory holds `worktrees`; a linked worktree's own Git directory
+        // re-arming that watch would close it and find nothing to watch.
+        if (commonDir === gitDir) gitStateFiles.add("worktrees");
 
         this.watchGitStateFiles(gitDir, gitStateFiles);
         this.watchWorktreesDir(commonDir);
@@ -221,12 +223,14 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
             this.retainFsWatcher(
                 fs.watch(dir, (_event, filename) => {
                     const name = filename?.toString();
+                    // Git creates `worktrees` with the first linked worktree and deletes it with
+                    // the last, so its own watcher is re-armed whenever it may have reappeared,
+                    // including on an event Node could not name.
+                    if (names.has("worktrees") && (!name || name === "worktrees"))
+                        this.watchWorktreesDir(dir);
                     if (!name) {
                         this.fire({ repoRoot: this.repoRoot, source: "git-state" });
                     } else if (names.has(name)) {
-                        // Git creates `worktrees` with the first linked worktree and deletes it
-                        // with the last, so its own watcher is re-armed whenever it reappears.
-                        if (name === "worktrees") this.watchWorktreesDir(dir);
                         this.fire({
                             repoRoot: this.repoRoot,
                             source: name === "index" ? "git-index" : "git-state",

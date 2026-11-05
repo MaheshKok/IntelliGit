@@ -285,6 +285,58 @@ describe("repository working-tree changes", () => {
     // Git creates `worktrees` with the first linked worktree and deletes it with the last, so a
     // repository opened with none has nothing to watch yet. Once one is added, removing it while
     // another remains must still refresh.
+    // Node does not promise a filename on every platform. An unnamed event in the Git directory
+    // may be the one that created `worktrees`, so it must re-arm the watch too.
+    it("starts watching the worktrees directory after an unnamed Git-directory event", () => {
+        const commonDir = "/repo/.git";
+        const worktreesDir = path.join(commonDir, "worktrees");
+        mocks.missingPaths.add(worktreesDir);
+        const listener = vi.fn();
+        const subscription = subscribeToRepositoryWorkingTreeChanges(REPO, listener);
+        try {
+            mocks.missingPaths.delete(worktreesDir);
+            fsWatchers()
+                .find((watcher) => watcher.target === commonDir)
+                ?.emit("change", "rename", null);
+            listener.mockClear();
+            fsWatchers()
+                .find((watcher) => watcher.target === worktreesDir)
+                ?.emit("change", "rename", "feature-wt");
+            expect(
+                listener,
+                "an unnamed event never re-armed the worktrees watch, so a later removal stays listed",
+            ).toHaveBeenCalledWith({ repoRoot: REPO, source: "git-state" });
+        } finally {
+            subscription.dispose();
+        }
+    });
+
+    it("keeps a linked worktree's worktrees watch armed after an unnamed event in its own Git directory", () => {
+        const worktree = fixtureRoot("/wt");
+        const commonDir = path.join(fixtureRoot("/main"), ".git");
+        const gitDir = path.join(commonDir, "worktrees", "wt");
+        mocks.gitDirs[worktree] = gitDir;
+        mocks.commonDirs[worktree] = commonDir;
+        mocks.missingPaths.add(path.join(gitDir, "worktrees"));
+        const listener = vi.fn();
+        const subscription = subscribeToRepositoryWorkingTreeChanges(worktree, listener);
+        try {
+            const worktreesDir = path.join(commonDir, "worktrees");
+            const worktreesWatcher = fsWatchers().find(
+                (watcher) => watcher.target === worktreesDir,
+            );
+            fsWatchers()
+                .find((watcher) => watcher.target === gitDir)
+                ?.emit("change", "rename", null);
+            expect(
+                worktreesWatcher?.close,
+                "an event in the worktree's own Git directory closed the shared worktrees watch",
+            ).not.toHaveBeenCalled();
+        } finally {
+            subscription.dispose();
+        }
+    });
+
     it("starts watching the worktrees directory once Git creates it", () => {
         const commonDir = "/repo/.git";
         const worktreesDir = path.join(commonDir, "worktrees");
