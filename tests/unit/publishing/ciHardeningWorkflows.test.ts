@@ -467,12 +467,12 @@ describe("CI quality hardening workflows", () => {
         const marketplaceContracts = [
             {
                 name: "Publish to VS Code Marketplace",
-                command: 'run: bunx vsce publish --packagePath "$VSIX_PATH" -p "$VSCE_PAT"',
+                command: 'bunx vsce publish --packagePath "$VSIX_PATH" -p "$VSCE_PAT"',
                 token: "VSCE_PAT: ${{ secrets.VSCE_PAT }}",
             },
             {
                 name: "Publish to Open VSX",
-                command: 'run: bunx ovsx publish -p "$OVSX_PAT" "$VSIX_PATH"',
+                command: 'bunx ovsx publish -p "$OVSX_PAT" "$VSIX_PATH"',
                 token: "OVSX_PAT: ${{ secrets.OVSX_PAT }}",
             },
         ];

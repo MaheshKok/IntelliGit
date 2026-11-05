@@ -533,6 +533,117 @@ function runOpenVsxPublish(script: string, options: OpenVsxPublishOptions) {
     }
 }
 
+/** The error `ovsx` printed when release run 41933517823 timed out although the upload landed. */
+const OPEN_VSX_NO_RESPONSE =
+    "❌  No response from https://open-vsx.org/api/-/publish for 30000 ms.";
+
+interface MarketplacePublishOptions {
+    /** What `vsce publish` prints before failing; an empty string makes the publish succeed. */
+    readonly publishError: string;
+    /** The `vsce show` call from which the listing includes 9.9.9; 999 means it never does. */
+    readonly listedAfter: number;
+    readonly publishedBytes?: string;
+    /** How many vspackage downloads fail before one succeeds. */
+    readonly downloadFailures?: number;
+}
+
+/** Executes the Marketplace publishing step with a listing that lags the upload by a set number of polls. */
+function runMarketplacePublish(script: string, options: MarketplacePublishOptions) {
+    const workspace = mkdtempSync(join(tmpdir(), "publish-marketplace-"));
+    try {
+        const showCountPath = join(workspace, "show-count");
+        const curlLogPath = join(workspace, "curl-calls");
+        const sleepLogPath = join(workspace, "sleep-calls");
+        const vsixPath = join(workspace, "selected.vsix");
+        writeFileSync(showCountPath, "0");
+        writeFileSync(curlLogPath, "");
+        writeFileSync(sleepLogPath, "");
+        writeFileSync(vsixPath, "selected artifact bytes");
+        const bunxStub =
+            `bunx() {\n` +
+            `if [ "$1" = "vsce" ] && [ "$2" = "publish" ]; then\n` +
+            `  if [ -z "$PUBLISH_ERROR" ]; then echo 'Published test-owner.test-extension v9.9.9.'; return 0; fi\n` +
+            `  printf '%s\\n' "$PUBLISH_ERROR" >&2\n` +
+            `  return 1\n` +
+            `fi\n` +
+            `if [ "$1" = "vsce" ] && [ "$2" = "show" ]; then\n` +
+            `  count=$(($(cat "$SHOW_COUNT_PATH") + 1))\n` +
+            `  printf '%s' "$count" > "$SHOW_COUNT_PATH"\n` +
+            `  if [ "$count" -ge "$LISTED_AFTER" ]; then\n` +
+            `    echo '{"versions":[{"version":"9.9.9"},{"version":"9.9.8"}]}'\n` +
+            `  else\n` +
+            `    echo '{"versions":[{"version":"9.9.8"}]}'\n` +
+            `  fi\n` +
+            `  return 0\n` +
+            `fi\n` +
+            `return 2\n` +
+            `}\n`;
+        const curlStub =
+            `curl() {\n` +
+            `printf '%s\\n' "$*" >> "$CURL_LOG_PATH"\n` +
+            `if [ "$(($(wc -l < "$CURL_LOG_PATH")))" -le "$DOWNLOAD_FAILURES" ]; then\n` +
+            `  echo 'curl: (22) The requested URL returned error: 404' >&2\n` +
+            `  return 22\n` +
+            `fi\n` +
+            `output=''\n` +
+            `while [ "$#" -gt 0 ]; do\n` +
+            `  case "$1" in --output|-o) output="$2"; shift 2 ;; *) shift ;; esac\n` +
+            `done\n` +
+            `printf '%s' "$PUBLISHED_BYTES" > "$output"\n` +
+            `}\n`;
+        const sleepStub = `sleep() { printf '%s\\n' "$1" >> "$SLEEP_LOG_PATH"; }\n`;
+        writeFileSync(join(workspace, "publish.sh"), `${bunxStub}${curlStub}${sleepStub}${script}`);
+
+        const result = spawnSync("bash", ["-e", join(workspace, "publish.sh")], {
+            cwd: workspace,
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                SHOW_COUNT_PATH: showCountPath,
+                CURL_LOG_PATH: curlLogPath,
+                SLEEP_LOG_PATH: sleepLogPath,
+                DOWNLOAD_FAILURES: String(options.downloadFailures ?? 0),
+                PUBLISH_ERROR: options.publishError,
+                LISTED_AFTER: String(options.listedAfter),
+                PUBLISHED_BYTES: options.publishedBytes ?? "",
+                VSIX_PATH: vsixPath,
+                VSCE_PAT: "test-token",
+                EXTENSION_ID: "test-owner.test-extension",
+                EXTENSION_PUBLISHER: "test-owner",
+                EXTENSION_NAME: "test-extension",
+                NEW_VERSION: "9.9.9",
+            },
+        });
+
+        return {
+            status: result.status,
+            stderr: result.stderr ?? "",
+            showCalls: Number(readFileSync(showCountPath, "utf8")),
+            curlCalls: readFileSync(curlLogPath, "utf8").split("\n").filter(Boolean),
+            sleeps: readFileSync(sleepLogPath, "utf8").split("\n").filter(Boolean),
+        };
+    } finally {
+        removeScratchDirectoriesSync(workspace);
+    }
+}
+
+/** The release job's and the recovery job's copy of one registry step's script, labelled for messages. */
+function publishStepScripts(
+    stepName: string,
+): { readonly label: string; readonly script: string }[] {
+    const release = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+    const recovery = existsSync(RECOVERY_WORKFLOW_PATH)
+        ? extractJobBlock(readFileSync(RECOVERY_WORKFLOW_PATH, "utf8"), "recover")
+        : "";
+    return [
+        { label: "publish.yml", script: extractRunScript(extractStepBlock(release, stepName)) },
+        {
+            label: "recover-release.yml",
+            script: extractRunScript(extractStepBlock(recovery, stepName)),
+        },
+    ];
+}
+
 /** The nightly workflow, or an empty string when it is absent, so a missing file reads as a
  * failed assertion rather than a thrown read. */
 function readNightlyWorkflow(): string {
@@ -721,6 +832,117 @@ describe("publish visual workflow", () => {
         });
         expect(liveMismatch.status, "ambiguous success with different bytes must fail").not.toBe(0);
         expect(liveMismatch.attempts).toBe(1);
+    });
+
+    it("runs one Open VSX and one Marketplace script in both the release and the recovery job", () => {
+        for (const step of ["Publish to Open VSX", "Publish to VS Code Marketplace"]) {
+            const [release, recovery] = publishStepScripts(step);
+            expect(release?.script, `publish.yml "${step}" must carry a run script`).not.toBe("");
+            expect(
+                release?.script,
+                `publish.yml "${step}" must match recover-release.yml, or a fix lands in one job only`,
+            ).toBe(recovery?.script);
+        }
+    });
+
+    it("retries an Open VSX publish that got no response, and accepts it once it is live", () => {
+        for (const { label, script } of publishStepScripts("Publish to Open VSX")) {
+            const missing = runOpenVsxPublish(script, {
+                publishError: OPEN_VSX_NO_RESPONSE,
+                probe: "missing",
+            });
+            expect(missing.attempts, `${label}: a no-response publish is transient`).toBe(3);
+
+            const landed = runOpenVsxPublish(script, {
+                publishError: OPEN_VSX_NO_RESPONSE,
+                probe: "live",
+                publishedBytes: "selected artifact bytes",
+            });
+            expect(landed.status, `${label}: a no-response upload that landed intact passes`).toBe(
+                0,
+            );
+            expect(landed.attempts, `${label}: a landed upload is not sent again`).toBe(1);
+        }
+    });
+
+    it("verifies a Marketplace version that already exists once the listing shows it", () => {
+        const alreadyExists = "ERROR  test-owner.test-extension v9.9.9 already exists.";
+        for (const { label, script } of publishStepScripts("Publish to VS Code Marketplace")) {
+            const published = runMarketplacePublish(script, { publishError: "", listedAfter: 1 });
+            expect(published.status, `${label}: a clean publish passes`).toBe(0);
+            expect(published.showCalls, `${label}: a clean publish never polls`).toBe(0);
+
+            const lagging = runMarketplacePublish(script, {
+                publishError: alreadyExists,
+                listedAfter: 3,
+                publishedBytes: "selected artifact bytes",
+            });
+            expect(lagging.status, `${label}: identical bytes behind a lagging listing pass`).toBe(
+                0,
+            );
+            expect(
+                lagging.showCalls,
+                `${label}: it waits until the listing shows the version`,
+            ).toBe(3);
+            expect(lagging.sleeps, `${label}: it waits 30 seconds between polls`).toEqual([
+                "30",
+                "30",
+            ]);
+            expect(
+                lagging.curlCalls,
+                `${label}: it downloads once the version is listed`,
+            ).toHaveLength(1);
+            const download = lagging.curlCalls[0] ?? "";
+            expect(download, `${label}: the download asks for a decompressed VSIX`).toContain(
+                "--compressed",
+            );
+            expect(download, `${label}: the download reads the selected version's VSIX`).toContain(
+                "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/test-owner/vsextensions/test-extension/9.9.9/vspackage",
+            );
+
+            const downloadLag = runMarketplacePublish(script, {
+                publishError: alreadyExists,
+                listedAfter: 1,
+                downloadFailures: 2,
+                publishedBytes: "selected artifact bytes",
+            });
+            expect(downloadLag.status, `${label}: a download that trails the listing passes`).toBe(
+                0,
+            );
+            expect(downloadLag.curlCalls, `${label}: a failed download polls again`).toHaveLength(
+                3,
+            );
+
+            for (const publishedBytes of ["different bytes", "selected artifact bytez"]) {
+                const different = runMarketplacePublish(script, {
+                    publishError: alreadyExists,
+                    listedAfter: 1,
+                    publishedBytes,
+                });
+                expect(
+                    different.status,
+                    `${label}: published "${publishedBytes}" fails closed`,
+                ).not.toBe(0);
+                expect(different.stderr).toContain("does not match the selected artifact");
+            }
+
+            const neverListed = runMarketplacePublish(script, {
+                publishError: alreadyExists,
+                listedAfter: 999,
+                publishedBytes: "selected artifact bytes",
+            });
+            expect(neverListed.status, `${label}: a listing that never shows it fails`).not.toBe(0);
+            expect(neverListed.showCalls, `${label}: the wait is bounded`).toBe(20);
+
+            const unauthorized = runMarketplacePublish(script, {
+                publishError: "ERROR  Failed request: (401)",
+                listedAfter: 1,
+            });
+            expect(unauthorized.status, `${label}: any other publish error fails`).not.toBe(0);
+            expect(unauthorized.showCalls, `${label}: any other error fails without waiting`).toBe(
+                0,
+            );
+        }
     });
 
     it("keeps recovery status lookup in the repository while reading the selected package", () => {
