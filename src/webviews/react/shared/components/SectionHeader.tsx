@@ -224,6 +224,7 @@ export function SectionStatsText({ stats }: { stats?: SectionStats }): React.Rea
     );
 }
 
+/** A commit-info disclosure row; an `action` sits beside the row, outside its button role, on the same toolbar surface. */
 function CommitInfoSectionHeader({
     label,
     expanded = false,

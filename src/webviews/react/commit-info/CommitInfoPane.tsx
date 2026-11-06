@@ -25,6 +25,7 @@ interface CommitInfoViewState {
     commitInfoGroupByDir?: boolean;
 }
 
+/** The saved Group by Directory choice; the folder tree when nothing is saved or the state cannot be read. */
 function readGroupByDir(): boolean {
     try {
         return (
@@ -35,6 +36,7 @@ function readGroupByDir(): boolean {
     }
 }
 
+/** Saves the choice into the panel's shared webview state, keeping what other views of the panel saved there. */
 function persistGroupByDir(groupByDir: boolean): void {
     try {
         const api = getVsCodeApi<unknown, CommitInfoViewState>();
