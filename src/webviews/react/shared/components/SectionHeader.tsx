@@ -45,6 +45,8 @@ interface CommitInfoSectionHeaderProps {
     expanded?: boolean;
     onToggle?: () => void;
     borderBottom?: boolean;
+    /** A control drawn beside the disclosure row, never inside it, so it keeps its own button role. */
+    action?: React.ReactNode;
 }
 
 type SectionHeaderProps = CommitPanelSectionHeaderProps | CommitInfoSectionHeaderProps;
@@ -228,56 +230,67 @@ function CommitInfoSectionHeader({
     onToggle,
     stats,
     borderBottom = false,
+    action,
 }: CommitInfoSectionHeaderProps): React.ReactElement {
+    const surface = {
+        bg: JETBRAINS_UI.color.toolbar,
+        borderBottom: borderBottom ? `1px solid ${JETBRAINS_UI.color.border}` : undefined,
+    };
+    const row = (
+        <Box
+            display="flex"
+            alignItems="center"
+            px="8px"
+            py="4px"
+            fontWeight={600}
+            fontSize="12px"
+            color={JETBRAINS_UI.color.muted}
+            {...(action ? { flex: 1, minW: 0 } : surface)}
+            cursor={onToggle ? "pointer" : undefined}
+            tabIndex={onToggle ? 0 : undefined}
+            role={onToggle ? "button" : undefined}
+            aria-expanded={onToggle ? expanded : undefined}
+            onClick={onToggle}
+            onKeyDown={
+                onToggle
+                    ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              onToggle();
+                          }
+                      }
+                    : undefined
+            }
+        >
+            <ChevronIcon expanded={expanded} />
+            <Box as="span">{label}</Box>
+            {stats && (stats.additions > 0 || stats.deletions > 0) && (
+                <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
+                    {stats.additions > 0 && (
+                        <Box
+                            as="span"
+                            color="var(--intelligit-pycharm-added)"
+                            mr={stats.deletions > 0 ? "4px" : "0"}
+                        >
+                            +{stats.additions}
+                        </Box>
+                    )}
+                    {stats.deletions > 0 && (
+                        <Box as="span" color="var(--intelligit-pycharm-deleted)">
+                            -{stats.deletions}
+                        </Box>
+                    )}
+                </Box>
+            )}
+        </Box>
+    );
+    if (!action) return <SectionHeading>{row}</SectionHeading>;
     return (
         <SectionHeading>
-            <Box
-                display="flex"
-                alignItems="center"
-                px="8px"
-                py="4px"
-                fontWeight={600}
-                fontSize="12px"
-                color={JETBRAINS_UI.color.muted}
-                bg={JETBRAINS_UI.color.toolbar}
-                borderBottom={borderBottom ? `1px solid ${JETBRAINS_UI.color.border}` : undefined}
-                cursor={onToggle ? "pointer" : undefined}
-                tabIndex={onToggle ? 0 : undefined}
-                role={onToggle ? "button" : undefined}
-                aria-expanded={onToggle ? expanded : undefined}
-                onClick={onToggle}
-                onKeyDown={
-                    onToggle
-                        ? (event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                  event.preventDefault();
-                                  onToggle();
-                              }
-                          }
-                        : undefined
-                }
-            >
-                <ChevronIcon expanded={expanded} />
-                <Box as="span">{label}</Box>
-                {stats && (stats.additions > 0 || stats.deletions > 0) && (
-                    <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
-                        {stats.additions > 0 && (
-                            <Box
-                                as="span"
-                                color="var(--intelligit-pycharm-added)"
-                                mr={stats.deletions > 0 ? "4px" : "0"}
-                            >
-                                +{stats.additions}
-                            </Box>
-                        )}
-                        {stats.deletions > 0 && (
-                            <Box as="span" color="var(--intelligit-pycharm-deleted)">
-                                -{stats.deletions}
-                            </Box>
-                        )}
-                    </Box>
-                )}
-            </Box>
+            <Flex align="center" pr="4px" {...surface}>
+                {row}
+                {action}
+            </Flex>
         </SectionHeading>
     );
 }

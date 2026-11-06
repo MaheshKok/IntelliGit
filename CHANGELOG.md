@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-11-06
+
+### Added
+
+- The Git Log's Changed Files pane can now list a commit's files as a flat list instead of a folder tree. Click the Group by Directory button in the pane's header to switch; each file then shows its folder beside its name. IntelliGit remembers your choice.
+
 ## [0.42.5] - 2026-11-05
 
 ### Changed
