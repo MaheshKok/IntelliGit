@@ -1,15 +1,18 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { SYSTEM_FONT_STACK } from "../../../utils/constants";
 import { Box, Flex } from "@chakra-ui/react";
+import { VscListTree } from "react-icons/vsc";
 import type { CommitDetail, CommitFile, ThemeFolderIconMap, ThemeTreeIcon } from "../../../types";
 import { formatDateTime } from "../shared/date";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
 import { RefTypeIcon } from "../shared/components/RefTypeIcon";
 import { FileTreeRows } from "../shared/components/FileTreeRows";
 import { SectionHeader } from "../shared/components/SectionHeader";
+import { ToolbarIconButton } from "../shared/components/ToolbarIconButton";
 import { splitCommitRefs } from "../shared/utils/refs";
-import { JETBRAINS_UI } from "../shared/tokens";
+import { JETBRAINS_UI, TOOLBAR_ICON_ACCENTS } from "../shared/tokens";
 import { t } from "../shared/i18n";
+import { getVsCodeApi } from "../shared/vscodeApi";
 import {
     buildFileTree,
     collectDirPaths,
@@ -17,6 +20,31 @@ import {
 } from "../shared/fileTree";
 
 type TreeEntry = GenericTreeEntry<CommitFile>;
+
+interface CommitInfoViewState {
+    commitInfoGroupByDir?: boolean;
+}
+
+/** The saved Group by Directory choice; the folder tree when nothing is saved or the state cannot be read. */
+function readGroupByDir(): boolean {
+    try {
+        return (
+            getVsCodeApi<unknown, CommitInfoViewState>().getState()?.commitInfoGroupByDir ?? true
+        );
+    } catch {
+        return true;
+    }
+}
+
+/** Saves the choice into the panel's shared webview state, keeping what other views of the panel saved there. */
+function persistGroupByDir(groupByDir: boolean): void {
+    try {
+        const api = getVsCodeApi<unknown, CommitInfoViewState>();
+        api.setState({ ...api.getState(), commitInfoGroupByDir: groupByDir });
+    } catch {
+        // Ignore persistence errors and keep the toggle working for this session.
+    }
+}
 
 interface FileStats {
     additions: number;
@@ -141,8 +169,15 @@ export function CommitInfoPane({
         },
     );
 
+    const [groupByDir, setGroupByDir] = useState(readGroupByDir);
+
     const detailHash = detail?.hash ?? null;
-    const tree = useMemo(() => buildFileTree(detail?.files ?? []), [detail?.files]);
+    const tree = useMemo<TreeEntry[]>(() => {
+        const files = detail?.files ?? [];
+        return groupByDir
+            ? buildFileTree(files)
+            : files.map((file) => ({ type: "file" as const, file }));
+    }, [detail?.files, groupByDir]);
     const defaultExpandedDirs = useMemo(() => new Set(collectDirPaths(tree)), [tree]);
     const expandedDirs =
         expandedDirsState.commitHash === detailHash ? expandedDirsState.dirs : defaultExpandedDirs;
@@ -186,6 +221,11 @@ export function CommitInfoPane({
         setDetailCollapsed((value) => !value);
     }, []);
 
+    const toggleGroupByDir = useCallback(() => {
+        setGroupByDir(!groupByDir);
+        persistGroupByDir(!groupByDir);
+    }, [groupByDir]);
+
     if (!detail) {
         // `hasSelection` counts as loading, not as an empty selection. A graph beside this pane
         // auto-selects its newest commit and only then asks the host for the detail, so between
@@ -218,10 +258,12 @@ export function CommitInfoPane({
                 expandedDirs={expandedDirs}
                 selectedFilePath={selectedFilePath}
                 filesCollapsed={filesCollapsed}
+                groupByDir={groupByDir}
                 folderIcon={folderIcon}
                 folderExpandedIcon={folderExpandedIcon}
                 folderIconsByName={folderIconsByName}
                 onToggleFiles={toggleFilesCollapsed}
+                onToggleGroupByDir={toggleGroupByDir}
                 onToggleDir={toggleDir}
                 onSelectFile={selectFile}
                 onOpenDiff={onOpenDiff}
@@ -350,10 +392,12 @@ function CommitChangedFilesPanel({
     expandedDirs,
     selectedFilePath,
     filesCollapsed,
+    groupByDir,
     folderIcon,
     folderExpandedIcon,
     folderIconsByName,
     onToggleFiles,
+    onToggleGroupByDir,
     onToggleDir,
     onSelectFile,
     onOpenDiff,
@@ -364,10 +408,12 @@ function CommitChangedFilesPanel({
     expandedDirs: Set<string>;
     selectedFilePath: string | null;
     filesCollapsed: boolean;
+    groupByDir: boolean;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
     onToggleFiles: () => void;
+    onToggleGroupByDir: () => void;
     onToggleDir: (path: string) => void;
     onSelectFile: (path: string) => void;
     onOpenDiff?: (commitHash: string, filePath: string) => void;
@@ -383,12 +429,22 @@ function CommitChangedFilesPanel({
                 onToggle={onToggleFiles}
                 stats={stats}
                 borderBottom={true}
+                action={
+                    <ToolbarIconButton
+                        label={groupByDir ? t("common.ungroupFiles") : t("common.groupByDirectory")}
+                        onClick={onToggleGroupByDir}
+                        pressed={groupByDir}
+                        color={TOOLBAR_ICON_ACCENTS.groupBy}
+                        icon={<VscListTree size={16} />}
+                    />
+                }
             />
             {!filesCollapsed && (
                 <Box flex="1 1 auto" overflowY="auto" minH="40px" py="4px">
                     <FileTreeRows
                         entries={tree}
                         depth={0}
+                        showParentPath={!groupByDir}
                         folderIcon={folderIcon}
                         folderExpandedIcon={folderExpandedIcon}
                         folderIconsByName={folderIconsByName}
