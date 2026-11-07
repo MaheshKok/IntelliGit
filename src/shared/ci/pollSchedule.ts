@@ -9,6 +9,21 @@ export const PENDING_CHECK_RETRY_DELAYS_MS = [
 /** Cumulative retry intervals while a pushed current HEAD has no registered checks. */
 export const HEAD_NONE_CHECK_RETRY_DELAYS_MS = [3_000, 5_000, 10_000, 30_000] as const;
 
+/** HEAD monitor poll interval once the pending ladder is used up (K26). */
+const HEAD_MONITOR_STEADY_POLL_MS = 120_000;
+
+/**
+ * HEAD monitor schedule (K26): the pending ladder, then every 120 s while HEAD stays
+ * incomplete, with no per-hash cap (36 snapshot fetches in an incomplete hour).
+ *
+ * @param attempt - Zero-based poll number since the monitor started on this HEAD.
+ * @returns Delay before that poll.
+ * @public consumed by later CI tab phases.
+ */
+export function headMonitorDelayMs(attempt: number): number {
+    return PENDING_CHECK_RETRY_DELAYS_MS[attempt] ?? HEAD_MONITOR_STEADY_POLL_MS;
+}
+
 /**
  * Hard ceiling on retry attempts for a single commit hash, counted across ladder
  * resets rather than within one ladder.

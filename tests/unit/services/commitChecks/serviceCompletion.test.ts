@@ -77,13 +77,117 @@ describe("CommitChecksService completion and per-key fence", () => {
         await vi.waitFor(() => expect(preInvalidate).toHaveBeenCalledTimes(1));
 
         await service.invalidate(KEY);
+        // The fenced caller asks again; that second request is the post-invalidate one.
+        preInvalidate.mockImplementation(async () => snapshot("pending"));
         before.resolve(snapshot("failure"));
         await old;
 
-        const after = vi.fn(async () => snapshot("pending"));
+        const after = vi.fn(async () => snapshot("success"));
         await expect(service.getOrFetch(KEY, after)).resolves.toMatchObject({ state: "pending" });
-        expect(after).toHaveBeenCalledTimes(1);
+        expect(after).not.toHaveBeenCalled();
         expect(await persistent.get(KEY)).toBeUndefined();
+    });
+
+    it("a fetch started before invalidate does not hand its result to its caller", async () => {
+        const service = new CommitChecksService();
+        const before = deferred<CommitChecksSnapshot>();
+        const fetchSnapshot = vi.fn(() => before.promise);
+        const old = service.getOrFetch(KEY, fetchSnapshot);
+        const joined = service.getOrFetch(KEY, fetchSnapshot);
+
+        await service.invalidate(KEY);
+        fetchSnapshot.mockImplementation(async () => snapshot("pending"));
+        before.resolve(snapshot("failure"));
+
+        await expect(old).resolves.toMatchObject({ state: "pending" });
+        await expect(joined).resolves.toMatchObject({ state: "pending" });
+        expect(fetchSnapshot).toHaveBeenCalledTimes(2);
+    });
+
+    it("a rejected persistent clear fails closed: the previous entry is never served", async () => {
+        const state = memento();
+        const persistent = new CommitChecksPersistentCache(state);
+        const service = new CommitChecksService({ persistentCache: persistent });
+        await service.getOrFetch(KEY, async () => snapshot("failure"));
+        vi.mocked(state.update).mockImplementation(async (_key, value) => {
+            if (value === undefined) throw new Error("storage is read-only");
+        });
+
+        service.clear();
+
+        const refetch = vi.fn(async () => snapshot("success"));
+        await expect(service.getOrFetch(KEY, refetch)).resolves.toMatchObject({
+            state: "success",
+        });
+        expect(refetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("a forced refresh that finds pending work drops the settled entry from L2", async () => {
+        const state = memento();
+        const service = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        await service.getOrFetch(KEY, async () => snapshot("failure"));
+        await service.getOrFetch(KEY, async () => snapshot("pending"), { force: true });
+
+        const restarted = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        const refetch = vi.fn(async () => snapshot("pending"));
+        await expect(restarted.getOrFetch(KEY, refetch)).resolves.toMatchObject({
+            state: "pending",
+        });
+        expect(refetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("an unavailable forced refresh keeps the settled entry in L2", async () => {
+        const state = memento();
+        const service = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        await service.getOrFetch(KEY, async () => snapshot("failure"));
+        await service.getOrFetch(KEY, async () => snapshot("unavailable", []), { force: true });
+
+        const restarted = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        const refetch = vi.fn(async () => snapshot("pending"));
+        await expect(restarted.getOrFetch(KEY, refetch)).resolves.toMatchObject({
+            state: "failure",
+        });
+        expect(refetch).not.toHaveBeenCalled();
+    });
+
+    it("traces snapshot fetches and cache hits without the cache key", async () => {
+        const state = memento();
+        await new CommitChecksPersistentCache(state).set(KEY, snapshot("success"));
+        const trace = vi.fn();
+        const service = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+            trace,
+        });
+
+        await service.getOrFetch(KEY, async () => snapshot("pending"), {}, "github");
+        await service.getOrFetch(KEY, async () => snapshot("pending"), {}, "github");
+        await service.getOrFetch(
+            "other@def5678:-",
+            async () => ({ ...snapshot("pending"), hash: "def5678" }),
+            {},
+            "gitlab",
+        );
+
+        expect(trace.mock.calls.map(([event]) => event)).toEqual([
+            { kind: "snapshot", outcome: "hit-l2", provider: "github", hash: "abc1234" },
+            { kind: "snapshot", outcome: "hit-l1", provider: "github", hash: "abc1234" },
+            {
+                kind: "snapshot",
+                outcome: "incomplete",
+                provider: "gitlab",
+                hash: "def5678",
+                ms: expect.any(Number),
+            },
+        ]);
+        expect(JSON.stringify(trace.mock.calls)).not.toContain("github:repo");
     });
 
     it("force after invalidate does not join the pre-invalidate fetch", async () => {

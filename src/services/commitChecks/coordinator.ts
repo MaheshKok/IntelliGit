@@ -12,7 +12,8 @@ import type {
     ProviderId,
 } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
-import type { CiOperationContext } from "./ciGenerations";
+import type { CiGenerations, CiOperationContext } from "./ciGenerations";
+import type { CiTrace } from "./ciTrace";
 import { CommitCiDetailService } from "./detailService";
 import { summaryForState, unavailableSnapshot } from "./normalize";
 import { CommitChecksService, type CommitChecksFetchOptions } from "./service";
@@ -50,6 +51,10 @@ export interface CommitChecksCoordinatorOptions {
     detailService?: CommitCiDetailService;
     /** Content-affecting settings fingerprint included in the shared cache key. */
     settingsFingerprint?: string;
+    /** Host-wide auth and lifecycle generations checked by detail requests. */
+    generations?: CiGenerations;
+    /** Token-free diagnostic trace for discarded detail requests. */
+    trace?: CiTrace;
 }
 
 /** Resolves the provider for a repository and delegates snapshots to the shared cache. */
@@ -59,6 +64,8 @@ export class CommitChecksCoordinator {
     private readonly service: CommitChecksService;
     private readonly detailService: CommitCiDetailService;
     private readonly settingsFingerprint: string;
+    private readonly generations?: CiGenerations;
+    private readonly trace?: CiTrace;
     private resolvedProvider = false;
     private providerMatch: ProviderMatch | null = null;
     private providerGeneration = 0;
@@ -91,6 +98,8 @@ export class CommitChecksCoordinator {
             options.detailService ??
             new CommitCiDetailService({ ttlMs: options.ttlMs, now: options.now });
         this.settingsFingerprint = options.settingsFingerprint ?? "-";
+        this.generations = options.generations;
+        this.trace = options.trace;
     }
 
     /** Drops shared cached snapshots and details; called after credential/settings changes. */
@@ -137,7 +146,9 @@ export class CommitChecksCoordinator {
      * @param hash - Full Git commit hash.
      * @param options - `force` bypasses the detail caches (and the snapshot caches for a
      *   provider without its own detail).
-     * @param ctx - Context captured when the operation started.
+     * @param ctx - Context captured when the operation started. A sign-in change, a CI
+     *   settings change, a closed repository or a repository switch after it was captured
+     *   also yields undefined, so the caller publishes nothing.
      */
     async getDetail(
         hash: string,
@@ -145,12 +156,14 @@ export class CommitChecksCoordinator {
         ctx: CiOperationContext,
     ): Promise<CommitCiDetail | undefined> {
         if (!this.enabled) return undefined;
+        const providerGeneration = this.providerGeneration;
         let match: ProviderMatch | null;
         try {
             match = await this.resolveEnabledMatch();
         } catch {
             return undefined;
         }
+        if (!this.isCurrent(ctx, providerGeneration)) return this.discard(ctx, hash);
         if (!match) return undefined;
         const { provider, ref } = match;
         const snapshotKey = this.snapshotKey(match, hash);
@@ -168,12 +181,35 @@ export class CommitChecksCoordinator {
               }
             : async (): Promise<CommitCiDetailData> =>
                   floorDetail(await this.fetchSnapshot(match, hash, options), provider.id);
-        return this.detailService.getOrFetch(
+        const detail = await this.detailService.getOrFetch(
             `${snapshotKey}#detail`,
             fetchDetail,
             { repoKey: ctx.repoKey, capabilities: provider.capabilities },
             options,
         );
+        if (!this.isCurrent(ctx, providerGeneration)) return this.discard(ctx, hash, provider.id);
+        return detail;
+    }
+
+    /**
+     * Whether a detail operation may still publish: same auth and lifecycle generations,
+     * and the coordinator still serves the repository it started for. The surface that
+     * publishes also compares `ctx.repoKey` with the repository it shows.
+     */
+    private isCurrent(ctx: CiOperationContext, providerGeneration: number): boolean {
+        if (providerGeneration !== this.providerGeneration) return false;
+        return this.generations?.isCurrent(ctx, ctx.repoKey) ?? true;
+    }
+
+    private discard(ctx: CiOperationContext, hash: string, provider?: ProviderId): undefined {
+        this.trace?.({
+            kind: "detail",
+            outcome: "discarded-generation",
+            repoKey: ctx.repoKey,
+            provider,
+            hash,
+        });
+        return undefined;
     }
 
     /**
@@ -256,6 +292,7 @@ export class CommitChecksCoordinator {
                 }
             },
             options,
+            match.provider.id,
         );
     }
 

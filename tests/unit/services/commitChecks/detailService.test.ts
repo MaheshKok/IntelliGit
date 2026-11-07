@@ -230,6 +230,56 @@ describe("CommitCiDetailService", () => {
         });
     });
 
+    it("a fetch started before invalidate does not hand its result to its caller", async () => {
+        const { service: details } = service();
+        const before = deferred<CommitCiDetailData>();
+        const fetchDetail = vi.fn(() => before.promise);
+        const old = details.getOrFetch(KEY, fetchDetail, SERVE);
+        await vi.waitFor(() => expect(fetchDetail).toHaveBeenCalledTimes(1));
+
+        await details.invalidate(KEY);
+        fetchDetail.mockImplementation(async () => detail({ complete: false, outcome: "pending" }));
+        before.resolve(detail());
+
+        await expect(old).resolves.toMatchObject({ outcome: "pending", repoKey: "/repo" });
+        expect(fetchDetail).toHaveBeenCalledTimes(2);
+    });
+
+    it("a rejected persistent clear fails closed: the previous entry is never served", async () => {
+        const state = memento();
+        const { service: details } = service(state);
+        await details.getOrFetch(KEY, async () => detail(), SERVE);
+        vi.mocked(state.update).mockImplementation(async (_key, value) => {
+            if (value === undefined) throw new Error("storage is read-only");
+        });
+
+        details.clear();
+
+        const refetch = vi.fn(async () => detail({ outcome: "success" }));
+        await expect(details.getOrFetch(KEY, refetch, SERVE)).resolves.toMatchObject({
+            outcome: "success",
+        });
+        expect(refetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("a forced refresh that finds pending work drops the settled entry from L2", async () => {
+        const state = memento();
+        const { service: details } = service(state);
+        await details.getOrFetch(KEY, async () => detail(), SERVE);
+        await details.getOrFetch(
+            KEY,
+            async () => detail({ complete: false, outcome: "pending" }),
+            SERVE,
+            { force: true },
+        );
+
+        const refetch = vi.fn(async () => detail({ complete: false, outcome: "pending" }));
+        await expect(service(state).service.getOrFetch(KEY, refetch, SERVE)).resolves.toMatchObject(
+            { outcome: "pending" },
+        );
+        expect(refetch).toHaveBeenCalledTimes(1);
+    });
+
     it("invalidate deletes the persisted entry (new service over the same Memento misses)", async () => {
         const state = memento();
         const { service: details } = service(state);

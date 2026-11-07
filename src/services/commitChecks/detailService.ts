@@ -53,6 +53,8 @@ export class CommitCiDetailService {
     private readonly now: () => number;
     private readonly persistentCache?: CiDetailPersistentCache;
     private readonly trace?: CiTrace;
+    // False once a clear() failed: the store may still hold another account's entries.
+    private persistentReadable = Promise.resolve(true);
     private generation = 0;
 
     /**
@@ -85,14 +87,23 @@ export class CommitCiDetailService {
         serve: CiDetailServeContext,
         options: CommitChecksFetchOptions = {},
     ): Promise<CommitCiDetail> {
+        return attach(await this.getData(key, fetchDetail, serve, options), serve);
+    }
+
+    private async getData(
+        key: string,
+        fetchDetail: () => Promise<CommitCiDetailData>,
+        serve: CiDetailServeContext,
+        options: CommitChecksFetchOptions,
+    ): Promise<CommitCiDetailData> {
         const cached = this.cache.get(key);
         if (!options.force && cached && this.isFresh(cached)) {
             this.touch(key, cached);
             this.traceOutcome("hit-l1", cached.data, serve);
-            return attach(cached.data, serve);
+            return cached.data;
         }
         const inflight = this.inflight.get(key);
-        if (inflight) return attach(await inflight, serve);
+        if (inflight) return inflight;
         if (!options.force && this.persistentCache) {
             const readGeneration = this.captureGeneration(key);
             const persisted = await this.getPersisted(key);
@@ -101,34 +112,34 @@ export class CommitCiDetailService {
                 this.cache.set(key, { data: persisted, fetchedAt: this.now() });
                 this.evictOldest();
                 this.traceOutcome("hit-l2", persisted, serve);
-                return attach(persisted, serve);
+                return persisted;
             }
         }
         const newerInflight = this.inflight.get(key);
-        if (newerInflight) return attach(await newerInflight, serve);
+        if (newerInflight) return newerInflight;
         const generation = this.captureGeneration(key);
         const request = fetchDetail()
-            .then(async (data) => {
-                if (this.isCurrentGeneration(key, generation)) {
-                    const fetchedAt = this.now();
-                    this.cache.set(key, { data, fetchedAt });
-                    this.evictOldest();
-                    this.traceOutcome(
-                        isCompleteDetail(data) ? "fetched" : "incomplete",
-                        data,
-                        serve,
-                    );
-                    await this.persist(key, data, fetchedAt);
-                } else {
+            .then(async (data): Promise<CommitCiDetailData> => {
+                if (!this.isCurrentGeneration(key, generation)) {
                     this.traceOutcome("discarded-generation", data, serve);
+                    // invalidate() superseded this result: its callers get the newer one.
+                    if (this.captureGeneration(key)[1] !== generation[1]) {
+                        return this.getData(key, fetchDetail, serve, options);
+                    }
+                    return data;
                 }
+                const fetchedAt = this.now();
+                this.cache.set(key, { data, fetchedAt });
+                this.evictOldest();
+                this.traceOutcome(isCompleteDetail(data) ? "fetched" : "incomplete", data, serve);
+                await this.persist(key, data, fetchedAt);
                 return data;
             })
             .finally(() => {
                 if (this.inflight.get(key) === request) this.inflight.delete(key);
             });
         this.inflight.set(key, request);
-        return attach(await request, serve);
+        return request;
     }
 
     /**
@@ -149,7 +160,13 @@ export class CommitCiDetailService {
         this.generation += 1;
         this.cache.clear();
         this.inflight.clear();
-        void this.persistentCache?.clear().catch(() => undefined);
+        const clear = this.persistentCache?.clear();
+        if (clear) {
+            this.persistentReadable = clear.then(
+                () => true,
+                () => false,
+            );
+        }
     }
 
     private captureGeneration(key: string): readonly [number, number] {
@@ -184,6 +201,7 @@ export class CommitCiDetailService {
 
     private async getPersisted(key: string): Promise<CommitCiDetailData | undefined> {
         try {
+            if (!(await this.persistentReadable)) return undefined;
             return await this.persistentCache?.get(key);
         } catch {
             return undefined;

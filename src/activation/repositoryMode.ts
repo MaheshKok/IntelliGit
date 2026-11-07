@@ -264,16 +264,17 @@ export async function activateRepositoryMode(
         unavailableTtlMs: 15 * 60 * 1000,
         maxEntries: 1_000,
     };
+    let ciTraceChannel: vscode.LogOutputChannel | undefined;
+    const ciTrace = createCiTrace(() => {
+        ciTraceChannel = vscode.window.createOutputChannel("IntelliGit CI", { log: true });
+        return ciTraceChannel;
+    });
     const commitChecksService = new CommitChecksService({
         ...commitChecksCacheTtls,
         persistentCache: new CommitChecksPersistentCache(context.globalState, {
             noneMaxAgeMs: 60 * 60 * 1000,
         }),
-    });
-    let ciTraceChannel: vscode.LogOutputChannel | undefined;
-    const ciTrace = createCiTrace(() => {
-        ciTraceChannel = vscode.window.createOutputChannel("IntelliGit CI", { log: true });
-        return ciTraceChannel;
+        trace: ciTrace,
     });
     const commitCiDetailService = new CommitCiDetailService({
         ...commitChecksCacheTtls,
@@ -281,13 +282,22 @@ export async function activateRepositoryMode(
         trace: ciTrace,
     });
     const ciGenerations = new CiGenerations();
-    context.subscriptions.push({
-        dispose: () => {
-            // In-flight CI work started before the extension closed must not publish.
-            ciGenerations.bumpLifecycle();
-            ciTraceChannel?.dispose();
+    context.subscriptions.push(
+        {
+            dispose: () => {
+                // In-flight CI work started before the extension closed must not publish.
+                ciGenerations.bumpLifecycle();
+                ciTraceChannel?.dispose();
+            },
         },
-    });
+        // The coordinators keep their activation-time settings (reload to apply), but CI
+        // work already running must not publish under settings the user just changed.
+        vscode.workspace.onDidChangeConfiguration((event) => {
+            if (event.affectsConfiguration("intelligit.commitChecks")) {
+                ciGenerations.bumpLifecycle();
+            }
+        }),
+    );
     const requestGateRegistry = new CommitChecksRequestGateRegistry(
         vscode.l10n.t("Commit-check requests are temporarily paused due to rate limiting."),
     );
@@ -334,6 +344,8 @@ export async function activateRepositoryMode(
         settings: commitCheckSettings,
         commitChecksService,
         commitCiDetailService,
+        ciGenerations,
+        ciTrace,
         commitChecksProviders,
     });
     const sidebarGraph = new CommitGraphViewProvider(
@@ -347,6 +359,8 @@ export async function activateRepositoryMode(
             settings: commitCheckSettings,
             commitChecksService,
             commitCiDetailService,
+            ciGenerations,
+            ciTrace,
             commitChecksProviders,
         },
     );
@@ -375,6 +389,11 @@ export async function activateRepositoryMode(
         nextRepositories: DiscoveredRepository[],
         activeRoot: string | null = activeRepository.root,
     ): void => {
+        const closed = repositories.some(
+            (repository) => !nextRepositories.some((next) => next.root === repository.root),
+        );
+        // CI work started for a repository that just closed must not publish.
+        if (closed) ciGenerations.bumpLifecycle();
         repositories = nextRepositories;
         void setViewContext(HAS_MULTIPLE_REPOSITORIES_CONTEXT, repositories.length > 1);
         sidebarGraph.setShowRepositoryLabel(repositories.length > 1);
@@ -870,6 +889,8 @@ export async function activateRepositoryMode(
                 },
                 commitChecksService,
                 commitCiDetailService,
+                ciGenerations,
+                ciTrace,
                 commitChecksProviders,
                 commitMessageGenerationCoordinator,
                 onSelectedRepositoryRootChanged: async (root) => {

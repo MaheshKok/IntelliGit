@@ -90,15 +90,19 @@ export class CommitChecksPersistentCache {
     }
 
     /**
-     * Persists an eligible snapshot; incomplete (pending, or a failure with running
-     * checks) and unavailable snapshots are ignored.
+     * Persists an eligible snapshot. An incomplete one (pending, or a failure with
+     * running checks) removes any stored entry it supersedes, such as a rerun of a
+     * settled commit; an unavailable one changes nothing.
      *
      * @param key - Composite provider/repo/commit/settings key.
      * @param snapshot - Snapshot returned by a provider.
      * @param fetchedAt - Fetch timestamp to preserve across sessions.
      */
     async set(key: string, snapshot: CommitChecksSnapshot, fetchedAt = this.now()): Promise<void> {
-        if (!isPersistableSnapshot(snapshot)) return;
+        if (!isPersistableSnapshot(snapshot)) {
+            if (snapshot.state !== "unavailable") await this.delete(key);
+            return;
+        }
         await this.enqueue(async () => {
             const payload = this.read();
             const entry: PersistedCommitChecksEntry = {

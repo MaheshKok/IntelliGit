@@ -77,14 +77,19 @@ export class CiDetailPersistentCache {
     }
 
     /**
-     * Persists a detail when it is complete and fully covered; anything else is ignored.
+     * Persists a detail when it is complete and fully covered. Any other provider answer
+     * removes the stored entry it supersedes (a rerun of a settled commit); an
+     * unavailable one changes nothing.
      *
      * @param key - Detail cache key.
      * @param detail - Provider detail; read-time fields are stripped before writing.
      * @param fetchedAt - Fetch timestamp to preserve across sessions.
      */
     async set(key: string, detail: CommitCiDetailData, fetchedAt = this.now()): Promise<void> {
-        if (!isPersistableDetail(detail)) return;
+        if (!isPersistableDetail(detail)) {
+            if (detail.outcome !== "unavailable") await this.delete(key);
+            return;
+        }
         const data = toPersistedData(detail);
         await this.enqueue(async () => {
             const payload = this.read();

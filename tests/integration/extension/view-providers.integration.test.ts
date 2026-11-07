@@ -2358,6 +2358,64 @@ describe("view providers integration", () => {
         expect(captured.commitPanel!.runtimes.has(repoB)).toBe(true);
     });
 
+    it("bumps the CI lifecycle generation when CI settings change or a repository closes", async () => {
+        const { CiGenerations } = await import("../../../src/services/commitChecks/ciGenerations");
+        const bumpLifecycle = vi.spyOn(CiGenerations.prototype, "bumpLifecycle");
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const repoA = "/workspace/app-a";
+        const repoB = "/workspace/app-b";
+        const context = {
+            extensionUri: vscodeMock.Uri.file("/ext"),
+            subscriptions: [] as unknown[],
+            workspaceState: createMemento(),
+            secrets: {},
+        };
+        try {
+            await activateRepositoryMode(
+                context as never,
+                [
+                    { root: repoA, label: "app-a" },
+                    { root: repoB, label: "app-b" },
+                ],
+                { commitPanel: { setProvider: vi.fn() } } as never,
+            );
+            const configListeners = (
+                vscodeMock.workspace.onDidChangeConfiguration.mock.calls as unknown as [
+                    (event: { affectsConfiguration(section: string): boolean }) => void,
+                ][]
+            ).map(([listener]) => listener);
+            bumpLifecycle.mockClear();
+
+            for (const listener of configListeners) {
+                listener({ affectsConfiguration: (section) => section === "intelligit.shelf" });
+            }
+            expect(bumpLifecycle).not.toHaveBeenCalled();
+            for (const listener of configListeners) {
+                listener({
+                    affectsConfiguration: (section) => section === "intelligit.commitChecks",
+                });
+            }
+            expect(bumpLifecycle).toHaveBeenCalledTimes(1);
+
+            bumpLifecycle.mockClear();
+            discoverGitRepositoriesSpy.mockResolvedValueOnce([
+                { root: repoA, label: "app-a" },
+                { root: repoB, label: "app-b" },
+            ]);
+            await workspaceFolderListeners[0]();
+            await flushMicrotasks();
+            expect(bumpLifecycle).not.toHaveBeenCalled();
+
+            workspaceState.workspaceFolders = [{ uri: { fsPath: repoB, path: repoB } }];
+            discoverGitRepositoriesSpy.mockResolvedValueOnce([{ root: repoB, label: "app-b" }]);
+            await workspaceFolderListeners[0]();
+            await flushMicrotasks();
+            expect(bumpLifecycle).toHaveBeenCalledTimes(1);
+        } finally {
+            bumpLifecycle.mockRestore();
+        }
+    });
+
     it("registers startup active-editor repository watchers once", async () => {
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
         const repoA = "/workspace/app-a";

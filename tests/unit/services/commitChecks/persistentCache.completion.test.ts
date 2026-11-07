@@ -95,6 +95,16 @@ describe("CommitChecksPersistentCache completion and queue", () => {
         expect(await cache.get(KEY)).toBeUndefined();
     });
 
+    it("pending work found later removes the settled entry; unavailable keeps it", async () => {
+        const cache = new CommitChecksPersistentCache(slowMemento());
+        await cache.set(KEY, snapshot("failure"));
+        await cache.set(KEY, snapshot("unavailable", []));
+        expect(await cache.get(KEY)).toMatchObject({ state: "failure" });
+
+        await cache.set(KEY, snapshot("failure", [item("failure"), item("pending")]));
+        expect(await cache.get(KEY)).toBeUndefined();
+    });
+
     it("generation change while an old set is queued → the old entry never reappears", async () => {
         const cache = new CommitChecksPersistentCache(slowMemento());
         const write = cache.set(KEY, snapshot("failure"));
@@ -110,6 +120,16 @@ describe("CiDetailPersistentCache queue", () => {
         const write = cache.set(KEY, detail());
         const remove = cache.delete(KEY);
         await Promise.all([write, remove]);
+        expect(await cache.get(KEY)).toBeUndefined();
+    });
+
+    it("pending work found later removes the settled entry; unavailable keeps it", async () => {
+        const cache = new CiDetailPersistentCache(slowMemento());
+        await cache.set(KEY, detail());
+        await cache.set(KEY, { ...detail(), complete: false, outcome: "unavailable" });
+        expect(await cache.get(KEY)).toMatchObject({ outcome: "failure" });
+
+        await cache.set(KEY, { ...detail(), complete: false, outcome: "pending" });
         expect(await cache.get(KEY)).toBeUndefined();
     });
 

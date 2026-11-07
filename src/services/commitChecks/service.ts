@@ -4,6 +4,7 @@
 
 import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type { CommitChecksSnapshot } from "../../types";
+import type { CiTrace, CiTraceOutcome } from "./ciTrace";
 import type { CommitChecksPersistentCache } from "./persistentCache";
 
 /** One cached commit-check snapshot plus freshness bookkeeping. */
@@ -26,6 +27,8 @@ export interface CommitChecksServiceOptions {
     now?: () => number;
     /** Optional cross-session terminal and no-check snapshot cache. */
     persistentCache?: CommitChecksPersistentCache;
+    /** Token-free diagnostic trace. */
+    trace?: CiTrace;
 }
 
 /** Controls whether a commit-check request may use fresh cache snapshots. */
@@ -44,7 +47,9 @@ export class CommitChecksService {
     private readonly maxEntries: number;
     private readonly now: () => number;
     private readonly persistentCache?: CommitChecksPersistentCache;
-    private pendingPersistentClear = Promise.resolve();
+    private readonly trace?: CiTrace;
+    // False once a clear() failed: the store may still hold another account's entries.
+    private persistentReadable = Promise.resolve(true);
     private generation = 0;
     // Grows by one entry per invalidated key (a write action), never per fetch.
     private readonly keyGenerations = new Map<string, number>();
@@ -61,6 +66,7 @@ export class CommitChecksService {
         this.maxEntries = Math.max(1, Math.floor(options.maxEntries ?? 1_000));
         this.now = options.now ?? Date.now;
         this.persistentCache = options.persistentCache;
+        this.trace = options.trace;
     }
 
     /**
@@ -69,16 +75,21 @@ export class CommitChecksService {
      * @param key - Provider/repo/settings/commit cache key.
      * @param fetchSnapshot - Fetcher invoked only on cache and in-flight miss.
      * @param options - Cache refresh controls, including forced L1/L2 bypasses.
+     * @param provider - Provider id written to the diagnostic trace.
      * @returns The cached or freshly fetched snapshot.
      */
     async getOrFetch(
         key: string,
         fetchSnapshot: () => Promise<CommitChecksSnapshot>,
         options: CommitChecksFetchOptions = {},
+        provider?: string,
     ): Promise<CommitChecksSnapshot> {
+        const trace = (outcome: CiTraceOutcome, hash: string, ms?: number): void =>
+            this.trace?.({ kind: "snapshot", outcome, provider, hash, ms });
         const cached = this.cache.get(key);
         if (!options.force && cached && this.isFresh(cached)) {
             this.touch(key, cached);
+            trace("hit-l1", cached.snapshot.hash);
             return cached.snapshot;
         }
         const inflight = this.inflight.get(key);
@@ -90,20 +101,30 @@ export class CommitChecksService {
             if (persisted && this.isCurrentGeneration(key, readGeneration)) {
                 this.cache.set(key, { snapshot: persisted, fetchedAt: this.now() });
                 this.evictOldest();
+                trace("hit-l2", persisted.hash);
                 return persisted;
             }
         }
         const newerInflight = this.inflight.get(key);
         if (newerInflight) return newerInflight;
         const generation = this.captureGeneration(key);
+        const startedAt = this.now();
         const request = fetchSnapshot()
-            .then(async (snapshot) => {
-                if (this.isCurrentGeneration(key, generation)) {
-                    const fetchedAt = this.now();
-                    this.cache.set(key, { snapshot, fetchedAt });
-                    this.evictOldest();
-                    await this.persist(key, snapshot, fetchedAt);
+            .then(async (snapshot): Promise<CommitChecksSnapshot> => {
+                const ms = this.now() - startedAt;
+                if (!this.isCurrentGeneration(key, generation)) {
+                    trace("discarded-generation", snapshot.hash, ms);
+                    // invalidate() superseded this result: its callers get the newer one.
+                    if (this.captureGeneration(key)[1] !== generation[1]) {
+                        return this.getOrFetch(key, fetchSnapshot, options, provider);
+                    }
+                    return snapshot;
                 }
+                const fetchedAt = this.now();
+                this.cache.set(key, { snapshot, fetchedAt });
+                this.evictOldest();
+                trace(isCompleteSnapshot(snapshot) ? "fetched" : "incomplete", snapshot.hash, ms);
+                await this.persist(key, snapshot, fetchedAt);
                 return snapshot;
             })
             .finally(() => {
@@ -135,7 +156,10 @@ export class CommitChecksService {
         this.inflight.clear();
         const clear = this.persistentCache?.clear();
         if (clear) {
-            this.pendingPersistentClear = Promise.resolve(clear).catch(() => undefined);
+            this.persistentReadable = Promise.resolve(clear).then(
+                () => true,
+                () => false,
+            );
         }
     }
 
@@ -174,7 +198,7 @@ export class CommitChecksService {
     private async getPersisted(key: string): Promise<CommitChecksSnapshot | undefined> {
         if (!this.persistentCache) return undefined;
         try {
-            await this.pendingPersistentClear;
+            if (!(await this.persistentReadable)) return undefined;
             return await this.persistentCache.get(key);
         } catch {
             return undefined;
