@@ -1,7 +1,7 @@
 // Token-free diagnostic trace for CI operations, written to the "IntelliGit CI" log
 // channel. It is for troubleshooting caches and requests, never a place for CI logs:
 // only the whitelisted fields below are written, the repository key is written as a
-// short hash, URLs keep only their origin, and nothing that could hold a token, a
+// short hash, URLs keep only origin and path, and nothing that could hold a token, a
 // header, log text or an excerpt is accepted.
 
 import { createHash, randomUUID } from "node:crypto";
@@ -69,7 +69,7 @@ export interface CiTraceEvent {
     provider?: string;
     /** Full or short commit hash; written as 7 characters. */
     hash?: string;
-    /** Request URL; written as its origin only, since a path can carry a token. */
+    /** Request URL; written as origin plus path, with token-shaped path segments redacted. */
     url?: string;
     /** Failure reason code; any other value is written as `other`. */
     reason?: CiTraceReason;
@@ -108,7 +108,7 @@ export function formatCiTraceLine(event: CiTraceEvent, op: string): string {
         ["repoKey", event.repoKey === undefined ? undefined : shortHash(event.repoKey)],
         ["provider", event.provider],
         ["hash", event.hash?.slice(0, 7)],
-        ["url", event.url === undefined ? undefined : originOf(event.url)],
+        ["url", event.url === undefined ? undefined : originAndPathOf(event.url)],
         ["status", event.status],
         ["ms", event.ms],
         [
@@ -147,10 +147,27 @@ export function createCiTrace(getChannel: () => CiTraceChannel): CiTrace {
     };
 }
 
-/** Drops credentials, path, query and fragment; keeps the origin. */
-function originOf(url: string): string {
+// Provider API paths carry no credentials; this backstop catches a token-bearing URL passed
+// in by mistake, and it recognises only these shapes: a known GitHub, GitLab or Bitbucket
+// token prefix, or a long segment that mixes letters and digits and is not a commit SHA.
+const TOKEN_PREFIX = /^(?:gh[pousr]_|github_pat_|glpat-|gldt-|glrt-|glptt-|gloas-|ATBB|ATCTT)/;
+const OPAQUE_SEGMENT = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_-]{20,}$/;
+const HEX_SEGMENT = /^[0-9a-f]+$/i;
+
+/** Keeps origin plus path; drops user info, query and fragment, and redacts token-shaped segments. */
+function originAndPathOf(url: string): string {
     try {
-        return new URL(url).origin;
+        const parsed = new URL(url);
+        const path = parsed.pathname
+            .split("/")
+            .map((segment) =>
+                TOKEN_PREFIX.test(segment) ||
+                (OPAQUE_SEGMENT.test(segment) && !HEX_SEGMENT.test(segment))
+                    ? "[redacted]"
+                    : segment,
+            )
+            .join("/");
+        return parsed.origin + path;
     } catch {
         return "[invalid url]";
     }

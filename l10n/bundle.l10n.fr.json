@@ -984,5 +984,6 @@
     "Git was not changed because an IntelliGit Undo Commit is still unfinished in this repository. Continue and Abort cannot finish it.": "Git n'a pas été modifié, car une annulation du commit IntelliGit n'est pas encore terminée dans ce dépôt. Continuer et Abandonner ne peuvent pas la terminer.",
     "Git was not changed because another IntelliGit operation is still unfinished in this repository. Continue and Abort cannot finish it.": "Git n'a pas été modifié, car une autre opération IntelliGit n'est pas encore terminée dans ce dépôt. Continuer et Abandonner ne peuvent pas la terminer.",
     "The view could not refresh after the targeted history step: {message}": "La vue n’a pas pu être actualisée après l’étape de l’historique ciblé : {message}",
-    "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "IntelliGit nécessite Git {0} ou version ultérieure pour la résolution des fusions, les commits partiels et la restauration d'étagères, mais Git {1} a été détecté. Mettez à jour Git pour utiliser ces fonctionnalités."
+    "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "IntelliGit nécessite Git {0} ou version ultérieure pour la résolution des fusions, les commits partiels et la restauration d'étagères, mais Git {1} a été détecté. Mettez à jour Git pour utiliser ces fonctionnalités.",
+    "IntelliGit CI": "IntelliGit CI"
 }

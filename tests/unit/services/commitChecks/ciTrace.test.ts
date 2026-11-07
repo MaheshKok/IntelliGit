@@ -35,8 +35,8 @@ describe("ciTrace", () => {
 
         const line = formatCiTraceLine(event, "op1");
 
-        expect(line).toContain("url=https://pipelines.example.com status=403");
-        expect(line).not.toContain("/o/r/logs");
+        // Origin plus path; the query string and fragment are dropped.
+        expect(line).toContain("url=https://pipelines.example.com/o/r/logs/1 status=403");
         for (const secret of [
             "SIGNED",
             "QUERYTOKEN",
@@ -86,11 +86,35 @@ describe("ciTrace", () => {
 
         expect(line).not.toContain("REPOTOKEN");
         expect(line).not.toContain("PATHTOKEN");
-        expect(line).not.toContain("/api");
-        expect(line).toContain("url=https://git.example.com");
+        expect(line).toContain("url=https://git.example.com/api/v4/[redacted]/jobs/1");
         expect(line).toMatch(/repoKey=[0-9a-f]{12} /);
         // The same repository always gets the same id, so lines still correlate.
         expect(formatCiTraceLine(event, "op2").split(" ")[3]).toBe(line.split(" ")[3]);
+    });
+
+    it("keeps an ordinary API path, drops user info, and redacts token-shaped segments", () => {
+        const sha = "0123456789abcdef0123456789abcdef01234567";
+        for (const [url, expected] of [
+            [
+                `https://api.github.com/repos/o/r/commits/${sha}/check-runs?per_page=100`,
+                `url=https://api.github.com/repos/o/r/commits/${sha}/check-runs`,
+            ],
+            [
+                "https://USERSECRET@bitbucket.org/2.0/repositories/ws/repo/pipelines/",
+                "url=https://bitbucket.org/2.0/repositories/ws/repo/pipelines/",
+            ],
+            [
+                "https://api.github.com/x/ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/y",
+                "url=https://api.github.com/x/[redacted]/y",
+            ],
+            [
+                "https://ci.example.com/hooks/a1B2c3D4e5F6g7H8i9J0k1L2/run",
+                "url=https://ci.example.com/hooks/[redacted]/run",
+            ],
+        ]) {
+            const line = formatCiTraceLine({ kind: "log", outcome: "failed", url }, "op1");
+            expect(line, url).toBe(`op=op1 kind=log outcome=failed ${expected}`);
+        }
     });
 
     it("uses trace for hits, warn for discards and info for fetches", () => {

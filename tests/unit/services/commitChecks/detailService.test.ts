@@ -189,6 +189,86 @@ describe("CommitCiDetailService", () => {
         expect(persisted).not.toContain("repoKey");
     });
 
+    it("failedScan stays in memory and is never persisted", async () => {
+        const state = memento();
+        const { persistent } = service(state);
+        const scanned = detail({ runs: [run({ failedScan: { state: "done", found: 2 } })] });
+        await persistent.set(KEY, scanned);
+
+        expect(JSON.stringify(state.values.get(STORAGE_KEY))).not.toContain("failedScan");
+        const restored = await persistent.get(KEY);
+        expect(restored?.runs).toHaveLength(1);
+        expect(restored?.runs[0]).not.toHaveProperty("failedScan");
+        // The in-memory detail the caller still holds keeps its scan progress.
+        expect(scanned.runs[0].failedScan).toEqual({ state: "done", found: 2 });
+    });
+
+    it("a forced refresh that fails keeps the previous detail and reports the error separately", async () => {
+        const { service: details } = service();
+        await details.getOrFetch(KEY, async () => detail(), SERVE);
+
+        const refreshed = await details.getOrFetch(
+            KEY,
+            async () =>
+                detail({ complete: false, outcome: "unavailable", runs: [], error: "HTTP 502" }),
+            SERVE,
+            { force: true },
+        );
+        expect(refreshed).toMatchObject({
+            outcome: "failure",
+            runs: [run()],
+            refreshError: "HTTP 502",
+        });
+        expect(refreshed.error).toBeUndefined();
+
+        // The next ordinary read still serves the previous tree, without the refresh error.
+        const fetchAgain = vi.fn(async () => detail({ outcome: "success" }));
+        const next = await details.getOrFetch(KEY, fetchAgain, SERVE);
+        expect(next).toMatchObject({ outcome: "failure", runs: [run()] });
+        expect(next).not.toHaveProperty("refreshError");
+        expect(fetchAgain).not.toHaveBeenCalled();
+    });
+
+    it("an ordinary refetch that fails replaces the expired entry, so the failure is not retried", async () => {
+        let now = 0;
+        const { service: details } = service(memento(), () => now);
+        await details.getOrFetch(KEY, async () => detail({ complete: false }), SERVE);
+        now += 31_000;
+        const failing = vi.fn(async () =>
+            detail({ complete: false, outcome: "unavailable", runs: [], error: "HTTP 502" }),
+        );
+        const served = await details.getOrFetch(KEY, failing, SERVE);
+        expect(served).toMatchObject({ outcome: "unavailable", error: "HTTP 502" });
+        expect(served).not.toHaveProperty("refreshError");
+        await details.getOrFetch(KEY, failing, SERVE);
+        expect(failing).toHaveBeenCalledTimes(1);
+    });
+
+    it("a forced refresh that fails after an earlier failure serves the newer error", async () => {
+        const { service: details } = service();
+        const unavailable = (error: string) =>
+            detail({ complete: false, outcome: "unavailable", runs: [], error });
+        await details.getOrFetch(KEY, async () => unavailable("HTTP 500"), SERVE);
+        const served = await details.getOrFetch(KEY, async () => unavailable("HTTP 502"), SERVE, {
+            force: true,
+        });
+        expect(served).toMatchObject({ outcome: "unavailable", error: "HTTP 502" });
+        expect(served).not.toHaveProperty("refreshError");
+    });
+
+    it("a forced refresh that fails with nothing cached returns the unavailable detail", async () => {
+        const { service: details } = service();
+        const served = await details.getOrFetch(
+            KEY,
+            async () =>
+                detail({ complete: false, outcome: "unavailable", runs: [], error: "HTTP 502" }),
+            SERVE,
+            { force: true },
+        );
+        expect(served).toMatchObject({ outcome: "unavailable", error: "HTTP 502" });
+        expect(served).not.toHaveProperty("refreshError");
+    });
+
     it("clear() drops a late result", async () => {
         const state = memento();
         const { service: details, persistent } = service(state);

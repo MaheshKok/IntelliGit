@@ -2420,6 +2420,90 @@ describe("view providers integration", () => {
         }
     });
 
+    it("clears the snapshot and detail caches when CI settings change", async () => {
+        const { CommitChecksService } = await import("../../../src/services/commitChecks/service");
+        const { CommitCiDetailService } =
+            await import("../../../src/services/commitChecks/detailService");
+        const snapshotClear = vi.spyOn(CommitChecksService.prototype, "clear");
+        const detailClear = vi.spyOn(CommitCiDetailService.prototype, "clear");
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        try {
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    secrets: {},
+                } as never,
+                [{ root: "/workspace", label: "workspace" }],
+            );
+            const configListeners = (
+                vscodeMock.workspace.onDidChangeConfiguration.mock.calls as unknown as [
+                    (event: { affectsConfiguration(section: string): boolean }) => void,
+                ][]
+            ).map(([listener]) => listener);
+            snapshotClear.mockClear();
+            detailClear.mockClear();
+
+            for (const listener of configListeners) {
+                listener({ affectsConfiguration: (section) => section === "intelligit.shelf" });
+            }
+            expect(snapshotClear).not.toHaveBeenCalled();
+            expect(detailClear).not.toHaveBeenCalled();
+            for (const listener of configListeners) {
+                listener({
+                    affectsConfiguration: (section) => section === "intelligit.commitChecks",
+                });
+            }
+            expect(snapshotClear).toHaveBeenCalledTimes(1);
+            expect(detailClear).toHaveBeenCalledTimes(1);
+        } finally {
+            snapshotClear.mockRestore();
+            detailClear.mockRestore();
+        }
+    });
+
+    it("names the CI trace channel with a localized string", async () => {
+        const { CommitCiDetailService } =
+            await import("../../../src/services/commitChecks/detailService");
+        const detailClear = vi.spyOn(CommitCiDetailService.prototype, "clear");
+        const translate = vi
+            .spyOn(vscodeMock.l10n, "t")
+            .mockImplementation((message: string) => `[t]${message}`);
+        const window = vscodeMock.window as unknown as Record<string, unknown>;
+        const createOutputChannel = vi.fn(() => ({
+            trace: vi.fn(),
+            info: vi.fn(),
+            warn: vi.fn(),
+            dispose: vi.fn(),
+        }));
+        window.createOutputChannel = createOutputChannel;
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        try {
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    secrets: {},
+                } as never,
+                [{ root: "/workspace", label: "workspace" }],
+            );
+            // The credential refresh clears the shared detail service; its spy hands us the instance.
+            await registeredCommands.get("intelligit.commitChecks.refreshBadges")!();
+            const details = detailClear.mock.contexts[0] as {
+                trace: (event: { kind: string; outcome: string }) => void;
+            };
+            details.trace({ kind: "detail", outcome: "fetched" });
+
+            expect(createOutputChannel).toHaveBeenCalledWith("[t]IntelliGit CI", { log: true });
+        } finally {
+            delete window.createOutputChannel;
+            translate.mockRestore();
+            detailClear.mockRestore();
+        }
+    });
+
     it("registers startup active-editor repository watchers once", async () => {
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
         const repoA = "/workspace/app-a";

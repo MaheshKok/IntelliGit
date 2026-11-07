@@ -335,6 +335,11 @@ export interface CommitCiDetail extends CommitCiDetailData {
         action: "rerunFailed" | "rerunJob" | "cancel";
         notSeen: boolean;
     };
+    /**
+     * Set when a forced refresh failed while an earlier detail was cached: the detail is
+     * that earlier one, and this is the refresh's error (empty when the provider gave none).
+     */
+    refreshError?: string;
 }
 
 /**

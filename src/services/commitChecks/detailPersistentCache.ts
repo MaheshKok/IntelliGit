@@ -181,9 +181,15 @@ function isPersistableDetail(detail: CommitCiDetailData): boolean {
     return isCompleteDetail(detail) && isFullyCovered(detail);
 }
 
-/** Drops the values attached at read time, in case a served detail is passed in. */
+/**
+ * Drops the values attached at read time, in case a served detail is passed in, and each
+ * run's failed-item scan progress, which lives in memory only.
+ */
 function toPersistedData(detail: CommitCiDetailData): CommitCiDetailData {
-    const data: Partial<CommitCiDetail> & CommitCiDetailData = { ...detail };
+    const data: Partial<CommitCiDetail> & CommitCiDetailData = {
+        ...detail,
+        runs: detail.runs.map(({ failedScan: _inMemoryOnly, ...run }) => run),
+    };
     delete data.capabilities;
     delete data.repoKey;
     delete data.actionFence;

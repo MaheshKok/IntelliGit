@@ -15,6 +15,9 @@ interface DetailEntry {
     fetchedAt: number;
 }
 
+/** What a read hands back before the read-time values are attached; never cached. */
+type ServedDetailData = CommitCiDetailData & Pick<CommitCiDetail, "refreshError">;
+
 /** Values attached to every served detail at read time, never cached. */
 export interface CiDetailServeContext {
     readonly repoKey: string;
@@ -43,7 +46,7 @@ export interface CommitCiDetailServiceOptions {
 /** Shared in-memory CI detail cache with in-flight de-dupe and a per-key fence. */
 export class CommitCiDetailService {
     private readonly cache = new Map<string, DetailEntry>();
-    private readonly inflight = new Map<string, Promise<CommitCiDetailData>>();
+    private readonly inflight = new Map<string, Promise<ServedDetailData>>();
     // Grows by one entry per invalidated key (a write action), never per fetch.
     private readonly keyGenerations = new Map<string, number>();
     private readonly pendingTtlMs: number;
@@ -96,7 +99,7 @@ export class CommitCiDetailService {
         fetchDetail: () => Promise<CommitCiDetailData>,
         serve: CiDetailServeContext,
         options: CommitChecksFetchOptions,
-    ): Promise<CommitCiDetailData> {
+    ): Promise<ServedDetailData> {
         const cached = this.cache.get(key);
         if (!options.force && cached && this.isFresh(cached)) {
             this.touch(key, cached);
@@ -120,11 +123,22 @@ export class CommitCiDetailService {
         if (newerInflight) return newerInflight;
         const generation = this.captureGeneration(key);
         const request = fetchDetail()
-            .then(async (data): Promise<CommitCiDetailData> => {
+            .then(async (data): Promise<ServedDetailData> => {
                 if (!this.isCurrentGeneration(key, generation)) {
                     this.traceOutcome("discarded-generation", data, serve);
                     // invalidate() or clear() superseded this result: its callers get the newer one.
                     return this.getData(key, fetchDetail, serve, options);
+                }
+                const previous = this.cache.get(key);
+                if (
+                    options.force &&
+                    data.outcome === "unavailable" &&
+                    previous &&
+                    previous.data.outcome !== "unavailable"
+                ) {
+                    // A failed refresh must not blank the tree: keep the earlier entry as is.
+                    this.traceOutcome("failed", data, serve);
+                    return { ...previous.data, refreshError: data.error ?? "" };
                 }
                 const fetchedAt = this.now();
                 this.cache.set(key, { data, fetchedAt });
@@ -215,7 +229,7 @@ export class CommitCiDetailService {
     }
 
     private traceOutcome(
-        outcome: "hit-l1" | "hit-l2" | "fetched" | "incomplete" | "discarded-generation",
+        outcome: "hit-l1" | "hit-l2" | "fetched" | "incomplete" | "discarded-generation" | "failed",
         data: CommitCiDetailData,
         serve: CiDetailServeContext,
     ): void {
@@ -230,6 +244,6 @@ export class CommitCiDetailService {
 }
 
 /** Attaches the read-time values; the cached object itself never carries them. */
-export function attach(data: CommitCiDetailData, serve: CiDetailServeContext): CommitCiDetail {
+export function attach(data: ServedDetailData, serve: CiDetailServeContext): CommitCiDetail {
     return { ...data, capabilities: serve.capabilities, repoKey: serve.repoKey };
 }

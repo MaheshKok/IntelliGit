@@ -984,5 +984,6 @@
     "Git was not changed because an IntelliGit Undo Commit is still unfinished in this repository. Continue and Abort cannot finish it.": "Git не изменён, так как отмена коммита IntelliGit в этом репозитории ещё не завершена. «Продолжить» и «Прервать» не могут её завершить.",
     "Git was not changed because another IntelliGit operation is still unfinished in this repository. Continue and Abort cannot finish it.": "Git не изменён, так как другая операция IntelliGit в этом репозитории ещё не завершена. «Продолжить» и «Прервать» не могут её завершить.",
     "The view could not refresh after the targeted history step: {message}": "Не удалось обновить представление после шага целевой истории: {message}",
-    "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "Для разрешения слияния, частичных коммитов и восстановления полок IntelliGit требуется Git {0} или новее, но найден Git {1}. Обновите Git, чтобы использовать эти функции."
+    "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "Для разрешения слияния, частичных коммитов и восстановления полок IntelliGit требуется Git {0} или новее, но найден Git {1}. Обновите Git, чтобы использовать эти функции.",
+    "IntelliGit CI": "IntelliGit CI"
 }

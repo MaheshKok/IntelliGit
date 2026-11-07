@@ -266,7 +266,9 @@ export async function activateRepositoryMode(
     };
     let ciTraceChannel: vscode.LogOutputChannel | undefined;
     const ciTrace = createCiTrace(() => {
-        ciTraceChannel = vscode.window.createOutputChannel("IntelliGit CI", { log: true });
+        ciTraceChannel = vscode.window.createOutputChannel(vscode.l10n.t("IntelliGit CI"), {
+            log: true,
+        });
         return ciTraceChannel;
     });
     const commitChecksService = new CommitChecksService({
@@ -291,10 +293,13 @@ export async function activateRepositoryMode(
             },
         },
         // The coordinators keep their activation-time settings (reload to apply), but CI
-        // work already running must not publish under settings the user just changed.
+        // work already running must not publish, and no cached result may be served, under
+        // settings the user just changed.
         vscode.workspace.onDidChangeConfiguration((event) => {
             if (event.affectsConfiguration("intelligit.commitChecks")) {
                 ciGenerations.bumpLifecycle();
+                commitChecksService.clear();
+                commitCiDetailService.clear();
             }
         }),
     );
