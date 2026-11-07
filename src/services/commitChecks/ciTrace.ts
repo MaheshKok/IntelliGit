@@ -1,9 +1,10 @@
 // Token-free diagnostic trace for CI operations, written to the "IntelliGit CI" log
 // channel. It is for troubleshooting caches and requests, never a place for CI logs:
-// only the whitelisted fields below are written, URLs lose their query and fragment,
-// and nothing that could hold a token, a header, log text or an excerpt is accepted.
+// only the whitelisted fields below are written, the repository key is written as a
+// short hash, URLs keep only their origin, and nothing that could hold a token, a
+// header, log text or an excerpt is accepted.
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 /**
  * Outcome of one traced CI operation.
@@ -63,11 +64,12 @@ export interface CiTraceEvent {
         | "history"
         | "bisect";
     outcome: CiTraceOutcome;
+    /** Repository key; written as the first 12 hex characters of its SHA-256. */
     repoKey?: string;
     provider?: string;
     /** Full or short commit hash; written as 7 characters. */
     hash?: string;
-    /** Request URL; written as origin and path only. */
+    /** Request URL; written as its origin only, since a path can carry a token. */
     url?: string;
     /** Failure reason code; any other value is written as `other`. */
     reason?: CiTraceReason;
@@ -103,10 +105,10 @@ export function formatCiTraceLine(event: CiTraceEvent, op: string): string {
         ["op", op],
         ["kind", event.kind],
         ["outcome", event.outcome],
-        ["repoKey", event.repoKey],
+        ["repoKey", event.repoKey === undefined ? undefined : shortHash(event.repoKey)],
         ["provider", event.provider],
         ["hash", event.hash?.slice(0, 7)],
-        ["url", event.url === undefined ? undefined : originAndPath(event.url)],
+        ["url", event.url === undefined ? undefined : originOf(event.url)],
         ["status", event.status],
         ["ms", event.ms],
         [
@@ -145,12 +147,16 @@ export function createCiTrace(getChannel: () => CiTraceChannel): CiTrace {
     };
 }
 
-/** Drops credentials, query and fragment; keeps origin and path. */
-function originAndPath(url: string): string {
+/** Drops credentials, path, query and fragment; keeps the origin. */
+function originOf(url: string): string {
     try {
-        const parsed = new URL(url);
-        return `${parsed.origin}${parsed.pathname}`;
+        return new URL(url).origin;
     } catch {
         return "[invalid url]";
     }
+}
+
+/** Stable, token-free id for a repository key, so trace lines still correlate. */
+function shortHash(value: string): string {
+    return createHash("sha256").update(value).digest("hex").slice(0, 12);
 }

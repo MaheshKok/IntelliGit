@@ -14,7 +14,7 @@ import type {
 import { getErrorMessage } from "../../utils/errors";
 import type { CiGenerations, CiOperationContext } from "./ciGenerations";
 import type { CiTrace } from "./ciTrace";
-import { CommitCiDetailService } from "./detailService";
+import { attach, CommitCiDetailService } from "./detailService";
 import { summaryForState, unavailableSnapshot } from "./normalize";
 import { CommitChecksService, type CommitChecksFetchOptions } from "./service";
 import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
@@ -22,12 +22,20 @@ import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
 interface ProviderMatch {
     provider: CommitChecksProvider;
     ref: ProviderRepoRef;
-    /**
-     * Signed-in account every cache key is scoped to. Resolved with the match and dropped
-     * with it by clear(), so saved results of another account, including ones a failed
-     * clear left on disk, never match after a sign-in change or a restart.
-     */
-    account?: string;
+}
+
+/**
+ * Tries per request when the signed-in account changes while a fetch runs. The last try
+ * hands its answer to the caller without caching it, so an account that cannot be read
+ * (a fresh `unresolved-` id on every read) still gets an answer.
+ */
+const ACCOUNT_ATTEMPTS = 2;
+
+/** A fetch finished under another account than the one its cache key was built for. */
+class AccountChangedError<T> extends Error {
+    constructor(readonly result: T) {
+        super("signed-in account changed during the request");
+    }
 }
 
 /**
@@ -172,7 +180,6 @@ export class CommitChecksCoordinator {
         if (!this.isCurrent(ctx, providerGeneration)) return this.discard(ctx, hash);
         if (!match) return undefined;
         const { provider, ref } = match;
-        const snapshotKey = this.snapshotKey(match, hash);
         const getDetail = provider.getDetail?.bind(provider);
         const fetchDetail = getDetail
             ? async (): Promise<CommitCiDetailData> => {
@@ -187,11 +194,18 @@ export class CommitChecksCoordinator {
               }
             : async (): Promise<CommitCiDetailData> =>
                   floorDetail(await this.fetchSnapshot(match, hash, options), provider.id);
-        const detail = await this.detailService.getOrFetch(
-            `${snapshotKey}#detail`,
+        const serve = { repoKey: ctx.repoKey, capabilities: provider.capabilities };
+        const detail = await this.withAccount(
+            match,
             fetchDetail,
-            { repoKey: ctx.repoKey, capabilities: provider.capabilities },
-            options,
+            (account, checkedFetch) =>
+                this.detailService.getOrFetch(
+                    `${this.snapshotKey(match, account, hash)}#detail`,
+                    checkedFetch,
+                    serve,
+                    options,
+                ),
+            (data) => attach(data, serve),
         );
         if (!this.isCurrent(ctx, providerGeneration)) return this.discard(ctx, hash, provider.id);
         return detail;
@@ -227,7 +241,7 @@ export class CommitChecksCoordinator {
     async invalidate(hash: string): Promise<void> {
         const match = await this.resolveEnabledMatch();
         if (!match) return;
-        const snapshotKey = this.snapshotKey(match, hash);
+        const snapshotKey = this.snapshotKey(match, await this.readAccount(match), hash);
         await this.service.invalidate(snapshotKey);
         await this.detailService.invalidate(`${snapshotKey}#detail`);
     }
@@ -279,9 +293,49 @@ export class CommitChecksCoordinator {
         return match;
     }
 
-    private snapshotKey(match: ProviderMatch, hash: string): string {
-        const account = match.account === undefined ? "" : `|${match.account}`;
-        return `${match.provider.keyFor(match.ref)}@${hash}:${this.settingsFingerprint}${account}`;
+    /**
+     * Every cache key ends in the signed-in account, so saved results of another account,
+     * including ones a failed clear left on disk, never match.
+     */
+    private snapshotKey(match: ProviderMatch, account: string | undefined, hash: string): string {
+        const suffix = account === undefined ? "" : `|${account}`;
+        return `${match.provider.keyFor(match.ref)}@${hash}:${this.settingsFingerprint}${suffix}`;
+    }
+
+    /** Reads the signed-in account now; never memoized, so a sign-in change applies at once. */
+    private async readAccount(match: ProviderMatch): Promise<string | undefined> {
+        return match.provider.accountKey?.(match.ref);
+    }
+
+    /**
+     * Runs one cache operation under the account read now. `run` gets a fetcher that reads
+     * the account again when `fetch` returns (a fenced re-ask included); if it changed,
+     * that fetcher throws instead of returning, so nothing is stored under the old
+     * account's key, and the operation starts over under the new account. The last try
+     * hands its answer through `uncached`.
+     */
+    private async withAccount<R, T>(
+        match: ProviderMatch,
+        fetch: () => Promise<R>,
+        run: (account: string | undefined, checkedFetch: () => Promise<R>) => Promise<T>,
+        uncached: (result: R) => T,
+    ): Promise<T> {
+        for (let attempt = 1; ; attempt += 1) {
+            const account = await this.readAccount(match);
+            const checkedFetch = async (): Promise<R> => {
+                const result = await fetch();
+                if ((await this.readAccount(match)) !== account) {
+                    throw new AccountChangedError(result);
+                }
+                return result;
+            };
+            try {
+                return await run(account, checkedFetch);
+            } catch (err) {
+                if (!(err instanceof AccountChangedError)) throw err;
+                if (attempt >= ACCOUNT_ATTEMPTS) return uncached(err.result as R);
+            }
+        }
     }
 
     private fetchSnapshot(
@@ -289,17 +343,24 @@ export class CommitChecksCoordinator {
         hash: string,
         options: CommitChecksFetchOptions,
     ): Promise<CommitChecksSnapshot> {
-        return this.service.getOrFetch(
-            this.snapshotKey(match, hash),
-            async () => {
-                try {
-                    return await match.provider.getChecks(match.ref, hash);
-                } catch (err) {
-                    return unavailableSnapshot(hash, getErrorMessage(err));
-                }
-            },
-            options,
-            match.provider.id,
+        const fetchChecks = async (): Promise<CommitChecksSnapshot> => {
+            try {
+                return await match.provider.getChecks(match.ref, hash);
+            } catch (err) {
+                return unavailableSnapshot(hash, getErrorMessage(err));
+            }
+        };
+        return this.withAccount(
+            match,
+            fetchChecks,
+            (account, checkedFetch) =>
+                this.service.getOrFetch(
+                    this.snapshotKey(match, account, hash),
+                    checkedFetch,
+                    options,
+                    match.provider.id,
+                ),
+            (snapshot) => snapshot,
         );
     }
 
@@ -336,7 +397,7 @@ export class CommitChecksCoordinator {
             if (!url) continue;
             for (const provider of this.providers) {
                 const ref = provider.match(url, this.hostMap);
-                if (ref) return { provider, ref, account: await provider.accountKey?.(ref) };
+                if (ref) return { provider, ref };
             }
         }
         return null;

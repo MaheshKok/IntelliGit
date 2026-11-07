@@ -4123,7 +4123,8 @@ describe("view providers integration", () => {
         // rounds. Bounded, so a regression fails on the assertion below rather than by hanging.
         for (let round = 0; round < 20 && !(viewportSettled && retrySettled); round += 1) {
             for (const resolve of resolvers.splice(0)) resolve();
-            await Promise.resolve();
+            // A full task turn, so every await between a freed worker and its next fetch drains.
+            await new Promise<void>((done) => setImmediate(done));
         }
         await viewportDemand;
         await retryDemand;
@@ -5232,7 +5233,8 @@ describe("view providers integration", () => {
         // rounds. Bounded, so a regression fails on the assertion below rather than by hanging.
         for (let round = 0; round < 20 && !(viewportSettled && retrySettled); round += 1) {
             for (const resolve of resolvers.splice(0)) resolve();
-            await Promise.resolve();
+            // A full task turn, so every await between a freed worker and its next fetch drains.
+            await new Promise<void>((done) => setImmediate(done));
         }
         await viewportDemand;
         await retryDemand;

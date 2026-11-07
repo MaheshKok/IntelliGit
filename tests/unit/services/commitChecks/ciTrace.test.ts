@@ -35,7 +35,8 @@ describe("ciTrace", () => {
 
         const line = formatCiTraceLine(event, "op1");
 
-        expect(line).toContain("https://pipelines.example.com/o/r/logs/1");
+        expect(line).toContain("url=https://pipelines.example.com status=403");
+        expect(line).not.toContain("/o/r/logs");
         for (const secret of [
             "SIGNED",
             "QUERYTOKEN",
@@ -72,6 +73,24 @@ describe("ciTrace", () => {
         expect(
             formatCiTraceLine({ kind: "detail", outcome: "failed", reason: "rate-limited" }, "op1"),
         ).toBe("op=op1 kind=detail outcome=failed reason=rate-limited");
+    });
+
+    it("a token in the repository key or a URL path never reaches the trace", () => {
+        const event: CiTraceEvent = {
+            kind: "log",
+            outcome: "failed",
+            repoKey: "gitlab:git.example.com:glpat-REPOTOKEN/o/r",
+            url: "https://git.example.com/api/v4/glpat-PATHTOKEN/jobs/1",
+        };
+        const line = formatCiTraceLine(event, "op1");
+
+        expect(line).not.toContain("REPOTOKEN");
+        expect(line).not.toContain("PATHTOKEN");
+        expect(line).not.toContain("/api");
+        expect(line).toContain("url=https://git.example.com");
+        expect(line).toMatch(/repoKey=[0-9a-f]{12} /);
+        // The same repository always gets the same id, so lines still correlate.
+        expect(formatCiTraceLine(event, "op2").split(" ")[3]).toBe(line.split(" ")[3]);
     });
 
     it("uses trace for hits, warn for discards and info for fetches", () => {

@@ -77,7 +77,8 @@ export class CommitCiDetailService {
      * values attached.
      *
      * @param key - Detail cache key (`<snapshot key>#detail`).
-     * @param fetchDetail - Fetcher invoked only on cache and in-flight miss; must not throw.
+     * @param fetchDetail - Fetcher invoked only on cache and in-flight miss. A rejection
+     *   caches nothing and reaches every caller sharing the fetch.
      * @param serve - Capabilities and repository attached to the served detail.
      * @param options - `force` bypasses L1 and L2 but still joins a post-fence fetch.
      */
@@ -229,6 +230,6 @@ export class CommitCiDetailService {
 }
 
 /** Attaches the read-time values; the cached object itself never carries them. */
-function attach(data: CommitCiDetailData, serve: CiDetailServeContext): CommitCiDetail {
+export function attach(data: CommitCiDetailData, serve: CiDetailServeContext): CommitCiDetail {
     return { ...data, capabilities: serve.capabilities, repoKey: serve.repoKey };
 }
