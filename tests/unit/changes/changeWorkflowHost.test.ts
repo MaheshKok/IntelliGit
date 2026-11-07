@@ -443,10 +443,10 @@ describe("scoped list and file save", () => {
         );
     });
 
-    /** A list save whose `git status` read (or name prompt) runs `during` first; `other.txt` is changed but not yet scanned. */
+    /** A list save whose `git status` read (or name prompt, or the gap before the click) runs `during` first; `other.txt` is changed but not yet scanned. */
     async function saveWithStatusRead(
         during: (f: Awaited<ReturnType<typeof fixture>>) => unknown,
-        window: "status" | "prompt" = "status",
+        window: "status" | "prompt" | "click" = "status",
     ) {
         await writeFile(path.join(root, "other.txt"), "other\n");
         git(["add", "--", "other.txt"]);
@@ -464,7 +464,10 @@ describe("scoped list and file save", () => {
         );
         const status = gitOps.getStatus.bind(gitOps);
         let duringRevision = 0;
-        if (window === "prompt")
+        if (window === "click") {
+            await during(f);
+            duringRevision = store.revision(root);
+        } else if (window === "prompt")
             vi.mocked(vscode.window.showInputBox).mockImplementationOnce(async () => {
                 await during(f);
                 duringRevision = store.revision(root);
@@ -520,6 +523,32 @@ describe("scoped list and file save", () => {
             "a range scan observing a file during the name prompt must not refuse the save",
         ).toEqual([]);
         expect((await f.shelves.listShelves()).shelfIds).toHaveLength(1);
+    });
+
+    it("list save survives a range scan write landing between the view and the click", async () => {
+        const f = await saveWithStatusRead(async () => {
+            await host.reconcile(await gitOps.getStatus({ withStats: false }));
+            await host.settled();
+        }, "click");
+        expect(
+            posted.flatMap((message) => (message as { error?: string }).error ?? []),
+            "a range scan observing a file after the view must not refuse the save",
+        ).toEqual([]);
+        expect((await f.shelves.listShelves()).shelfIds).toHaveLength(1);
+    });
+
+    it("list save refuses a file moved to another list between the view and the click", async () => {
+        const f = await saveWithStatusRead(
+            (fixture) => store.moveFiles(root, store.revision(root), fixture.other, ["other.txt"]),
+            "click",
+        );
+        expect(posted, "an ownership change after the view must refuse the save").toContainEqual(
+            expect.objectContaining({
+                type: "changelistShelfResult",
+                error: expect.stringMatching(/changed/i),
+            }),
+        );
+        expect((await f.shelves.listShelves()).shelfIds).toEqual([]);
     });
 
     it.each(["rename", "move"] as const)(
@@ -2482,8 +2511,8 @@ describe("root-bound selected-change host", () => {
         }
     });
 
-    /** Answers the create prompts, running `during` while the name prompt is open. */
-    function createPrompts(during: () => Promise<unknown>) {
+    /** Answers the create prompts, running `during` while the name prompt is open and `pick` as the last one closes. */
+    function createPrompts(during: () => Promise<unknown>, pick?: () => Promise<unknown>) {
         Object.defineProperty(vscode.window, "showInputBox", {
             configurable: true,
             value: vi
@@ -2496,9 +2525,151 @@ describe("root-bound selected-change host", () => {
         });
         Object.defineProperty(vscode.window, "showQuickPick", {
             configurable: true,
-            value: vi.fn(async (items: readonly unknown[]) => items[0]),
+            value: vi.fn(async (items: readonly unknown[]) => {
+                await pick?.();
+                return items[0];
+            }),
         });
     }
+
+    /** Edits file.txt and starts a range scan, returning once its write is queued in the store but not yet applied. */
+    async function queueScanWrite() {
+        await writeFile(path.join(root, "file.txt"), `scan edit\n${working}`);
+        const trackBatch = store.trackBatch.bind(store);
+        let written!: ReturnType<ChangelistStore["trackBatch"]>;
+        const queued = new Promise<void>((resolve) => {
+            vi.spyOn(store, "trackBatch").mockImplementationOnce((...args) => {
+                written = trackBatch(...args);
+                resolve();
+                return written;
+            });
+        });
+        const scan = host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await queued;
+        return { scan, written };
+    }
+
+    it("creates a list when a range scan write is still queued as its last prompt closes", async () => {
+        const revision = store.revision(root);
+        let queued: Awaited<ReturnType<typeof queueScanWrite>> | undefined;
+        createPrompts(
+            async () => undefined,
+            async () => {
+                queued = await queueScanWrite();
+            },
+        );
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "create",
+            revision,
+        });
+        await queued?.scan;
+        await host.settled();
+        expect(
+            (await queued!.written).revision,
+            "the scan must write after the last prompt closes",
+        ).toBeGreaterThan(revision);
+        expect(
+            postedErrors(),
+            "a range write queued ahead of the create must not refuse the new list",
+        ).toEqual([]);
+        expect(store.get(root).lists.map((list) => list.name)).toContain("Mid-scan");
+    });
+
+    it("refuses a new list when another list's create is still queued as its last prompt closes", async () => {
+        const revision = store.revision(root);
+        let elsewhere: Promise<unknown> | undefined;
+        createPrompts(
+            async () => undefined,
+            async () => {
+                elsewhere = store.create(root, store.revision(root), "Elsewhere");
+            },
+        );
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "create",
+            revision,
+        });
+        await elsewhere;
+        expect(postedErrors(), "a queued list change must refuse the create").toContainEqual(
+            expect.stringContaining("Changelists changed"),
+        );
+        expect(
+            store.get(root).lists.map((list) => list.name),
+            "a refused create must write nothing",
+        ).not.toContain("Mid-scan");
+    });
+
+    /** Answers the rename prompts, running `last` as the description prompt, the last one, closes. */
+    function renamePrompts(last: () => Promise<unknown>) {
+        Object.defineProperty(vscode.window, "showInputBox", {
+            configurable: true,
+            value: vi
+                .fn()
+                .mockResolvedValueOnce("Mid-scan")
+                .mockImplementationOnce(async () => {
+                    await last();
+                    return "";
+                }),
+        });
+    }
+
+    it("renames a list when a range scan write is still queued as its last prompt closes", async () => {
+        const created = await store.create(root, store.revision(root), "Existing");
+        const id = created.lists[1].id;
+        let queued: Awaited<ReturnType<typeof queueScanWrite>> | undefined;
+        renamePrompts(async () => {
+            queued = await queueScanWrite();
+        });
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "rename",
+            listId: id,
+            revision: created.revision,
+        });
+        await queued?.scan;
+        await host.settled();
+        expect(
+            (await queued!.written).revision,
+            "the scan must write after the last prompt closes",
+        ).toBeGreaterThan(created.revision);
+        expect(
+            postedErrors(),
+            "a range write queued ahead of the rename must not refuse it",
+        ).toEqual([]);
+        expect(store.get(root).lists.find((list) => list.id === id)?.name).toBe("Mid-scan");
+    });
+
+    it("refuses a rename when another list's edit is still queued as its last prompt closes", async () => {
+        const created = await store.create(root, store.revision(root), "Existing");
+        const [other, { id }] = created.lists;
+        let elsewhere: Promise<unknown> | undefined;
+        renamePrompts(async () => {
+            elsewhere = store.edit(root, store.revision(root), other.id, "Elsewhere", "");
+        });
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "rename",
+            listId: id,
+            revision: created.revision,
+        });
+        await elsewhere;
+        expect(postedErrors(), "a queued list change must refuse the rename").toContainEqual(
+            expect.stringContaining("Changelists changed"),
+        );
+        expect(
+            store.get(root).lists.find((list) => list.id === id)?.name,
+            "a refused rename must write nothing",
+        ).toBe("Existing");
+    });
 
     it("creates a list whose prompts stayed open while the range scan wrote", async () => {
         const revision = store.get(root).revision;
@@ -3034,6 +3205,138 @@ describe("root-bound selected-change host", () => {
             "a range write before the click must not refuse the activation",
         ).toEqual([]);
         expect(store.get(root).activeId).toBe(id);
+    });
+
+    /** Queues `write` in the store once activation's observation ends, so it lands ahead of the activation's own write. */
+    function activateBehind(write: () => Promise<unknown>) {
+        const activate = store.activate.bind(store);
+        vi.spyOn(store, "activate").mockImplementationOnce(async (...args) => {
+            await write();
+            return activate(...args);
+        });
+    }
+
+    it("activates a list when a range scan write is queued ahead of the activation", async () => {
+        const created = await store.create(root, store.revision(root), "Later");
+        const id = created.lists[1].id;
+        let queued: Awaited<ReturnType<typeof queueScanWrite>> | undefined;
+        activateBehind(async () => {
+            queued = await queueScanWrite();
+        });
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "activate",
+            listId: id,
+            revision: created.revision,
+        });
+        await queued?.scan;
+        await host.settled();
+        expect(
+            (await queued!.written).revision,
+            "the scan must write ahead of the activation",
+        ).toBeGreaterThan(created.revision);
+        expect(
+            postedErrors(),
+            "a range write queued ahead of the activation must not refuse it",
+        ).toEqual([]);
+        expect(store.get(root).activeId).toBe(id);
+    });
+
+    it("refuses an activation when another active-list change is queued ahead of it", async () => {
+        const created = await store.create(root, store.revision(root), "Later");
+        const id = created.lists[1].id;
+        let elsewhere: ReturnType<ChangelistStore["create"]> | undefined;
+        activateBehind(async () => {
+            elsewhere = store.create(root, store.revision(root), "Elsewhere", "", true);
+        });
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "activate",
+            listId: id,
+            revision: created.revision,
+        });
+        const other = (await elsewhere!).activeId;
+        expect(
+            postedErrors(),
+            "a queued active-list change must refuse the activation",
+        ).toContainEqual(expect.stringContaining("Changelists changed"));
+        expect(store.get(root).activeId, "a refused activation must write nothing").toBe(other);
+    });
+
+    /** Commits file.txt from the active list with the revision the webview showed, after a range scan, a list change or a selection change landed. */
+    async function commitBehind(change: "scan" | "list" | "selection") {
+        await writeFile(path.join(root, "scan.txt"), base);
+        git(["add", "--", "scan.txt"]);
+        git(["commit", "-qm", "scan"]);
+        await writeFile(path.join(root, "scan.txt"), first);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        await host.settled();
+        const listId = store.get(root).activeId;
+        const other = (await store.create(root, store.revision(root), "Other")).lists[1].id;
+        const revision = await shownRevision();
+        const lists = () => {
+            const state = store.get(root);
+            return [state.lists, state.activeId, state.files];
+        };
+        const seen = lists();
+        if (change === "scan") {
+            // scan.txt is already listed, so this scan writes only its range record.
+            await writeFile(path.join(root, "scan.txt"), working);
+            await host.reconcile(await gitOps.getStatus({ withStats: false }));
+            await host.settled();
+            expect(lists(), "the scan must change no list or owner").toEqual(seen);
+        } else if (change === "list")
+            await store.moveFiles(root, store.revision(root), other, ["file.txt"]);
+        else {
+            const { contentId } = store.get(root).changes["file.txt"];
+            await store.recordSelection(root, "file.txt", contentId, listId, [], 4);
+            expect(lists(), "a selection change must change no list or owner").toEqual(seen);
+        }
+        expect(store.revision(root), "a write must land after the view").toBeGreaterThan(revision);
+        const head = git(["rev-parse", "HEAD"]);
+        posted.length = 0;
+        await host.handle({
+            type: "commitChangelist",
+            repositoryRoot: root,
+            revision,
+            listId,
+            paths: ["file.txt"],
+            message: "commit after the view",
+        });
+        return head;
+    }
+
+    it("commits a list when a range scan wrote between the view and the click", async () => {
+        const head = await commitBehind("scan");
+        expect(postedErrors(), "a range write after the view must not refuse the commit").toEqual(
+            [],
+        );
+        expect(git(["rev-parse", "HEAD"]), "the commit must land").not.toBe(head);
+        expect(git(["show", "HEAD:file.txt"])).toBe(working);
+    });
+
+    it("refuses a list commit when its file moved to another list between the view and the click", async () => {
+        const head = await commitBehind("list");
+        expect(
+            postedErrors(),
+            "a list change after the view must refuse the commit",
+        ).toContainEqual(expect.stringContaining("Changelists changed"));
+        expect(git(["rev-parse", "HEAD"]), "a refused commit must keep HEAD").toBe(head);
+    });
+
+    it("refuses a list commit when another window changed its file's selection between the view and the click", async () => {
+        const head = await commitBehind("selection");
+        expect(
+            postedErrors(),
+            "a selection change after the view must refuse the commit",
+        ).toContainEqual(
+            expect.stringContaining("Changelists changed. Refresh before committing."),
+        );
+        expect(git(["rev-parse", "HEAD"]), "a refused commit must keep HEAD").toBe(head);
     });
 
     it.each([
