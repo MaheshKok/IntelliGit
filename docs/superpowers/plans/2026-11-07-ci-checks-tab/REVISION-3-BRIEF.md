@@ -1,0 +1,21 @@
+# Revision 3 brief — CI Checks tab plan (after Codex Round 3)
+
+Owner decision, 2026-11-07: **fix all 13 Round 3 findings, then build** (no Round 4). Owner also took **permanent toast claims** (Round 3 #2): this replaces the 90-day retention in K13.
+
+Edit `PLAN.md` in place, surgically: change only the sections each finding names; do not rewrite untouched sections. Findings are in `PLAN-REVIEW-LOG.md` → "## Round 3 — Codex" (#1–#13); apply "### Claude's position (Round 3)" exactly. Every rule in `BRIEF.md` still holds.
+
+1. **#1 Fence expiry.** Delete the 7-day sweep (§3 step 6 and K30's last clause, `ACTION_FENCE_MAX_AGE_MS`). A fence ends on evidence (§3 step 4) or when the user clicks Refresh on a "not seen yet" target. Test: reopen after 8 days with the provider still returning the old execution → fence still there, result not persisted.
+2. **#2 Toast claims.** Claims are never pruned (K13, §10 line ~529, Phase 13 tests). Remove the 90-day sweep and its mutation test; note the cost (one empty directory per toasted hash) in Risks. K13 source: "owner 2026-11-07, Codex R3 #2".
+3. **#3 Settlement fetch.** Before the pending→settled detail fetch, call `invalidate(hash)` so it can never join pre-settlement in-flight work (`service.ts:81-82` joins in-flight even with `force`). Test: hold a pre-settlement detail request, settle, assert the final detail comes from a request started after settlement.
+4. **#4 GitLab retry evidence.** A GitLab job retry creates a new job id; evidence = a job with the same logical id in the same pipeline with a higher id than `before.jobId`. Store the evidence rule per provider with the fence. Test: GitLab retry finishing before the next poll resolves the fence.
+5. **#5 Fence-driven polling.** While a fence exists for a hash, that item polls on the pending ladder regardless of execution completion; the 10-min "not seen yet" label is driven by a timer, not by a fetch. Tests across restart and request-gate cooldown.
+6. **#6 Placeholder refresh.** The `intelligit-ci-log:` content provider fires `onDidChange(uri)` when a load replaces placeholder or error text. Test: reload → placeholder tab → Open full log → tab shows the real text.
+7. **#7 ETag + pagination.** The ETag entry stores the pagination headers (`Link`, `x-next-page`, body `next` already in body) with the body and restores them on 304; quota headers are read from the fresh 304. Test: multi-page 200 then header-minimal 304 → coverage unchanged.
+8. **#8 Gate pause.** A request-gate cooldown or budget error thrown after acquisition (`requestGate.ts:223-235`) during the overflow scan = paused (cursor and found items kept, auto-resume when the cooldown ends), not stopped. Test: cooldown begins after the precheck.
+9. **#9 Coverage vs settlement.** If the run collection's coverage is not `full`, settlement is `unknown`: the monitor keeps polling and no toast or "complete" caching happens. Test: a running execution past the bound.
+10. **#10 Flat coverage.** `otherChecks` (flat list) gets a `coverage` field; the Bitbucket Server five-page reader reports `pageBound`; the persistence predicate and the UI banner read it. Fixture exceeding the reader's bound.
+11. **#11 Name fallback.** The unique-name fallback needs a unique match in both the current and the parent populations within its scope; otherwise `unknown`. Test: two current workflows with the same job name against one parent job.
+12. **#12 Changed since green.** `requestChangedSinceGreen` and its reply carry `logicalCheckId` and its scope, and the ancestor lookup uses them. Test: same job name in two workflows with different last-green commits.
+13. **#13 Split Phase 1.** Move the durable action fence (`ciActionFence.ts`, K30, its tests) out of Phase 1 into a new **Phase 19 — Durable action fence**, `Depends on: 1`. Phase 8 (actions) gains `19` in its Depends-on. Regenerate the waves list from the Depends-on lines (at most 3 per wave, lowest id first). Keep Phase 1's remaining scope.
+
+Bookkeeping: provenance line "revised after Codex Round 3"; add a Round 3 rows block to the disposition table at the end (same format as Round 2's); every changed contract row stays RESOLVED with source `Codex R3 #n`. Do not touch C1–C4 or O1–O3.
