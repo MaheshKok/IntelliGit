@@ -2604,6 +2604,73 @@ describe("root-bound selected-change host", () => {
         ).not.toContain("Mid-scan");
     });
 
+    /** Answers the rename prompts, running `last` as the description prompt, the last one, closes. */
+    function renamePrompts(last: () => Promise<unknown>) {
+        Object.defineProperty(vscode.window, "showInputBox", {
+            configurable: true,
+            value: vi
+                .fn()
+                .mockResolvedValueOnce("Mid-scan")
+                .mockImplementationOnce(async () => {
+                    await last();
+                    return "";
+                }),
+        });
+    }
+
+    it("renames a list when a range scan write is still queued as its last prompt closes", async () => {
+        const created = await store.create(root, store.revision(root), "Existing");
+        const id = created.lists[1].id;
+        let queued: Awaited<ReturnType<typeof queueScanWrite>> | undefined;
+        renamePrompts(async () => {
+            queued = await queueScanWrite();
+        });
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "rename",
+            listId: id,
+            revision: created.revision,
+        });
+        await queued?.scan;
+        await host.settled();
+        expect(
+            (await queued!.written).revision,
+            "the scan must write after the last prompt closes",
+        ).toBeGreaterThan(created.revision);
+        expect(
+            postedErrors(),
+            "a range write queued ahead of the rename must not refuse it",
+        ).toEqual([]);
+        expect(store.get(root).lists.find((list) => list.id === id)?.name).toBe("Mid-scan");
+    });
+
+    it("refuses a rename when another list's edit is still queued as its last prompt closes", async () => {
+        const created = await store.create(root, store.revision(root), "Existing");
+        const [other, { id }] = created.lists;
+        let elsewhere: Promise<unknown> | undefined;
+        renamePrompts(async () => {
+            elsewhere = store.edit(root, store.revision(root), other.id, "Elsewhere", "");
+        });
+        posted.length = 0;
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "rename",
+            listId: id,
+            revision: created.revision,
+        });
+        await elsewhere;
+        expect(postedErrors(), "a queued list change must refuse the rename").toContainEqual(
+            expect.stringContaining("Changelists changed"),
+        );
+        expect(
+            store.get(root).lists.find((list) => list.id === id)?.name,
+            "a refused rename must write nothing",
+        ).toBe("Existing");
+    });
+
     it("creates a list whose prompts stayed open while the range scan wrote", async () => {
         const revision = store.get(root).revision;
         await writeFile(path.join(root, "file.txt"), `scan edit\n${working}`);
@@ -3200,8 +3267,8 @@ describe("root-bound selected-change host", () => {
         expect(store.get(root).activeId, "a refused activation must write nothing").toBe(other);
     });
 
-    /** Commits file.txt from the active list with the revision the webview showed, after a range scan or a list change landed. */
-    async function commitBehind(change: "scan" | "list") {
+    /** Commits file.txt from the active list with the revision the webview showed, after a range scan, a list change or a selection change landed. */
+    async function commitBehind(change: "scan" | "list" | "selection") {
         await writeFile(path.join(root, "scan.txt"), base);
         git(["add", "--", "scan.txt"]);
         git(["commit", "-qm", "scan"]);
@@ -3222,7 +3289,13 @@ describe("root-bound selected-change host", () => {
             await host.reconcile(await gitOps.getStatus({ withStats: false }));
             await host.settled();
             expect(lists(), "the scan must change no list or owner").toEqual(seen);
-        } else await store.moveFiles(root, store.revision(root), other, ["file.txt"]);
+        } else if (change === "list")
+            await store.moveFiles(root, store.revision(root), other, ["file.txt"]);
+        else {
+            const { contentId } = store.get(root).changes["file.txt"];
+            await store.recordSelection(root, "file.txt", contentId, listId, [], 4);
+            expect(lists(), "a selection change must change no list or owner").toEqual(seen);
+        }
         expect(store.revision(root), "a write must land after the view").toBeGreaterThan(revision);
         const head = git(["rev-parse", "HEAD"]);
         posted.length = 0;
@@ -3252,6 +3325,17 @@ describe("root-bound selected-change host", () => {
             postedErrors(),
             "a list change after the view must refuse the commit",
         ).toContainEqual(expect.stringContaining("Changelists changed"));
+        expect(git(["rev-parse", "HEAD"]), "a refused commit must keep HEAD").toBe(head);
+    });
+
+    it("refuses a list commit when another window changed its file's selection between the view and the click", async () => {
+        const head = await commitBehind("selection");
+        expect(
+            postedErrors(),
+            "a selection change after the view must refuse the commit",
+        ).toContainEqual(
+            expect.stringContaining("Changelists changed. Refresh before committing."),
+        );
         expect(git(["rev-parse", "HEAD"]), "a refused commit must keep HEAD").toBe(head);
     });
 

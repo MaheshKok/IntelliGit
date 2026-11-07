@@ -92,6 +92,22 @@ function saveIntent(state: ChangelistState): string {
     ]);
 }
 
+/** The saved inclusions a commit reads besides a save plan's metadata. */
+function selectionsIntent(state: ChangelistState): string {
+    return JSON.stringify(
+        Object.keys(state.changes)
+            .sort()
+            .flatMap((file) => {
+                const selections = state.changes[file].selections;
+                return selections ? [[file, selections]] : [];
+            }),
+    );
+}
+
+/** What each kind of click reads from the posted view. */
+const SHOWN_INTENTS = { lists: listsIntent, save: saveIntent, selections: selectionsIntent };
+type ShownIntent = keyof typeof SHOWN_INTENTS;
+
 /** A refresh's paths and epoch, plus each file's owner once its own membership write landed. */
 interface Observation {
     readonly paths: readonly string[];
@@ -114,8 +130,11 @@ export class ChangeWorkflowHost {
     private readonly poll: ReturnType<typeof setInterval>;
     private lastRevision = -1;
     private lastPollError?: string;
-    /** The lists last posted, the oldest revision a click may carry for them, and the highest posted. */
-    private shown?: { lists: string; since: number; highest: number };
+    /** Each intent last posted with the oldest revision a click may carry for it, and the highest revision posted. */
+    private shown?: {
+        intents: Record<ShownIntent, { value: string; since: number }>;
+        highest: number;
+    };
     private savingShelf = false;
     private readonly shelfRequests = new Map<
         string,
@@ -428,39 +447,53 @@ export class ChangeWorkflowHost {
         }
     }
 
-    /** The browser snapshot to post, remembering since which revision its lists have been shown. */
+    /** The browser snapshot to post, remembering since which revision each intent has been shown. */
     private show(): ChangelistState {
         const state = this.store.view(this.deps.root);
-        const lists = listsIntent(state);
-        const previous = this.shown ?? { lists, since: state.revision, highest: state.revision };
-        // Below a posted revision the metadata was replaced, and the webview keeps its higher
-        // revision with the older lists, so no click from before the replacement may match.
-        const since =
-            state.revision < previous.highest
-                ? previous.highest + 1
-                : lists === previous.lists
-                  ? previous.since
-                  : state.revision;
+        const previous = this.shown;
+        const intents = {} as Record<ShownIntent, { value: string; since: number }>;
+        for (const key of Object.keys(SHOWN_INTENTS) as ShownIntent[]) {
+            const value = SHOWN_INTENTS[key](state);
+            const last = previous?.intents[key] ?? { value, since: state.revision };
+            // Below a posted revision the metadata was replaced, and the webview keeps its higher
+            // revision with the older lists, so no click from before the replacement may match.
+            const since =
+                previous && state.revision < previous.highest
+                    ? previous.highest + 1
+                    : value === last.value
+                      ? last.since
+                      : state.revision;
+            intents[key] = { value, since: Math.max(since, last.since) };
+        }
         this.shown = {
-            lists,
-            since: Math.max(since, previous.since),
-            highest: Math.max(state.revision, previous.highest),
+            intents,
+            highest: Math.max(state.revision, previous?.highest ?? state.revision),
         };
         return state;
     }
 
     /**
-     * Ownership writes advance the revision after a post without changing any list, so a click
-     * may carry an older revision while the lists and active list it showed are still current.
-     * Another window's write is read before its post, so the current lists are compared too.
+     * Ownership writes advance the revision after a post without changing what a click reads, so
+     * a click may carry an older revision while the intents it showed are still current.
+     * Another window's write is read before its post, so the current intents are compared too.
      */
-    private showsCurrentLists(revision: number, state: ChangelistState): boolean {
+    private showsCurrent(
+        revision: number,
+        state: ChangelistState,
+        intent: ShownIntent,
+        ...more: ShownIntent[]
+    ): boolean {
         return (
             revision === state.revision ||
-            (this.shown !== undefined &&
-                this.shown.since <= revision &&
-                revision <= state.revision &&
-                this.shown.lists === listsIntent(state))
+            [intent, ...more].every((key) => {
+                const shown = this.shown?.intents[key];
+                return (
+                    shown !== undefined &&
+                    shown.since <= revision &&
+                    revision <= state.revision &&
+                    shown.value === SHOWN_INTENTS[key](state)
+                );
+            })
         );
     }
 
@@ -518,7 +551,7 @@ export class ChangeWorkflowHost {
         }
     }
 
-    /** Validates webview list commands; moves, resets and removals check what they act on inside the store's write, and partial ownership requires the range editor rather than a whole-file move. */
+    /** Validates webview list commands; creates, activations, moves, resets and removals check what they act on inside the store's write, and partial ownership requires the range editor rather than a whole-file move. */
     private async changeList(
         message: Extract<ChangelistOutbound, { type: "changelistAction" }>,
     ): Promise<void> {
@@ -592,14 +625,13 @@ export class ChangeWorkflowHost {
     /** Observe existing edits under the old active list before changing only future attribution. */
     private async activate(revision: number, id: string): Promise<void> {
         const before = this.store.get(this.deps.root);
-        if (!this.showsCurrentLists(revision, before)) throw new ChangelistRevisionError();
+        if (!this.showsCurrent(revision, before, "lists")) throw new ChangelistRevisionError();
         const epoch = this.store.observerEpoch(this.deps.root);
         await this.tracker.reconcile(await this.deps.gitOps.getStatus({ withStats: false }), epoch);
-        const latest = this.store.get(this.deps.root);
-        // Observation may advance ownership revisions itself. Preserve those writes, but
-        // never overwrite another window's intervening active-list choice.
-        if (latest.activeId !== before.activeId) throw new ChangelistRevisionError();
-        await this.store.activate(this.deps.root, latest.revision, id);
+        // Observation and the range scan may advance ownership revisions, even with a write queued
+        // ahead of this one. Preserve those writes, but never overwrite another window's
+        // intervening active-list choice; the store checks it inside its write.
+        await this.store.activate(this.deps.root, undefined, id, before.activeId);
     }
 
     /** Collects all metadata before a single CAS write, so cancelling any prompt changes nothing. */
@@ -610,11 +642,12 @@ export class ChangeWorkflowHost {
         movePaths: readonly string[] = [],
         source?: string,
     ): Promise<void> {
-        // The range scan may advance ownership revisions while the prompts are open. Preserve
-        // those writes, but never apply over an intervening list or active-list change; the
-        // store checks moved files against `source` inside its write.
+        // The range scan may advance ownership revisions while the prompts are open, or queue a
+        // write ahead of this one. Preserve those writes, but never apply over an intervening
+        // list or active-list change; the store checks the lists, and moved files against
+        // `source`, inside its write.
         const before = this.store.get(this.deps.root);
-        if (!this.showsCurrentLists(revision, before)) throw new ChangelistRevisionError();
+        if (!this.showsCurrent(revision, before, "lists")) throw new ChangelistRevisionError();
         const name = await vscode.window.showInputBox({
             title:
                 action === "create"
@@ -641,11 +674,6 @@ export class ChangeWorkflowHost {
                 value.length > 4000 ? vscode.l10n.t("Enter at most 4000 characters.") : undefined,
         });
         if (description === undefined) return;
-        const latest = () => {
-            const state = this.store.get(this.deps.root);
-            if (listsIntent(state) !== listsIntent(before)) throw new ChangelistRevisionError();
-            return state.revision;
-        };
         if (action === "create") {
             const active = await vscode.window.showQuickPick(
                 [
@@ -663,14 +691,15 @@ export class ChangeWorkflowHost {
             if (!active) return;
             await this.store.create(
                 this.deps.root,
-                latest(),
+                undefined,
                 name,
                 description,
                 active.active,
                 movePaths,
                 source,
+                before,
             );
-        } else await this.store.edit(this.deps.root, latest(), id, name, description);
+        } else await this.store.edit(this.deps.root, undefined, id, name, description, before);
     }
 
     /** Names a surviving destination and resolves draft conflicts before removing any metadata. */
@@ -1009,7 +1038,7 @@ export class ChangeWorkflowHost {
             const state = this.store.get(this.deps.root);
             if (
                 message.repositoryRoot !== this.deps.root ||
-                expectedRevision(message.revision) !== state.revision
+                !this.showsCurrent(expectedRevision(message.revision), state, "save")
             )
                 throw new Error("Changelists changed. Refresh before saving.");
             if (message.scope !== "list" && message.scope !== "files")
@@ -1808,7 +1837,8 @@ export class ChangeWorkflowHost {
     ): Promise<void> {
         const paths = assertRepoPathArray(message.paths, "paths");
         const state = this.store.get(this.deps.root);
-        if (expectedRevision(message.revision) !== state.revision)
+        // A commit reads each file's owners and stale mark, as a save plan does, plus its selections.
+        if (!this.showsCurrent(expectedRevision(message.revision), state, "save", "selections"))
             throw new Error("Changelists changed. Refresh before committing.");
         const id = assertString(message.listId, "listId");
         if (id !== "all" && !state.lists.some((list) => list.id === id))

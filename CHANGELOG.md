@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.1] - 2026-11-07
+
+### Fixed
+
+- New changelist, Rename, Set active, Save list to Shelf and Commit list no longer fail with "Changelists changed" while IntelliGit is still counting changed lines in the background. They still stop if a list, the active list or a file's list really changed since you clicked.
+
 ## [0.43.0] - 2026-11-06
 
 ### Added

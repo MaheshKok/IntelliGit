@@ -2040,17 +2040,21 @@ export class ChangelistStore {
         );
     }
 
-    /** Creates a named list under revision compare-and-swap. */
+    /** Creates a named list under revision compare-and-swap, or against the `shown` lists. */
     create(
         root: string,
-        revision: number,
+        revision: number | undefined,
         name: string,
         description = "",
         makeActive = false,
         movePaths: readonly string[] = [],
         source?: string,
+        shown?: Pick<ChangelistState, "lists" | "activeId">,
     ): Promise<ChangelistState> {
         return this.write(root, revision, (state) => {
+            // The prompts named these lists; a write queued ahead of this one may only change ownership.
+            if (shown && listsIntent(state) !== listsIntent(shown))
+                throw new ChangelistRevisionError();
             if (state.lists.length >= MAX_LISTS) throw new Error("Too many changelists.");
             const accepted = nameFor(name);
             if (
@@ -2090,9 +2094,16 @@ export class ChangelistStore {
         });
     }
 
-    /** Changes where subsequently discovered files are assigned, not Git's index. */
-    activate(root: string, revision: number, id: string): Promise<ChangelistState> {
+    /** Changes where subsequently discovered files are assigned, not Git's index; refuses unless the active list is still `shownActiveId`. */
+    activate(
+        root: string,
+        revision: number | undefined,
+        id: string,
+        shownActiveId?: string,
+    ): Promise<ChangelistState> {
         return this.write(root, revision, (state) => {
+            if (shownActiveId !== undefined && state.activeId !== shownActiveId)
+                throw new ChangelistRevisionError();
             requireList(state, id);
             state.activeId = id;
         });
@@ -2112,15 +2123,19 @@ export class ChangelistStore {
         });
     }
 
-    /** Edits description and name atomically; cancellation belongs to the host before this call. */
+    /** Edits description and name atomically, under revision compare-and-swap or against the `shown` lists; cancellation belongs to the host before this call. */
     edit(
         root: string,
-        revision: number,
+        revision: number | undefined,
         id: string,
         name: string,
         description: string,
+        shown?: Pick<ChangelistState, "lists" | "activeId">,
     ): Promise<ChangelistState> {
         return this.write(root, revision, (state) => {
+            // The prompts named these lists; a write queued ahead of this one may only change ownership.
+            if (shown && listsIntent(state) !== listsIntent(shown))
+                throw new ChangelistRevisionError();
             const list = requireList(state, id);
             const accepted = nameFor(name);
             if (
