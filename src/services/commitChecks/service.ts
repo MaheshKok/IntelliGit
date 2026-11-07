@@ -2,6 +2,7 @@
 // Views still resolve their active repository, but snapshots and in-flight fetches
 // are keyed globally so the same repo/SHA is fetched once.
 
+import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type { CommitChecksSnapshot } from "../../types";
 import type { CommitChecksPersistentCache } from "./persistentCache";
 
@@ -45,6 +46,8 @@ export class CommitChecksService {
     private readonly persistentCache?: CommitChecksPersistentCache;
     private pendingPersistentClear = Promise.resolve();
     private generation = 0;
+    // Grows by one entry per invalidated key (a write action), never per fetch.
+    private readonly keyGenerations = new Map<string, number>();
 
     /**
      * Creates the shared runtime cache.
@@ -81,8 +84,10 @@ export class CommitChecksService {
         const inflight = this.inflight.get(key);
         if (inflight) return inflight;
         if (!options.force && this.persistentCache) {
+            const readGeneration = this.captureGeneration(key);
             const persisted = await this.getPersisted(key);
-            if (persisted) {
+            // A read queued before invalidate() or clear() still sees the old entry.
+            if (persisted && this.isCurrentGeneration(key, readGeneration)) {
                 this.cache.set(key, { snapshot: persisted, fetchedAt: this.now() });
                 this.evictOldest();
                 return persisted;
@@ -90,10 +95,10 @@ export class CommitChecksService {
         }
         const newerInflight = this.inflight.get(key);
         if (newerInflight) return newerInflight;
-        const generation = this.generation;
+        const generation = this.captureGeneration(key);
         const request = fetchSnapshot()
             .then(async (snapshot) => {
-                if (generation === this.generation) {
+                if (this.isCurrentGeneration(key, generation)) {
                     const fetchedAt = this.now();
                     this.cache.set(key, { snapshot, fetchedAt });
                     this.evictOldest();
@@ -110,6 +115,19 @@ export class CommitChecksService {
         return request;
     }
 
+    /**
+     * Drops one key from L1, the in-flight map and the persistent store. A fetch that
+     * started before this call neither caches its result nor is joined by a later one.
+     *
+     * @param key - Provider/repo/settings/commit cache key.
+     */
+    async invalidate(key: string): Promise<void> {
+        this.keyGenerations.set(key, (this.keyGenerations.get(key) ?? 0) + 1);
+        this.cache.delete(key);
+        this.inflight.delete(key);
+        await this.persistentCache?.delete(key);
+    }
+
     /** Clears runtime snapshots and in-flight fetches after auth/settings changes. */
     clear(): void {
         this.generation += 1;
@@ -121,13 +139,23 @@ export class CommitChecksService {
         }
     }
 
+    private captureGeneration(key: string): readonly [number, number] {
+        return [this.generation, this.keyGenerations.get(key) ?? 0];
+    }
+
+    private isCurrentGeneration(key: string, captured: readonly [number, number]): boolean {
+        const [generation, keyGeneration] = this.captureGeneration(key);
+        return captured[0] === generation && captured[1] === keyGeneration;
+    }
+
     private isFresh(entry: CacheEntry): boolean {
+        if (isCompleteSnapshot(entry.snapshot)) return true;
         const { state } = entry.snapshot;
         const ageMs = this.now() - entry.fetchedAt;
-        if (state === "pending") return ageMs < this.pendingTtlMs;
         if (state === "none") return ageMs < this.noneTtlMs;
         if (state === "unavailable") return ageMs < this.unavailableTtlMs;
-        return true;
+        // Pending, including a failure whose other checks are still running.
+        return ageMs < this.pendingTtlMs;
     }
 
     private touch(key: string, entry: CacheEntry): void {

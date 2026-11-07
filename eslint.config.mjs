@@ -14,6 +14,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const EXTENSION_TS_FILES = ["src/**/*.ts"];
 const WEBVIEW_REACT_FILES = ["src/webviews/react/**/*.{ts,tsx}"];
+const CI_PROVIDER_ID_PATTERN = "/^(github|gitlab|bitbucket-cloud|bitbucket-server)$/";
+const CI_PROVIDER_BRANCH_MESSAGE =
+    "Webviews must not branch on a CI provider id; read the detail's capabilities instead.";
 // Extension-host and shared TypeScript sources are fully ratcheted. The
 // locked block below ignores React because React uses JSX-aware parser settings
 // and a narrower selector that documents hooks/types without forcing every
@@ -309,6 +312,23 @@ export default defineConfig([
                     checksVoidReturn: {
                         attributes: false,
                     },
+                },
+            ],
+        },
+    },
+    {
+        // CI views render from provider capabilities, never from which provider it is.
+        files: ["src/webviews/**/*.{ts,tsx}"],
+        rules: {
+            "no-restricted-syntax": [
+                "error",
+                {
+                    selector: `BinaryExpression[operator=/^[!=]==?$/] > Literal[value=${CI_PROVIDER_ID_PATTERN}]`,
+                    message: CI_PROVIDER_BRANCH_MESSAGE,
+                },
+                {
+                    selector: `SwitchCase > Literal.test[value=${CI_PROVIDER_ID_PATTERN}]`,
+                    message: CI_PROVIDER_BRANCH_MESSAGE,
                 },
             ],
         },

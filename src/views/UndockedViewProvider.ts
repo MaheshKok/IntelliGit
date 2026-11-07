@@ -68,6 +68,7 @@ import {
     type CommitChecksSettings,
 } from "../services/commitChecks/settingsConfig";
 import type { CommitChecksService } from "../services/commitChecks/service";
+import type { CommitCiDetailService } from "../services/commitChecks/detailService";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
@@ -140,6 +141,7 @@ interface UndockedViewProviderOptions {
     /** Activation-time default for removing successfully applied entries after unshelve. */
     shelfRemoveOnUnshelve?: boolean;
     commitChecksService?: CommitChecksService;
+    commitCiDetailService?: CommitCiDetailService;
     commitChecksProviders?: readonly CommitChecksProvider[];
     /** Shared activation-owned coordinator; undocked providers never construct their own. */
     commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator;
@@ -391,6 +393,7 @@ export class UndockedViewProvider {
                 providerEnabled: commitChecksSettings?.providers,
                 ttlMs: DEFAULT_COMMIT_CHECKS_TTL_MS,
                 service: options.commitChecksService,
+                detailService: options.commitCiDetailService,
                 settingsFingerprint: commitChecksSettingsFingerprint(commitChecksSettings),
             },
         );

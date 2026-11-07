@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.2] - 2026-11-07
+
+### Fixed
+
+- A commit whose CI failed while other jobs were still running now keeps updating until every job finishes.
+
 ## [0.43.1] - 2026-11-07
 
 ### Fixed

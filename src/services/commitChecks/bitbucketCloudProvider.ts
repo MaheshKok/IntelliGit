@@ -10,6 +10,7 @@ import { getErrorMessage } from "../../utils/errors";
 import type { FetchJson } from "./http";
 import { aggregateState, redactSecret, summaryForItems, unavailableSnapshot } from "./normalize";
 import { isStatusPage, toStatusItem, type BitbucketStatus } from "./bitbucketShared";
+import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
 import type { CredentialStore } from "./credentialStore";
 
@@ -102,6 +103,8 @@ function buildRef(rawPath: string): BitbucketCloudRepoRef | null {
  */
 export class BitbucketCloudProvider implements CommitChecksProvider {
     readonly id = "bitbucket-cloud" as const;
+    /** No CI detail features yet; each flag turns on in the phase that implements it. */
+    readonly capabilities = NO_CI_CAPABILITIES;
 
     /**
      * Creates a BitbucketCloudProvider.

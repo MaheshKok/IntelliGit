@@ -16,6 +16,7 @@ import {
     summaryForItems,
     unavailableSnapshot,
 } from "./normalize";
+import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
 import type { CredentialStore } from "./credentialStore";
 
@@ -141,6 +142,8 @@ function escapeRegex(str: string): string {
  */
 export class GitLabProvider implements CommitChecksProvider {
     readonly id = "gitlab" as const;
+    /** No CI detail features yet; each flag turns on in the phase that implements it. */
+    readonly capabilities = NO_CI_CAPABILITIES;
 
     /**
      * Creates a GitLabProvider.

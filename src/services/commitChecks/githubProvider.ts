@@ -17,6 +17,7 @@ import {
     summaryForItems,
     unavailableSnapshot,
 } from "./normalize";
+import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
 
 interface GitHubRepoRef extends ProviderRepoRef {
@@ -82,6 +83,8 @@ export function normalizeGithubChecks(
 /** GitHub commit-check provider backed by the built-in VS Code GitHub session. */
 export class GitHubProvider implements CommitChecksProvider {
     readonly id = "github" as const;
+    /** No CI detail features yet; each flag turns on in the phase that implements it. */
+    readonly capabilities = NO_CI_CAPABILITIES;
 
     /**
      * Accepts an injected HTTP boundary and an optional CI/CD include override.

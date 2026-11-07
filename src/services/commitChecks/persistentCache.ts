@@ -1,7 +1,8 @@
 // Persistent commit-check cache. This sits behind the shared runtime service
-// and stores terminal plus no-check snapshots, bounded by age and LRU size.
+// and stores complete plus no-check snapshots, bounded by age and LRU size.
 
-import type { CommitChecksSnapshot, CommitCheckState } from "../../types";
+import { isCompleteSnapshot } from "../../shared/ci/completion";
+import type { CommitChecksSnapshot } from "../../types";
 
 const SCHEMA_VERSION = 1;
 const DEFAULT_STORAGE_KEY = "intelligit.commitChecks.cache.v1";
@@ -89,14 +90,15 @@ export class CommitChecksPersistentCache {
     }
 
     /**
-     * Persists an eligible snapshot; pending and unavailable states are ignored.
+     * Persists an eligible snapshot; incomplete (pending, or a failure with running
+     * checks) and unavailable snapshots are ignored.
      *
      * @param key - Composite provider/repo/commit/settings key.
      * @param snapshot - Snapshot returned by a provider.
      * @param fetchedAt - Fetch timestamp to preserve across sessions.
      */
     async set(key: string, snapshot: CommitChecksSnapshot, fetchedAt = this.now()): Promise<void> {
-        if (!isPersistentCommitCheckState(snapshot.state)) return;
+        if (!isPersistableSnapshot(snapshot)) return;
         await this.enqueue(async () => {
             const payload = this.read();
             const entry: PersistedCommitChecksEntry = {
@@ -113,9 +115,30 @@ export class CommitChecksPersistentCache {
         });
     }
 
-    /** Clears all persisted commit-check snapshots. */
+    /**
+     * Removes one persisted snapshot, in order with every queued read and write.
+     *
+     * @param key - Composite provider/repo/commit/settings key.
+     */
+    async delete(key: string): Promise<void> {
+        await this.enqueue(async () => {
+            const payload = this.read();
+            if (!payload.entries.some((entry) => entry.key === key)) return;
+            await this.write({
+                schemaVersion: SCHEMA_VERSION,
+                entries: payload.entries.filter((entry) => entry.key !== key),
+            });
+        });
+    }
+
+    /**
+     * Clears all persisted commit-check snapshots. Runs in the queue so a write queued
+     * before it lands first and is wiped, never after.
+     */
     async clear(): Promise<void> {
-        await this.state.update(this.storageKey, undefined);
+        await this.enqueue(async () => {
+            await this.state.update(this.storageKey, undefined);
+        });
     }
 
     private read(): PersistedPayload {
@@ -151,15 +174,15 @@ export class CommitChecksPersistentCache {
 
     private isUsable(entry: PersistedCommitChecksEntry): boolean {
         if (entry.schemaVersion !== SCHEMA_VERSION) return false;
-        if (!isPersistentCommitCheckState(entry.snapshot.state)) return false;
+        if (!isPersistableSnapshot(entry.snapshot)) return false;
         const maxAgeMs = entry.snapshot.state === "none" ? this.noneMaxAgeMs : this.maxAgeMs;
         return this.now() - entry.fetchedAt <= maxAgeMs;
     }
 }
 
-/** Returns true unless a snapshot is pending or temporarily unavailable. */
-export function isPersistentCommitCheckState(state: CommitCheckState): boolean {
-    return state !== "pending" && state !== "unavailable";
+/** Returns true for a complete snapshot or a no-check snapshot. */
+export function isPersistableSnapshot(snapshot: CommitChecksSnapshot): boolean {
+    return snapshot.state === "none" || isCompleteSnapshot(snapshot);
 }
 
 function isPayload(value: unknown): value is PersistedPayload {

@@ -1,13 +1,22 @@
 // Coordinates commit-check providers for one repository. It resolves the active
 // remote once per repository generation, builds a provider-scoped cache key, and
-// delegates snapshot caching/de-dupe to the shared CommitChecksService.
+// delegates snapshot caching/de-dupe to the shared CommitChecksService and CI detail
+// caching to the sibling CommitCiDetailService.
 
 import type { GitOps } from "../../git/operations";
-import type { CommitChecksSnapshot } from "../../types";
+import { isCompleteSnapshot } from "../../shared/ci/completion";
+import type {
+    CommitChecksSnapshot,
+    CommitCiDetail,
+    CommitCiDetailData,
+    ProviderId,
+} from "../../types";
 import { getErrorMessage } from "../../utils/errors";
+import type { CiOperationContext } from "./ciGenerations";
+import { CommitCiDetailService } from "./detailService";
 import { summaryForState, unavailableSnapshot } from "./normalize";
 import { CommitChecksService, type CommitChecksFetchOptions } from "./service";
-import type { CommitChecksProvider, HostMap, ProviderId, ProviderRepoRef } from "./types";
+import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
 
 interface ProviderMatch {
     provider: CommitChecksProvider;
@@ -37,6 +46,8 @@ export interface CommitChecksCoordinatorOptions {
     now?: () => number;
     /** Shared cache/de-dupe service; omitted tests get an instance-local service. */
     service?: CommitChecksService;
+    /** Shared CI detail cache; omitted tests get an instance-local service. */
+    detailService?: CommitCiDetailService;
     /** Content-affecting settings fingerprint included in the shared cache key. */
     settingsFingerprint?: string;
 }
@@ -46,6 +57,7 @@ export class CommitChecksCoordinator {
     private readonly enabled: boolean;
     private readonly providerEnabled: Partial<Record<ProviderId, boolean>>;
     private readonly service: CommitChecksService;
+    private readonly detailService: CommitCiDetailService;
     private readonly settingsFingerprint: string;
     private resolvedProvider = false;
     private providerMatch: ProviderMatch | null = null;
@@ -75,13 +87,17 @@ export class CommitChecksCoordinator {
         this.providerEnabled = options.providerEnabled ?? {};
         this.service =
             options.service ?? new CommitChecksService({ ttlMs: options.ttlMs, now: options.now });
+        this.detailService =
+            options.detailService ??
+            new CommitCiDetailService({ ttlMs: options.ttlMs, now: options.now });
         this.settingsFingerprint = options.settingsFingerprint ?? "-";
     }
 
-    /** Drops shared cached snapshots; called after credential/settings changes. */
+    /** Drops shared cached snapshots and details; called after credential/settings changes. */
     clear(): void {
         this.clearProviderResolution();
         this.service.clear();
+        this.detailService.clear();
     }
 
     /** Clears only the memoized provider/ref, preserving shared cached snapshots. */
@@ -113,6 +129,67 @@ export class CommitChecksCoordinator {
         return this.fetchFresh(hash, options);
     }
 
+    /**
+     * Returns the CI detail for a commit with the provider's capabilities attached, or
+     * undefined when no enabled provider serves this repository (feature off, provider
+     * off, no matching remote, or the remotes could not be read).
+     *
+     * @param hash - Full Git commit hash.
+     * @param options - `force` bypasses the detail caches (and the snapshot caches for a
+     *   provider without its own detail).
+     * @param ctx - Context captured when the operation started.
+     */
+    async getDetail(
+        hash: string,
+        options: CommitChecksFetchOptions,
+        ctx: CiOperationContext,
+    ): Promise<CommitCiDetail | undefined> {
+        if (!this.enabled) return undefined;
+        let match: ProviderMatch | null;
+        try {
+            match = await this.resolveEnabledMatch();
+        } catch {
+            return undefined;
+        }
+        if (!match) return undefined;
+        const { provider, ref } = match;
+        const snapshotKey = this.snapshotKey(match, hash);
+        const getDetail = provider.getDetail?.bind(provider);
+        const fetchDetail = getDetail
+            ? async (): Promise<CommitCiDetailData> => {
+                  try {
+                      return await getDetail(ref, hash, ctx);
+                  } catch (err) {
+                      return floorDetail(
+                          unavailableSnapshot(hash, getErrorMessage(err)),
+                          provider.id,
+                      );
+                  }
+              }
+            : async (): Promise<CommitCiDetailData> =>
+                  floorDetail(await this.fetchSnapshot(match, hash, options), provider.id);
+        return this.detailService.getOrFetch(
+            `${snapshotKey}#detail`,
+            fetchDetail,
+            { repoKey: ctx.repoKey, capabilities: provider.capabilities },
+            options,
+        );
+    }
+
+    /**
+     * Drops the snapshot and the detail of one commit from every cache layer, so the
+     * next fetch starts a new request and cannot bring an older result back.
+     *
+     * @param hash - Full Git commit hash.
+     */
+    async invalidate(hash: string): Promise<void> {
+        const match = await this.resolveEnabledMatch();
+        if (!match) return;
+        const snapshotKey = this.snapshotKey(match, hash);
+        await this.service.invalidate(snapshotKey);
+        await this.detailService.invalidate(`${snapshotKey}#detail`);
+    }
+
     /** Builds the no-badge snapshot used when the feature or matched provider is disabled. */
     private noneSnapshot(hash: string): CommitChecksSnapshot {
         return { hash, state: "none", summary: summaryForState("none"), items: [] };
@@ -128,33 +205,49 @@ export class CommitChecksCoordinator {
         hash: string,
         options: CommitChecksFetchOptions,
     ): Promise<CommitChecksSnapshot> {
-        const providerGeneration = this.providerGeneration;
         let match: ProviderMatch | null;
         try {
-            match = await this.resolveProvider();
+            match = await this.resolveEnabledMatch();
         } catch (err) {
             return unavailableSnapshot(hash, getErrorMessage(err));
         }
-        if (providerGeneration !== this.providerGeneration) {
-            return this.noneSnapshot(hash);
-        }
-        if (!match) {
-            // No registered provider matched any remote (an unmapped self-hosted host, or
-            // an unsupported forge). That is a configuration state, not a recoverable
-            // error: yield no badge (state "none"), the same as a disabled provider. An
-            // "unavailable" error badge here would be permanent — re-fetching can never
-            // map the host — and the UI only hides "none".
-            return this.noneSnapshot(hash);
-        }
-        if (this.providerEnabled[match.provider.id] === false) {
-            // Hard-stop: the origin-first matched provider is disabled. Yield no badge and
-            // do NOT fall through to a later remote's enabled provider — the badge stays
-            // tied to origin, not to whichever remote happens to be on.
-            return this.noneSnapshot(hash);
-        }
-        const key = `${match.provider.keyFor(match.ref)}@${hash}:${this.settingsFingerprint}`;
+        if (!match) return this.noneSnapshot(hash);
+        return this.fetchSnapshot(match, hash, options);
+    }
+
+    /**
+     * Resolves the provider for the current repository generation, or null when none
+     * applies. Throws when the remotes cannot be read.
+     */
+    private async resolveEnabledMatch(): Promise<ProviderMatch | null> {
+        const providerGeneration = this.providerGeneration;
+        const match = await this.resolveProvider();
+        // The repository changed while resolving: this match belongs to the old one.
+        if (providerGeneration !== this.providerGeneration) return null;
+        // No registered provider matched any remote (an unmapped self-hosted host, or
+        // an unsupported forge). That is a configuration state, not a recoverable
+        // error: yield no badge (state "none"), the same as a disabled provider. An
+        // "unavailable" error badge here would be permanent — re-fetching can never
+        // map the host — and the UI only hides "none".
+        if (!match) return null;
+        // Hard-stop: the origin-first matched provider is disabled. Yield no badge and
+        // do NOT fall through to a later remote's enabled provider — the badge stays
+        // tied to origin, not to whichever remote happens to be on.
+        if (this.providerEnabled[match.provider.id] === false) return null;
+        return match;
+    }
+
+    private snapshotKey(match: ProviderMatch, hash: string): string {
+        return `${match.provider.keyFor(match.ref)}@${hash}:${this.settingsFingerprint}`;
+    }
+
+    private fetchSnapshot(
+        match: ProviderMatch,
+        hash: string,
+        options: CommitChecksFetchOptions,
+    ): Promise<CommitChecksSnapshot> {
         return this.service.getOrFetch(
-            key,
+            this.snapshotKey(match, hash),
             async () => {
                 try {
                     return await match.provider.getChecks(match.ref, hash);
@@ -204,4 +297,32 @@ export class CommitChecksCoordinator {
         }
         return null;
     }
+}
+
+/**
+ * Builds the flat detail of a provider without its own `getDetail`: no runs, every
+ * snapshot item as a flat check, complete exactly when the snapshot is.
+ */
+function floorDetail(snapshot: CommitChecksSnapshot, provider: ProviderId): CommitCiDetailData {
+    return {
+        hash: snapshot.hash,
+        provider,
+        complete: isCompleteSnapshot(snapshot),
+        outcome: snapshot.state,
+        runs: [],
+        runsCoverage: "full",
+        otherChecks: snapshot.items.map((item) => ({
+            id: item.id,
+            logicalId: item.logicalId,
+            name: item.name,
+            description: item.description,
+            state: item.state,
+            source: item.source,
+            url: item.url,
+        })),
+        // A snapshot reports no truncation.
+        otherChecksCoverage: "full",
+        error: snapshot.error,
+        signInHost: snapshot.signInHost,
+    };
 }

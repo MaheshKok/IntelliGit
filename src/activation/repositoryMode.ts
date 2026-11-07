@@ -44,6 +44,10 @@ import { createHttpGetJson, type FetchJson } from "../services/commitChecks/http
 import { CommitChecksRequestGateRegistry } from "../services/commitChecks/requestGate";
 import { CommitChecksService } from "../services/commitChecks/service";
 import { CommitChecksPersistentCache } from "../services/commitChecks/persistentCache";
+import { CommitCiDetailService } from "../services/commitChecks/detailService";
+import { CiDetailPersistentCache } from "../services/commitChecks/detailPersistentCache";
+import { CiGenerations } from "../services/commitChecks/ciGenerations";
+import { createCiTrace } from "../services/commitChecks/ciTrace";
 import type { CommitChecksProvider, ProviderId } from "../services/commitChecks/types";
 import { captureWebviewViewProvider } from "../e2e/webviewCapture";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
@@ -253,14 +257,36 @@ export async function activateRepositoryMode(
             ),
         );
     }
-    const commitChecksService = new CommitChecksService({
+    // One set of TTLs for snapshots and details, so the badge and the CI tab age together.
+    const commitChecksCacheTtls = {
         ttlMs: 30_000,
         noneTtlMs: 60 * 60 * 1000,
         unavailableTtlMs: 15 * 60 * 1000,
         maxEntries: 1_000,
+    };
+    const commitChecksService = new CommitChecksService({
+        ...commitChecksCacheTtls,
         persistentCache: new CommitChecksPersistentCache(context.globalState, {
             noneMaxAgeMs: 60 * 60 * 1000,
         }),
+    });
+    let ciTraceChannel: vscode.LogOutputChannel | undefined;
+    const ciTrace = createCiTrace(() => {
+        ciTraceChannel = vscode.window.createOutputChannel("IntelliGit CI", { log: true });
+        return ciTraceChannel;
+    });
+    const commitCiDetailService = new CommitCiDetailService({
+        ...commitChecksCacheTtls,
+        persistentCache: new CiDetailPersistentCache(context.globalState),
+        trace: ciTrace,
+    });
+    const ciGenerations = new CiGenerations();
+    context.subscriptions.push({
+        dispose: () => {
+            // In-flight CI work started before the extension closed must not publish.
+            ciGenerations.bumpLifecycle();
+            ciTraceChannel?.dispose();
+        },
     });
     const requestGateRegistry = new CommitChecksRequestGateRegistry(
         vscode.l10n.t("Commit-check requests are temporarily paused due to rate limiting."),
@@ -307,6 +333,7 @@ export async function activateRepositoryMode(
         hostMap: commitCheckHostMap,
         settings: commitCheckSettings,
         commitChecksService,
+        commitCiDetailService,
         commitChecksProviders,
     });
     const sidebarGraph = new CommitGraphViewProvider(
@@ -319,6 +346,7 @@ export async function activateRepositoryMode(
             hostMap: commitCheckHostMap,
             settings: commitCheckSettings,
             commitChecksService,
+            commitCiDetailService,
             commitChecksProviders,
         },
     );
@@ -841,6 +869,7 @@ export async function activateRepositoryMode(
                     return data;
                 },
                 commitChecksService,
+                commitCiDetailService,
                 commitChecksProviders,
                 commitMessageGenerationCoordinator,
                 onSelectedRepositoryRootChanged: async (root) => {
@@ -1313,6 +1342,7 @@ export async function activateRepositoryMode(
      */
     const refreshCommitCheckBadges = async (): Promise<void> => {
         requestGateRegistry.reset();
+        ciGenerations.bumpAuth();
         commitGraph.clearChecksCache();
         sidebarGraph.clearChecksCache();
         undocked?.clearChecksCache();
