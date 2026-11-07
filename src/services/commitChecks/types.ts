@@ -49,6 +49,12 @@ export interface CommitChecksProvider {
     match(remoteUrl: string, hostMap: HostMap): ProviderRepoRef | null;
     /** Returns a stable provider-scoped repository identity for shared caching. */
     keyFor(ref: ProviderRepoRef): string;
+    /**
+     * Returns a token-free id of the account this provider signs in with for `ref`, so a
+     * cached result is only ever served to the account that fetched it. A failed lookup
+     * returns an id no other lookup shares. Must not throw.
+     */
+    accountKey?(ref: ProviderRepoRef): Promise<string>;
     /** Fetches and normalizes the check snapshot for one commit hash. Must not throw. */
     getChecks(ref: ProviderRepoRef, hash: string): Promise<CommitChecksSnapshot>;
     /**

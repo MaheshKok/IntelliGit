@@ -13,7 +13,7 @@ import { aggregateState, redactSecret, summaryForItems, unavailableSnapshot } fr
 import { isStatusPage, toStatusItem, type BitbucketStatus } from "./bitbucketShared";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
-import type { CredentialStore } from "./credentialStore";
+import { tokenAccountKey, type CredentialStore } from "./credentialStore";
 
 /** Page size requested from the Server build-status endpoint. */
 const PAGE_LIMIT = 100;
@@ -154,6 +154,11 @@ export class BitbucketServerProvider implements CommitChecksProvider {
     keyFor(ref: ProviderRepoRef): string {
         const { host, project, repo } = ref as BitbucketServerRepoRef;
         return `bitbucket-server:${host.toLowerCase()}:${project.toLowerCase()}/${repo.toLowerCase()}`;
+    }
+
+    /** Fingerprint of the token stored for the host; never the token. */
+    accountKey(ref: ProviderRepoRef): Promise<string> {
+        return tokenAccountKey(() => this.store.get(ref.host));
     }
 
     /**

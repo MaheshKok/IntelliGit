@@ -3,10 +3,30 @@
 // for another. GitHub uses VS Code's built-in authentication and does not use this store.
 // The token value is only passed to SecretStorage; it is never logged or placed in errors.
 
+import { createHash, randomUUID } from "node:crypto";
 import type * as vscode from "vscode";
 
 /** Prefix for every secret key this store owns; the host is appended verbatim. */
 const KEY_PREFIX = "intelligit.commitChecks.token:";
+
+/**
+ * Account id for a token-authenticated provider: a short SHA-256 fingerprint of the
+ * stored token, never the token itself. No token = "signed-out"; a failed read = an id
+ * no other read shares, so nothing saved under it is ever served again.
+ *
+ * @param readToken - Reads the token the provider would send.
+ */
+export async function tokenAccountKey(
+    readToken: () => Promise<string | undefined>,
+): Promise<string> {
+    try {
+        const token = await readToken();
+        if (!token) return "signed-out";
+        return createHash("sha256").update(token).digest("hex").slice(0, 16);
+    } catch {
+        return `unresolved-${randomUUID()}`;
+    }
+}
 
 /**
  * Stores and retrieves commit-check access tokens keyed by host.

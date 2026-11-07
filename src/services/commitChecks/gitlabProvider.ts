@@ -18,7 +18,7 @@ import {
 } from "./normalize";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
-import type { CredentialStore } from "./credentialStore";
+import { tokenAccountKey, type CredentialStore } from "./credentialStore";
 
 /** Narrows ProviderRepoRef with the owner path and repo name parsed from the remote URL. */
 interface GitLabRepoRef extends ProviderRepoRef {
@@ -189,6 +189,11 @@ export class GitLabProvider implements CommitChecksProvider {
     keyFor(ref: ProviderRepoRef): string {
         const { host, owner, repo } = ref as GitLabRepoRef;
         return `gitlab:${host.toLowerCase()}:${owner.toLowerCase()}/${repo.toLowerCase()}`;
+    }
+
+    /** Fingerprint of the token stored for the host; never the token. */
+    accountKey(ref: ProviderRepoRef): Promise<string> {
+        return tokenAccountKey(() => this.store.get(ref.host));
     }
 
     /**

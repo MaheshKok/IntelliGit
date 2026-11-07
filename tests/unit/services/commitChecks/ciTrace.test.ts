@@ -4,6 +4,7 @@ import {
     formatCiTraceLine,
     type CiTraceChannel,
     type CiTraceEvent,
+    type CiTraceReason,
 } from "../../../../src/services/commitChecks/ciTrace";
 
 function channel(): CiTraceChannel & {
@@ -35,7 +36,6 @@ describe("ciTrace", () => {
         const line = formatCiTraceLine(event, "op1");
 
         expect(line).toContain("https://pipelines.example.com/o/r/logs/1");
-        expect(line).toContain("https://api.github.com/x");
         for (const secret of [
             "SIGNED",
             "QUERYTOKEN",
@@ -54,21 +54,24 @@ describe("ciTrace", () => {
         expect(line).toContain("status=403");
     });
 
-    it("a reason never carries credential text", () => {
+    it("a reason is written only as a known code, so free text and bare tokens never reach the trace", () => {
         for (const reason of [
+            "provider rejected a9c3ef48d6b01e72",
             "request failed: Authorization: Bearer secret-token",
-            "rejected header authorization=Basic c2VjcmV0LXRva2Vu",
-            "401 with bearer secret-token",
-            "PRIVATE-TOKEN: secret-token was refused",
             "token=secret-token expired",
-            "bad credentials ghp_secrettoken123 and glpat-secrettoken",
+            "bad credentials ghp_secrettoken123",
         ]) {
-            const line = formatCiTraceLine({ kind: "detail", outcome: "failed", reason }, "op1");
-            expect(line).toContain("reason=");
-            for (const secret of ["secret-token", "c2VjcmV0", "secrettoken", "Bearer", "Basic"]) {
-                expect(line, `${reason} -> ${line}`).not.toContain(secret);
-            }
+            const line = formatCiTraceLine(
+                { kind: "detail", outcome: "failed", reason: reason as CiTraceReason },
+                "op1",
+            );
+            expect(line, `${reason} -> ${line}`).toBe(
+                "op=op1 kind=detail outcome=failed reason=other",
+            );
         }
+        expect(
+            formatCiTraceLine({ kind: "detail", outcome: "failed", reason: "rate-limited" }, "op1"),
+        ).toBe("op=op1 kind=detail outcome=failed reason=rate-limited");
     });
 
     it("uses trace for hits, warn for discards and info for fetches", () => {

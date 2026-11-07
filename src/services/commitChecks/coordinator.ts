@@ -22,6 +22,12 @@ import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
 interface ProviderMatch {
     provider: CommitChecksProvider;
     ref: ProviderRepoRef;
+    /**
+     * Signed-in account every cache key is scoped to. Resolved with the match and dropped
+     * with it by clear(), so saved results of another account, including ones a failed
+     * clear left on disk, never match after a sign-in change or a restart.
+     */
+    account?: string;
 }
 
 /**
@@ -274,7 +280,8 @@ export class CommitChecksCoordinator {
     }
 
     private snapshotKey(match: ProviderMatch, hash: string): string {
-        return `${match.provider.keyFor(match.ref)}@${hash}:${this.settingsFingerprint}`;
+        const account = match.account === undefined ? "" : `|${match.account}`;
+        return `${match.provider.keyFor(match.ref)}@${hash}:${this.settingsFingerprint}${account}`;
     }
 
     private fetchSnapshot(
@@ -329,7 +336,7 @@ export class CommitChecksCoordinator {
             if (!url) continue;
             for (const provider of this.providers) {
                 const ref = provider.match(url, this.hostMap);
-                if (ref) return { provider, ref };
+                if (ref) return { provider, ref, account: await provider.accountKey?.(ref) };
             }
         }
         return null;

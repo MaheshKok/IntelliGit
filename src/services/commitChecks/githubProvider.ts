@@ -3,6 +3,7 @@
 // statuses for one commit, and normalizes them into the shared snapshot shape.
 // HTTP is injected (`FetchJson`) so mapping is unit-testable without the network.
 
+import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import type { CommitCheckItem, CommitChecksSnapshot, CommitCheckState } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
@@ -108,6 +109,18 @@ export class GitHubProvider implements CommitChecksProvider {
     keyFor(ref: ProviderRepoRef): string {
         const { host, owner, repo } = ref as GitHubRepoRef;
         return `github:${host.toLowerCase()}:${owner.toLowerCase()}/${repo.toLowerCase()}`;
+    }
+
+    /** The signed-in VS Code GitHub account id; "signed-out" without a session. */
+    async accountKey(): Promise<string> {
+        try {
+            const session = await vscode.authentication.getSession("github", ["repo"], {
+                silent: true,
+            });
+            return session ? `account-${session.account.id}` : "signed-out";
+        } catch {
+            return `unresolved-${randomUUID()}`;
+        }
     }
 
     /** Authenticates, fetches check-runs + statuses in parallel, and normalizes them. */
