@@ -2210,6 +2210,7 @@ describe("view providers integration", () => {
             let rejectFirstRequest: ((reason?: unknown) => void) | undefined;
             let markFirstRequestStarted: (() => void) | undefined;
             let requestsStarted = 0;
+            const requestedUrls: string[] = [];
             const firstRequestStarted = new Promise<void>((resolve) => {
                 markFirstRequestStarted = resolve;
             });
@@ -2239,6 +2240,7 @@ describe("view providers integration", () => {
                 ) =>
                     async (url: string) => {
                         requestsStarted += 1;
+                        requestedUrls.push(url);
                         if (requestsStarted === 1) {
                             firstResponse = onResponse;
                             markFirstRequestStarted?.();
@@ -2298,8 +2300,10 @@ describe("view providers integration", () => {
             await firstRequest;
 
             graph!.clearChecksCache();
+            const before = requestedUrls.length;
             await webview.send({ type: "requestVisibleCommitChecks", hashes: [secondHash] });
-            expect(requestsStarted).toBe(2);
+            // No cooldown from the stale 429: the second commit's request still goes out.
+            expect(requestedUrls.slice(before).some((url) => url.includes(secondHash))).toBe(true);
         } finally {
             graph?.dispose();
         }

@@ -63,6 +63,13 @@ export interface CiTraceChannel {
 /** Writes one trace event; never throws. */
 export type CiTrace = (event: CiTraceEvent) => void;
 
+// Credential text a provider error message may echo: an authorization header (to the
+// end of the line), a bearer or basic value, a `name: value` or `name=value` secret,
+// and the GitHub and GitLab token prefixes. A token of another shape with no such
+// marker is not caught; callers pass error messages, never raw headers.
+const CREDENTIAL_TEXT =
+    /\b(?:proxy-)?authorization\b.*|\b(?:bearer|basic)\s+\S+|\b(?:private[-_]token|access[-_]token|api[-_]?key|password|secret|token)\s*[:=]\s*\S+|\b(?:gh[pousr]_|github_pat_|glpat-)\S+/gi;
+
 const WARN_OUTCOMES: ReadonlySet<CiTraceOutcome> = new Set([
     "discarded-generation",
     "next-rejected",
@@ -86,7 +93,12 @@ export function formatCiTraceLine(event: CiTraceEvent, op: string): string {
         ["url", event.url === undefined ? undefined : originAndPath(event.url)],
         ["status", event.status],
         ["ms", event.ms],
-        ["reason", event.reason?.replace(/https?:\/\/[^\s"'<>]+/g, originAndPath)],
+        [
+            "reason",
+            event.reason
+                ?.replace(/https?:\/\/[^\s"'<>]+/g, originAndPath)
+                .replace(CREDENTIAL_TEXT, "[redacted]"),
+        ],
     ];
     return fields
         .filter((field): field is [string, string | number] => field[1] !== undefined)

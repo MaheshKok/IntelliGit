@@ -197,15 +197,15 @@ describe("CommitCiDetailService", () => {
         const old = details.getOrFetch(KEY, preClear, SERVE);
         await vi.waitFor(() => expect(preClear).toHaveBeenCalledTimes(1));
         details.clear();
+        preClear.mockImplementation(async () => detail({ complete: false, outcome: "pending" }));
         before.resolve(detail());
-        await old;
+        await expect(old).resolves.toMatchObject({ outcome: "pending" });
 
         const after = vi.fn(async () => detail({ outcome: "success" }));
         await expect(details.getOrFetch(KEY, after, SERVE)).resolves.toMatchObject({
-            outcome: "success",
+            outcome: "pending",
         });
-        expect(after).toHaveBeenCalledTimes(1);
-        await details.invalidate(KEY);
+        expect(after).not.toHaveBeenCalled();
         expect(await persistent.get(KEY)).toBeUndefined();
     });
 
@@ -260,6 +260,41 @@ describe("CommitCiDetailService", () => {
             outcome: "success",
         });
         expect(refetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("a failed clear still keeps the previous entry from a restarted service", async () => {
+        const state = memento();
+        const { service: details } = service(state);
+        await details.getOrFetch(KEY, async () => detail(), SERVE);
+        // Removing the key fails; writing a value still works.
+        vi.mocked(state.update).mockImplementation(async (key, value) => {
+            if (value === undefined) throw new Error("cannot delete");
+            state.values.set(key, value);
+        });
+        details.clear();
+        await vi.waitFor(() => expect(state.update).toHaveBeenCalledWith(STORAGE_KEY, undefined));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        const refetch = vi.fn(async () => detail({ outcome: "success" }));
+        await expect(service(state).service.getOrFetch(KEY, refetch, SERVE)).resolves.toMatchObject(
+            { outcome: "success" },
+        );
+        expect(refetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("a fetch started before clear does not hand its result to its caller", async () => {
+        const { service: details } = service();
+        const before = deferred<CommitCiDetailData>();
+        const fetchDetail = vi.fn(() => before.promise);
+        const old = details.getOrFetch(KEY, fetchDetail, SERVE);
+        await vi.waitFor(() => expect(fetchDetail).toHaveBeenCalledTimes(1));
+
+        details.clear();
+        fetchDetail.mockImplementation(async () => detail({ outcome: "success" }));
+        before.resolve(detail());
+
+        await expect(old).resolves.toMatchObject({ outcome: "success" });
+        expect(fetchDetail).toHaveBeenCalledTimes(2);
     });
 
     it("a forced refresh that finds pending work drops the settled entry from L2", async () => {

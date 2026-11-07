@@ -122,11 +122,8 @@ export class CommitCiDetailService {
             .then(async (data): Promise<CommitCiDetailData> => {
                 if (!this.isCurrentGeneration(key, generation)) {
                     this.traceOutcome("discarded-generation", data, serve);
-                    // invalidate() superseded this result: its callers get the newer one.
-                    if (this.captureGeneration(key)[1] !== generation[1]) {
-                        return this.getData(key, fetchDetail, serve, options);
-                    }
-                    return data;
+                    // invalidate() or clear() superseded this result: its callers get the newer one.
+                    return this.getData(key, fetchDetail, serve, options);
                 }
                 const fetchedAt = this.now();
                 this.cache.set(key, { data, fetchedAt });

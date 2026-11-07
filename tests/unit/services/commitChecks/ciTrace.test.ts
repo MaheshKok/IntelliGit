@@ -54,6 +54,23 @@ describe("ciTrace", () => {
         expect(line).toContain("status=403");
     });
 
+    it("a reason never carries credential text", () => {
+        for (const reason of [
+            "request failed: Authorization: Bearer secret-token",
+            "rejected header authorization=Basic c2VjcmV0LXRva2Vu",
+            "401 with bearer secret-token",
+            "PRIVATE-TOKEN: secret-token was refused",
+            "token=secret-token expired",
+            "bad credentials ghp_secrettoken123 and glpat-secrettoken",
+        ]) {
+            const line = formatCiTraceLine({ kind: "detail", outcome: "failed", reason }, "op1");
+            expect(line).toContain("reason=");
+            for (const secret of ["secret-token", "c2VjcmV0", "secrettoken", "Bearer", "Basic"]) {
+                expect(line, `${reason} -> ${line}`).not.toContain(secret);
+            }
+        }
+    });
+
     it("uses trace for hits, warn for discards and info for fetches", () => {
         const sink = channel();
         const trace = createCiTrace(() => sink);

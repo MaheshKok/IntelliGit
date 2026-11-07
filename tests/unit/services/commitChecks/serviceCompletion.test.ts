@@ -122,6 +122,52 @@ describe("CommitChecksService completion and per-key fence", () => {
         expect(refetch).toHaveBeenCalledTimes(1);
     });
 
+    it("a failed clear still keeps the previous entry from a restarted service", async () => {
+        const state = memento();
+        const values = new Map<string, unknown>();
+        vi.mocked(state.get).mockImplementation((key: string) => values.get(key) as never);
+        vi.mocked(state.update).mockImplementation(async (key, value) => {
+            values.set(key, value);
+        });
+        const service = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        await service.getOrFetch(KEY, async () => snapshot("failure"));
+        // Removing the key fails; writing a value still works.
+        vi.mocked(state.update).mockImplementation(async (key, value) => {
+            if (value === undefined) throw new Error("cannot delete");
+            values.set(key, value);
+        });
+        service.clear();
+        await vi.waitFor(() =>
+            expect(state.update).toHaveBeenCalledWith(expect.any(String), undefined),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        const restarted = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        const refetch = vi.fn(async () => snapshot("success"));
+        await expect(restarted.getOrFetch(KEY, refetch)).resolves.toMatchObject({
+            state: "success",
+        });
+        expect(refetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("a fetch started before clear does not hand its result to its caller", async () => {
+        const service = new CommitChecksService();
+        const before = deferred<CommitChecksSnapshot>();
+        const fetchSnapshot = vi.fn(() => before.promise);
+        const old = service.getOrFetch(KEY, fetchSnapshot);
+
+        service.clear();
+        fetchSnapshot.mockImplementation(async () => snapshot("success"));
+        before.resolve(snapshot("failure"));
+
+        await expect(old).resolves.toMatchObject({ state: "success" });
+        expect(fetchSnapshot).toHaveBeenCalledTimes(2);
+    });
+
     it("a forced refresh that finds pending work drops the settled entry from L2", async () => {
         const state = memento();
         const service = new CommitChecksService({

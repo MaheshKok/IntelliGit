@@ -118,10 +118,19 @@ export class CiDetailPersistentCache {
         });
     }
 
-    /** Clears every persisted detail, in order with every queued read and write. */
+    /**
+     * Clears every persisted detail, in order with every queued read and write. When
+     * removing the key fails, an empty payload is written over it so a restart cannot
+     * read the old entries; the clear still rejects so the caller fails closed.
+     */
     async clear(): Promise<void> {
         await this.enqueue(async () => {
-            await this.state.update(this.storageKey, undefined);
+            try {
+                await this.state.update(this.storageKey, undefined);
+            } catch (error) {
+                await this.write({ entries: [] });
+                throw error;
+            }
         });
     }
 

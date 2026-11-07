@@ -114,11 +114,8 @@ export class CommitChecksService {
                 const ms = this.now() - startedAt;
                 if (!this.isCurrentGeneration(key, generation)) {
                     trace("discarded-generation", snapshot.hash, ms);
-                    // invalidate() superseded this result: its callers get the newer one.
-                    if (this.captureGeneration(key)[1] !== generation[1]) {
-                        return this.getOrFetch(key, fetchSnapshot, options, provider);
-                    }
-                    return snapshot;
+                    // invalidate() or clear() superseded this result: its callers get the newer one.
+                    return this.getOrFetch(key, fetchSnapshot, options, provider);
                 }
                 const fetchedAt = this.now();
                 this.cache.set(key, { snapshot, fetchedAt });

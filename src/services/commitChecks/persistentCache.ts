@@ -137,11 +137,18 @@ export class CommitChecksPersistentCache {
 
     /**
      * Clears all persisted commit-check snapshots. Runs in the queue so a write queued
-     * before it lands first and is wiped, never after.
+     * before it lands first and is wiped, never after. When removing the key fails, an
+     * empty payload is written over it so a restart cannot read the old entries; the
+     * clear still rejects so the caller fails closed for the session.
      */
     async clear(): Promise<void> {
         await this.enqueue(async () => {
-            await this.state.update(this.storageKey, undefined);
+            try {
+                await this.state.update(this.storageKey, undefined);
+            } catch (error) {
+                await this.write({ schemaVersion: SCHEMA_VERSION, entries: [] });
+                throw error;
+            }
         });
     }
 
