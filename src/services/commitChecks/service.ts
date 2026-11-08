@@ -144,11 +144,22 @@ export class CommitChecksService {
                     // With `confirm`, the save stays unreadable until it passes, so a failed
                     // removal after a rejection still leaves nothing readable.
                     const writeId = confirm ? randomUUID() : undefined;
-                    await this.persist(key, snapshot, entry.fetchedAt, {
-                        generation: generation[2],
-                        id: writeId,
-                    });
-                    await this.confirmSaved(key, entry, confirm, writeId);
+                    const storageFailed = (): void =>
+                        this.trace?.({
+                            kind: "snapshot",
+                            outcome: "failed",
+                            reason: "storage",
+                            provider,
+                            hash: snapshot.hash,
+                        });
+                    await this.persist(
+                        key,
+                        snapshot,
+                        entry.fetchedAt,
+                        { generation: generation[2], id: writeId },
+                        storageFailed,
+                    );
+                    await this.confirmSaved(key, entry, confirm, writeId, storageFailed);
                     if (this.isCurrentGeneration(key, generation)) return snapshot;
                 }
                 trace("discarded-generation", snapshot.hash, ms);
@@ -250,11 +261,13 @@ export class CommitChecksService {
         snapshot: CommitChecksSnapshot,
         fetchedAt: number,
         write: PersistentWrite,
+        storageFailed: () => void,
     ): Promise<void> {
         try {
             await this.persistentCache?.set(key, snapshot, fetchedAt, write);
         } catch {
             // Persistent cache failure must not break commit-check badges.
+            storageFailed();
         }
     }
 
@@ -267,6 +280,7 @@ export class CommitChecksService {
         entry: CacheEntry,
         confirm: (() => Promise<void>) | undefined,
         writeId: string | undefined,
+        storageFailed: () => void,
     ): Promise<void> {
         if (!confirm || writeId === undefined) return;
         try {
@@ -284,6 +298,7 @@ export class CommitChecksService {
             await this.persistentCache?.confirmWrite(key, writeId);
         } catch {
             // The save stays unconfirmed: a later fetch saves the answer again.
+            storageFailed();
         }
     }
 }

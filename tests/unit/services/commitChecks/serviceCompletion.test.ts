@@ -236,6 +236,72 @@ describe("CommitChecksService completion and per-key fence", () => {
         expect(JSON.stringify(trace.mock.calls)).not.toContain("github:repo");
     });
 
+    it("traces a failed persistent save as a storage failure and keeps serving the answer from L1", async () => {
+        const state = memento();
+        state.update = async () => {
+            throw new Error("storage write failed");
+        };
+        const trace = vi.fn();
+        const service = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+            trace,
+        });
+        const fetchSnapshot = vi.fn(async () => snapshot("success"));
+
+        await service.getOrFetch(KEY, fetchSnapshot, {}, "github");
+        await service.getOrFetch(KEY, fetchSnapshot, {}, "github");
+
+        expect(fetchSnapshot, "the answer was not kept in L1").toHaveBeenCalledTimes(1);
+        const failures = trace.mock.calls
+            .map(([event]) => event)
+            .filter((event) => event.outcome === "failed");
+        expect(failures, "the failed persistent save was not traced once").toEqual([
+            {
+                kind: "snapshot",
+                outcome: "failed",
+                reason: "storage",
+                provider: "github",
+                hash: "abc1234",
+            },
+        ]);
+    });
+
+    it("traces a failed confirm of the persistent save as a storage failure", async () => {
+        const state = memento();
+        const update = state.update;
+        let failWrites = false;
+        state.update = async (key: string, value: unknown) => {
+            if (failWrites) throw new Error("storage write failed");
+            await update(key, value);
+        };
+        const trace = vi.fn();
+        const service = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+            trace,
+        });
+
+        await service.getOrFetch(
+            KEY,
+            async () => snapshot("success"),
+            {},
+            "github",
+            async () => {
+                failWrites = true;
+            },
+        );
+
+        expect(
+            trace.mock.calls.map(([event]) => event),
+            "the failed confirm of the persistent save was not traced",
+        ).toContainEqual({
+            kind: "snapshot",
+            outcome: "failed",
+            reason: "storage",
+            provider: "github",
+            hash: "abc1234",
+        });
+    });
+
     it("force after invalidate does not join the pre-invalidate fetch", async () => {
         const service = new CommitChecksService();
         const before = deferred<CommitChecksSnapshot>();

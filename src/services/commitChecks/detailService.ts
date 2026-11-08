@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
 import { isCompleteDetail } from "../../shared/ci/completion";
 import type { CommitCiDetail, CommitCiDetailData } from "../../types";
-import type { CiTrace } from "./ciTrace";
+import type { CiTrace, CiTraceReason } from "./ciTrace";
 import type { CiDetailPersistentCache } from "./detailPersistentCache";
 import type { PersistentWrite } from "./persistentCache";
 import type { CommitChecksFetchOptions } from "./service";
@@ -166,11 +166,16 @@ export class CommitCiDetailService {
                     // With `confirm`, the save stays unreadable until it passes, so a failed
                     // removal after a rejection still leaves nothing readable.
                     const writeId = confirm ? randomUUID() : undefined;
-                    await this.persist(key, data, entry.fetchedAt, {
-                        generation: generation[2],
-                        id: writeId,
-                    });
-                    await this.confirmSaved(key, entry, confirm, writeId);
+                    const storageFailed = (): void =>
+                        this.traceOutcome("failed", data, serve, "storage");
+                    await this.persist(
+                        key,
+                        data,
+                        entry.fetchedAt,
+                        { generation: generation[2], id: writeId },
+                        storageFailed,
+                    );
+                    await this.confirmSaved(key, entry, confirm, writeId, storageFailed);
                     if (this.isCurrentGeneration(key, generation)) return data;
                 }
                 this.traceOutcome("discarded-generation", data, serve);
@@ -267,11 +272,13 @@ export class CommitCiDetailService {
         data: CommitCiDetailData,
         fetchedAt: number,
         write: PersistentWrite,
+        storageFailed: () => void,
     ): Promise<void> {
         try {
             await this.persistentCache?.set(key, data, fetchedAt, write);
         } catch {
             // A failed persistent write leaves the entry in L1 only.
+            storageFailed();
         }
     }
 
@@ -284,6 +291,7 @@ export class CommitCiDetailService {
         entry: DetailEntry,
         confirm: (() => Promise<void>) | undefined,
         writeId: string | undefined,
+        storageFailed: () => void,
     ): Promise<void> {
         if (!confirm || writeId === undefined) return;
         try {
@@ -301,6 +309,7 @@ export class CommitCiDetailService {
             await this.persistentCache?.confirmWrite(key, writeId);
         } catch {
             // The save stays unconfirmed: a later fetch saves the detail again.
+            storageFailed();
         }
     }
 
@@ -308,6 +317,7 @@ export class CommitCiDetailService {
         outcome: "hit-l1" | "hit-l2" | "fetched" | "incomplete" | "discarded-generation" | "failed",
         data: CommitCiDetailData,
         serve: CiDetailServeContext,
+        reason?: CiTraceReason,
     ): void {
         this.trace?.({
             kind: "detail",
@@ -315,6 +325,7 @@ export class CommitCiDetailService {
             repoKey: serve.repoKey,
             provider: data.provider,
             hash: data.hash,
+            ...(reason && { reason }),
         });
     }
 }

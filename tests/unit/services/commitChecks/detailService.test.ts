@@ -503,6 +503,74 @@ describe("CommitCiDetailService", () => {
         );
     });
 
+    it("traces a failed persistent save as a storage failure and keeps serving the detail from L1", async () => {
+        const state = memento();
+        state.update = async () => {
+            throw new Error("storage write failed");
+        };
+        const trace = vi.fn();
+        const details = new CommitCiDetailService({
+            persistentCache: new CiDetailPersistentCache(state),
+            trace,
+        });
+        const fetchDetail = vi.fn(async () => detail());
+
+        await details.getOrFetch(KEY, fetchDetail, SERVE);
+        await details.getOrFetch(KEY, fetchDetail, SERVE);
+
+        expect(fetchDetail, "the detail was not kept in L1").toHaveBeenCalledTimes(1);
+        const failures = trace.mock.calls
+            .map(([event]) => event)
+            .filter((event) => event.outcome === "failed");
+        expect(failures, "the failed persistent save was not traced once").toEqual([
+            {
+                kind: "detail",
+                outcome: "failed",
+                reason: "storage",
+                repoKey: "/repo",
+                provider: "github",
+                hash: "abc1234",
+            },
+        ]);
+    });
+
+    it("traces a failed confirm of the persistent save as a storage failure", async () => {
+        const state = memento();
+        const update = state.update;
+        let failWrites = false;
+        state.update = async (key: string, value: unknown) => {
+            if (failWrites) throw new Error("storage write failed");
+            await update(key, value);
+        };
+        const trace = vi.fn();
+        const details = new CommitCiDetailService({
+            persistentCache: new CiDetailPersistentCache(state),
+            trace,
+        });
+
+        await details.getOrFetch(
+            KEY,
+            async () => detail(),
+            SERVE,
+            {},
+            async () => {
+                failWrites = true;
+            },
+        );
+
+        expect(
+            trace.mock.calls.map(([event]) => event),
+            "the failed confirm of the persistent save was not traced",
+        ).toContainEqual({
+            kind: "detail",
+            outcome: "failed",
+            reason: "storage",
+            repoKey: "/repo",
+            provider: "github",
+            hash: "abc1234",
+        });
+    });
+
     it("a detail its caller rejects after the save is removed, and a newer detail under the key is kept", async () => {
         const now = 1_000;
         const { service: details, persistent } = service(memento(), () => now);
