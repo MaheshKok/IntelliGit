@@ -76,6 +76,9 @@ export class CommitChecksService {
      * @param fetchSnapshot - Fetcher invoked only on cache and in-flight miss.
      * @param options - Cache refresh controls, including forced L1/L2 bypasses.
      * @param provider - Provider id written to the diagnostic trace.
+     * @param confirm - Runs once a fetched snapshot is saved. A rejection removes exactly
+     *   that saved snapshot from L1 and L2 (never a newer one) and reaches every caller
+     *   sharing the fetch.
      * @returns The cached or freshly fetched snapshot.
      */
     async getOrFetch(
@@ -83,6 +86,7 @@ export class CommitChecksService {
         fetchSnapshot: () => Promise<CommitChecksSnapshot>,
         options: CommitChecksFetchOptions = {},
         provider?: ProviderId,
+        confirm?: () => Promise<void>,
     ): Promise<CommitChecksSnapshot> {
         const trace = (outcome: CiTraceOutcome, hash: string, ms?: number): void =>
             this.trace?.({ kind: "snapshot", outcome, provider, hash, ms });
@@ -113,8 +117,8 @@ export class CommitChecksService {
             .then(async (snapshot): Promise<CommitChecksSnapshot> => {
                 const ms = this.now() - startedAt;
                 if (this.isCurrentGeneration(key, generation)) {
-                    const fetchedAt = this.now();
-                    this.cache.set(key, { snapshot, fetchedAt });
+                    const entry = { snapshot, fetchedAt: this.now() };
+                    this.cache.set(key, entry);
                     this.evictOldest();
                     trace(
                         isCompleteSnapshot(snapshot) ? "fetched" : "incomplete",
@@ -123,12 +127,13 @@ export class CommitChecksService {
                     );
                     // The write is queued before any later delete or clear, so it cannot land
                     // after one; a fence during it already dropped the L1 entry set above.
-                    await this.persist(key, snapshot, fetchedAt);
+                    await this.persist(key, snapshot, entry.fetchedAt);
+                    await this.confirmSaved(key, entry, confirm);
                     if (this.isCurrentGeneration(key, generation)) return snapshot;
                 }
                 trace("discarded-generation", snapshot.hash, ms);
                 // invalidate() or clear() superseded this result: its callers get the newer one.
-                return this.getOrFetch(key, fetchSnapshot, options, provider);
+                return this.getOrFetch(key, fetchSnapshot, options, provider, confirm);
             })
             .finally(() => {
                 if (this.inflight.get(key) === request) {
@@ -217,6 +222,25 @@ export class CommitChecksService {
             await this.persistentCache?.set(key, snapshot, fetchedAt);
         } catch {
             // Persistent cache failure must not break commit-check badges.
+        }
+    }
+
+    /** Runs `confirm`; on a rejection removes this entry's own L1 and L2 writes and rethrows. */
+    private async confirmSaved(
+        key: string,
+        entry: CacheEntry,
+        confirm: (() => Promise<void>) | undefined,
+    ): Promise<void> {
+        try {
+            await confirm?.();
+        } catch (error) {
+            if (this.cache.get(key) === entry) this.cache.delete(key);
+            try {
+                await this.persistentCache?.delete(key, entry.fetchedAt);
+            } catch {
+                // A failed delete leaves the entry saved under its own key only.
+            }
+            throw error;
         }
     }
 }

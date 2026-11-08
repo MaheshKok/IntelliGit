@@ -3,7 +3,7 @@ import type { GitOps } from "../../../../src/git/operations";
 import type { CommitChecksSnapshot, CommitCiDetailData } from "../../../../src/types";
 
 vi.mock("vscode", () => ({
-    l10n: { t: (message: string) => message },
+    l10n: { t: (message: string) => `[l10n] ${message}` },
 }));
 
 import { CiGenerations } from "../../../../src/services/commitChecks/ciGenerations";
@@ -41,9 +41,15 @@ function detail(outcome: Outcome): CommitCiDetailData {
     };
 }
 
+/** Entry keys of a stored cache payload. */
+function entryKeys(value: unknown): string[] {
+    const entries = (value as { entries?: { key: string }[] } | undefined)?.entries ?? [];
+    return entries.map((entry) => entry.key);
+}
+
 /**
- * globalState double shared across "restarts"; `failing` makes every write reject and a
- * set `hold` keeps every write waiting until it settles.
+ * globalState double shared across "restarts"; `failing` makes every write reject, a set
+ * `hold` keeps every write waiting until it settles, and `afterWrite` runs once a write landed.
  */
 function memento() {
     const values = new Map<string, unknown>();
@@ -51,6 +57,7 @@ function memento() {
         failing: false,
         failedWrites: 0,
         hold: undefined as Promise<void> | undefined,
+        afterWrite: undefined as ((value: unknown) => void) | undefined,
         get: <T>(key: string) => values.get(key) as T | undefined,
         update: vi.fn(async (key: string, value: unknown) => {
             await store.hold;
@@ -60,7 +67,10 @@ function memento() {
             }
             if (value === undefined) values.delete(key);
             else values.set(key, value);
+            store.afterWrite?.(value);
         }),
+        /** Every entry key saved in any cache payload. */
+        savedKeys: () => [...values.values()].flatMap(entryKeys),
     };
     return store;
 }
@@ -265,11 +275,14 @@ describe("CommitChecksCoordinator saved results are tied to the signed-in accoun
         // A failed lookup yields a fresh `unresolved-` id on every read.
         session.provider.accountKey = async () => `unresolved-${(reads += 1)}`;
 
+        const message = "[l10n] The signed-in account changed during the request.";
         await expect(session.coordinator.getChecks(HASH)).resolves.toMatchObject({
             state: "unavailable",
+            error: message,
         });
         await expect(session.coordinator.getDetail(HASH, {}, ctx)).resolves.toMatchObject({
             outcome: "unavailable",
+            error: message,
             repoKey: "/repo",
             capabilities: NO_CI_CAPABILITIES,
         });
@@ -277,6 +290,34 @@ describe("CommitChecksCoordinator saved results are tied to the signed-in accoun
 
         // The account settles on the first id read: nothing was kept in memory under it.
         session.provider.accountKey = async () => "unresolved-1";
+        await session.coordinator.getChecks(HASH);
+        await session.coordinator.getDetail(HASH, {}, ctx);
+        expect(session.getChecks).toHaveBeenCalledTimes(3);
+        expect(session.getDetail).toHaveBeenCalledTimes(3);
+    });
+
+    it("an account that changes during each save gets an unavailable answer, and neither save is kept", async () => {
+        const store = memento();
+        const account: Account = { current: "a" };
+        const session = startSession(store, account);
+        // Every save that lands an entry is followed by an account switch.
+        store.afterWrite = (value) => {
+            if (entryKeys(value).length > 0) account.current += "'";
+        };
+
+        await expect(session.coordinator.getChecks(HASH)).resolves.toMatchObject({
+            state: "unavailable",
+        });
+        await expect(session.coordinator.getDetail(HASH, {}, ctx)).resolves.toMatchObject({
+            outcome: "unavailable",
+        });
+        expect(session.getChecks).toHaveBeenCalledTimes(2);
+        expect(session.getDetail).toHaveBeenCalledTimes(2);
+        expect(store.savedKeys()).toEqual([]);
+
+        // Back on the first account, nothing was kept in memory either.
+        store.afterWrite = undefined;
+        account.current = "a";
         await session.coordinator.getChecks(HASH);
         await session.coordinator.getDetail(HASH, {}, ctx);
         expect(session.getChecks).toHaveBeenCalledTimes(3);

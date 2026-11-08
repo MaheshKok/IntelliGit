@@ -54,7 +54,76 @@ function slowMemento(initial: Record<string, unknown> = {}): CommitChecksPersist
     };
 }
 
+/**
+ * globalState shared by two windows; while `hold` is set, every write started then waits
+ * for it, like a flush from another window that lands late.
+ */
+function sharedMemento() {
+    const values = new Map<string, unknown>();
+    const state = {
+        hold: undefined as Promise<void> | undefined,
+        get: <T>(key: string) => values.get(key) as T | undefined,
+        update: vi.fn(async (key: string, value: unknown) => {
+            await state.hold;
+            if (value === undefined) values.delete(key);
+            else values.set(key, value);
+        }),
+    };
+    return state;
+}
+
+interface Store<T> {
+    set(key: string, value: T): Promise<void>;
+    get(key: string): Promise<unknown>;
+    clear(): Promise<void>;
+}
+
+/** Window A's write is held, window B clears, then A's write lands. */
+async function lateWriteAfterOtherWindowClear<T>(
+    open: (state: CommitChecksPersistentState) => Store<T>,
+    value: T,
+): Promise<{ windowA: Store<T>; windowB: Store<T>; restarted: Store<T> }> {
+    const state = sharedMemento();
+    const windowA = open(state);
+    const windowB = open(state);
+    let release!: () => void;
+    state.hold = new Promise<void>((resolve) => (release = resolve));
+    const write = windowA.set(KEY, value);
+    await vi.waitFor(() => expect(state.update).toHaveBeenCalledTimes(1));
+    state.hold = undefined;
+    await windowB.clear();
+    release();
+    await write;
+    return { windowA, windowB, restarted: open(state) };
+}
+
 describe("CommitChecksPersistentCache completion and queue", () => {
+    it("a write from another window that lands after clear() never brings the old entry back", async () => {
+        const { windowA, windowB, restarted } = await lateWriteAfterOtherWindowClear(
+            (state) => new CommitChecksPersistentCache(state),
+            snapshot("failure"),
+        );
+        expect(await windowB.get(KEY)).toBeUndefined();
+        expect(await windowA.get(KEY)).toBeUndefined();
+        expect(await restarted.get(KEY)).toBeUndefined();
+
+        // A write made after the clear is kept.
+        await windowA.set(KEY, snapshot("success"));
+        expect(await windowB.get(KEY)).toMatchObject({ state: "success" });
+    });
+
+    it("delete with a fetch time removes only the entry written at that time", async () => {
+        let now = 1_000;
+        const cache = new CommitChecksPersistentCache(slowMemento(), { now: () => now });
+        await cache.set(KEY, snapshot("failure"), 1_000);
+        now = 2_000;
+        await cache.set(KEY, snapshot("success"), 2_000);
+        await cache.delete(KEY, 1_000);
+        expect(await cache.get(KEY)).toMatchObject({ state: "success" });
+        await cache.delete(KEY, 2_000);
+        expect(await cache.get(KEY)).toBeUndefined();
+    });
+
     it("incomplete failure is not stored", async () => {
         const cache = new CommitChecksPersistentCache(slowMemento());
         await cache.set(KEY, snapshot("failure", [item("failure"), item("pending")]));
@@ -115,6 +184,31 @@ describe("CommitChecksPersistentCache completion and queue", () => {
 });
 
 describe("CiDetailPersistentCache queue", () => {
+    it("a write from another window that lands after clear() never brings the old entry back", async () => {
+        const { windowA, windowB, restarted } = await lateWriteAfterOtherWindowClear(
+            (state) => new CiDetailPersistentCache(state),
+            detail(),
+        );
+        expect(await windowB.get(KEY)).toBeUndefined();
+        expect(await windowA.get(KEY)).toBeUndefined();
+        expect(await restarted.get(KEY)).toBeUndefined();
+
+        await windowA.set(KEY, { ...detail(), outcome: "success" });
+        expect(await windowB.get(KEY)).toMatchObject({ outcome: "success" });
+    });
+
+    it("delete with a fetch time removes only the entry written at that time", async () => {
+        let now = 1_000;
+        const cache = new CiDetailPersistentCache(slowMemento(), { now: () => now });
+        await cache.set(KEY, detail(), 1_000);
+        now = 2_000;
+        await cache.set(KEY, { ...detail(), outcome: "success" }, 2_000);
+        await cache.delete(KEY, 1_000);
+        expect(await cache.get(KEY)).toMatchObject({ outcome: "success" });
+        await cache.delete(KEY, 2_000);
+        expect(await cache.get(KEY)).toBeUndefined();
+    });
+
     it("delete runs inside the enqueue chain", async () => {
         const cache = new CiDetailPersistentCache(slowMemento());
         const write = cache.set(KEY, detail());

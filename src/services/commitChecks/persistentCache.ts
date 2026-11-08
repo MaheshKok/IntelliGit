@@ -1,6 +1,7 @@
 // Persistent commit-check cache. This sits behind the shared runtime service
 // and stores complete plus no-check snapshots, bounded by age and LRU size.
 
+import { randomUUID } from "node:crypto";
 import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type { CommitChecksSnapshot } from "../../types";
 
@@ -41,6 +42,17 @@ interface PersistedCommitChecksEntry {
 interface PersistedPayload {
     schemaVersion: number;
     entries: PersistedCommitChecksEntry[];
+    /** Clear generation the payload was written under; see {@link clearGenerationKey}. */
+    generation?: string;
+}
+
+/**
+ * Memento key of a store's clear generation. Every window shares globalState, but each
+ * orders only its own writes, so a write another window started before a clear can land
+ * after it. `clear()` stores a new generation and a payload stamped with any other is a miss.
+ */
+export function clearGenerationKey(storageKey: string): string {
+    return `${storageKey}.generation`;
 }
 
 /** VS Code globalState-backed cache for terminal and no-check commit-check snapshots. */
@@ -123,27 +135,34 @@ export class CommitChecksPersistentCache {
      * Removes one persisted snapshot, in order with every queued read and write.
      *
      * @param key - Composite provider/repo/commit/settings key.
+     * @param fetchedAt - When given, removes the entry only if it was written with this
+     *   fetch time, so a newer entry under the key stays.
      */
-    async delete(key: string): Promise<void> {
+    async delete(key: string, fetchedAt?: number): Promise<void> {
+        const matches = (entry: PersistedCommitChecksEntry): boolean =>
+            entry.key === key && (fetchedAt === undefined || entry.fetchedAt === fetchedAt);
         await this.enqueue(async () => {
             const payload = this.read();
-            if (!payload.entries.some((entry) => entry.key === key)) return;
+            if (!payload.entries.some(matches)) return;
             await this.write({
                 schemaVersion: SCHEMA_VERSION,
-                entries: payload.entries.filter((entry) => entry.key !== key),
+                entries: payload.entries.filter((entry) => !matches(entry)),
             });
         });
     }
 
     /**
      * Clears all persisted commit-check snapshots. Runs in the queue so a write queued
-     * before it lands first and is wiped, never after. When removing the key fails, an
-     * empty payload is written over it so a restart cannot read the old entries; the
-     * clear still rejects so the caller fails closed for the session.
+     * before it lands first and is wiped, never after; a new clear generation makes a
+     * write another window started before it unreadable when it lands later. When
+     * removing the key fails, an empty payload is written over it so a restart cannot
+     * read the old entries; the clear still rejects so the caller fails closed for the
+     * session.
      */
     async clear(): Promise<void> {
         await this.enqueue(async () => {
             try {
+                await this.state.update(clearGenerationKey(this.storageKey), randomUUID());
                 await this.state.update(this.storageKey, undefined);
             } catch (error) {
                 await this.write({ schemaVersion: SCHEMA_VERSION, entries: [] });
@@ -154,15 +173,22 @@ export class CommitChecksPersistentCache {
 
     private read(): PersistedPayload {
         const payload = this.state.get<unknown>(this.storageKey);
-        if (!isPayload(payload)) return { schemaVersion: SCHEMA_VERSION, entries: [] };
+        if (!isPayload(payload) || payload.generation !== this.generation()) {
+            return { schemaVersion: SCHEMA_VERSION, entries: [] };
+        }
         return {
             schemaVersion: SCHEMA_VERSION,
             entries: payload.entries.filter((entry) => this.isUsable(entry)),
         };
     }
 
+    /** Every caller reads and writes in one synchronous step, so the stamp is the read's. */
     private async write(payload: PersistedPayload): Promise<void> {
-        await this.state.update(this.storageKey, payload);
+        await this.state.update(this.storageKey, { ...payload, generation: this.generation() });
+    }
+
+    private generation(): string | undefined {
+        return this.state.get<string>(clearGenerationKey(this.storageKey));
     }
 
     /** Serializes storage read-modify-write operations without poisoning later work after a failure. */

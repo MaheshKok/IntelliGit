@@ -84,14 +84,18 @@ export class CommitCiDetailService {
      *   caches nothing and reaches every caller sharing the fetch.
      * @param serve - Capabilities and repository attached to the served detail.
      * @param options - `force` bypasses L1 and L2 but still joins a post-fence fetch.
+     * @param confirm - Runs once a fetched detail is saved. A rejection removes exactly
+     *   that saved detail from L1 and L2 (never a newer one) and reaches every caller
+     *   sharing the fetch.
      */
     async getOrFetch(
         key: string,
         fetchDetail: () => Promise<CommitCiDetailData>,
         serve: CiDetailServeContext,
         options: CommitChecksFetchOptions = {},
+        confirm?: () => Promise<void>,
     ): Promise<CommitCiDetail> {
-        return attach(await this.getData(key, fetchDetail, serve, options), serve);
+        return attach(await this.getData(key, fetchDetail, serve, options, confirm), serve);
     }
 
     private async getData(
@@ -99,6 +103,7 @@ export class CommitCiDetailService {
         fetchDetail: () => Promise<CommitCiDetailData>,
         serve: CiDetailServeContext,
         options: CommitChecksFetchOptions,
+        confirm: (() => Promise<void>) | undefined,
     ): Promise<ServedDetailData> {
         const cached = this.cache.get(key);
         if (!options.force && cached && this.isFresh(cached)) {
@@ -136,8 +141,8 @@ export class CommitCiDetailService {
                         this.traceOutcome("failed", data, serve);
                         return { ...previous.data, refreshError: data.error ?? "" };
                     }
-                    const fetchedAt = this.now();
-                    this.cache.set(key, { data, fetchedAt });
+                    const entry = { data, fetchedAt: this.now() };
+                    this.cache.set(key, entry);
                     this.evictOldest();
                     this.traceOutcome(
                         isCompleteDetail(data) ? "fetched" : "incomplete",
@@ -146,12 +151,13 @@ export class CommitCiDetailService {
                     );
                     // The write is queued before any later delete or clear, so it cannot land
                     // after one; a fence during it already dropped the L1 entry set above.
-                    await this.persist(key, data, fetchedAt);
+                    await this.persist(key, data, entry.fetchedAt);
+                    await this.confirmSaved(key, entry, confirm);
                     if (this.isCurrentGeneration(key, generation)) return data;
                 }
                 this.traceOutcome("discarded-generation", data, serve);
                 // invalidate() or clear() superseded this result: its callers get the newer one.
-                return this.getData(key, fetchDetail, serve, options);
+                return this.getData(key, fetchDetail, serve, options, confirm);
             })
             .finally(() => {
                 if (this.inflight.get(key) === request) this.inflight.delete(key);
@@ -231,6 +237,25 @@ export class CommitCiDetailService {
             await this.persistentCache?.set(key, data, fetchedAt);
         } catch {
             // A failed persistent write leaves the entry in L1 only.
+        }
+    }
+
+    /** Runs `confirm`; on a rejection removes this entry's own L1 and L2 writes and rethrows. */
+    private async confirmSaved(
+        key: string,
+        entry: DetailEntry,
+        confirm: (() => Promise<void>) | undefined,
+    ): Promise<void> {
+        try {
+            await confirm?.();
+        } catch (error) {
+            if (this.cache.get(key) === entry) this.cache.delete(key);
+            try {
+                await this.persistentCache?.delete(key, entry.fetchedAt);
+            } catch {
+                // A failed delete leaves the entry saved under its own key only.
+            }
+            throw error;
         }
     }
 

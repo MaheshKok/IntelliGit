@@ -985,5 +985,6 @@
     "Git was not changed because another IntelliGit operation is still unfinished in this repository. Continue and Abort cannot finish it.": "O Git não foi alterado porque outra operação do IntelliGit ainda não foi concluída neste repositório. Continuar e Abortar não a podem concluir.",
     "The view could not refresh after the targeted history step: {message}": "Não foi possível atualizar a vista após o passo do histórico direcionado: {message}",
     "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "O IntelliGit requer o Git {0} ou posterior para a resolução de mesclagem, commits parciais e restauro de prateleiras, mas encontrou o Git {1}. Atualize o Git para usar estas funcionalidades.",
-    "IntelliGit CI": "IntelliGit CI"
+    "IntelliGit CI": "IntelliGit CI",
+    "The signed-in account changed during the request.": "A conta com sessão iniciada mudou durante o pedido."
 }

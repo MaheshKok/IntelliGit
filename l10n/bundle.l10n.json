@@ -216,6 +216,7 @@
     "Initializing Git repository...": "Initializing Git repository...",
     "IntelliGit": "IntelliGit",
     "IntelliGit CI": "IntelliGit CI",
+    "The signed-in account changed during the request.": "The signed-in account changed during the request.",
     "Invalid worktree folder name.": "Invalid worktree folder name.",
     "Interactive Rebase from Here is available only for unpushed commits.": "Interactive Rebase from Here is available only for unpushed commits.",
     "Interactive Rebase from Here is not available for merge commits.": "Interactive Rebase from Here is not available for merge commits.",

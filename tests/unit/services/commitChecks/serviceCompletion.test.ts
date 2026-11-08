@@ -274,6 +274,53 @@ describe("CommitChecksService completion and per-key fence", () => {
         expect(refetch).toHaveBeenCalledTimes(1);
     });
 
+    it("an answer its caller rejects after the save is removed, and a newer answer under the key is kept", async () => {
+        let now = 1_000;
+        const state = memento();
+        const persistent = new CommitChecksPersistentCache(state, { now: () => now });
+        const service = new CommitChecksService({ now: () => now, persistentCache: persistent });
+        const rejected = new Error("caller rejected the answer");
+
+        // Nothing newer: no layer keeps the rejected answer.
+        await expect(
+            service.getOrFetch(
+                KEY,
+                async () => snapshot("failure"),
+                {},
+                undefined,
+                async () => {
+                    throw rejected;
+                },
+            ),
+        ).rejects.toBe(rejected);
+        expect(await persistent.get(KEY)).toBeUndefined();
+        const refetch = vi.fn(async () => snapshot("pending"));
+        await service.getOrFetch(KEY, refetch);
+        expect(refetch).toHaveBeenCalledTimes(1);
+
+        // A newer answer saved while the caller decides is never removed.
+        const other = `${KEY}-2`;
+        let reject!: (error: Error) => void;
+        const confirm = vi.fn(() => new Promise<void>((_, fail) => (reject = fail)));
+        const old = service.getOrFetch(
+            other,
+            async () => snapshot("failure"),
+            {},
+            undefined,
+            confirm,
+        );
+        await vi.waitFor(() => expect(confirm).toHaveBeenCalled());
+        await service.invalidate(other);
+        now = 2_000;
+        await service.getOrFetch(other, async () => snapshot("success"));
+        reject(rejected);
+        await expect(old).rejects.toBe(rejected);
+        const next = vi.fn(async () => snapshot("pending"));
+        await expect(service.getOrFetch(other, next)).resolves.toMatchObject({ state: "success" });
+        expect(next).not.toHaveBeenCalled();
+        expect(await persistent.get(other)).toMatchObject({ state: "success" });
+    });
+
     it("a persisted read that started before invalidate is not served", async () => {
         const state = memento();
         const persistent = new CommitChecksPersistentCache(state);

@@ -3,6 +3,7 @@
 // delegates snapshot caching/de-dupe to the shared CommitChecksService and CI detail
 // caching to the sibling CommitCiDetailService.
 
+import * as vscode from "vscode";
 import type { GitOps } from "../../git/operations";
 import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type {
@@ -32,11 +33,7 @@ interface ProviderMatch {
 const ACCOUNT_ATTEMPTS = 2;
 
 /** A fetch finished under another account than the one its cache key was built for. */
-class AccountChangedError extends Error {
-    constructor() {
-        super("signed-in account changed during the request");
-    }
-}
+class AccountChangedError extends Error {}
 
 /**
  * Default cache TTL for pending snapshots, aligned with the webview poll interval
@@ -198,12 +195,13 @@ export class CommitChecksCoordinator {
         const detail = await this.withAccount(
             match,
             fetchDetail,
-            (account, checkedFetch) =>
+            (account, checkedFetch, confirm) =>
                 this.detailService.getOrFetch(
                     `${this.snapshotKey(match, account, hash)}#detail`,
                     checkedFetch,
                     serve,
                     options,
+                    confirm,
                 ),
             (error) => attach(floorDetail(unavailableSnapshot(hash, error), provider.id), serve),
         );
@@ -261,6 +259,7 @@ export class CommitChecksCoordinator {
         hash: string,
         options: CommitChecksFetchOptions,
     ): Promise<CommitChecksSnapshot> {
+        const providerGeneration = this.providerGeneration;
         let match: ProviderMatch | null;
         try {
             match = await this.resolveEnabledMatch();
@@ -268,7 +267,19 @@ export class CommitChecksCoordinator {
             return unavailableSnapshot(hash, getErrorMessage(err));
         }
         if (!match) return this.noneSnapshot(hash);
-        return this.fetchSnapshot(match, hash, options);
+        const snapshot = await this.fetchSnapshot(match, hash, options);
+        // The repository changed during the fetch: this answer belongs to the old one, and
+        // is dropped the same way a stale provider resolution is.
+        if (providerGeneration !== this.providerGeneration) {
+            this.trace?.({
+                kind: "snapshot",
+                outcome: "discarded-generation",
+                provider: match.provider.id,
+                hash,
+            });
+            return this.noneSnapshot(hash);
+        }
+        return snapshot;
     }
 
     /**
@@ -311,31 +322,41 @@ export class CommitChecksCoordinator {
      * Runs one cache operation under the account read now. `run` gets a fetcher that reads
      * the account again when `fetch` returns (a fenced re-ask included); if it changed,
      * that fetcher throws instead of returning, so nothing is stored under the old
-     * account's key. The account is read once more when `run` returns (a saved answer or
-     * a save may finish after a switch). Either change starts the operation over under
-     * the new account; when the tries run out the caller gets `unavailable`.
+     * account's key. `run` also gets `confirm`, which the cache calls once the answer is
+     * saved: a change by then makes the cache remove that saved answer. The account is
+     * read once more when `run` returns (a saved answer read from disk may finish after a
+     * switch). Any change starts the operation over under the new account; when the tries
+     * run out the caller gets `unavailable` and no try's answer stays saved.
      */
     private async withAccount<R, T>(
         match: ProviderMatch,
         fetch: () => Promise<R>,
-        run: (account: string | undefined, checkedFetch: () => Promise<R>) => Promise<T>,
+        run: (
+            account: string | undefined,
+            checkedFetch: () => Promise<R>,
+            confirm: () => Promise<void>,
+        ) => Promise<T>,
         unavailable: (error: string) => T,
     ): Promise<T> {
         for (let attempt = 1; attempt <= ACCOUNT_ATTEMPTS; attempt += 1) {
             const account = await this.readAccount(match);
+            const confirm = async (): Promise<void> => {
+                if ((await this.readAccount(match)) !== account) throw new AccountChangedError();
+            };
             const checkedFetch = async (): Promise<R> => {
                 const result = await fetch();
-                if ((await this.readAccount(match)) !== account) throw new AccountChangedError();
+                await confirm();
                 return result;
             };
             try {
-                const result = await run(account, checkedFetch);
-                if ((await this.readAccount(match)) === account) return result;
+                const result = await run(account, checkedFetch, confirm);
+                await confirm();
+                return result;
             } catch (err) {
                 if (!(err instanceof AccountChangedError)) throw err;
             }
         }
-        return unavailable(new AccountChangedError().message);
+        return unavailable(vscode.l10n.t("The signed-in account changed during the request."));
     }
 
     private fetchSnapshot(
@@ -353,12 +374,13 @@ export class CommitChecksCoordinator {
         return this.withAccount(
             match,
             fetchChecks,
-            (account, checkedFetch) =>
+            (account, checkedFetch, confirm) =>
                 this.service.getOrFetch(
                     this.snapshotKey(match, account, hash),
                     checkedFetch,
                     options,
                     match.provider.id,
+                    confirm,
                 ),
             (error) => unavailableSnapshot(hash, error),
         );

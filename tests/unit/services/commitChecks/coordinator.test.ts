@@ -108,6 +108,24 @@ describe("CommitChecksCoordinator", () => {
         expect(gitlabChecks).not.toHaveBeenCalled();
     });
 
+    it("a snapshot that arrives after a repository switch is not handed back", async () => {
+        let release!: (value: CommitChecksSnapshot) => void;
+        const getChecks = vi.fn(
+            () => new Promise<CommitChecksSnapshot>((resolve) => (release = resolve)),
+        );
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [makeProvider("github", "github.com", getChecks)],
+        );
+        const pending = coordinator.getChecks("abc1234");
+        await vi.waitFor(() => expect(getChecks).toHaveBeenCalledTimes(1));
+
+        coordinator.clearProviderResolution();
+        release(snapshot("failure"));
+
+        await expect(pending).resolves.toMatchObject({ state: "none" });
+    });
+
     it("falls through to a later remote when origin matches no provider", async () => {
         const gitlabChecks = vi.fn(async () => snapshot("success"));
         const github = makeProvider("github", "github.com", vi.fn());

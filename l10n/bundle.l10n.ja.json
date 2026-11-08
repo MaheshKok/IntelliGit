@@ -985,5 +985,6 @@
     "Git was not changed because another IntelliGit operation is still unfinished in this repository. Continue and Abort cannot finish it.": "このリポジトリで別の IntelliGit 操作がまだ完了していないため、Git は変更されていません。「続行」と「中止」ではこれを完了できません。",
     "The view could not refresh after the targeted history step: {message}": "対象の履歴の手順の後、ビューを更新できませんでした: {message}",
     "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "IntelliGit でマージの解決、部分コミット、シェルフからの復元を使用するには Git {0} 以降が必要ですが、Git {1} が見つかりました。これらの機能を使用するには Git を更新してください。",
-    "IntelliGit CI": "IntelliGit CI"
+    "IntelliGit CI": "IntelliGit CI",
+    "The signed-in account changed during the request.": "要求の処理中にサインイン中のアカウントが変更されました。"
 }

@@ -421,6 +421,47 @@ describe("CommitCiDetailService", () => {
         expect(await persistent.get(KEY)).toBeUndefined();
     });
 
+    it("a detail its caller rejects after the save is removed, and a newer detail under the key is kept", async () => {
+        let now = 1_000;
+        const { service: details, persistent } = service(memento(), () => now);
+        const rejected = new Error("caller rejected the detail");
+
+        // Nothing newer: no layer keeps the rejected detail.
+        await expect(
+            details.getOrFetch(
+                KEY,
+                async () => detail(),
+                SERVE,
+                {},
+                async () => {
+                    throw rejected;
+                },
+            ),
+        ).rejects.toBe(rejected);
+        expect(await persistent.get(KEY)).toBeUndefined();
+        const refetch = vi.fn(async () => detail({ complete: false, outcome: "pending" }));
+        await details.getOrFetch(KEY, refetch, SERVE);
+        expect(refetch).toHaveBeenCalledTimes(1);
+
+        // A newer detail saved while the caller decides is never removed.
+        const other = `${KEY}-2`;
+        let reject!: (error: Error) => void;
+        const confirm = vi.fn(() => new Promise<void>((_, fail) => (reject = fail)));
+        const old = details.getOrFetch(other, async () => detail(), SERVE, {}, confirm);
+        await vi.waitFor(() => expect(confirm).toHaveBeenCalled());
+        await details.invalidate(other);
+        now = 2_000;
+        await details.getOrFetch(other, async () => detail({ outcome: "success" }), SERVE);
+        reject(rejected);
+        await expect(old).rejects.toBe(rejected);
+        const next = vi.fn(async () => detail({ complete: false, outcome: "pending" }));
+        await expect(details.getOrFetch(other, next, SERVE)).resolves.toMatchObject({
+            outcome: "success",
+        });
+        expect(next).not.toHaveBeenCalled();
+        expect(await persistent.get(other)).toMatchObject({ outcome: "success" });
+    });
+
     it.each([
         ["invalidate", (details: CommitCiDetailService) => details.invalidate(KEY)],
         ["clear", (details: CommitCiDetailService) => details.clear()],

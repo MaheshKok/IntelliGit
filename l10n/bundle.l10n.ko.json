@@ -985,5 +985,6 @@
     "Git was not changed because another IntelliGit operation is still unfinished in this repository. Continue and Abort cannot finish it.": "이 저장소에서 다른 IntelliGit 작업이 아직 완료되지 않았으므로 Git이 변경되지 않았습니다. 계속 및 중단으로는 이를 완료할 수 없습니다.",
     "The view could not refresh after the targeted history step: {message}": "대상 기록 단계 후 보기를 새로 고치지 못했습니다: {message}",
     "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "IntelliGit에서 병합 해결, 부분 커밋, 셸프 복원을 사용하려면 Git {0} 이상이 필요하지만 현재 버전은 Git {1}입니다. 이 기능을 사용하려면 Git을 업데이트하세요.",
-    "IntelliGit CI": "IntelliGit CI"
+    "IntelliGit CI": "IntelliGit CI",
+    "The signed-in account changed during the request.": "요청 중에 로그인한 계정이 변경되었습니다."
 }

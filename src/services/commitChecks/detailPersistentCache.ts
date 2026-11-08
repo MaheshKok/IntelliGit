@@ -5,7 +5,8 @@
 import { isCompleteDetail, isFullyCovered } from "../../shared/ci/completion";
 import { CI_DETAIL_CONTRACT_VERSION } from "../../shared/ci/contractVersion";
 import type { CommitCiDetail, CommitCiDetailData } from "../../types";
-import type { CommitChecksPersistentState } from "./persistentCache";
+import { randomUUID } from "node:crypto";
+import { clearGenerationKey, type CommitChecksPersistentState } from "./persistentCache";
 
 const DEFAULT_STORAGE_KEY = "intelligit.commitChecks.detailCache.v1";
 const DEFAULT_MAX_ENTRIES = 200;
@@ -33,6 +34,8 @@ interface PersistedDetailEntry {
 
 interface PersistedDetailPayload {
     entries: PersistedDetailEntry[];
+    /** Clear generation the payload was written under; see `clearGenerationKey`. */
+    generation?: string;
 }
 
 /** VS Code globalState-backed cache for complete, fully covered CI details. */
@@ -109,23 +112,30 @@ export class CiDetailPersistentCache {
      * Removes one persisted detail, in order with every queued read and write.
      *
      * @param key - Detail cache key.
+     * @param fetchedAt - When given, removes the entry only if it was written with this
+     *   fetch time, so a newer entry under the key stays.
      */
-    async delete(key: string): Promise<void> {
+    async delete(key: string, fetchedAt?: number): Promise<void> {
+        const matches = (entry: PersistedDetailEntry): boolean =>
+            entry.key === key && (fetchedAt === undefined || entry.fetchedAt === fetchedAt);
         await this.enqueue(async () => {
             const payload = this.read();
-            if (!payload.entries.some((entry) => entry.key === key)) return;
-            await this.write({ entries: payload.entries.filter((entry) => entry.key !== key) });
+            if (!payload.entries.some(matches)) return;
+            await this.write({ entries: payload.entries.filter((entry) => !matches(entry)) });
         });
     }
 
     /**
-     * Clears every persisted detail, in order with every queued read and write. When
-     * removing the key fails, an empty payload is written over it so a restart cannot
-     * read the old entries; the clear still rejects so the caller fails closed.
+     * Clears every persisted detail, in order with every queued read and write; a new
+     * clear generation makes a write another window started before it unreadable when
+     * it lands later. When removing the key fails, an empty payload is written over it
+     * so a restart cannot read the old entries; the clear still rejects so the caller
+     * fails closed.
      */
     async clear(): Promise<void> {
         await this.enqueue(async () => {
             try {
+                await this.state.update(clearGenerationKey(this.storageKey), randomUUID());
                 await this.state.update(this.storageKey, undefined);
             } catch (error) {
                 await this.write({ entries: [] });
@@ -137,8 +147,8 @@ export class CiDetailPersistentCache {
     private read(): PersistedDetailPayload {
         const payload = this.state.get<unknown>(this.storageKey);
         if (!payload || typeof payload !== "object") return { entries: [] };
-        const entries = (payload as { entries?: unknown }).entries;
-        if (!Array.isArray(entries)) return { entries: [] };
+        const { entries, generation } = payload as { entries?: unknown; generation?: unknown };
+        if (!Array.isArray(entries) || generation !== this.generation()) return { entries: [] };
         return {
             entries: entries.filter(
                 (entry): entry is PersistedDetailEntry =>
@@ -147,8 +157,13 @@ export class CiDetailPersistentCache {
         };
     }
 
+    /** Every caller reads and writes in one synchronous step, so the stamp is the read's. */
     private async write(payload: PersistedDetailPayload): Promise<void> {
-        await this.state.update(this.storageKey, payload);
+        await this.state.update(this.storageKey, { ...payload, generation: this.generation() });
+    }
+
+    private generation(): string | undefined {
+        return this.state.get<string>(clearGenerationKey(this.storageKey));
     }
 
     /** Serializes storage read-modify-write operations without poisoning later work after a failure. */
