@@ -1,10 +1,11 @@
 // Token-free diagnostic trace for CI operations, written to the "IntelliGit CI" log
 // channel. It is for troubleshooting caches and requests, never a place for CI logs:
 // only the whitelisted fields below are written, the repository key is written as a
-// short hash, URLs keep only origin and path, and nothing that could hold a token, a
+// short hash, URLs keep only origin and the API route words of the path, and nothing that could hold a token, a
 // header, log text or an excerpt is accepted.
 
 import { createHash, randomUUID } from "node:crypto";
+import type { ProviderId } from "../../types";
 
 /**
  * Outcome of one traced CI operation.
@@ -66,10 +67,11 @@ export interface CiTraceEvent {
     outcome: CiTraceOutcome;
     /** Repository key; written as the first 12 hex characters of its SHA-256. */
     repoKey?: string;
-    provider?: string;
+    /** Provider id; any other value is written as `other`. */
+    provider?: ProviderId;
     /** Full or short commit hash; written as 7 characters. */
     hash?: string;
-    /** Request URL; written as origin plus path, with token-shaped path segments redacted. */
+    /** Request URL; written as origin plus path, with every segment that is not a known API route word redacted. */
     url?: string;
     /** Failure reason code; any other value is written as `other`. */
     reason?: CiTraceReason;
@@ -106,7 +108,14 @@ export function formatCiTraceLine(event: CiTraceEvent, op: string): string {
         ["kind", event.kind],
         ["outcome", event.outcome],
         ["repoKey", event.repoKey === undefined ? undefined : shortHash(event.repoKey)],
-        ["provider", event.provider],
+        [
+            "provider",
+            event.provider === undefined
+                ? undefined
+                : Object.hasOwn(KNOWN_PROVIDERS, event.provider)
+                  ? event.provider
+                  : "other",
+        ],
         ["hash", event.hash?.slice(0, 7)],
         ["url", event.url === undefined ? undefined : originAndPathOf(event.url)],
         ["status", event.status],
@@ -147,25 +156,66 @@ export function createCiTrace(getChannel: () => CiTraceChannel): CiTrace {
     };
 }
 
-// Provider API paths carry no credentials; this backstop catches a token-bearing URL passed
-// in by mistake, and it recognises only these shapes: a known GitHub, GitLab or Bitbucket
-// token prefix, or a long segment that mixes letters and digits and is not a commit SHA.
-const TOKEN_PREFIX = /^(?:gh[pousr]_|github_pat_|glpat-|gldt-|glrt-|glptt-|gloas-|ATBB|ATCTT)/;
-const OPAQUE_SEGMENT = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_-]{20,}$/;
-const HEX_SEGMENT = /^[0-9a-f]+$/i;
+// Typed as a record so adding a provider id fails to compile until it is listed here.
+const KNOWN_PROVIDERS: Record<ProviderId, true> = {
+    github: true,
+    gitlab: true,
+    "bitbucket-cloud": true,
+    "bitbucket-server": true,
+};
 
-/** Keeps origin plus path; drops user info, query and fragment, and redacts token-shaped segments. */
+// Fixed words of the GitHub, GitLab and Bitbucket API routes. Every other path segment
+// (owner, repository, project, commit, run or job id, and any token passed by mistake,
+// whatever its shape) is written `[redacted]`, so the trace shows the route, not its values.
+// A route word missing here is only redacted too; add it when a trace needs it.
+const ROUTE_WORDS: ReadonlySet<string> = new Set([
+    "",
+    "-",
+    "1.0",
+    "2.0",
+    "actions",
+    "annotations",
+    "api",
+    "artifacts",
+    "attempts",
+    "build",
+    "build-status",
+    "builds",
+    "cancel",
+    "check-runs",
+    "check-suites",
+    "commit",
+    "commits",
+    "jobs",
+    "latest",
+    "log",
+    "logs",
+    "pipelines",
+    "play",
+    "projects",
+    "repos",
+    "repositories",
+    "repository",
+    "rerun",
+    "rerun-failed-jobs",
+    "rest",
+    "retry",
+    "runs",
+    "status",
+    "statuses",
+    "steps",
+    "trace",
+    "v3",
+    "v4",
+]);
+
+/** Keeps origin plus route words; drops user info, query and fragment, and redacts every other segment. */
 function originAndPathOf(url: string): string {
     try {
         const parsed = new URL(url);
         const path = parsed.pathname
             .split("/")
-            .map((segment) =>
-                TOKEN_PREFIX.test(segment) ||
-                (OPAQUE_SEGMENT.test(segment) && !HEX_SEGMENT.test(segment))
-                    ? "[redacted]"
-                    : segment,
-            )
+            .map((segment) => (ROUTE_WORDS.has(segment) ? segment : "[redacted]"))
             .join("/");
         return parsed.origin + path;
     } catch {

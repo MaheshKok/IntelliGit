@@ -6,6 +6,7 @@ import {
     type CiTraceEvent,
     type CiTraceReason,
 } from "../../../../src/services/commitChecks/ciTrace";
+import type { ProviderId } from "../../../../src/types";
 
 function channel(): CiTraceChannel & {
     trace: ReturnType<typeof vi.fn>;
@@ -35,8 +36,11 @@ describe("ciTrace", () => {
 
         const line = formatCiTraceLine(event, "op1");
 
-        // Origin plus path; the query string and fragment are dropped.
-        expect(line).toContain("url=https://pipelines.example.com/o/r/logs/1 status=403");
+        // Origin plus path; the query string and fragment are dropped, and only known
+        // API route words are written as they are.
+        expect(line).toContain(
+            "url=https://pipelines.example.com/[redacted]/[redacted]/logs/[redacted] status=403",
+        );
         for (const secret of [
             "SIGNED",
             "QUERYTOKEN",
@@ -86,30 +90,71 @@ describe("ciTrace", () => {
 
         expect(line).not.toContain("REPOTOKEN");
         expect(line).not.toContain("PATHTOKEN");
-        expect(line).toContain("url=https://git.example.com/api/v4/[redacted]/jobs/1");
+        expect(line).toContain("url=https://git.example.com/api/v4/[redacted]/jobs/[redacted]");
         expect(line).toMatch(/repoKey=[0-9a-f]{12} /);
         // The same repository always gets the same id, so lines still correlate.
         expect(formatCiTraceLine(event, "op2").split(" ")[3]).toBe(line.split(" ")[3]);
     });
 
-    it("keeps an ordinary API path, drops user info, and redacts token-shaped segments", () => {
+    it("a token of any shape in a URL path never reaches the trace", () => {
+        for (const token of [
+            "secret1234567890123",
+            "lowercaseonlysecretvalue",
+            "0123456789abcdef0123456789abcdef01234567",
+            "12345678901234567890",
+            "S3cr3t",
+        ]) {
+            const line = formatCiTraceLine(
+                { kind: "log", outcome: "failed", url: `https://ci.example.com/logs/${token}` },
+                "op1",
+            );
+            expect(line, token).not.toContain(token);
+            expect(line, token).toContain("url=https://ci.example.com/logs/[redacted]");
+        }
+    });
+
+    it("a provider is written only as a known id, so free text never reaches the trace", () => {
+        for (const provider of ["github", "gitlab", "bitbucket-cloud", "bitbucket-server"]) {
+            expect(
+                formatCiTraceLine(
+                    { kind: "detail", outcome: "fetched", provider: provider as ProviderId },
+                    "op1",
+                ),
+            ).toBe(`op=op1 kind=detail outcome=fetched provider=${provider}`);
+        }
+        const line = formatCiTraceLine(
+            {
+                kind: "detail",
+                outcome: "fetched",
+                provider: "token=ghp_SECRETPROVIDER" as ProviderId,
+            },
+            "op1",
+        );
+        expect(line).toBe("op=op1 kind=detail outcome=fetched provider=other");
+    });
+
+    it("keeps known API route words, drops user info, and redacts every other segment", () => {
         const sha = "0123456789abcdef0123456789abcdef01234567";
         for (const [url, expected] of [
             [
                 `https://api.github.com/repos/o/r/commits/${sha}/check-runs?per_page=100`,
-                `url=https://api.github.com/repos/o/r/commits/${sha}/check-runs`,
+                "url=https://api.github.com/repos/[redacted]/[redacted]/commits/[redacted]/check-runs",
             ],
             [
                 "https://USERSECRET@bitbucket.org/2.0/repositories/ws/repo/pipelines/",
-                "url=https://bitbucket.org/2.0/repositories/ws/repo/pipelines/",
+                "url=https://bitbucket.org/2.0/repositories/[redacted]/[redacted]/pipelines/",
+            ],
+            [
+                `https://git.example.com/rest/build-status/1.0/commits/${sha}?start=0`,
+                "url=https://git.example.com/rest/build-status/1.0/commits/[redacted]",
             ],
             [
                 "https://api.github.com/x/ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/y",
-                "url=https://api.github.com/x/[redacted]/y",
+                "url=https://api.github.com/[redacted]/[redacted]/[redacted]",
             ],
             [
-                "https://ci.example.com/hooks/a1B2c3D4e5F6g7H8i9J0k1L2/run",
-                "url=https://ci.example.com/hooks/[redacted]/run",
+                "https://ci.example.com/api/v4/projects/o%2Fr/jobs/42/trace",
+                "url=https://ci.example.com/api/v4/projects/[redacted]/jobs/[redacted]/trace",
             ],
         ]) {
             const line = formatCiTraceLine({ kind: "log", outcome: "failed", url }, "op1");

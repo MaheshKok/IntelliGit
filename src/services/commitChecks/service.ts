@@ -3,7 +3,7 @@
 // are keyed globally so the same repo/SHA is fetched once.
 
 import { isCompleteSnapshot } from "../../shared/ci/completion";
-import type { CommitChecksSnapshot } from "../../types";
+import type { CommitChecksSnapshot, ProviderId } from "../../types";
 import type { CiTrace, CiTraceOutcome } from "./ciTrace";
 import type { CommitChecksPersistentCache } from "./persistentCache";
 
@@ -82,7 +82,7 @@ export class CommitChecksService {
         key: string,
         fetchSnapshot: () => Promise<CommitChecksSnapshot>,
         options: CommitChecksFetchOptions = {},
-        provider?: string,
+        provider?: ProviderId,
     ): Promise<CommitChecksSnapshot> {
         const trace = (outcome: CiTraceOutcome, hash: string, ms?: number): void =>
             this.trace?.({ kind: "snapshot", outcome, provider, hash, ms });
