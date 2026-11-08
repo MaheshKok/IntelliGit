@@ -10,6 +10,7 @@ import {
     type CommitChecksPersistentState,
 } from "../../../../src/services/commitChecks/persistentCache";
 import { CiDetailPersistentCache } from "../../../../src/services/commitChecks/detailPersistentCache";
+import { CI_DETAIL_CONTRACT_VERSION } from "../../../../src/shared/ci/contractVersion";
 
 const KEY = "github:repo@abc1234:-";
 const OLDER_KEY = "github:repo@def5678:-";
@@ -202,6 +203,38 @@ async function expectNothingSurvivesMidStepClears<T>(
     }
 }
 
+/** Settles to "ok" or to the error text, so a throw shows up under the assertion's label. */
+function outcome(promise: Promise<unknown>): Promise<unknown> {
+    return promise.then(
+        (value) => value ?? "ok",
+        (error: unknown) => `threw: ${String(error)}`,
+    );
+}
+
+/**
+ * Each bad entry is saved under KEY next to a valid entry under OLDER_KEY: reading KEY is a
+ * miss, the valid entry stays readable, and a new save under KEY replaces the bad entry.
+ */
+async function badEntriesReadAsMissAndGetReplaced<T>(
+    open: (state: CommitChecksPersistentState) => Store<T>,
+    payload: (entries: unknown[]) => unknown,
+    valid: unknown,
+    badEntries: [string, unknown][],
+    value: T,
+): Promise<void> {
+    for (const [name, bad] of badEntries) {
+        const store = open(slowMemento({ [STORE]: payload([bad, valid]) }));
+        expect(await outcome(store.get(KEY)), `${name}: read`).toBe("ok");
+        expect(await outcome(store.get(OLDER_KEY)), `${name}: valid entry`).toMatchObject({
+            hash: "abc1234",
+        });
+        expect(await outcome(store.set(KEY, value)), `${name}: replacement save`).toBe("ok");
+        expect(await outcome(store.get(KEY)), `${name}: replacement read`).toMatchObject({
+            hash: "abc1234",
+        });
+    }
+}
+
 /** Window A's write is held, window B clears, then A's write lands. */
 async function lateWriteAfterOtherWindowClear<T>(
     open: (state: CommitChecksPersistentState) => Store<T>,
@@ -300,6 +333,29 @@ describe("CommitChecksPersistentCache completion and queue", () => {
         expect(await cache.get(KEY)).toBeUndefined();
     });
 
+    it("an entry with a bad shape reads as a miss and the next save replaces it", async () => {
+        const entry = (fields: Record<string, unknown>) => ({
+            key: KEY,
+            snapshot: snapshot("failure"),
+            fetchedAt: 1_000,
+            lastAccessedAt: 1_000,
+            schemaVersion: 1,
+            ...fields,
+        });
+        await badEntriesReadAsMissAndGetReplaced(
+            (state) =>
+                new CommitChecksPersistentCache(state, { storageKey: STORE, now: () => 1_000 }),
+            (entries) => ({ schemaVersion: 1, entries, unconfirmed: {} }),
+            entry({ key: OLDER_KEY }),
+            [
+                ["null entry", null],
+                ["null snapshot", entry({ snapshot: null })],
+                ["null check item", entry({ snapshot: { ...snapshot("failure"), items: [null] } })],
+            ],
+            snapshot("failure"),
+        );
+    });
+
     it("delete runs inside the enqueue chain", async () => {
         const cache = new CommitChecksPersistentCache(slowMemento());
         const write = cache.set(KEY, snapshot("failure"));
@@ -371,6 +427,44 @@ describe("CiDetailPersistentCache queue", () => {
         );
         expect(result.afterOldDelete).toMatchObject({ outcome: "success" });
         expect(result.afterOwnDelete).toBeUndefined();
+    });
+
+    it("an entry with a bad shape, also deep inside its runs, reads as a miss and the next save replaces it", async () => {
+        const job = {
+            id: "j",
+            logicalId: "j",
+            name: "j",
+            checkName: "j",
+            state: "failure",
+            steps: [],
+        };
+        const run = { id: "r", name: "ci", state: "failure", jobs: [job], jobsCoverage: "full" };
+        const entry = (data: Record<string, unknown> | null) => ({
+            key: KEY,
+            contractVersion: CI_DETAIL_CONTRACT_VERSION,
+            data: data && { ...detail(), runs: [run], ...data },
+            fetchedAt: 1_000,
+            lastAccessedAt: 1_000,
+        });
+        await badEntriesReadAsMissAndGetReplaced(
+            (state) => new CiDetailPersistentCache(state, { storageKey: STORE, now: () => 1_000 }),
+            (entries) => ({ entries, unconfirmed: {} }),
+            { ...entry({}), key: OLDER_KEY },
+            [
+                ["null entry", null],
+                ["null data", entry(null)],
+                ["null run", entry({ runs: [null] })],
+                ["null job", entry({ runs: [{ ...run, jobs: [null] }] })],
+                ["null step", entry({ runs: [{ ...run, jobs: [{ ...job, steps: [null] }] }] })],
+                ["null other check", entry({ otherChecks: [null] })],
+                ["null attempt history", entry({ attemptHistory: [null] })],
+                [
+                    "null attempt",
+                    entry({ attemptHistory: [{ coverage: "full", attempts: [null] }] }),
+                ],
+            ],
+            detail(),
+        );
     });
 
     it("delete runs inside the enqueue chain", async () => {

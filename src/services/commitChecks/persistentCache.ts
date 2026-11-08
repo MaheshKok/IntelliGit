@@ -241,7 +241,7 @@ export class CommitChecksPersistentCache {
         }
         return {
             schemaVersion: SCHEMA_VERSION,
-            entries: payload.entries.filter((entry) => this.isUsable(entry)),
+            entries: payload.entries.filter((entry) => isEntryShape(entry) && this.isUsable(entry)),
             unconfirmed: payload.unconfirmed ?? {},
             generation,
         };
@@ -311,6 +311,28 @@ export function isUnconfirmedWrites(value: unknown): value is UnconfirmedWrites 
     if (value === undefined) return true;
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     return Object.values(value).every((id) => typeof id === "string");
+}
+
+/** True for an array whose items are all non-null objects, so their fields can be read. */
+export function isObjectList(value: unknown): value is object[] {
+    return Array.isArray(value) && value.every((item) => !!item && typeof item === "object");
+}
+
+/** A bad-shaped entry is dropped on read, so it is a miss and the next save replaces it. */
+function isEntryShape(value: unknown): value is PersistedCommitChecksEntry {
+    if (!value || typeof value !== "object") return false;
+    const entry = value as Partial<PersistedCommitChecksEntry>;
+    const snapshot = entry.snapshot as Partial<CommitChecksSnapshot> | null | undefined;
+    return (
+        typeof entry.key === "string" &&
+        typeof entry.fetchedAt === "number" &&
+        typeof entry.lastAccessedAt === "number" &&
+        !!snapshot &&
+        typeof snapshot === "object" &&
+        typeof snapshot.hash === "string" &&
+        typeof snapshot.state === "string" &&
+        isObjectList(snapshot.items)
+    );
 }
 
 function isPayload(

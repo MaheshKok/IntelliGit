@@ -8,6 +8,7 @@ import type { CommitCiDetail, CommitCiDetailData } from "../../types";
 import { randomUUID } from "node:crypto";
 import {
     clearGenerationKey,
+    isObjectList,
     isUnconfirmedWrites,
     keepUnconfirmed,
     markUnconfirmed,
@@ -289,7 +290,13 @@ function isEntryShape(value: unknown): value is PersistedDetailEntry {
         typeof data === "object" &&
         typeof data.hash === "string" &&
         typeof data.complete === "boolean" &&
-        Array.isArray(data.runs) &&
-        Array.isArray(data.otherChecks)
+        isObjectList(data.runs) &&
+        data.runs.every(
+            (run) => isObjectList(run.jobs) && run.jobs.every((job) => isObjectList(job.steps)),
+        ) &&
+        isObjectList(data.otherChecks) &&
+        (data.attemptHistory === undefined ||
+            (isObjectList(data.attemptHistory) &&
+                data.attemptHistory.every((history) => isObjectList(history.attempts))))
     );
 }
