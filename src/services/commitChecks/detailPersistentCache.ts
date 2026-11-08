@@ -43,8 +43,8 @@ interface PersistedDetailEntry {
 interface PersistedDetailPayload {
     entries: PersistedDetailEntry[];
     unconfirmed: UnconfirmedWrites;
-    /** Clear generation the payload was written under; see `clearGenerationKey`. */
-    generation?: string;
+    /** Clear generation the payload was read under and is written with; see `clearGenerationKey`. */
+    generation: string | undefined;
 }
 
 /** VS Code globalState-backed cache for complete, fully covered CI details. */
@@ -110,9 +110,9 @@ export class CiDetailPersistentCache {
         }
         const data = toPersistedData(detail);
         await this.enqueue(async () => {
-            // A clear in any window since the fetch started outdates this detail.
-            if (write && write.generation !== this.generation()) return;
             const payload = this.read();
+            // A clear in any window since the fetch started outdates this detail.
+            if (write && write.generation !== payload.generation) return;
             const entry: PersistedDetailEntry = {
                 key,
                 contractVersion: CI_DETAIL_CONTRACT_VERSION,
@@ -125,6 +125,7 @@ export class CiDetailPersistentCache {
                 this.trim({
                     entries: [...entries, entry],
                     unconfirmed: markUnconfirmed(payload.unconfirmed, key, write?.id),
+                    generation: payload.generation,
                 }),
             );
         });
@@ -162,6 +163,7 @@ export class CiDetailPersistentCache {
             await this.write({
                 entries: payload.entries.filter((entry) => entry.key !== key),
                 unconfirmed: markUnconfirmed(payload.unconfirmed, key, undefined),
+                generation: payload.generation,
             });
         });
     }
@@ -179,7 +181,7 @@ export class CiDetailPersistentCache {
                 await this.state.update(clearGenerationKey(this.storageKey), randomUUID());
                 await this.state.update(this.storageKey, undefined);
             } catch (error) {
-                await this.write({ entries: [], unconfirmed: {} });
+                await this.write({ entries: [], unconfirmed: {}, generation: this.generation() });
                 throw error;
             }
         });
@@ -190,8 +192,13 @@ export class CiDetailPersistentCache {
         return this.state.get<string>(clearGenerationKey(this.storageKey));
     }
 
+    /**
+     * Reads the generation before the payload and carries it into the write, so a clear
+     * from another window landing after this read leaves the write stamped stale (a miss).
+     */
     private read(): PersistedDetailPayload {
-        const empty = { entries: [], unconfirmed: {} };
+        const current = this.generation();
+        const empty = { entries: [], unconfirmed: {}, generation: current };
         const payload = this.state.get<unknown>(this.storageKey);
         if (!payload || typeof payload !== "object") return empty;
         const { entries, generation, unconfirmed } = payload as {
@@ -202,7 +209,7 @@ export class CiDetailPersistentCache {
         if (
             !Array.isArray(entries) ||
             !isUnconfirmedWrites(unconfirmed) ||
-            generation !== this.generation()
+            generation !== current
         ) {
             return empty;
         }
@@ -212,12 +219,12 @@ export class CiDetailPersistentCache {
                     isEntryShape(entry) && this.isUsable(entry),
             ),
             unconfirmed: unconfirmed ?? {},
+            generation: current,
         };
     }
 
-    /** Every caller reads and writes in one synchronous step, so the stamp is the read's. */
     private async write(payload: PersistedDetailPayload): Promise<void> {
-        await this.state.update(this.storageKey, { ...payload, generation: this.generation() });
+        await this.state.update(this.storageKey, payload);
     }
 
     /** Serializes storage read-modify-write operations without poisoning later work after a failure. */
@@ -235,7 +242,11 @@ export class CiDetailPersistentCache {
             .filter((entry) => this.isUsable(entry))
             .sort((a, b) => b.lastAccessedAt - a.lastAccessedAt)
             .slice(0, this.maxEntries);
-        return { entries, unconfirmed: keepUnconfirmed(payload.unconfirmed, entries) };
+        return {
+            entries,
+            unconfirmed: keepUnconfirmed(payload.unconfirmed, entries),
+            generation: payload.generation,
+        };
     }
 
     private isUsable(entry: PersistedDetailEntry): boolean {

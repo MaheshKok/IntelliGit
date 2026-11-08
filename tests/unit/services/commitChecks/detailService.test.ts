@@ -135,6 +135,33 @@ describe("CommitCiDetailService", () => {
         expect(fetchDetail).toHaveBeenCalledTimes(1);
     });
 
+    it("the detail contract version starts at 1, and persisted details carry and accept 1", async () => {
+        expect(CI_DETAIL_CONTRACT_VERSION).toBe(1);
+        const state = memento();
+        await service(state, () => 1_000).service.getOrFetch(KEY, async () => detail(), SERVE);
+        const saved = state.values.get(STORAGE_KEY) as { entries: { contractVersion: number }[] };
+        expect(saved.entries.map((entry) => entry.contractVersion)).toEqual([1]);
+
+        const written = memento();
+        written.values.set(STORAGE_KEY, {
+            entries: [
+                {
+                    key: KEY,
+                    contractVersion: 1,
+                    data: detail(),
+                    fetchedAt: 1_000,
+                    lastAccessedAt: 1_000,
+                },
+            ],
+            unconfirmed: {},
+        });
+        const fetchDetail = vi.fn(async () => detail({ outcome: "success" }));
+        await expect(
+            service(written, () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
+        ).resolves.toMatchObject({ outcome: "failure" });
+        expect(fetchDetail).not.toHaveBeenCalled();
+    });
+
     it("a persisted complete detail survives a restart", async () => {
         const state = memento();
         await service(state).service.getOrFetch(KEY, async () => detail(), SERVE);

@@ -5,12 +5,15 @@ import type {
     CommitCiDetailData,
 } from "../../../../src/types";
 import {
+    clearGenerationKey,
     CommitChecksPersistentCache,
     type CommitChecksPersistentState,
 } from "../../../../src/services/commitChecks/persistentCache";
 import { CiDetailPersistentCache } from "../../../../src/services/commitChecks/detailPersistentCache";
 
 const KEY = "github:repo@abc1234:-";
+const OLDER_KEY = "github:repo@def5678:-";
+const STORE = "test.ci.store";
 
 function item(state: CommitCheckItem["state"]): CommitCheckItem {
     return { name: state, description: "", state, source: "check-run" };
@@ -132,6 +135,73 @@ async function deleteByWriteIdKeepsSameMillisecondWrite<T>(
     return { afterOldDelete, afterOwnDelete: await store.get(KEY) };
 }
 
+/**
+ * Window A runs `step` while window B's clear lands right after A's `nth` read of the store
+ * (its payload or its clear generation), so between A's own reads and writes (or after
+ * `step` when A reads fewer times). Returns a fresh window, where neither A's entry nor an
+ * older one may be readable.
+ */
+async function otherWindowClearsMidStep<T>(
+    open: (state: CommitChecksPersistentState) => Store<T>,
+    value: T,
+    nth: number,
+    step: (windowA: Store<T>) => Promise<unknown>,
+): Promise<Store<T>> {
+    const values = new Map<string, unknown>();
+    let reads: number | undefined;
+    const clearFromWindowB = () => {
+        reads = undefined;
+        values.set(clearGenerationKey(STORE), "window-b-clear");
+        values.delete(STORE);
+    };
+    const state: CommitChecksPersistentState = {
+        get: <V>(key: string) => {
+            const current = values.get(key) as V | undefined;
+            const storeKey = key === STORE || key === clearGenerationKey(STORE);
+            if (reads !== undefined && storeKey && ++reads === nth) {
+                clearFromWindowB();
+            }
+            return current;
+        },
+        update: async (key: string, next: unknown) => {
+            if (next === undefined) values.delete(key);
+            else values.set(key, next);
+        },
+    };
+    const windowA = open(state);
+    await windowA.set(OLDER_KEY, value);
+    reads = 0;
+    await step(windowA);
+    if (reads !== undefined) clearFromWindowB();
+    return open(state);
+}
+
+/** A fetch's whole save: capture the generation, save unconfirmed, confirm. */
+async function saveAndConfirm<T>(windowA: Store<T>, value: T): Promise<void> {
+    await windowA.set(KEY, value, undefined, { generation: windowA.generation(), id: "w1" });
+    await windowA.confirmWrite(KEY, "w1");
+}
+
+async function expectNothingSurvivesMidStepClears<T>(
+    open: (state: CommitChecksPersistentState) => Store<T>,
+    value: T,
+): Promise<void> {
+    const steps: [string, number, (windowA: Store<T>) => Promise<unknown>][] = [
+        ["save", 8, (windowA) => saveAndConfirm(windowA, value)],
+        ["get", 3, (windowA) => windowA.get(OLDER_KEY)],
+    ];
+    for (const [name, reads, step] of steps) {
+        for (let nth = 1; nth <= reads; nth++) {
+            const restarted = await otherWindowClearsMidStep(open, value, nth, step);
+            expect(await restarted.get(KEY), `${name}, clear after read ${nth}`).toBeUndefined();
+            expect(
+                await restarted.get(OLDER_KEY),
+                `${name}, clear after read ${nth}: older entry`,
+            ).toBeUndefined();
+        }
+    }
+}
+
 /** Window A's write is held, window B clears, then A's write lands. */
 async function lateWriteAfterOtherWindowClear<T>(
     open: (state: CommitChecksPersistentState) => Store<T>,
@@ -172,6 +242,13 @@ describe("CommitChecksPersistentCache completion and queue", () => {
             snapshot("failure"),
         );
         expect(await restarted.get(KEY)).toBeUndefined();
+    });
+
+    it("a clear from another window between a save's or a read's own steps leaves nothing readable", async () => {
+        await expectNothingSurvivesMidStepClears(
+            (state) => new CommitChecksPersistentCache(state, { storageKey: STORE }),
+            snapshot("failure"),
+        );
     });
 
     it("an unconfirmed write stays unreadable, also after a restart, until its id confirms it", async () => {
@@ -270,6 +347,13 @@ describe("CiDetailPersistentCache queue", () => {
             detail(),
         );
         expect(await restarted.get(KEY)).toBeUndefined();
+    });
+
+    it("a clear from another window between a save's or a read's own steps leaves nothing readable", async () => {
+        await expectNothingSurvivesMidStepClears(
+            (state) => new CiDetailPersistentCache(state, { storageKey: STORE }),
+            detail(),
+        );
     });
 
     it("an unconfirmed write stays unreadable, also after a restart, until its id confirms it", async () => {

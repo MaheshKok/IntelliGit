@@ -46,8 +46,8 @@ interface PersistedPayload {
     schemaVersion: number;
     entries: PersistedCommitChecksEntry[];
     unconfirmed: UnconfirmedWrites;
-    /** Clear generation the payload was written under; see {@link clearGenerationKey}. */
-    generation?: string;
+    /** Clear generation the payload was read under and is written with; see {@link clearGenerationKey}. */
+    generation: string | undefined;
 }
 
 /** What a write carries from the moment its fetch started. */
@@ -139,9 +139,9 @@ export class CommitChecksPersistentCache {
             return;
         }
         await this.enqueue(async () => {
-            // A clear in any window since the fetch started outdates this answer.
-            if (write && write.generation !== this.generation()) return;
             const payload = this.read();
+            // A clear in any window since the fetch started outdates this answer.
+            if (write && write.generation !== payload.generation) return;
             const entry: PersistedCommitChecksEntry = {
                 key,
                 snapshot,
@@ -155,6 +155,7 @@ export class CommitChecksPersistentCache {
                     schemaVersion: SCHEMA_VERSION,
                     entries: [...entries, entry],
                     unconfirmed: markUnconfirmed(payload.unconfirmed, key, write?.id),
+                    generation: payload.generation,
                 }),
             );
         });
@@ -193,6 +194,7 @@ export class CommitChecksPersistentCache {
                 schemaVersion: SCHEMA_VERSION,
                 entries: payload.entries.filter((entry) => entry.key !== key),
                 unconfirmed: markUnconfirmed(payload.unconfirmed, key, undefined),
+                generation: payload.generation,
             });
         });
     }
@@ -211,7 +213,12 @@ export class CommitChecksPersistentCache {
                 await this.state.update(clearGenerationKey(this.storageKey), randomUUID());
                 await this.state.update(this.storageKey, undefined);
             } catch (error) {
-                await this.write({ schemaVersion: SCHEMA_VERSION, entries: [], unconfirmed: {} });
+                await this.write({
+                    schemaVersion: SCHEMA_VERSION,
+                    entries: [],
+                    unconfirmed: {},
+                    generation: this.generation(),
+                });
                 throw error;
             }
         });
@@ -222,21 +229,26 @@ export class CommitChecksPersistentCache {
         return this.state.get<string>(clearGenerationKey(this.storageKey));
     }
 
+    /**
+     * Reads the generation before the payload and carries it into the write, so a clear
+     * from another window landing after this read leaves the write stamped stale (a miss).
+     */
     private read(): PersistedPayload {
+        const generation = this.generation();
         const payload = this.state.get<unknown>(this.storageKey);
-        if (!isPayload(payload) || payload.generation !== this.generation()) {
-            return { schemaVersion: SCHEMA_VERSION, entries: [], unconfirmed: {} };
+        if (!isPayload(payload) || payload.generation !== generation) {
+            return { schemaVersion: SCHEMA_VERSION, entries: [], unconfirmed: {}, generation };
         }
         return {
             schemaVersion: SCHEMA_VERSION,
             entries: payload.entries.filter((entry) => this.isUsable(entry)),
             unconfirmed: payload.unconfirmed ?? {},
+            generation,
         };
     }
 
-    /** Every caller reads and writes in one synchronous step, so the stamp is the read's. */
     private async write(payload: PersistedPayload): Promise<void> {
-        await this.state.update(this.storageKey, { ...payload, generation: this.generation() });
+        await this.state.update(this.storageKey, payload);
     }
 
     /** Serializes storage read-modify-write operations without poisoning later work after a failure. */
@@ -258,6 +270,7 @@ export class CommitChecksPersistentCache {
             schemaVersion: SCHEMA_VERSION,
             entries,
             unconfirmed: keepUnconfirmed(payload.unconfirmed, entries),
+            generation: payload.generation,
         };
     }
 
