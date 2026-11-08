@@ -351,9 +351,51 @@ describe("CommitChecksPersistentCache completion and queue", () => {
                 ["null entry", null],
                 ["null snapshot", entry({ snapshot: null })],
                 ["null check item", entry({ snapshot: { ...snapshot("failure"), items: [null] } })],
+                ["invalid state", entry({ snapshot: { ...snapshot("failure"), state: "bogus" } })],
+                [
+                    "invalid item state",
+                    entry({
+                        snapshot: {
+                            ...snapshot("failure"),
+                            items: [{ ...item("failure"), state: "bogus" }],
+                        },
+                    }),
+                ],
+                [
+                    "missing summary",
+                    entry({ snapshot: { ...snapshot("failure"), summary: undefined } }),
+                ],
+                [
+                    "numeric item url",
+                    entry({
+                        snapshot: {
+                            ...snapshot("failure"),
+                            items: [{ ...item("failure"), url: 1 }],
+                        },
+                    }),
+                ],
             ],
             snapshot("failure"),
         );
+    });
+
+    it("a saved snapshot with every optional field set is served", async () => {
+        const full: CommitChecksSnapshot = {
+            ...snapshot("failure", [
+                {
+                    ...item("failure"),
+                    source: "status",
+                    url: "https://ci",
+                    id: "1",
+                    logicalId: "lint",
+                },
+            ]),
+            error: "partial",
+            signInHost: "github.com",
+        };
+        const cache = new CommitChecksPersistentCache(slowMemento(), { now: () => 1_000 });
+        await cache.set(KEY, full);
+        expect(await cache.get(KEY)).toEqual(full);
     });
 
     it("delete runs inside the enqueue chain", async () => {
@@ -462,9 +504,140 @@ describe("CiDetailPersistentCache queue", () => {
                     "null attempt",
                     entry({ attemptHistory: [{ coverage: "full", attempts: [null] }] }),
                 ],
+                ["numeric job state", entry({ runs: [{ ...run, jobs: [{ ...job, state: 3 }] }] })],
+                ["invalid run state", entry({ runs: [{ ...run, state: "bogus" }] })],
+                [
+                    "invalid step state",
+                    entry({
+                        runs: [
+                            {
+                                ...run,
+                                jobs: [
+                                    { ...job, steps: [{ number: 1, name: "s", state: "bogus" }] },
+                                ],
+                            },
+                        ],
+                    }),
+                ],
+                [
+                    "invalid other check state",
+                    entry({
+                        otherChecks: [
+                            { name: "c", description: "", state: "bogus", source: "status" },
+                        ],
+                    }),
+                ],
+                [
+                    "invalid attempt state",
+                    entry({
+                        attemptHistory: [
+                            {
+                                runId: "r",
+                                logicalId: "j",
+                                coverage: "full",
+                                attempts: [{ attempt: 1, executionId: "j", state: 7 }],
+                            },
+                        ],
+                    }),
+                ],
+                ["invalid provider", entry({ provider: "nope" })],
+                ["missing outcome", entry({ outcome: undefined })],
+                [
+                    "string job attempt",
+                    entry({ runs: [{ ...run, jobs: [{ ...job, attempt: "1" }] }] }),
+                ],
             ],
             detail(),
         );
+    });
+
+    it("a saved detail with every optional field set is served", async () => {
+        const full: CommitCiDetailData = {
+            ...detail(),
+            runs: [
+                {
+                    id: "r",
+                    name: "ci",
+                    url: "https://ci/r",
+                    state: "failure",
+                    workflowId: "w",
+                    event: "push",
+                    actor: "me",
+                    ref: "main",
+                    runNumber: 4,
+                    attempt: 2,
+                    createdAt: "t0",
+                    startedAt: "t1",
+                    completedAt: "t2",
+                    usualDurationMs: null,
+                    jobs: [
+                        {
+                            id: "j",
+                            logicalId: "lj",
+                            checkRunId: "c",
+                            name: "j",
+                            checkName: "ci / j",
+                            state: "failure",
+                            url: "https://ci/j",
+                            startedAt: "t1",
+                            completedAt: "t2",
+                            attempt: 2,
+                            steps: [
+                                {
+                                    number: 1,
+                                    name: "s",
+                                    state: "success",
+                                    startedAt: "t1",
+                                    completedAt: "t2",
+                                },
+                            ],
+                            annotationCount: 3,
+                            optional: false,
+                            required: "yes",
+                            failureSummary: "boom",
+                            usualDurationMs: 60_000,
+                        },
+                    ],
+                    jobsCoverage: "full",
+                },
+            ],
+            otherChecks: [
+                {
+                    id: "s",
+                    logicalId: "ls",
+                    name: "status",
+                    description: "d",
+                    state: "success",
+                    source: "build",
+                    url: "https://ci/s",
+                    durationMs: null,
+                    required: "unknown",
+                    usualDurationMs: 5,
+                },
+            ],
+            requiredStatus: "partial",
+            attemptHistory: [
+                {
+                    runId: "r",
+                    logicalId: "lj",
+                    attempts: [
+                        {
+                            attempt: 1,
+                            executionId: "j0",
+                            state: "failure",
+                            startedAt: "t0",
+                            completedAt: "t1",
+                        },
+                    ],
+                    coverage: "full",
+                },
+            ],
+            error: "partial",
+            signInHost: "github.com",
+        };
+        const cache = new CiDetailPersistentCache(slowMemento(), { now: () => 1_000 });
+        await cache.set(KEY, full);
+        expect(await cache.get(KEY)).toEqual(full);
     });
 
     it("delete runs inside the enqueue chain", async () => {

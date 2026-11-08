@@ -3,6 +3,7 @@
 
 import { randomUUID } from "node:crypto";
 import { isCompleteSnapshot } from "../../shared/ci/completion";
+import { isCommitChecksSnapshot } from "../../shared/ci/persistedShape";
 import type { CommitChecksSnapshot } from "../../types";
 
 const SCHEMA_VERSION = 1;
@@ -313,25 +314,15 @@ export function isUnconfirmedWrites(value: unknown): value is UnconfirmedWrites 
     return Object.values(value).every((id) => typeof id === "string");
 }
 
-/** True for an array whose items are all non-null objects, so their fields can be read. */
-export function isObjectList(value: unknown): value is object[] {
-    return Array.isArray(value) && value.every((item) => !!item && typeof item === "object");
-}
-
 /** A bad-shaped entry is dropped on read, so it is a miss and the next save replaces it. */
 function isEntryShape(value: unknown): value is PersistedCommitChecksEntry {
     if (!value || typeof value !== "object") return false;
     const entry = value as Partial<PersistedCommitChecksEntry>;
-    const snapshot = entry.snapshot as Partial<CommitChecksSnapshot> | null | undefined;
     return (
         typeof entry.key === "string" &&
         typeof entry.fetchedAt === "number" &&
         typeof entry.lastAccessedAt === "number" &&
-        !!snapshot &&
-        typeof snapshot === "object" &&
-        typeof snapshot.hash === "string" &&
-        typeof snapshot.state === "string" &&
-        isObjectList(snapshot.items)
+        isCommitChecksSnapshot(entry.snapshot)
     );
 }
 
