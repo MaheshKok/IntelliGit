@@ -452,7 +452,11 @@ describe("CommitCiDetailService", () => {
         const state = memento();
         const { service: windowA } = service(state);
         const fetched = deferred<CommitCiDetailData>();
-        const fetchDetail = vi.fn(() => fetched.promise);
+        // Window A retries after the clear; the retry's detail is not one that is saved.
+        const fetchDetail = vi
+            .fn<() => Promise<CommitCiDetailData>>()
+            .mockReturnValueOnce(fetched.promise)
+            .mockResolvedValue(detail({ complete: false, outcome: "pending" }));
         const answer = windowA.getOrFetch(KEY, fetchDetail, SERVE);
         await vi.waitFor(() => expect(fetchDetail).toHaveBeenCalled());
         await new CiDetailPersistentCache(state).clear();
@@ -573,4 +577,117 @@ describe("CommitCiDetailService", () => {
             expect(await persistent.get(KEY)).toMatchObject({ outcome: "failure" });
         },
     );
+});
+
+/** Another window over the same globalState; `clear()` resolves once its store clear has landed. */
+function otherWindow(state: CommitChecksPersistentState): { clear: () => Promise<void> } {
+    const { service: other, persistent } = service(state);
+    return {
+        clear: async () => {
+            other.clear();
+            // Queued behind the clear in the same store.
+            await persistent.get(KEY);
+        },
+    };
+}
+
+describe("CommitCiDetailService once another window's clear() is visible", () => {
+    const pending = (): CommitCiDetailData => detail({ complete: false, outcome: "pending" });
+
+    it("an in-memory detail from before the clear is not served", async () => {
+        const state = memento();
+        const { service: windowA } = service(state);
+        await windowA.getOrFetch(KEY, async () => detail(), SERVE);
+        await otherWindow(state).clear();
+
+        const refetch = vi.fn(async () => pending());
+        const answer = await windowA.getOrFetch(KEY, refetch, SERVE);
+        expect(answer.outcome, "the pre-clear in-memory detail was served").toBe("pending");
+        expect(refetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("a forced refresh that fails after the clear does not fall back to the pre-clear detail", async () => {
+        const state = memento();
+        const { service: windowA } = service(state);
+        await windowA.getOrFetch(KEY, async () => detail(), SERVE);
+        await otherWindow(state).clear();
+
+        const answer = await windowA.getOrFetch(
+            KEY,
+            async () =>
+                detail({ complete: false, outcome: "unavailable", runs: [], error: "HTTP 502" }),
+            SERVE,
+            { force: true },
+        );
+        expect(answer.outcome, "the refresh fell back to the pre-clear detail").toBe("unavailable");
+    });
+
+    // A retry that joins its own request hangs; the short timeout names this test.
+    it("a fetch in flight across the clear is not served, also to a caller that joined it", async () => {
+        const state = memento();
+        const { service: windowA } = service(state);
+        const fetched = deferred<CommitCiDetailData>();
+        const fetchDetail = vi
+            .fn<() => Promise<CommitCiDetailData>>()
+            .mockReturnValueOnce(fetched.promise)
+            .mockResolvedValue(pending());
+        const first = windowA.getOrFetch(KEY, fetchDetail, SERVE);
+        await vi.waitFor(() => expect(fetchDetail).toHaveBeenCalledTimes(1));
+        const joined = windowA.getOrFetch(KEY, fetchDetail, SERVE);
+        await otherWindow(state).clear();
+        fetched.resolve(detail());
+
+        expect((await first).outcome, "the caller got the pre-clear detail").toBe("pending");
+        expect((await joined).outcome, "the joined caller got the pre-clear detail").toBe(
+            "pending",
+        );
+        expect(fetchDetail).toHaveBeenCalledTimes(2);
+        const next = vi.fn(async () => detail({ outcome: "success" }));
+        expect(
+            (await windowA.getOrFetch(KEY, next, SERVE)).outcome,
+            "the pre-clear detail was cached",
+        ).toBe("pending");
+    }, 10_000);
+
+    it("a detail whose last wait (its confirm step) spans the clear is not served", async () => {
+        const state = memento();
+        const { service: windowA } = service(state);
+        const other = otherWindow(state);
+        let cleared = false;
+        const confirm = vi.fn(async () => {
+            if (cleared) return;
+            cleared = true;
+            await other.clear();
+        });
+        const fetchDetail = vi
+            .fn<() => Promise<CommitCiDetailData>>()
+            .mockResolvedValueOnce(detail())
+            .mockResolvedValue(pending());
+
+        const answer = await windowA.getOrFetch(KEY, fetchDetail, SERVE, {}, confirm);
+        expect(answer.outcome, "the detail confirmed across the clear was served").toBe("pending");
+        expect(fetchDetail).toHaveBeenCalledTimes(2);
+    });
+
+    it("a saved detail read across the clear is not served", async () => {
+        const state = memento();
+        await service(state).service.getOrFetch(KEY, async () => detail(), SERVE);
+        const other = otherWindow(state);
+        const update = state.update;
+        let armed = true;
+        // The clear lands while this window's read bumps the entry's last-access time.
+        state.update = async (key: string, value: unknown) => {
+            if (armed && key === STORAGE_KEY) {
+                armed = false;
+                await other.clear();
+            }
+            await update(key, value);
+        };
+        const { service: windowA } = service(state);
+
+        const refetch = vi.fn(async () => pending());
+        const answer = await windowA.getOrFetch(KEY, refetch, SERVE);
+        expect(armed, "the clear never ran inside the read").toBe(false);
+        expect(answer.outcome, "the saved detail read across the clear was served").toBe("pending");
+    });
 });

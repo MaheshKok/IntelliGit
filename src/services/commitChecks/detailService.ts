@@ -15,7 +15,12 @@ import type { CommitChecksFetchOptions } from "./service";
 interface DetailEntry {
     data: CommitCiDetailData;
     fetchedAt: number;
+    /** The store's clear generation the entry was read or fetched under. */
+    storeGeneration: string | undefined;
 }
+
+/** This service's clear count, the key's invalidate count and the store's clear generation. */
+type Generation = readonly [number, number, string | undefined];
 
 /** What a read hands back before the read-time values are attached; never cached. */
 type ServedDetailData = CommitCiDetailData & Pick<CommitCiDetail, "refreshError">;
@@ -108,7 +113,7 @@ export class CommitCiDetailService {
         confirm: (() => Promise<void>) | undefined,
     ): Promise<ServedDetailData> {
         const cached = this.cache.get(key);
-        if (!options.force && cached && this.isFresh(cached)) {
+        if (!options.force && cached && this.isFresh(cached) && this.isServable(cached)) {
             this.touch(key, cached);
             this.traceOutcome("hit-l1", cached.data, serve);
             return cached.data;
@@ -120,7 +125,11 @@ export class CommitCiDetailService {
             const persisted = await this.getPersisted(key);
             // A read queued before invalidate() or clear() still sees the old entry.
             if (persisted && this.isCurrentGeneration(key, readGeneration)) {
-                this.cache.set(key, { data: persisted, fetchedAt: this.now() });
+                this.cache.set(key, {
+                    data: persisted,
+                    fetchedAt: this.now(),
+                    storeGeneration: readGeneration[2],
+                });
                 this.evictOldest();
                 this.traceOutcome("hit-l2", persisted, serve);
                 return persisted;
@@ -129,8 +138,6 @@ export class CommitCiDetailService {
         const newerInflight = this.inflight.get(key);
         if (newerInflight) return newerInflight;
         const generation = this.captureGeneration(key);
-        // Another window's clear() bumps only the store's shared generation, not this service's.
-        const storeGeneration = this.persistentCache?.generation();
         const request = fetchDetail()
             .then(async (data): Promise<ServedDetailData> => {
                 if (this.isCurrentGeneration(key, generation)) {
@@ -139,13 +146,14 @@ export class CommitCiDetailService {
                         options.force &&
                         data.outcome === "unavailable" &&
                         previous &&
+                        this.isServable(previous) &&
                         previous.data.outcome !== "unavailable"
                     ) {
                         // A failed refresh must not blank the tree: keep the earlier entry as is.
                         this.traceOutcome("failed", data, serve);
                         return { ...previous.data, refreshError: data.error ?? "" };
                     }
-                    const entry = { data, fetchedAt: this.now() };
+                    const entry = { data, fetchedAt: this.now(), storeGeneration: generation[2] };
                     this.cache.set(key, entry);
                     this.evictOldest();
                     this.traceOutcome(
@@ -159,13 +167,15 @@ export class CommitCiDetailService {
                     // removal after a rejection still leaves nothing readable.
                     const writeId = confirm ? randomUUID() : undefined;
                     await this.persist(key, data, entry.fetchedAt, {
-                        generation: storeGeneration,
+                        generation: generation[2],
                         id: writeId,
                     });
                     await this.confirmSaved(key, entry, confirm, writeId);
                     if (this.isCurrentGeneration(key, generation)) return data;
                 }
                 this.traceOutcome("discarded-generation", data, serve);
+                // Another window's clear() leaves this request in the map; a retry must not join it.
+                if (this.inflight.get(key) === request) this.inflight.delete(key);
                 // invalidate() or clear() superseded this result: its callers get the newer one.
                 return this.getData(key, fetchDetail, serve, options, confirm);
             })
@@ -203,13 +213,23 @@ export class CommitCiDetailService {
         }
     }
 
-    private captureGeneration(key: string): readonly [number, number] {
-        return [this.generation, this.keyGenerations.get(key) ?? 0];
+    // Another window's clear() bumps only the store's shared generation, not this service's.
+    private captureGeneration(key: string): Generation {
+        return [this.generation, this.keyGenerations.get(key) ?? 0, this.storeGeneration()];
     }
 
-    private isCurrentGeneration(key: string, captured: readonly [number, number]): boolean {
-        const [generation, keyGeneration] = this.captureGeneration(key);
-        return captured[0] === generation && captured[1] === keyGeneration;
+    private isCurrentGeneration(key: string, captured: Generation): boolean {
+        const current = this.captureGeneration(key);
+        return current.every((part, index) => part === captured[index]);
+    }
+
+    private storeGeneration(): string | undefined {
+        return this.persistentCache?.generation();
+    }
+
+    /** False once a clear() in any window, visible here, came after the entry was stored. */
+    private isServable(entry: DetailEntry): boolean {
+        return entry.storeGeneration === this.storeGeneration();
     }
 
     private isFresh(entry: DetailEntry): boolean {

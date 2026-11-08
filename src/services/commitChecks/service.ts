@@ -12,7 +12,12 @@ import type { CommitChecksPersistentCache, PersistentWrite } from "./persistentC
 interface CacheEntry {
     snapshot: CommitChecksSnapshot;
     fetchedAt: number;
+    /** The store's clear generation the entry was read or fetched under. */
+    storeGeneration: string | undefined;
 }
+
+/** This service's clear count, the key's invalidate count and the store's clear generation. */
+type Generation = readonly [number, number, string | undefined];
 
 /** Runtime and persistent cache tuning. */
 export interface CommitChecksServiceOptions {
@@ -92,7 +97,7 @@ export class CommitChecksService {
         const trace = (outcome: CiTraceOutcome, hash: string, ms?: number): void =>
             this.trace?.({ kind: "snapshot", outcome, provider, hash, ms });
         const cached = this.cache.get(key);
-        if (!options.force && cached && this.isFresh(cached)) {
+        if (!options.force && cached && this.isFresh(cached) && this.isServable(cached)) {
             this.touch(key, cached);
             trace("hit-l1", cached.snapshot.hash);
             return cached.snapshot;
@@ -104,7 +109,11 @@ export class CommitChecksService {
             const persisted = await this.getPersisted(key);
             // A read queued before invalidate() or clear() still sees the old entry.
             if (persisted && this.isCurrentGeneration(key, readGeneration)) {
-                this.cache.set(key, { snapshot: persisted, fetchedAt: this.now() });
+                this.cache.set(key, {
+                    snapshot: persisted,
+                    fetchedAt: this.now(),
+                    storeGeneration: readGeneration[2],
+                });
                 this.evictOldest();
                 trace("hit-l2", persisted.hash);
                 return persisted;
@@ -113,14 +122,16 @@ export class CommitChecksService {
         const newerInflight = this.inflight.get(key);
         if (newerInflight) return newerInflight;
         const generation = this.captureGeneration(key);
-        // Another window's clear() bumps only the store's shared generation, not this service's.
-        const storeGeneration = this.persistentCache?.generation();
         const startedAt = this.now();
         const request = fetchSnapshot()
             .then(async (snapshot): Promise<CommitChecksSnapshot> => {
                 const ms = this.now() - startedAt;
                 if (this.isCurrentGeneration(key, generation)) {
-                    const entry = { snapshot, fetchedAt: this.now() };
+                    const entry = {
+                        snapshot,
+                        fetchedAt: this.now(),
+                        storeGeneration: generation[2],
+                    };
                     this.cache.set(key, entry);
                     this.evictOldest();
                     trace(
@@ -134,13 +145,15 @@ export class CommitChecksService {
                     // removal after a rejection still leaves nothing readable.
                     const writeId = confirm ? randomUUID() : undefined;
                     await this.persist(key, snapshot, entry.fetchedAt, {
-                        generation: storeGeneration,
+                        generation: generation[2],
                         id: writeId,
                     });
                     await this.confirmSaved(key, entry, confirm, writeId);
                     if (this.isCurrentGeneration(key, generation)) return snapshot;
                 }
                 trace("discarded-generation", snapshot.hash, ms);
+                // Another window's clear() leaves this request in the map; a retry must not join it.
+                if (this.inflight.get(key) === request) this.inflight.delete(key);
                 // invalidate() or clear() superseded this result: its callers get the newer one.
                 return this.getOrFetch(key, fetchSnapshot, options, provider, confirm);
             })
@@ -180,13 +193,23 @@ export class CommitChecksService {
         }
     }
 
-    private captureGeneration(key: string): readonly [number, number] {
-        return [this.generation, this.keyGenerations.get(key) ?? 0];
+    // Another window's clear() bumps only the store's shared generation, not this service's.
+    private captureGeneration(key: string): Generation {
+        return [this.generation, this.keyGenerations.get(key) ?? 0, this.storeGeneration()];
     }
 
-    private isCurrentGeneration(key: string, captured: readonly [number, number]): boolean {
-        const [generation, keyGeneration] = this.captureGeneration(key);
-        return captured[0] === generation && captured[1] === keyGeneration;
+    private isCurrentGeneration(key: string, captured: Generation): boolean {
+        const current = this.captureGeneration(key);
+        return current.every((part, index) => part === captured[index]);
+    }
+
+    private storeGeneration(): string | undefined {
+        return this.persistentCache?.generation();
+    }
+
+    /** False once a clear() in any window, visible here, came after the entry was stored. */
+    private isServable(entry: CacheEntry): boolean {
+        return entry.storeGeneration === this.storeGeneration();
     }
 
     private isFresh(entry: CacheEntry): boolean {

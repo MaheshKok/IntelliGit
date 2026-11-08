@@ -280,7 +280,11 @@ describe("CommitChecksService completion and per-key fence", () => {
             persistentCache: new CommitChecksPersistentCache(state),
         });
         const fetched = deferred<CommitChecksSnapshot>();
-        const fetchSnapshot = vi.fn(() => fetched.promise);
+        // Window A retries after the clear; the retry's answer is not one that is saved.
+        const fetchSnapshot = vi
+            .fn<() => Promise<CommitChecksSnapshot>>()
+            .mockReturnValueOnce(fetched.promise)
+            .mockResolvedValue(snapshot("pending"));
         const answer = windowA.getOrFetch(KEY, fetchSnapshot);
         await vi.waitFor(() => expect(fetchSnapshot).toHaveBeenCalled());
         await new CommitChecksPersistentCache(state).clear();
@@ -430,4 +434,107 @@ describe("CommitChecksService completion and per-key fence", () => {
             expect(await persistent.get(KEY)).toMatchObject({ state: "failure" });
         },
     );
+});
+
+/** Another window over the same globalState; `clear()` resolves once its store clear has landed. */
+function otherWindow(state: CommitChecksPersistentState): { clear: () => Promise<void> } {
+    const store = new CommitChecksPersistentCache(state);
+    const service = new CommitChecksService({ persistentCache: store });
+    return {
+        clear: async () => {
+            service.clear();
+            // Queued behind the clear in the same store.
+            await store.get(KEY);
+        },
+    };
+}
+
+describe("CommitChecksService once another window's clear() is visible", () => {
+    it("an in-memory answer from before the clear is not served", async () => {
+        const state = memento();
+        const windowA = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        await windowA.getOrFetch(KEY, async () => snapshot("failure"));
+        await otherWindow(state).clear();
+
+        const refetch = vi.fn(async () => snapshot("pending"));
+        const answer = await windowA.getOrFetch(KEY, refetch);
+        expect(answer.state, "the pre-clear in-memory answer was served").toBe("pending");
+        expect(refetch).toHaveBeenCalledTimes(1);
+    });
+
+    // A retry that joins its own request hangs; the short timeout names this test.
+    it("a fetch in flight across the clear is not served, also to a caller that joined it", async () => {
+        const state = memento();
+        const windowA = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        const fetched = deferred<CommitChecksSnapshot>();
+        const fetchSnapshot = vi
+            .fn<() => Promise<CommitChecksSnapshot>>()
+            .mockReturnValueOnce(fetched.promise)
+            .mockResolvedValue(snapshot("pending"));
+        const first = windowA.getOrFetch(KEY, fetchSnapshot);
+        await vi.waitFor(() => expect(fetchSnapshot).toHaveBeenCalledTimes(1));
+        const joined = windowA.getOrFetch(KEY, fetchSnapshot);
+        await otherWindow(state).clear();
+        fetched.resolve(snapshot("failure"));
+
+        expect((await first).state, "the caller got the pre-clear answer").toBe("pending");
+        expect((await joined).state, "the joined caller got the pre-clear answer").toBe("pending");
+        expect(fetchSnapshot).toHaveBeenCalledTimes(2);
+        const next = vi.fn(async () => snapshot("success"));
+        expect((await windowA.getOrFetch(KEY, next)).state, "the pre-clear answer was cached").toBe(
+            "pending",
+        );
+    }, 10_000);
+
+    it("an answer whose last wait (its confirm step) spans the clear is not served", async () => {
+        const state = memento();
+        const windowA = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        const other = otherWindow(state);
+        let cleared = false;
+        const confirm = vi.fn(async () => {
+            if (cleared) return;
+            cleared = true;
+            await other.clear();
+        });
+        const fetchSnapshot = vi
+            .fn<() => Promise<CommitChecksSnapshot>>()
+            .mockResolvedValueOnce(snapshot("failure"))
+            .mockResolvedValue(snapshot("pending"));
+
+        const answer = await windowA.getOrFetch(KEY, fetchSnapshot, {}, undefined, confirm);
+        expect(answer.state, "the answer confirmed across the clear was served").toBe("pending");
+        expect(fetchSnapshot).toHaveBeenCalledTimes(2);
+    });
+
+    it("a saved answer read across the clear is not served", async () => {
+        const state = memento();
+        await new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        }).getOrFetch(KEY, async () => snapshot("failure"));
+        const other = otherWindow(state);
+        const update = state.update;
+        let armed = true;
+        // The clear lands while this window's read bumps the entry's last-access time.
+        state.update = async (key: string, value: unknown) => {
+            if (armed && key === "intelligit.commitChecks.cache.v1") {
+                armed = false;
+                await other.clear();
+            }
+            await update(key, value);
+        };
+        const windowA = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+
+        const refetch = vi.fn(async () => snapshot("pending"));
+        const answer = await windowA.getOrFetch(KEY, refetch);
+        expect(armed, "the clear never ran inside the read").toBe(false);
+        expect(answer.state, "the saved answer read across the clear was served").toBe("pending");
+    });
 });
