@@ -36,10 +36,10 @@ describe("ciTrace", () => {
 
         const line = formatCiTraceLine(event, "op1");
 
-        // Origin plus path; the query string and fragment are dropped, and only known
-        // API route words are written as they are.
+        // Origin plus path; the query string and fragment are dropped, and a path that
+        // matches no known API route is redacted whole.
         expect(line).toContain(
-            "url=https://pipelines.example.com/[redacted]/[redacted]/logs/[redacted] status=403",
+            "url=https://pipelines.example.com/[redacted]/[redacted]/[redacted]/[redacted] status=403",
         );
         for (const secret of [
             "SIGNED",
@@ -90,7 +90,9 @@ describe("ciTrace", () => {
 
         expect(line).not.toContain("REPOTOKEN");
         expect(line).not.toContain("PATHTOKEN");
-        expect(line).toContain("url=https://git.example.com/api/v4/[redacted]/jobs/[redacted]");
+        expect(line).toContain(
+            "url=https://git.example.com/[redacted]/[redacted]/[redacted]/[redacted]/[redacted]",
+        );
         expect(line).toMatch(/repoKey=[0-9a-f]{12} /);
         // The same repository always gets the same id, so lines still correlate.
         expect(formatCiTraceLine(event, "op2").split(" ")[3]).toBe(line.split(" ")[3]);
@@ -109,7 +111,37 @@ describe("ciTrace", () => {
                 "op1",
             );
             expect(line, token).not.toContain(token);
-            expect(line, token).toContain("url=https://ci.example.com/logs/[redacted]");
+            expect(line, token).toContain("url=https://ci.example.com/[redacted]/[redacted]");
+        }
+    });
+
+    it("a token equal to a route word in a variable segment never reaches the trace", () => {
+        for (const [url, expected] of [
+            [
+                "https://ci.example.com/logs/commits",
+                "url=https://ci.example.com/[redacted]/[redacted]",
+            ],
+            [
+                "https://api.github.com/repos/commits/statuses/commits/jobs/check-runs",
+                "url=https://api.github.com/repos/[redacted]/[redacted]/commits/[redacted]/check-runs",
+            ],
+            [
+                "https://git.example.com/api/v4/projects/logs/jobs/trace/trace",
+                "url=https://git.example.com/api/v4/projects/[redacted]/jobs/[redacted]/trace",
+            ],
+            // The route is matched at the end of the path: segments before it are redacted,
+            // and a segment after a known route means no route matched.
+            [
+                "https://ghe.example.com/api/v3/repos/o/r/commits/abc/check-runs",
+                "url=https://ghe.example.com/[redacted]/[redacted]/repos/[redacted]/[redacted]/commits/[redacted]/check-runs",
+            ],
+            [
+                "https://api.github.com/repos/o/r/commits/abc/check-runs/SECRET",
+                `url=https://api.github.com/${Array(7).fill("[redacted]").join("/")}`,
+            ],
+        ]) {
+            const line = formatCiTraceLine({ kind: "log", outcome: "failed", url }, "op1");
+            expect(line, url).toBe(`op=op1 kind=log outcome=failed ${expected}`);
         }
     });
 

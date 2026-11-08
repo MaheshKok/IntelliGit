@@ -245,6 +245,8 @@ describe("CommitChecksService completion and per-key fence", () => {
         await service.invalidate(KEY);
         const postInvalidate = vi.fn(async () => snapshot("pending"));
         const forced = service.getOrFetch(KEY, postInvalidate, { force: true });
+        // Checked before the old request settles: joining it would never start this fetch.
+        expect(postInvalidate, "forced fetch started without joining").toHaveBeenCalledTimes(1);
 
         before.resolve(snapshot("failure"));
         await expect(forced).resolves.toMatchObject({ state: "pending" });

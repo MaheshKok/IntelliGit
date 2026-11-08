@@ -1,7 +1,7 @@
 // Token-free diagnostic trace for CI operations, written to the "IntelliGit CI" log
 // channel. It is for troubleshooting caches and requests, never a place for CI logs:
 // only the whitelisted fields below are written, the repository key is written as a
-// short hash, URLs keep only origin and the API route words of the path, and nothing that could hold a token, a
+// short hash, URLs keep only origin and the fixed words of a known API route, and nothing that could hold a token, a
 // header, log text or an excerpt is accepted.
 
 import { createHash, randomUUID } from "node:crypto";
@@ -71,7 +71,7 @@ export interface CiTraceEvent {
     provider?: ProviderId;
     /** Full or short commit hash; written as 7 characters. */
     hash?: string;
-    /** Request URL; written as origin plus path, with every segment that is not a known API route word redacted. */
+    /** Request URL; written as origin plus path, with every segment redacted except the fixed words of a known API route. */
     url?: string;
     /** Failure reason code; any other value is written as `other`. */
     reason?: CiTraceReason;
@@ -164,60 +164,66 @@ const KNOWN_PROVIDERS: Record<ProviderId, true> = {
     "bitbucket-server": true,
 };
 
-// Fixed words of the GitHub, GitLab and Bitbucket API routes. Every other path segment
-// (owner, repository, project, commit, run or job id, and any token passed by mistake,
-// whatever its shape) is written `[redacted]`, so the trace shows the route, not its values.
-// A route word missing here is only redacted too; add it when a trace needs it.
-const ROUTE_WORDS: ReadonlySet<string> = new Set([
-    "",
-    "-",
-    "1.0",
-    "2.0",
-    "actions",
-    "annotations",
-    "api",
-    "artifacts",
-    "attempts",
-    "build",
-    "build-status",
-    "builds",
-    "cancel",
-    "check-runs",
-    "check-suites",
-    "commit",
-    "commits",
-    "jobs",
-    "latest",
-    "log",
-    "logs",
-    "pipelines",
-    "play",
-    "projects",
-    "repos",
-    "repositories",
-    "repository",
-    "rerun",
-    "rerun-failed-jobs",
-    "rest",
-    "retry",
-    "runs",
-    "status",
-    "statuses",
-    "steps",
-    "trace",
-    "v3",
-    "v4",
-]);
+// Route templates of the GitHub, GitLab and Bitbucket API endpoints; `*` is a variable
+// segment (owner, repository, project, commit, run or job id). A path keeps its fixed route
+// words only where the template that matches the end of the path puts them; every variable
+// segment and every segment before the match is written `[redacted]`, whatever its value, so
+// a token that happens to equal a route word is redacted too. A path no template matches is
+// redacted whole. An endpoint missing here is only redacted; add it when a trace needs it.
+const GITHUB = "repos/*/*/";
+const GITLAB = "api/v4/projects/*/";
+const BITBUCKET_CLOUD = "2.0/repositories/*/*/";
+const ROUTE_TEMPLATES: readonly (readonly string[])[] = [
+    `${GITHUB}commits/*/check-runs`,
+    `${GITHUB}commits/*/status`,
+    `${GITHUB}check-runs/*`,
+    `${GITHUB}check-runs/*/annotations`,
+    `${GITHUB}actions/runs`,
+    `${GITHUB}actions/runs/*`,
+    `${GITHUB}actions/runs/*/jobs`,
+    `${GITHUB}actions/runs/*/rerun-failed-jobs`,
+    `${GITHUB}actions/runs/*/cancel`,
+    `${GITHUB}actions/jobs/*/rerun`,
+    `${GITHUB}actions/jobs/*/logs`,
+    `${GITHUB}actions/workflows/*/runs`,
+    `${GITLAB}repository/commits/*/statuses`,
+    `${GITLAB}pipelines`,
+    `${GITLAB}pipelines/*`,
+    `${GITLAB}pipelines/*/jobs`,
+    `${GITLAB}pipelines/*/retry`,
+    `${GITLAB}pipelines/*/cancel`,
+    `${GITLAB}jobs/*/trace`,
+    `${GITLAB}jobs/*/retry`,
+    `${GITLAB}jobs/*/cancel`,
+    `${BITBUCKET_CLOUD}commit/*/statuses`,
+    `${BITBUCKET_CLOUD}pipelines/`,
+    `${BITBUCKET_CLOUD}pipelines/*`,
+    `${BITBUCKET_CLOUD}pipelines/*/steps/`,
+    `${BITBUCKET_CLOUD}pipelines/*/steps/*/log`,
+    "rest/build-status/1.0/commits/*",
+].map((template) => template.split("/"));
 
-/** Keeps origin plus route words; drops user info, query and fragment, and redacts every other segment. */
+/** Keeps origin plus the matched route's fixed words; drops user info, query and fragment, and redacts every other segment. */
 function originAndPathOf(url: string): string {
     try {
         const parsed = new URL(url);
-        const path = parsed.pathname
-            .split("/")
-            .map((segment) => (ROUTE_WORDS.has(segment) ? segment : "[redacted]"))
-            .join("/");
-        return parsed.origin + path;
+        const segments = parsed.pathname.split("/").slice(1);
+        let kept: readonly string[] = [];
+        for (const template of ROUTE_TEMPLATES) {
+            const offset = segments.length - template.length;
+            if (
+                template.length > kept.length &&
+                offset >= 0 &&
+                template.every((word, i) => word === "*" || word === segments[offset + i])
+            ) {
+                kept = template;
+            }
+        }
+        const path = segments.map((segment, i) => {
+            const word = kept[i - (segments.length - kept.length)];
+            return word === undefined || word === "*" ? "[redacted]" : segment;
+        });
+        return `${parsed.origin}/${path.join("/")}`;
     } catch {
         return "[invalid url]";
     }
