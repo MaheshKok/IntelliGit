@@ -420,4 +420,39 @@ describe("CommitCiDetailService", () => {
         expect(fetchDetail).toHaveBeenCalledTimes(2);
         expect(await persistent.get(KEY)).toBeUndefined();
     });
+
+    it.each([
+        ["invalidate", (details: CommitCiDetailService) => details.invalidate(KEY)],
+        ["clear", (details: CommitCiDetailService) => details.clear()],
+    ])(
+        "%s during the persistent write: the caller gets the newer detail and no layer keeps the older one",
+        async (_fence, fence) => {
+            const state = memento();
+            const writeStarted = deferred<void>();
+            const releaseWrite = deferred<void>();
+            const write = state.update;
+            state.update = async (key, value) => {
+                writeStarted.resolve();
+                await releaseWrite.promise;
+                await write(key, value);
+            };
+            const { service: details, persistent } = service(state);
+            const fetchDetail = vi.fn(async () => detail({ outcome: "success" }));
+            const caller = details.getOrFetch(KEY, fetchDetail, SERVE);
+            await writeStarted.promise;
+
+            const fenced = fence(details);
+            fetchDetail.mockImplementation(async () => detail());
+            releaseWrite.resolve();
+            await fenced;
+
+            await expect(caller).resolves.toMatchObject({ outcome: "failure" });
+            const next = vi.fn(async () => detail({ complete: false, outcome: "pending" }));
+            await expect(details.getOrFetch(KEY, next, SERVE)).resolves.toMatchObject({
+                outcome: "failure",
+            });
+            expect(next).not.toHaveBeenCalled();
+            expect(await persistent.get(KEY)).toMatchObject({ outcome: "failure" });
+        },
+    );
 });

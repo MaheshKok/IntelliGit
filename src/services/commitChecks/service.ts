@@ -112,17 +112,23 @@ export class CommitChecksService {
         const request = fetchSnapshot()
             .then(async (snapshot): Promise<CommitChecksSnapshot> => {
                 const ms = this.now() - startedAt;
-                if (!this.isCurrentGeneration(key, generation)) {
-                    trace("discarded-generation", snapshot.hash, ms);
-                    // invalidate() or clear() superseded this result: its callers get the newer one.
-                    return this.getOrFetch(key, fetchSnapshot, options, provider);
+                if (this.isCurrentGeneration(key, generation)) {
+                    const fetchedAt = this.now();
+                    this.cache.set(key, { snapshot, fetchedAt });
+                    this.evictOldest();
+                    trace(
+                        isCompleteSnapshot(snapshot) ? "fetched" : "incomplete",
+                        snapshot.hash,
+                        ms,
+                    );
+                    // The write is queued before any later delete or clear, so it cannot land
+                    // after one; a fence during it already dropped the L1 entry set above.
+                    await this.persist(key, snapshot, fetchedAt);
+                    if (this.isCurrentGeneration(key, generation)) return snapshot;
                 }
-                const fetchedAt = this.now();
-                this.cache.set(key, { snapshot, fetchedAt });
-                this.evictOldest();
-                trace(isCompleteSnapshot(snapshot) ? "fetched" : "incomplete", snapshot.hash, ms);
-                await this.persist(key, snapshot, fetchedAt);
-                return snapshot;
+                trace("discarded-generation", snapshot.hash, ms);
+                // invalidate() or clear() superseded this result: its callers get the newer one.
+                return this.getOrFetch(key, fetchSnapshot, options, provider);
             })
             .finally(() => {
                 if (this.inflight.get(key) === request) {

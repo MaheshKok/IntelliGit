@@ -289,4 +289,40 @@ describe("CommitChecksService completion and per-key fence", () => {
         await expect(service.getOrFetch(KEY, next)).resolves.toMatchObject({ state: "pending" });
         expect(next).not.toHaveBeenCalled();
     });
+
+    it.each([
+        ["invalidate", (service: CommitChecksService) => service.invalidate(KEY)],
+        ["clear", (service: CommitChecksService) => service.clear()],
+    ])(
+        "%s during the persistent write: the caller gets the newer result and no layer keeps the older one",
+        async (_fence, fence) => {
+            const state = memento();
+            const writeStarted = deferred<void>();
+            const releaseWrite = deferred<void>();
+            const write = state.update;
+            state.update = async (key, value) => {
+                writeStarted.resolve();
+                await releaseWrite.promise;
+                await write(key, value);
+            };
+            const persistent = new CommitChecksPersistentCache(state);
+            const service = new CommitChecksService({ persistentCache: persistent });
+            const fetchSnapshot = vi.fn(async () => snapshot("success"));
+            const caller = service.getOrFetch(KEY, fetchSnapshot);
+            await writeStarted.promise;
+
+            const fenced = fence(service);
+            fetchSnapshot.mockImplementation(async () => snapshot("failure"));
+            releaseWrite.resolve();
+            await fenced;
+
+            await expect(caller).resolves.toMatchObject({ state: "failure" });
+            const next = vi.fn(async () => snapshot("pending"));
+            await expect(service.getOrFetch(KEY, next)).resolves.toMatchObject({
+                state: "failure",
+            });
+            expect(next).not.toHaveBeenCalled();
+            expect(await persistent.get(KEY)).toMatchObject({ state: "failure" });
+        },
+    );
 });

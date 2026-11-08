@@ -25,15 +25,15 @@ interface ProviderMatch {
 }
 
 /**
- * Tries per request when the signed-in account changes while a fetch runs. The last try
- * hands its answer to the caller without caching it, so an account that cannot be read
- * (a fresh `unresolved-` id on every read) still gets an answer.
+ * Tries per request when the signed-in account changes while a request runs. When every
+ * try sees a change (an account that cannot be read gets a fresh `unresolved-` id on
+ * every read), the caller gets an unavailable answer, never one of another account.
  */
 const ACCOUNT_ATTEMPTS = 2;
 
 /** A fetch finished under another account than the one its cache key was built for. */
-class AccountChangedError<T> extends Error {
-    constructor(readonly result: T) {
+class AccountChangedError extends Error {
+    constructor() {
         super("signed-in account changed during the request");
     }
 }
@@ -205,7 +205,7 @@ export class CommitChecksCoordinator {
                     serve,
                     options,
                 ),
-            (data) => attach(data, serve),
+            (error) => attach(floorDetail(unavailableSnapshot(hash, error), provider.id), serve),
         );
         if (!this.isCurrent(ctx, providerGeneration)) return this.discard(ctx, hash, provider.id);
         return detail;
@@ -311,31 +311,31 @@ export class CommitChecksCoordinator {
      * Runs one cache operation under the account read now. `run` gets a fetcher that reads
      * the account again when `fetch` returns (a fenced re-ask included); if it changed,
      * that fetcher throws instead of returning, so nothing is stored under the old
-     * account's key, and the operation starts over under the new account. The last try
-     * hands its answer through `uncached`.
+     * account's key. The account is read once more when `run` returns (a saved answer or
+     * a save may finish after a switch). Either change starts the operation over under
+     * the new account; when the tries run out the caller gets `unavailable`.
      */
     private async withAccount<R, T>(
         match: ProviderMatch,
         fetch: () => Promise<R>,
         run: (account: string | undefined, checkedFetch: () => Promise<R>) => Promise<T>,
-        uncached: (result: R) => T,
+        unavailable: (error: string) => T,
     ): Promise<T> {
-        for (let attempt = 1; ; attempt += 1) {
+        for (let attempt = 1; attempt <= ACCOUNT_ATTEMPTS; attempt += 1) {
             const account = await this.readAccount(match);
             const checkedFetch = async (): Promise<R> => {
                 const result = await fetch();
-                if ((await this.readAccount(match)) !== account) {
-                    throw new AccountChangedError(result);
-                }
+                if ((await this.readAccount(match)) !== account) throw new AccountChangedError();
                 return result;
             };
             try {
-                return await run(account, checkedFetch);
+                const result = await run(account, checkedFetch);
+                if ((await this.readAccount(match)) === account) return result;
             } catch (err) {
                 if (!(err instanceof AccountChangedError)) throw err;
-                if (attempt >= ACCOUNT_ATTEMPTS) return uncached(err.result as R);
             }
         }
+        return unavailable(new AccountChangedError().message);
     }
 
     private fetchSnapshot(
@@ -360,7 +360,7 @@ export class CommitChecksCoordinator {
                     options,
                     match.provider.id,
                 ),
-            (snapshot) => snapshot,
+            (error) => unavailableSnapshot(hash, error),
         );
     }
 

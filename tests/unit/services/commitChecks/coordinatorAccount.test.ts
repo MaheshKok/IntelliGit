@@ -41,14 +41,19 @@ function detail(outcome: Outcome): CommitCiDetailData {
     };
 }
 
-/** globalState double shared across "restarts"; `failing` makes every write reject. */
+/**
+ * globalState double shared across "restarts"; `failing` makes every write reject and a
+ * set `hold` keeps every write waiting until it settles.
+ */
 function memento() {
     const values = new Map<string, unknown>();
     const store = {
         failing: false,
         failedWrites: 0,
+        hold: undefined as Promise<void> | undefined,
         get: <T>(key: string) => values.get(key) as T | undefined,
         update: vi.fn(async (key: string, value: unknown) => {
+            await store.hold;
             if (store.failing) {
                 store.failedWrites += 1;
                 throw new Error("storage unavailable");
@@ -252,7 +257,7 @@ describe("CommitChecksCoordinator saved results are tied to the signed-in accoun
         expect(restarted.getDetail).not.toHaveBeenCalled();
     });
 
-    it("an account that reads differently every time still gets an answer, and nothing is saved", async () => {
+    it("an account that changes on every try gets an unavailable answer, and nothing is saved under any account", async () => {
         const store = memento();
         const account: Account = { current: "new" };
         const session = startSession(store, account);
@@ -261,14 +266,41 @@ describe("CommitChecksCoordinator saved results are tied to the signed-in accoun
         session.provider.accountKey = async () => `unresolved-${(reads += 1)}`;
 
         await expect(session.coordinator.getChecks(HASH)).resolves.toMatchObject({
-            state: "success",
+            state: "unavailable",
         });
         await expect(session.coordinator.getDetail(HASH, {}, ctx)).resolves.toMatchObject({
-            outcome: "success",
+            outcome: "unavailable",
             repoKey: "/repo",
             capabilities: NO_CI_CAPABILITIES,
         });
         expect(store.update).not.toHaveBeenCalled();
+
+        // The account settles on the first id read: nothing was kept in memory under it.
+        session.provider.accountKey = async () => "unresolved-1";
+        await session.coordinator.getChecks(HASH);
+        await session.coordinator.getDetail(HASH, {}, ctx);
+        expect(session.getChecks).toHaveBeenCalledTimes(3);
+        expect(session.getDetail).toHaveBeenCalledTimes(3);
+    });
+
+    it("an answer whose save finishes after an account switch is asked again under the new account", async () => {
+        const store = memento();
+        const account: Account = { current: "old" };
+        const session = startSession(store, account);
+        let release!: () => void;
+        store.hold = new Promise<void>((resolve) => (release = resolve));
+        const checks = session.coordinator.getChecks(HASH);
+        const ciDetail = session.coordinator.getDetail(HASH, {}, ctx);
+        // Both answers were fetched under the old account and are being saved.
+        await vi.waitFor(() => expect(store.update).toHaveBeenCalledTimes(2));
+
+        account.current = "new";
+        store.hold = undefined;
+        release();
+        await expect(checks).resolves.toMatchObject({ state: "success" });
+        await expect(ciDetail).resolves.toMatchObject({ outcome: "success" });
+        expect(session.getChecks).toHaveBeenCalledTimes(2);
+        expect(session.getDetail).toHaveBeenCalledTimes(2);
     });
 
     it("invalidate() drops the signed-in account's saved answers", async () => {

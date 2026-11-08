@@ -124,28 +124,34 @@ export class CommitCiDetailService {
         const generation = this.captureGeneration(key);
         const request = fetchDetail()
             .then(async (data): Promise<ServedDetailData> => {
-                if (!this.isCurrentGeneration(key, generation)) {
-                    this.traceOutcome("discarded-generation", data, serve);
-                    // invalidate() or clear() superseded this result: its callers get the newer one.
-                    return this.getData(key, fetchDetail, serve, options);
+                if (this.isCurrentGeneration(key, generation)) {
+                    const previous = this.cache.get(key);
+                    if (
+                        options.force &&
+                        data.outcome === "unavailable" &&
+                        previous &&
+                        previous.data.outcome !== "unavailable"
+                    ) {
+                        // A failed refresh must not blank the tree: keep the earlier entry as is.
+                        this.traceOutcome("failed", data, serve);
+                        return { ...previous.data, refreshError: data.error ?? "" };
+                    }
+                    const fetchedAt = this.now();
+                    this.cache.set(key, { data, fetchedAt });
+                    this.evictOldest();
+                    this.traceOutcome(
+                        isCompleteDetail(data) ? "fetched" : "incomplete",
+                        data,
+                        serve,
+                    );
+                    // The write is queued before any later delete or clear, so it cannot land
+                    // after one; a fence during it already dropped the L1 entry set above.
+                    await this.persist(key, data, fetchedAt);
+                    if (this.isCurrentGeneration(key, generation)) return data;
                 }
-                const previous = this.cache.get(key);
-                if (
-                    options.force &&
-                    data.outcome === "unavailable" &&
-                    previous &&
-                    previous.data.outcome !== "unavailable"
-                ) {
-                    // A failed refresh must not blank the tree: keep the earlier entry as is.
-                    this.traceOutcome("failed", data, serve);
-                    return { ...previous.data, refreshError: data.error ?? "" };
-                }
-                const fetchedAt = this.now();
-                this.cache.set(key, { data, fetchedAt });
-                this.evictOldest();
-                this.traceOutcome(isCompleteDetail(data) ? "fetched" : "incomplete", data, serve);
-                await this.persist(key, data, fetchedAt);
-                return data;
+                this.traceOutcome("discarded-generation", data, serve);
+                // invalidate() or clear() superseded this result: its callers get the newer one.
+                return this.getData(key, fetchDetail, serve, options);
             })
             .finally(() => {
                 if (this.inflight.get(key) === request) this.inflight.delete(key);
