@@ -73,9 +73,63 @@ function sharedMemento() {
 }
 
 interface Store<T> {
-    set(key: string, value: T): Promise<void>;
+    set(
+        key: string,
+        value: T,
+        fetchedAt?: number,
+        write?: { generation: string | undefined; id?: string },
+    ): Promise<void>;
     get(key: string): Promise<unknown>;
     clear(): Promise<void>;
+    delete(key: string, writeId?: string): Promise<void>;
+    confirmWrite(key: string, writeId: string): Promise<void>;
+    generation(): string | undefined;
+}
+
+/** Window A starts a fetch, window B clears, then A's fetch ends and A saves it. */
+async function fetchStartedBeforeOtherWindowClear<T>(
+    open: (state: CommitChecksPersistentState) => Store<T>,
+    value: T,
+): Promise<Store<T>> {
+    const state = sharedMemento();
+    const windowA = open(state);
+    const generation = windowA.generation();
+    await open(state).clear();
+    await windowA.set(KEY, value, undefined, { generation });
+    return open(state);
+}
+
+/** An unconfirmed write is unreadable, also after a restart, until its own id confirms it. */
+async function unconfirmedWriteStaysUnreadable<T>(
+    open: (state: CommitChecksPersistentState) => Store<T>,
+    value: T,
+): Promise<void> {
+    const state = sharedMemento();
+    const store = open(state);
+    await store.set(KEY, value, undefined, { generation: store.generation(), id: "w1" });
+    expect(await store.get(KEY), "unconfirmed write read back").toBeUndefined();
+    expect(await open(state).get(KEY), "unconfirmed write read after restart").toBeUndefined();
+    await store.confirmWrite(KEY, "w2");
+    expect(await store.get(KEY), "another id confirmed the write").toBeUndefined();
+    await store.confirmWrite(KEY, "w1");
+    expect(await open(state).get(KEY), "confirmed write after restart").toBeDefined();
+}
+
+/** Two writes in the same millisecond: removing the first by its id keeps the second. */
+async function deleteByWriteIdKeepsSameMillisecondWrite<T>(
+    open: (state: CommitChecksPersistentState) => Store<T>,
+    rejected: T,
+    newer: T,
+): Promise<{ afterOldDelete: unknown; afterOwnDelete: unknown }> {
+    const store = open(slowMemento());
+    await store.set(KEY, rejected, 1_000, { generation: store.generation(), id: "old" });
+    await store.set(KEY, newer, 1_000);
+    await store.delete(KEY, "old");
+    const afterOldDelete = await store.get(KEY);
+    await store.set(KEY, rejected, 1_000, { generation: store.generation(), id: "own" });
+    await store.delete(KEY, "own");
+    await store.confirmWrite(KEY, "own");
+    return { afterOldDelete, afterOwnDelete: await store.get(KEY) };
 }
 
 /** Window A's write is held, window B clears, then A's write lands. */
@@ -112,16 +166,29 @@ describe("CommitChecksPersistentCache completion and queue", () => {
         expect(await windowB.get(KEY)).toMatchObject({ state: "success" });
     });
 
-    it("delete with a fetch time removes only the entry written at that time", async () => {
-        let now = 1_000;
-        const cache = new CommitChecksPersistentCache(slowMemento(), { now: () => now });
-        await cache.set(KEY, snapshot("failure"), 1_000);
-        now = 2_000;
-        await cache.set(KEY, snapshot("success"), 2_000);
-        await cache.delete(KEY, 1_000);
-        expect(await cache.get(KEY)).toMatchObject({ state: "success" });
-        await cache.delete(KEY, 2_000);
-        expect(await cache.get(KEY)).toBeUndefined();
+    it("a write whose fetch started before another window's clear() is refused", async () => {
+        const restarted = await fetchStartedBeforeOtherWindowClear(
+            (state) => new CommitChecksPersistentCache(state, { now: () => 1_000 }),
+            snapshot("failure"),
+        );
+        expect(await restarted.get(KEY)).toBeUndefined();
+    });
+
+    it("an unconfirmed write stays unreadable, also after a restart, until its id confirms it", async () => {
+        await unconfirmedWriteStaysUnreadable(
+            (state) => new CommitChecksPersistentCache(state, { now: () => 1_000 }),
+            snapshot("failure"),
+        );
+    });
+
+    it("delete with a write id removes only that write, never a newer one from the same millisecond", async () => {
+        const result = await deleteByWriteIdKeepsSameMillisecondWrite(
+            (state) => new CommitChecksPersistentCache(state, { now: () => 1_000 }),
+            snapshot("failure"),
+            snapshot("success"),
+        );
+        expect(result.afterOldDelete).toMatchObject({ state: "success" });
+        expect(result.afterOwnDelete).toBeUndefined();
     });
 
     it("incomplete failure is not stored", async () => {
@@ -197,16 +264,29 @@ describe("CiDetailPersistentCache queue", () => {
         expect(await windowB.get(KEY)).toMatchObject({ outcome: "success" });
     });
 
-    it("delete with a fetch time removes only the entry written at that time", async () => {
-        let now = 1_000;
-        const cache = new CiDetailPersistentCache(slowMemento(), { now: () => now });
-        await cache.set(KEY, detail(), 1_000);
-        now = 2_000;
-        await cache.set(KEY, { ...detail(), outcome: "success" }, 2_000);
-        await cache.delete(KEY, 1_000);
-        expect(await cache.get(KEY)).toMatchObject({ outcome: "success" });
-        await cache.delete(KEY, 2_000);
-        expect(await cache.get(KEY)).toBeUndefined();
+    it("a write whose fetch started before another window's clear() is refused", async () => {
+        const restarted = await fetchStartedBeforeOtherWindowClear(
+            (state) => new CiDetailPersistentCache(state, { now: () => 1_000 }),
+            detail(),
+        );
+        expect(await restarted.get(KEY)).toBeUndefined();
+    });
+
+    it("an unconfirmed write stays unreadable, also after a restart, until its id confirms it", async () => {
+        await unconfirmedWriteStaysUnreadable(
+            (state) => new CiDetailPersistentCache(state, { now: () => 1_000 }),
+            detail(),
+        );
+    });
+
+    it("delete with a write id removes only that write, never a newer one from the same millisecond", async () => {
+        const result = await deleteByWriteIdKeepsSameMillisecondWrite(
+            (state) => new CiDetailPersistentCache(state, { now: () => 1_000 }),
+            detail(),
+            { ...detail(), outcome: "success" },
+        );
+        expect(result.afterOldDelete).toMatchObject({ outcome: "success" });
+        expect(result.afterOwnDelete).toBeUndefined();
     });
 
     it("delete runs inside the enqueue chain", async () => {

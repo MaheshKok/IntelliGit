@@ -39,11 +39,26 @@ interface PersistedCommitChecksEntry {
     schemaVersion: number;
 }
 
+/** Write id of each key whose saved entry is not yet confirmed; such an entry is a miss. */
+export type UnconfirmedWrites = Record<string, string>;
+
 interface PersistedPayload {
     schemaVersion: number;
     entries: PersistedCommitChecksEntry[];
+    unconfirmed: UnconfirmedWrites;
     /** Clear generation the payload was written under; see {@link clearGenerationKey}. */
     generation?: string;
+}
+
+/** What a write carries from the moment its fetch started. */
+export interface PersistentWrite {
+    /** The store's `generation()` when the fetch started; a clear since then refuses the write. */
+    generation: string | undefined;
+    /**
+     * Marks the entry unconfirmed under this id: it stays a miss, also after a restart, until
+     * `confirmWrite(key, id)`, and `delete(key, id)` removes it only while it is this write.
+     */
+    id?: string;
 }
 
 /**
@@ -94,7 +109,9 @@ export class CommitChecksPersistentCache {
         return this.enqueue(async () => {
             const payload = this.read();
             const entry = payload.entries.find((candidate) => candidate.key === key);
-            if (!entry || !this.isUsable(entry)) return undefined;
+            if (!entry || Object.hasOwn(payload.unconfirmed, key) || !this.isUsable(entry)) {
+                return undefined;
+            }
             entry.lastAccessedAt = this.now();
             await this.write(this.trim(payload));
             return entry.snapshot;
@@ -109,13 +126,21 @@ export class CommitChecksPersistentCache {
      * @param key - Composite provider/repo/commit/settings key.
      * @param snapshot - Snapshot returned by a provider.
      * @param fetchedAt - Fetch timestamp to preserve across sessions.
+     * @param write - The fetch's start generation and an optional unconfirmed-write id.
      */
-    async set(key: string, snapshot: CommitChecksSnapshot, fetchedAt = this.now()): Promise<void> {
+    async set(
+        key: string,
+        snapshot: CommitChecksSnapshot,
+        fetchedAt = this.now(),
+        write?: PersistentWrite,
+    ): Promise<void> {
         if (!isPersistableSnapshot(snapshot)) {
             if (snapshot.state !== "unavailable") await this.delete(key);
             return;
         }
         await this.enqueue(async () => {
+            // A clear in any window since the fetch started outdates this answer.
+            if (write && write.generation !== this.generation()) return;
             const payload = this.read();
             const entry: PersistedCommitChecksEntry = {
                 key,
@@ -126,8 +151,29 @@ export class CommitChecksPersistentCache {
             };
             const entries = payload.entries.filter((candidate) => candidate.key !== key);
             await this.write(
-                this.trim({ schemaVersion: SCHEMA_VERSION, entries: [...entries, entry] }),
+                this.trim({
+                    schemaVersion: SCHEMA_VERSION,
+                    entries: [...entries, entry],
+                    unconfirmed: markUnconfirmed(payload.unconfirmed, key, write?.id),
+                }),
             );
+        });
+    }
+
+    /**
+     * Makes an unconfirmed write readable, if the entry under the key is still that write.
+     *
+     * @param key - Composite provider/repo/commit/settings key.
+     * @param writeId - The id the write was saved with.
+     */
+    async confirmWrite(key: string, writeId: string): Promise<void> {
+        await this.enqueue(async () => {
+            const payload = this.read();
+            if (payload.unconfirmed[key] !== writeId) return;
+            await this.write({
+                ...payload,
+                unconfirmed: markUnconfirmed(payload.unconfirmed, key, undefined),
+            });
         });
     }
 
@@ -135,18 +181,18 @@ export class CommitChecksPersistentCache {
      * Removes one persisted snapshot, in order with every queued read and write.
      *
      * @param key - Composite provider/repo/commit/settings key.
-     * @param fetchedAt - When given, removes the entry only if it was written with this
-     *   fetch time, so a newer entry under the key stays.
+     * @param writeId - When given, removes the entry only while it is that unconfirmed
+     *   write, so a newer entry under the key stays.
      */
-    async delete(key: string, fetchedAt?: number): Promise<void> {
-        const matches = (entry: PersistedCommitChecksEntry): boolean =>
-            entry.key === key && (fetchedAt === undefined || entry.fetchedAt === fetchedAt);
+    async delete(key: string, writeId?: string): Promise<void> {
         await this.enqueue(async () => {
             const payload = this.read();
-            if (!payload.entries.some(matches)) return;
+            if (writeId !== undefined && payload.unconfirmed[key] !== writeId) return;
+            if (!payload.entries.some((entry) => entry.key === key)) return;
             await this.write({
                 schemaVersion: SCHEMA_VERSION,
-                entries: payload.entries.filter((entry) => !matches(entry)),
+                entries: payload.entries.filter((entry) => entry.key !== key),
+                unconfirmed: markUnconfirmed(payload.unconfirmed, key, undefined),
             });
         });
     }
@@ -165,30 +211,32 @@ export class CommitChecksPersistentCache {
                 await this.state.update(clearGenerationKey(this.storageKey), randomUUID());
                 await this.state.update(this.storageKey, undefined);
             } catch (error) {
-                await this.write({ schemaVersion: SCHEMA_VERSION, entries: [] });
+                await this.write({ schemaVersion: SCHEMA_VERSION, entries: [], unconfirmed: {} });
                 throw error;
             }
         });
     }
 
+    /** The store's current clear generation; a fetch captures it when it starts. */
+    generation(): string | undefined {
+        return this.state.get<string>(clearGenerationKey(this.storageKey));
+    }
+
     private read(): PersistedPayload {
         const payload = this.state.get<unknown>(this.storageKey);
         if (!isPayload(payload) || payload.generation !== this.generation()) {
-            return { schemaVersion: SCHEMA_VERSION, entries: [] };
+            return { schemaVersion: SCHEMA_VERSION, entries: [], unconfirmed: {} };
         }
         return {
             schemaVersion: SCHEMA_VERSION,
             entries: payload.entries.filter((entry) => this.isUsable(entry)),
+            unconfirmed: payload.unconfirmed ?? {},
         };
     }
 
     /** Every caller reads and writes in one synchronous step, so the stamp is the read's. */
     private async write(payload: PersistedPayload): Promise<void> {
         await this.state.update(this.storageKey, { ...payload, generation: this.generation() });
-    }
-
-    private generation(): string | undefined {
-        return this.state.get<string>(clearGenerationKey(this.storageKey));
     }
 
     /** Serializes storage read-modify-write operations without poisoning later work after a failure. */
@@ -206,7 +254,11 @@ export class CommitChecksPersistentCache {
             .filter((entry) => this.isUsable(entry))
             .sort((a, b) => b.lastAccessedAt - a.lastAccessedAt)
             .slice(0, this.maxEntries);
-        return { schemaVersion: SCHEMA_VERSION, entries };
+        return {
+            schemaVersion: SCHEMA_VERSION,
+            entries,
+            unconfirmed: keepUnconfirmed(payload.unconfirmed, entries),
+        };
     }
 
     private isUsable(entry: PersistedCommitChecksEntry): boolean {
@@ -222,8 +274,40 @@ export function isPersistableSnapshot(snapshot: CommitChecksSnapshot): boolean {
     return snapshot.state === "none" || isCompleteSnapshot(snapshot);
 }
 
-function isPayload(value: unknown): value is PersistedPayload {
+/** Returns `marks` with `key` marked unconfirmed by `id`, or unmarked when `id` is undefined. */
+export function markUnconfirmed(
+    marks: UnconfirmedWrites,
+    key: string,
+    id: string | undefined,
+): UnconfirmedWrites {
+    const rest = Object.fromEntries(Object.entries(marks).filter(([marked]) => marked !== key));
+    return id === undefined ? rest : { ...rest, [key]: id };
+}
+
+/** Drops the marks of keys that no longer have an entry. */
+export function keepUnconfirmed(
+    marks: UnconfirmedWrites,
+    entries: readonly { key: string }[],
+): UnconfirmedWrites {
+    const keys = new Set(entries.map((entry) => entry.key));
+    return Object.fromEntries(Object.entries(marks).filter(([key]) => keys.has(key)));
+}
+
+/** Absent marks are an older payload's; malformed marks make the whole payload a miss. */
+export function isUnconfirmedWrites(value: unknown): value is UnconfirmedWrites | undefined {
+    if (value === undefined) return true;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    return Object.values(value).every((id) => typeof id === "string");
+}
+
+function isPayload(
+    value: unknown,
+): value is Omit<PersistedPayload, "unconfirmed"> & { unconfirmed?: UnconfirmedWrites } {
     if (!value || typeof value !== "object") return false;
-    const payload = value as { schemaVersion?: unknown; entries?: unknown };
-    return payload.schemaVersion === SCHEMA_VERSION && Array.isArray(payload.entries);
+    const payload = value as { schemaVersion?: unknown; entries?: unknown; unconfirmed?: unknown };
+    return (
+        payload.schemaVersion === SCHEMA_VERSION &&
+        Array.isArray(payload.entries) &&
+        isUnconfirmedWrites(payload.unconfirmed)
+    );
 }

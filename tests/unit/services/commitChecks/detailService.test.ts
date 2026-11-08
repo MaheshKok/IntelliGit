@@ -421,8 +421,59 @@ describe("CommitCiDetailService", () => {
         expect(await persistent.get(KEY)).toBeUndefined();
     });
 
+    it("a fetch that started before another window's clear() is not saved when it ends", async () => {
+        const state = memento();
+        const { service: windowA } = service(state);
+        const fetched = deferred<CommitCiDetailData>();
+        const fetchDetail = vi.fn(() => fetched.promise);
+        const answer = windowA.getOrFetch(KEY, fetchDetail, SERVE);
+        await vi.waitFor(() => expect(fetchDetail).toHaveBeenCalled());
+        await new CiDetailPersistentCache(state).clear();
+        fetched.resolve(detail());
+        await answer;
+
+        const { service: restarted } = service(state);
+        const refetch = vi.fn(async () => detail({ complete: false, outcome: "pending" }));
+        await restarted.getOrFetch(KEY, refetch, SERVE);
+        expect(refetch, "the pre-clear detail was read back after a restart").toHaveBeenCalledTimes(
+            1,
+        );
+    });
+
+    it("a detail its caller rejects stays unreadable after a restart when removing it fails", async () => {
+        const state = memento();
+        const update = state.update;
+        let failWrites = false;
+        state.update = async (key: string, value: unknown) => {
+            if (failWrites) throw new Error("storage write failed");
+            await update(key, value);
+        };
+        const { service: details } = service(state);
+        const rejected = new Error("caller rejected the detail");
+        await expect(
+            details.getOrFetch(
+                KEY,
+                async () => detail(),
+                SERVE,
+                {},
+                async () => {
+                    failWrites = true;
+                    throw rejected;
+                },
+            ),
+        ).rejects.toBe(rejected);
+        failWrites = false;
+
+        const { service: restarted } = service(state);
+        const refetch = vi.fn(async () => detail({ complete: false, outcome: "pending" }));
+        await restarted.getOrFetch(KEY, refetch, SERVE);
+        expect(refetch, "the rejected detail was read back after a restart").toHaveBeenCalledTimes(
+            1,
+        );
+    });
+
     it("a detail its caller rejects after the save is removed, and a newer detail under the key is kept", async () => {
-        let now = 1_000;
+        const now = 1_000;
         const { service: details, persistent } = service(memento(), () => now);
         const rejected = new Error("caller rejected the detail");
 
@@ -443,14 +494,13 @@ describe("CommitCiDetailService", () => {
         await details.getOrFetch(KEY, refetch, SERVE);
         expect(refetch).toHaveBeenCalledTimes(1);
 
-        // A newer detail saved while the caller decides is never removed.
+        // A newer detail saved while the caller decides, in the same millisecond, is never removed.
         const other = `${KEY}-2`;
         let reject!: (error: Error) => void;
         const confirm = vi.fn(() => new Promise<void>((_, fail) => (reject = fail)));
         const old = details.getOrFetch(other, async () => detail(), SERVE, {}, confirm);
         await vi.waitFor(() => expect(confirm).toHaveBeenCalled());
         await details.invalidate(other);
-        now = 2_000;
         await details.getOrFetch(other, async () => detail({ outcome: "success" }), SERVE);
         reject(rejected);
         await expect(old).rejects.toBe(rejected);

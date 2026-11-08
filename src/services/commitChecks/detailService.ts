@@ -3,11 +3,13 @@
 // persisted snapshot path does not move for one new consumer; the tests mirror the
 // snapshot service's generation and in-flight tests so the two cannot drift silently.
 
+import { randomUUID } from "node:crypto";
 import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
 import { isCompleteDetail } from "../../shared/ci/completion";
 import type { CommitCiDetail, CommitCiDetailData } from "../../types";
 import type { CiTrace } from "./ciTrace";
 import type { CiDetailPersistentCache } from "./detailPersistentCache";
+import type { PersistentWrite } from "./persistentCache";
 import type { CommitChecksFetchOptions } from "./service";
 
 interface DetailEntry {
@@ -127,6 +129,8 @@ export class CommitCiDetailService {
         const newerInflight = this.inflight.get(key);
         if (newerInflight) return newerInflight;
         const generation = this.captureGeneration(key);
+        // Another window's clear() bumps only the store's shared generation, not this service's.
+        const storeGeneration = this.persistentCache?.generation();
         const request = fetchDetail()
             .then(async (data): Promise<ServedDetailData> => {
                 if (this.isCurrentGeneration(key, generation)) {
@@ -151,8 +155,14 @@ export class CommitCiDetailService {
                     );
                     // The write is queued before any later delete or clear, so it cannot land
                     // after one; a fence during it already dropped the L1 entry set above.
-                    await this.persist(key, data, entry.fetchedAt);
-                    await this.confirmSaved(key, entry, confirm);
+                    // With `confirm`, the save stays unreadable until it passes, so a failed
+                    // removal after a rejection still leaves nothing readable.
+                    const writeId = confirm ? randomUUID() : undefined;
+                    await this.persist(key, data, entry.fetchedAt, {
+                        generation: storeGeneration,
+                        id: writeId,
+                    });
+                    await this.confirmSaved(key, entry, confirm, writeId);
                     if (this.isCurrentGeneration(key, generation)) return data;
                 }
                 this.traceOutcome("discarded-generation", data, serve);
@@ -232,30 +242,45 @@ export class CommitCiDetailService {
         }
     }
 
-    private async persist(key: string, data: CommitCiDetailData, fetchedAt: number): Promise<void> {
+    private async persist(
+        key: string,
+        data: CommitCiDetailData,
+        fetchedAt: number,
+        write: PersistentWrite,
+    ): Promise<void> {
         try {
-            await this.persistentCache?.set(key, data, fetchedAt);
+            await this.persistentCache?.set(key, data, fetchedAt, write);
         } catch {
             // A failed persistent write leaves the entry in L1 only.
         }
     }
 
-    /** Runs `confirm`; on a rejection removes this entry's own L1 and L2 writes and rethrows. */
+    /**
+     * Runs `confirm`. A pass makes the unconfirmed save readable; a rejection removes this
+     * entry's own L1 and L2 writes and rethrows.
+     */
     private async confirmSaved(
         key: string,
         entry: DetailEntry,
         confirm: (() => Promise<void>) | undefined,
+        writeId: string | undefined,
     ): Promise<void> {
+        if (!confirm || writeId === undefined) return;
         try {
-            await confirm?.();
+            await confirm();
         } catch (error) {
             if (this.cache.get(key) === entry) this.cache.delete(key);
             try {
-                await this.persistentCache?.delete(key, entry.fetchedAt);
+                await this.persistentCache?.delete(key, writeId);
             } catch {
-                // A failed delete leaves the entry saved under its own key only.
+                // The save stays unconfirmed, so it is never read.
             }
             throw error;
+        }
+        try {
+            await this.persistentCache?.confirmWrite(key, writeId);
+        } catch {
+            // The save stays unconfirmed: a later fetch saves the detail again.
         }
     }
 

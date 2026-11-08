@@ -2,10 +2,11 @@
 // Views still resolve their active repository, but snapshots and in-flight fetches
 // are keyed globally so the same repo/SHA is fetched once.
 
+import { randomUUID } from "node:crypto";
 import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type { CommitChecksSnapshot, ProviderId } from "../../types";
 import type { CiTrace, CiTraceOutcome } from "./ciTrace";
-import type { CommitChecksPersistentCache } from "./persistentCache";
+import type { CommitChecksPersistentCache, PersistentWrite } from "./persistentCache";
 
 /** One cached commit-check snapshot plus freshness bookkeeping. */
 interface CacheEntry {
@@ -112,6 +113,8 @@ export class CommitChecksService {
         const newerInflight = this.inflight.get(key);
         if (newerInflight) return newerInflight;
         const generation = this.captureGeneration(key);
+        // Another window's clear() bumps only the store's shared generation, not this service's.
+        const storeGeneration = this.persistentCache?.generation();
         const startedAt = this.now();
         const request = fetchSnapshot()
             .then(async (snapshot): Promise<CommitChecksSnapshot> => {
@@ -127,8 +130,14 @@ export class CommitChecksService {
                     );
                     // The write is queued before any later delete or clear, so it cannot land
                     // after one; a fence during it already dropped the L1 entry set above.
-                    await this.persist(key, snapshot, entry.fetchedAt);
-                    await this.confirmSaved(key, entry, confirm);
+                    // With `confirm`, the save stays unreadable until it passes, so a failed
+                    // removal after a rejection still leaves nothing readable.
+                    const writeId = confirm ? randomUUID() : undefined;
+                    await this.persist(key, snapshot, entry.fetchedAt, {
+                        generation: storeGeneration,
+                        id: writeId,
+                    });
+                    await this.confirmSaved(key, entry, confirm, writeId);
                     if (this.isCurrentGeneration(key, generation)) return snapshot;
                 }
                 trace("discarded-generation", snapshot.hash, ms);
@@ -217,30 +226,41 @@ export class CommitChecksService {
         key: string,
         snapshot: CommitChecksSnapshot,
         fetchedAt: number,
+        write: PersistentWrite,
     ): Promise<void> {
         try {
-            await this.persistentCache?.set(key, snapshot, fetchedAt);
+            await this.persistentCache?.set(key, snapshot, fetchedAt, write);
         } catch {
             // Persistent cache failure must not break commit-check badges.
         }
     }
 
-    /** Runs `confirm`; on a rejection removes this entry's own L1 and L2 writes and rethrows. */
+    /**
+     * Runs `confirm`. A pass makes the unconfirmed save readable; a rejection removes this
+     * entry's own L1 and L2 writes and rethrows.
+     */
     private async confirmSaved(
         key: string,
         entry: CacheEntry,
         confirm: (() => Promise<void>) | undefined,
+        writeId: string | undefined,
     ): Promise<void> {
+        if (!confirm || writeId === undefined) return;
         try {
-            await confirm?.();
+            await confirm();
         } catch (error) {
             if (this.cache.get(key) === entry) this.cache.delete(key);
             try {
-                await this.persistentCache?.delete(key, entry.fetchedAt);
+                await this.persistentCache?.delete(key, writeId);
             } catch {
-                // A failed delete leaves the entry saved under its own key only.
+                // The save stays unconfirmed, so it is never read.
             }
             throw error;
+        }
+        try {
+            await this.persistentCache?.confirmWrite(key, writeId);
+        } catch {
+            // The save stays unconfirmed: a later fetch saves the answer again.
         }
     }
 }

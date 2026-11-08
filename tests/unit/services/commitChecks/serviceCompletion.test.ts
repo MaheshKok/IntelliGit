@@ -274,8 +274,67 @@ describe("CommitChecksService completion and per-key fence", () => {
         expect(refetch).toHaveBeenCalledTimes(1);
     });
 
+    it("a fetch that started before another window's clear() is not saved when it ends", async () => {
+        const state = memento();
+        const windowA = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        const fetched = deferred<CommitChecksSnapshot>();
+        const fetchSnapshot = vi.fn(() => fetched.promise);
+        const answer = windowA.getOrFetch(KEY, fetchSnapshot);
+        await vi.waitFor(() => expect(fetchSnapshot).toHaveBeenCalled());
+        await new CommitChecksPersistentCache(state).clear();
+        fetched.resolve(snapshot("failure"));
+        await answer;
+
+        const restarted = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        const refetch = vi.fn(async () => snapshot("pending"));
+        await restarted.getOrFetch(KEY, refetch);
+        expect(refetch, "the pre-clear answer was read back after a restart").toHaveBeenCalledTimes(
+            1,
+        );
+    });
+
+    it("an answer its caller rejects stays unreadable after a restart when removing it fails", async () => {
+        const state = memento();
+        const update = state.update;
+        let failWrites = false;
+        state.update = async (key: string, value: unknown) => {
+            if (failWrites) throw new Error("storage write failed");
+            await update(key, value);
+        };
+        const service = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        const rejected = new Error("caller rejected the answer");
+        await expect(
+            service.getOrFetch(
+                KEY,
+                async () => snapshot("failure"),
+                {},
+                undefined,
+                async () => {
+                    failWrites = true;
+                    throw rejected;
+                },
+            ),
+        ).rejects.toBe(rejected);
+        failWrites = false;
+
+        const restarted = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state),
+        });
+        const refetch = vi.fn(async () => snapshot("pending"));
+        await restarted.getOrFetch(KEY, refetch);
+        expect(refetch, "the rejected answer was read back after a restart").toHaveBeenCalledTimes(
+            1,
+        );
+    });
+
     it("an answer its caller rejects after the save is removed, and a newer answer under the key is kept", async () => {
-        let now = 1_000;
+        const now = 1_000;
         const state = memento();
         const persistent = new CommitChecksPersistentCache(state, { now: () => now });
         const service = new CommitChecksService({ now: () => now, persistentCache: persistent });
@@ -298,7 +357,7 @@ describe("CommitChecksService completion and per-key fence", () => {
         await service.getOrFetch(KEY, refetch);
         expect(refetch).toHaveBeenCalledTimes(1);
 
-        // A newer answer saved while the caller decides is never removed.
+        // A newer answer saved while the caller decides, in the same millisecond, is never removed.
         const other = `${KEY}-2`;
         let reject!: (error: Error) => void;
         const confirm = vi.fn(() => new Promise<void>((_, fail) => (reject = fail)));
@@ -311,7 +370,6 @@ describe("CommitChecksService completion and per-key fence", () => {
         );
         await vi.waitFor(() => expect(confirm).toHaveBeenCalled());
         await service.invalidate(other);
-        now = 2_000;
         await service.getOrFetch(other, async () => snapshot("success"));
         reject(rejected);
         await expect(old).rejects.toBe(rejected);

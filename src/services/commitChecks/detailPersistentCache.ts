@@ -6,7 +6,15 @@ import { isCompleteDetail, isFullyCovered } from "../../shared/ci/completion";
 import { CI_DETAIL_CONTRACT_VERSION } from "../../shared/ci/contractVersion";
 import type { CommitCiDetail, CommitCiDetailData } from "../../types";
 import { randomUUID } from "node:crypto";
-import { clearGenerationKey, type CommitChecksPersistentState } from "./persistentCache";
+import {
+    clearGenerationKey,
+    isUnconfirmedWrites,
+    keepUnconfirmed,
+    markUnconfirmed,
+    type CommitChecksPersistentState,
+    type PersistentWrite,
+    type UnconfirmedWrites,
+} from "./persistentCache";
 
 const DEFAULT_STORAGE_KEY = "intelligit.commitChecks.detailCache.v1";
 const DEFAULT_MAX_ENTRIES = 200;
@@ -34,6 +42,7 @@ interface PersistedDetailEntry {
 
 interface PersistedDetailPayload {
     entries: PersistedDetailEntry[];
+    unconfirmed: UnconfirmedWrites;
     /** Clear generation the payload was written under; see `clearGenerationKey`. */
     generation?: string;
 }
@@ -72,7 +81,7 @@ export class CiDetailPersistentCache {
         return this.enqueue(async () => {
             const payload = this.read();
             const entry = payload.entries.find((candidate) => candidate.key === key);
-            if (!entry) return undefined;
+            if (!entry || Object.hasOwn(payload.unconfirmed, key)) return undefined;
             entry.lastAccessedAt = this.now();
             await this.write(this.trim(payload));
             return entry.data;
@@ -87,14 +96,22 @@ export class CiDetailPersistentCache {
      * @param key - Detail cache key.
      * @param detail - Provider detail; read-time fields are stripped before writing.
      * @param fetchedAt - Fetch timestamp to preserve across sessions.
+     * @param write - The fetch's start generation and an optional unconfirmed-write id.
      */
-    async set(key: string, detail: CommitCiDetailData, fetchedAt = this.now()): Promise<void> {
+    async set(
+        key: string,
+        detail: CommitCiDetailData,
+        fetchedAt = this.now(),
+        write?: PersistentWrite,
+    ): Promise<void> {
         if (!isPersistableDetail(detail)) {
             if (detail.outcome !== "unavailable") await this.delete(key);
             return;
         }
         const data = toPersistedData(detail);
         await this.enqueue(async () => {
+            // A clear in any window since the fetch started outdates this detail.
+            if (write && write.generation !== this.generation()) return;
             const payload = this.read();
             const entry: PersistedDetailEntry = {
                 key,
@@ -104,7 +121,29 @@ export class CiDetailPersistentCache {
                 lastAccessedAt: this.now(),
             };
             const entries = payload.entries.filter((candidate) => candidate.key !== key);
-            await this.write(this.trim({ entries: [...entries, entry] }));
+            await this.write(
+                this.trim({
+                    entries: [...entries, entry],
+                    unconfirmed: markUnconfirmed(payload.unconfirmed, key, write?.id),
+                }),
+            );
+        });
+    }
+
+    /**
+     * Makes an unconfirmed write readable, if the entry under the key is still that write.
+     *
+     * @param key - Detail cache key.
+     * @param writeId - The id the write was saved with.
+     */
+    async confirmWrite(key: string, writeId: string): Promise<void> {
+        await this.enqueue(async () => {
+            const payload = this.read();
+            if (payload.unconfirmed[key] !== writeId) return;
+            await this.write({
+                ...payload,
+                unconfirmed: markUnconfirmed(payload.unconfirmed, key, undefined),
+            });
         });
     }
 
@@ -112,16 +151,18 @@ export class CiDetailPersistentCache {
      * Removes one persisted detail, in order with every queued read and write.
      *
      * @param key - Detail cache key.
-     * @param fetchedAt - When given, removes the entry only if it was written with this
-     *   fetch time, so a newer entry under the key stays.
+     * @param writeId - When given, removes the entry only while it is that unconfirmed
+     *   write, so a newer entry under the key stays.
      */
-    async delete(key: string, fetchedAt?: number): Promise<void> {
-        const matches = (entry: PersistedDetailEntry): boolean =>
-            entry.key === key && (fetchedAt === undefined || entry.fetchedAt === fetchedAt);
+    async delete(key: string, writeId?: string): Promise<void> {
         await this.enqueue(async () => {
             const payload = this.read();
-            if (!payload.entries.some(matches)) return;
-            await this.write({ entries: payload.entries.filter((entry) => !matches(entry)) });
+            if (writeId !== undefined && payload.unconfirmed[key] !== writeId) return;
+            if (!payload.entries.some((entry) => entry.key === key)) return;
+            await this.write({
+                entries: payload.entries.filter((entry) => entry.key !== key),
+                unconfirmed: markUnconfirmed(payload.unconfirmed, key, undefined),
+            });
         });
     }
 
@@ -138,32 +179,45 @@ export class CiDetailPersistentCache {
                 await this.state.update(clearGenerationKey(this.storageKey), randomUUID());
                 await this.state.update(this.storageKey, undefined);
             } catch (error) {
-                await this.write({ entries: [] });
+                await this.write({ entries: [], unconfirmed: {} });
                 throw error;
             }
         });
     }
 
+    /** The store's current clear generation; a fetch captures it when it starts. */
+    generation(): string | undefined {
+        return this.state.get<string>(clearGenerationKey(this.storageKey));
+    }
+
     private read(): PersistedDetailPayload {
+        const empty = { entries: [], unconfirmed: {} };
         const payload = this.state.get<unknown>(this.storageKey);
-        if (!payload || typeof payload !== "object") return { entries: [] };
-        const { entries, generation } = payload as { entries?: unknown; generation?: unknown };
-        if (!Array.isArray(entries) || generation !== this.generation()) return { entries: [] };
+        if (!payload || typeof payload !== "object") return empty;
+        const { entries, generation, unconfirmed } = payload as {
+            entries?: unknown;
+            generation?: unknown;
+            unconfirmed?: unknown;
+        };
+        if (
+            !Array.isArray(entries) ||
+            !isUnconfirmedWrites(unconfirmed) ||
+            generation !== this.generation()
+        ) {
+            return empty;
+        }
         return {
             entries: entries.filter(
                 (entry): entry is PersistedDetailEntry =>
                     isEntryShape(entry) && this.isUsable(entry),
             ),
+            unconfirmed: unconfirmed ?? {},
         };
     }
 
     /** Every caller reads and writes in one synchronous step, so the stamp is the read's. */
     private async write(payload: PersistedDetailPayload): Promise<void> {
         await this.state.update(this.storageKey, { ...payload, generation: this.generation() });
-    }
-
-    private generation(): string | undefined {
-        return this.state.get<string>(clearGenerationKey(this.storageKey));
     }
 
     /** Serializes storage read-modify-write operations without poisoning later work after a failure. */
@@ -181,7 +235,7 @@ export class CiDetailPersistentCache {
             .filter((entry) => this.isUsable(entry))
             .sort((a, b) => b.lastAccessedAt - a.lastAccessedAt)
             .slice(0, this.maxEntries);
-        return { entries };
+        return { entries, unconfirmed: keepUnconfirmed(payload.unconfirmed, entries) };
     }
 
     private isUsable(entry: PersistedDetailEntry): boolean {
