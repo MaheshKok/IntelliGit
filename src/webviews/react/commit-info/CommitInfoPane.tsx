@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SYSTEM_FONT_STACK } from "../../../utils/constants";
 import { Box, Flex } from "@chakra-ui/react";
 import { VscListTree } from "react-icons/vsc";
@@ -18,6 +18,13 @@ import {
     collectDirPaths,
     type TreeEntry as GenericTreeEntry,
 } from "../shared/fileTree";
+import { ChecksTab } from "./checks/ChecksTab";
+import {
+    OPEN_CHECKS_TAB_EVENT,
+    persistCommitInfoTab,
+    readCommitInfoTab,
+    type CommitInfoTab,
+} from "./checks/checksTabState";
 
 type TreeEntry = GenericTreeEntry<CommitFile>;
 
@@ -78,6 +85,10 @@ interface CommitInfoPaneProps {
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
     onOpenDiff?: (commitHash: string, filePath: string) => void;
+    /** Repository the host answers CI requests for; the Files | Checks tabs show only when set. */
+    ciRepoKey?: string;
+    /** False when CI checks are turned off in settings; the Checks tab then says so. */
+    commitChecksEnabled?: boolean;
 }
 
 const VISUALLY_HIDDEN_STYLE: React.CSSProperties = {
@@ -147,6 +158,8 @@ export function CommitInfoPane({
     folderExpandedIcon,
     folderIconsByName,
     onOpenDiff,
+    ciRepoKey,
+    commitChecksEnabled = true,
 }: CommitInfoPaneProps): React.ReactElement {
     const [expandedDirsState, setExpandedDirsState] = useState<CommitScopedExpandedDirs>({
         commitHash: null,
@@ -170,6 +183,17 @@ export function CommitInfoPane({
     );
 
     const [groupByDir, setGroupByDir] = useState(readGroupByDir);
+    const [tab, setTab] = useState<CommitInfoTab>(readCommitInfoTab);
+    const chooseTab = useCallback((next: CommitInfoTab) => {
+        setTab(next);
+        persistCommitInfoTab(next);
+    }, []);
+    useEffect(() => {
+        const showChecks = (): void => setTab("checks");
+        window.addEventListener(OPEN_CHECKS_TAB_EVENT, showChecks);
+        return () => window.removeEventListener(OPEN_CHECKS_TAB_EVENT, showChecks);
+    }, []);
+    const showChecks = ciRepoKey !== undefined && tab === "checks";
 
     const detailHash = detail?.hash ?? null;
     const tree = useMemo<TreeEntry[]>(() => {
@@ -251,36 +275,86 @@ export function CommitInfoPane({
             overflow="hidden"
             bg={JETBRAINS_UI.color.panel}
         >
-            <CommitChangedFilesPanel
-                repositoryRoot={repositoryRoot}
-                detail={detail}
-                tree={tree}
-                expandedDirs={expandedDirs}
-                selectedFilePath={selectedFilePath}
-                filesCollapsed={filesCollapsed}
-                groupByDir={groupByDir}
-                folderIcon={folderIcon}
-                folderExpandedIcon={folderExpandedIcon}
-                folderIconsByName={folderIconsByName}
-                onToggleFiles={toggleFilesCollapsed}
-                onToggleGroupByDir={toggleGroupByDir}
-                onToggleDir={toggleDir}
-                onSelectFile={selectFile}
-                onOpenDiff={onOpenDiff}
-            />
+            {ciRepoKey !== undefined ? <CommitInfoTabs tab={tab} onChoose={chooseTab} /> : null}
+            {showChecks ? (
+                <ChecksTab repoKey={ciRepoKey} hash={detail.hash} enabled={commitChecksEnabled} />
+            ) : (
+                <CommitChangedFilesPanel
+                    repositoryRoot={repositoryRoot}
+                    detail={detail}
+                    tree={tree}
+                    expandedDirs={expandedDirs}
+                    selectedFilePath={selectedFilePath}
+                    filesCollapsed={filesCollapsed}
+                    groupByDir={groupByDir}
+                    folderIcon={folderIcon}
+                    folderExpandedIcon={folderExpandedIcon}
+                    folderIconsByName={folderIconsByName}
+                    onToggleFiles={toggleFilesCollapsed}
+                    onToggleGroupByDir={toggleGroupByDir}
+                    onToggleDir={toggleDir}
+                    onSelectFile={selectFile}
+                    onOpenDiff={onOpenDiff}
+                />
+            )}
             <CommitResizeDivider
-                visible={!filesCollapsed && !detailCollapsed}
+                visible={(showChecks || !filesCollapsed) && !detailCollapsed}
                 onMouseDown={onResizeStart}
             />
             <CommitDetailsPanel
                 detail={detail}
                 branchRefs={branchRefs}
                 tagRefs={tagRefs}
-                filesCollapsed={filesCollapsed}
+                filesCollapsed={!showChecks && filesCollapsed}
                 detailCollapsed={detailCollapsed}
                 bottomHeight={bottomHeight}
                 onToggleDetail={toggleDetailCollapsed}
             />
+        </Flex>
+    );
+}
+
+const TABS: readonly { id: CommitInfoTab; labelKey: string }[] = [
+    { id: "files", labelKey: "commitInfo.tab.files" },
+    { id: "checks", labelKey: "commitInfo.tab.checks" },
+];
+
+function CommitInfoTabs({
+    tab,
+    onChoose,
+}: {
+    tab: CommitInfoTab;
+    onChoose: (tab: CommitInfoTab) => void;
+}): React.ReactElement {
+    return (
+        <Flex
+            role="tablist"
+            aria-label={t("commitInfo.tabs")}
+            flexShrink={0}
+            gap="2px"
+            px="8px"
+            borderBottom={`1px solid ${JETBRAINS_UI.color.divider}`}
+        >
+            {TABS.map(({ id, labelKey }) => (
+                <Box
+                    as="button"
+                    key={id}
+                    role="tab"
+                    aria-selected={tab === id}
+                    onClick={() => onChoose(id)}
+                    px="10px"
+                    h="28px"
+                    fontSize="12px"
+                    fontFamily={SYSTEM_FONT_STACK}
+                    bg="transparent"
+                    border="none"
+                    cursor="pointer"
+                    color={tab === id ? JETBRAINS_UI.color.foreground : JETBRAINS_UI.color.muted}
+                    borderBottom={`2px solid ${tab === id ? JETBRAINS_UI.color.focus : "transparent"}`}
+                >
+                    {t(labelKey)}
+                </Box>
+            ))}
         </Flex>
     );
 }

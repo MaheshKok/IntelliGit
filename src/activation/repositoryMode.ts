@@ -50,6 +50,7 @@ import { CiGenerations } from "../services/commitChecks/ciGenerations";
 import { createCiTrace } from "../services/commitChecks/ciTrace";
 import type { CommitChecksProvider, ProviderId } from "../services/commitChecks/types";
 import { captureWebviewViewProvider } from "../e2e/webviewCapture";
+import { readE2eCiFixture } from "../e2e/ciFixture";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { compactCommitGraphViewOptions } from "../views/commitGraphHostOptions";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
@@ -344,6 +345,7 @@ export async function activateRepositoryMode(
           }
         | undefined;
 
+    const ciFixture = (hash: string) => readE2eCiFixture(context.globalState, hash);
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps, credentialStore, {
         hostMap: commitCheckHostMap,
         settings: commitCheckSettings,
@@ -352,6 +354,8 @@ export async function activateRepositoryMode(
         ciGenerations,
         ciTrace,
         commitChecksProviders,
+        ciRepoKey: () => repoRoot,
+        ciFixture,
     });
     const sidebarGraph = new CommitGraphViewProvider(
         context.extensionUri,
@@ -367,9 +371,17 @@ export async function activateRepositoryMode(
             ciGenerations,
             ciTrace,
             commitChecksProviders,
+            ciFixture,
         },
     );
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
+    commitInfo.setCiSource({
+        repoKey: () => repoRoot,
+        generations: ciGenerations,
+        enabled: commitCheckSettings.enabled,
+        getDetail: (hash, options, ctx) => commitGraph.getCommitCiDetail(hash, options, ctx),
+    });
+    sidebarGraph.onOpenCommitInChecks((hash) => commitInfo.openChecksTab(hash));
     const commitPanel = new CommitPanelViewProvider(
         context.extensionUri,
         gitOps,
@@ -668,13 +680,16 @@ export async function activateRepositoryMode(
         refreshService = createRefreshService(repoRoot);
         refreshServiceWatchersRegistered = false;
         registerRefreshServiceWatchers();
+        // Cleared before the fallible preference write: the panes key Checks requests by repoRoot,
+        // which already names the new repository, so a selection left from the old one would
+        // wait forever on requests the host drops.
+        clearSelection();
         if (!options.persistSelectionAfterBranchData) {
             if (!shouldContinue()) return;
             // react-doctor-disable-next-line react-doctor/async-defer-await
             await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
             if (!shouldContinue()) return;
         }
-        clearSelection();
         const persistSelectionAfterBranchDataApplied = options.persistSelectionAfterBranchData
             ? async (): Promise<void> => {
                   await persistActiveEditorSelection(repoRoot, shouldContinue);
@@ -896,6 +911,7 @@ export async function activateRepositoryMode(
                 commitCiDetailService,
                 ciGenerations,
                 ciTrace,
+                ciFixture,
                 commitChecksProviders,
                 commitMessageGenerationCoordinator,
                 onSelectedRepositoryRootChanged: async (root) => {
@@ -1372,6 +1388,7 @@ export async function activateRepositoryMode(
         commitGraph.clearChecksCache();
         sidebarGraph.clearChecksCache();
         undocked?.clearChecksCache();
+        commitInfo.refreshChecksTab();
         await Promise.all([commitGraph.refresh(), sidebarGraph.refresh()]);
         if (undocked) await undocked.refresh();
     };

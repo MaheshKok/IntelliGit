@@ -7,6 +7,7 @@ const undockedOptions = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 // options, which `undockedOptions` already covers) so a test can assert the exact panel object
 // `ensureUndockedPanel` (repositoryMode.ts) hands to registerUndockedCommitFileDiffHandler.
 const undockedInstances = vi.hoisted(() => [] as Array<Record<string, unknown>>);
+const commitInfoInstances = vi.hoisted(() => [] as Array<{ clear: ReturnType<typeof vi.fn> }>);
 const gitOpsDeriveFor = vi.hoisted(() => vi.fn((root: string) => ({ root })));
 const watchWholeIndexOperation = vi.hoisted(() => vi.fn(() => ({ dispose: vi.fn() })));
 const repositoryCommandDeps = vi.hoisted(() => ({
@@ -163,6 +164,8 @@ vi.mock("../../../src/views/CommitGraphViewProvider", () => ({
         clearCommitDetail = vi.fn();
         clearChecksCache = vi.fn();
         refresh = vi.fn(async () => undefined);
+        onOpenCommitInChecks = event();
+        getCommitCiDetail = vi.fn(async () => undefined);
         dispose = vi.fn();
         constructor(..._args: unknown[]) {}
     },
@@ -172,8 +175,13 @@ vi.mock("../../../src/views/CommitInfoViewProvider", () => ({
     CommitInfoViewProvider: class {
         static readonly viewType = "intelligit.commitInfo";
         clear = vi.fn();
+        setCiSource = vi.fn();
+        openChecksTab = vi.fn();
+        refreshChecksTab = vi.fn();
         dispose = vi.fn();
-        constructor(..._args: unknown[]) {}
+        constructor(..._args: unknown[]) {
+            commitInfoInstances.push(this);
+        }
     },
 }));
 
@@ -326,5 +334,47 @@ describe("commit-message generation host wiring", () => {
             subscription.dispose();
         }
         expect(coordinator.dispose).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("repository switch", () => {
+    it("clears the commit selection before a repository preference write that fails", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const context = {
+            extensionUri: { fsPath: "/extension", path: "/extension" },
+            subscriptions: [] as Array<{ dispose: () => void }>,
+            workspaceState: {
+                get: vi.fn(),
+                update: vi.fn(async (key: string, value: unknown) => {
+                    if (key === "intelligit.selectedRepositoryRoot" && value === "/repo-b") {
+                        throw new Error("preference write failed");
+                    }
+                }),
+            },
+            secrets: {},
+        };
+        await activateRepositoryMode(context as never, [
+            { root: "/repo-a", label: "repo-a" },
+            { root: "/repo-b", label: "repo-b" },
+        ]);
+        const deps = repositoryCommandDeps.value as {
+            getRepoRoot: () => string;
+            setActiveRepository: (repository: { root: string; label: string }) => Promise<void>;
+        };
+        const commitInfo = commitInfoInstances.at(-1);
+        commitInfo?.clear.mockClear();
+
+        await expect(
+            deps.setActiveRepository({ root: "/repo-b", label: "repo-b" }),
+        ).rejects.toThrow("preference write failed");
+
+        // The Changed Files and Git Log panes key Checks requests by the host's current root, so
+        // a selection left showing /repo-a after the host moved to /repo-b would load forever.
+        expect(deps.getRepoRoot()).toBe("/repo-b");
+        expect(
+            commitInfo?.clear,
+            "the old selection is cleared after a failed preference write",
+        ).toHaveBeenCalled();
+        for (const subscription of context.subscriptions) subscription.dispose();
     });
 });

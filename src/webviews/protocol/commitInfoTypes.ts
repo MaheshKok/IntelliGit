@@ -2,6 +2,14 @@
 // and the extension host. Defines all inbound and outbound message shapes.
 
 import type { CommitDetail, ThemeFolderIconMap, ThemeIconFont, ThemeTreeIcon } from "../../types";
+import type {
+    CancelCommitCiDetailMessage,
+    CommitCiDetailInvalidatedMessage,
+    CommitCiDetailMessage,
+    OpenChecksTabMessage,
+    OpenCommitChecksSettingsMessage,
+    RequestCommitCiDetailMessage,
+} from "./commitCiMessages";
 
 /**
  * Commit info messages sent from the standalone Changed Files webview to the host.
@@ -22,6 +30,21 @@ export type CommitInfoOutbound =
           commitHash: string;
           /** Repository-relative path from commit file Git output; host validates before use. */
           filePath: string;
+      }
+    | RequestCommitCiDetailMessage
+    | CancelCommitCiDetailMessage
+    | OpenCommitChecksSettingsMessage
+    | {
+          /** Request to open a CI run, job or check URL outside the webview. */
+          type: "openCommitCheckUrl";
+          /** HTTP(S) target URL from the provider; the host validates the scheme. */
+          url: string;
+      }
+    | {
+          /** Request to sign in to a commit-check provider host from the Checks tab. */
+          type: "signInForCommitChecks";
+          /** Host to sign into; validated host-side before the sign-in command runs. */
+          host: string;
       };
 
 /**
@@ -45,10 +68,17 @@ export type CommitInfoInbound =
           folderIconsByName?: ThemeFolderIconMap;
           /** Webview-safe font-face payloads needed to render glyph-based file icons. */
           iconFonts?: ThemeIconFont[];
+          /** Repository the Checks tab asks about; absent hides the Checks tab. */
+          ciRepoKey?: string;
+          /** The `commitChecks.enabled` setting; absent counts as enabled. */
+          commitChecksEnabled?: boolean;
       }
     | {
           /** Event clearing the pane when no commit is selected or selection became stale. */
           type: "clear";
           /** True while the host expects an automatic replacement selection to arrive. */
           loading?: boolean;
-      };
+      }
+    | CommitCiDetailMessage
+    | CommitCiDetailInvalidatedMessage
+    | OpenChecksTabMessage;

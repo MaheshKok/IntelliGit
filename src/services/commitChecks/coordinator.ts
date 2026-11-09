@@ -5,6 +5,7 @@
 
 import * as vscode from "vscode";
 import type { GitOps } from "../../git/operations";
+import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
 import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type {
     CommitChecksSnapshot,
@@ -66,6 +67,10 @@ export interface CommitChecksCoordinatorOptions {
     generations?: CiGenerations;
     /** Token-free diagnostic trace for discarded detail requests. */
     trace?: CiTrace;
+    /** E2E runs only: a seeded detail served for a commit instead of the provider's. */
+    fixture?: (
+        hash: string,
+    ) => { detail: CommitCiDetailData; capabilities: ProviderCiCapabilities } | undefined;
 }
 
 /** Resolves the provider for a repository and delegates snapshots to the shared cache. */
@@ -77,6 +82,7 @@ export class CommitChecksCoordinator {
     private readonly settingsFingerprint: string;
     private readonly generations?: CiGenerations;
     private readonly trace?: CiTrace;
+    private readonly fixture?: CommitChecksCoordinatorOptions["fixture"];
     private resolvedProvider = false;
     private providerMatch: ProviderMatch | null = null;
     private providerGeneration = 0;
@@ -111,6 +117,7 @@ export class CommitChecksCoordinator {
         this.settingsFingerprint = options.settingsFingerprint ?? "-";
         this.generations = options.generations;
         this.trace = options.trace;
+        this.fixture = options.fixture;
     }
 
     /** Drops shared cached snapshots and details; called after credential/settings changes. */
@@ -146,6 +153,22 @@ export class CommitChecksCoordinator {
             // never renders the button, so this is defense in depth.
             return this.noneSnapshot(hash);
         }
+        const seeded = this.fixture?.(hash);
+        if (seeded) {
+            const { outcome, otherChecks } = seeded.detail;
+            return {
+                hash,
+                state: outcome,
+                summary: summaryForState(outcome),
+                items: otherChecks.map(({ name, description, state, url }) => ({
+                    name,
+                    description,
+                    state,
+                    source: "status" as const,
+                    url,
+                })),
+            };
+        }
         return this.fetchFresh(hash, options);
     }
 
@@ -167,6 +190,9 @@ export class CommitChecksCoordinator {
         ctx: CiOperationContext,
     ): Promise<CommitCiDetail | undefined> {
         if (!this.enabled) return undefined;
+        const seeded = this.fixture?.(hash);
+        if (seeded)
+            return { ...seeded.detail, capabilities: seeded.capabilities, repoKey: ctx.repoKey };
         const providerGeneration = this.providerGeneration;
         let match: ProviderMatch | null;
         try {

@@ -8,6 +8,18 @@ import { getErrorMessage } from "../utils/errors";
 import { postWebviewMessage } from "./webviewDelivery";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { isValidGitHash } from "../services/gitHelpers";
+import {
+    answerCommitCiDetailRequest,
+    CommitCiDetailLoops,
+    openCommitChecksSettings,
+    type CommitCiDetailSource,
+} from "./ciDetailHandler";
+
+/** What the Changed Files view needs to serve its Checks tab. */
+export interface CommitInfoCiSource extends CommitCiDetailSource {
+    /** The `commitChecks.enabled` setting. */
+    enabled: boolean;
+}
 
 /**
  * Hosts the changed-files webview for the currently selected commit.
@@ -30,6 +42,11 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
      * resolved or the cache is cleared, so a redundant-looking repost after either is never
      * wrongly suppressed. */
     private lastPostedPayload: string | undefined;
+    private ciSource?: CommitInfoCiSource;
+    /** "Open in Checks" asked for before the webview could receive it, with the repository it
+     * was asked in: a repository switch before the view is ready must not re-key it. */
+    private pendingChecks?: { repoKey: string; hash: string };
+    private readonly ciDetailLoops = new CommitCiDetailLoops();
     private readonly iconTheme: IconThemeService;
     private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
         commitHash: string;
@@ -92,8 +109,11 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     } catch (err) {
                         console.error("[IntelliGit] Failed to initialize icon theme data:", err);
                     }
+                    // A view replaced during the await must not mark its successor ready.
+                    if (this.view !== webviewView) break;
                     this.ready = true;
                     this.postCurrentState();
+                    this.postPendingChecksTab();
                     break;
                 case "openCommitFileDiff":
                     try {
@@ -110,10 +130,27 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                         );
                     }
                     break;
+                case "requestCommitCiDetail":
+                case "cancelCommitCiDetail":
+                case "openCommitChecksSettings":
+                case "openCommitCheckUrl":
+                case "signInForCommitChecks":
+                    try {
+                        await this.handleChecksMessage(msg, webviewView);
+                    } catch (err) {
+                        const message = getErrorMessage(err);
+                        vscode.window.showErrorMessage(
+                            vscode.l10n.t("Commit checks error: {message}", { message }),
+                        );
+                    }
+                    break;
             }
         });
 
         webviewView.onDidDispose(() => {
+            // A replaced view's late dispose must not tear down its successor.
+            if (this.view !== webviewView) return;
+            this.ciDetailLoops.dispose();
             this.view = undefined;
             this.ready = false;
             this.iconTheme.dispose();
@@ -126,6 +163,92 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
             title: vscode.l10n.t("Changed Files"),
             backgroundVar: "var(--vscode-editor-background)",
         });
+    }
+
+    /**
+     * Turns on the Checks tab, served by another view's CI coordinator.
+     *
+     * @param source - The repository, generations and detail fetch of the Git Log graph.
+     */
+    setCiSource(source: CommitInfoCiSource): void {
+        this.ciSource = source;
+        this.lastPostedPayload = undefined;
+        this.postCurrentState();
+    }
+
+    /**
+     * Shows the Checks tab for a commit, for "Open in Checks" in the sidebar graph.
+     *
+     * @param hash - The commit the graph row selected.
+     */
+    openChecksTab(hash: string): void {
+        // Held until the webview is ready: the view may be collapsed, unresolved or still loading.
+        if (!this.ciSource) return;
+        this.pendingChecks = { repoKey: this.ciSource.repoKey(), hash };
+        this.postPendingChecksTab();
+    }
+
+    /** After a sign-in or sign-out: the Checks tab drops the previous account's detail and asks again. */
+    refreshChecksTab(): void {
+        this.postToWebview({ type: "commitCiDetailInvalidated" });
+    }
+
+    /** Posts a held "Open in Checks" once, when the webview is ready to receive it. */
+    private postPendingChecksTab(): void {
+        const pending = this.pendingChecks;
+        if (!this.ready || pending === undefined) return;
+        this.pendingChecks = undefined;
+        this.postToWebview({ type: "openChecksTab", ...pending });
+    }
+
+    private async handleChecksMessage(
+        msg: Extract<
+            CommitInfoOutbound,
+            {
+                type:
+                    | "requestCommitCiDetail"
+                    | "cancelCommitCiDetail"
+                    | "openCommitChecksSettings"
+                    | "openCommitCheckUrl"
+                    | "signInForCommitChecks";
+            }
+        >,
+        view: vscode.WebviewView,
+    ): Promise<void> {
+        switch (msg.type) {
+            case "requestCommitCiDetail":
+                if (!this.ciSource) return;
+                await answerCommitCiDetailRequest(
+                    this.ciSource,
+                    { ...msg },
+                    (reply) => {
+                        // Reply to the webview that asked, never one resolved since.
+                        if (this.view === view) this.postToWebview(reply);
+                    },
+                    this.ciDetailLoops,
+                );
+                return;
+            case "cancelCommitCiDetail":
+                this.ciDetailLoops.cancel(msg.requestId);
+                return;
+            case "openCommitChecksSettings":
+                await openCommitChecksSettings();
+                return;
+            case "openCommitCheckUrl": {
+                const uri = vscode.Uri.parse(this.assertString(msg.url, "url"));
+                if (uri.scheme !== "https" && uri.scheme !== "http") {
+                    throw new Error("Unsupported commit check URL.");
+                }
+                await vscode.env.openExternal(uri);
+                return;
+            }
+            case "signInForCommitChecks":
+                await vscode.commands.executeCommand(
+                    "intelligit.commitChecks.signIn",
+                    this.assertString(msg.host, "host"),
+                );
+                return;
+        }
     }
 
     /**
@@ -184,6 +307,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.folderIconsByName,
             iconFonts,
+            ciRepoKey: this.ciSource?.repoKey(),
+            commitChecksEnabled: this.ciSource?.enabled,
         };
         const serialized = serializeWebviewPayload(payload);
         if (isRedundantPost(serialized, this.lastPostedPayload)) return;

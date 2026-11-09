@@ -32,7 +32,8 @@ import type * as vscode from "vscode";
 import { createFakeExtensionUri } from "../../visual/recorder/commitInfoVscodeDouble";
 import { CommitInfoViewProvider } from "../../../src/views/CommitInfoViewProvider";
 import type { IconThemeService } from "../../../src/views/shared/IconThemeService";
-import type { CommitDetail } from "../../../src/types";
+import type { CommitCiDetail, CommitDetail } from "../../../src/types";
+import { NO_CI_CAPABILITIES } from "../../../src/shared/ci/capabilities";
 
 /** A resolve-context/token stand-in `resolveWebviewView` never reads -- same reasoning as
  * `recordCommitInfoWebviewFixture.ts`'s own `INERT_RESOLVE_CONTEXT`/`INERT_CANCELLATION_TOKEN`. */
@@ -61,8 +62,10 @@ function createInspectableFakeWebviewView(): {
     readonly webviewView: vscode.WebviewView;
     readonly posted: unknown[];
     receiveMessage(message: unknown): Promise<void>;
+    dispose(): void;
 } {
     let messageHandler: ((message: unknown) => unknown) | undefined;
+    let disposeHandler: (() => void) | undefined;
     const posted: unknown[] = [];
 
     const webview = {
@@ -82,12 +85,16 @@ function createInspectableFakeWebviewView(): {
 
     const webviewView = {
         webview,
-        onDidDispose: () => ({ dispose(): void {} }),
+        onDidDispose: (listener: () => void) => {
+            disposeHandler = listener;
+            return { dispose(): void {} };
+        },
     } as unknown as vscode.WebviewView;
 
     return {
         webviewView,
         posted,
+        dispose: (): void => disposeHandler?.(),
         receiveMessage: async (message: unknown): Promise<void> => {
             if (!messageHandler) {
                 throw new Error(
@@ -138,6 +145,205 @@ function setDetailMessages(posted: readonly unknown[]): Record<string, unknown>[
             isRecord(message) && message.type === "setCommitDetail",
     );
 }
+
+describe("CommitInfoViewProvider Checks tab scan re-posts", () => {
+    it("cancelCommitCiDetail from a hidden tab stops that request's re-posts", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        try {
+            const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+            const { webviewView, posted, receiveMessage } = createInspectableFakeWebviewView();
+            provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+            await receiveMessage({ type: "ready" });
+            const runningScan: CommitCiDetail = {
+                hash: sampleDetail().hash,
+                provider: "github",
+                complete: true,
+                outcome: "failure",
+                runs: [
+                    {
+                        id: "1",
+                        name: "CI",
+                        state: "failure",
+                        jobs: [],
+                        jobsCoverage: { reason: "pageBound", shown: 1000 },
+                        failedScan: { state: "running", found: 0 },
+                    },
+                ],
+                runsCoverage: "full",
+                otherChecks: [],
+                otherChecksCoverage: "full",
+                capabilities: NO_CI_CAPABILITIES,
+                repoKey: "/repo",
+            };
+            provider.setCiSource({
+                enabled: true,
+                repoKey: () => "/repo",
+                getDetail: async () => runningScan,
+            });
+            const replies = () =>
+                posted.filter((message) => isRecord(message) && message.type === "commitCiDetail");
+
+            const answered = receiveMessage({
+                type: "requestCommitCiDetail",
+                requestId: 1,
+                repoKey: "/repo",
+                hash: sampleDetail().hash,
+            });
+            await vi.advanceTimersByTimeAsync(0);
+            expect(replies()).toHaveLength(1);
+
+            await receiveMessage({ type: "cancelCommitCiDetail", requestId: 1 });
+            await vi.advanceTimersByTimeAsync(10 * 60_000);
+            expect(replies(), "re-posts after the tab was hidden").toHaveLength(1);
+            await answered;
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("a repository switch hands the pane the new repository, so its Checks tab asks again", async () => {
+        let repoKey = "/repo-a";
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        const { webviewView, posted, receiveMessage } = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+        provider.setCiSource({
+            enabled: true,
+            repoKey: () => repoKey,
+            getDetail: async () => undefined,
+        });
+        provider.setCommitDetail(sampleDetail());
+        await flushMicrotasks();
+        expect(setDetailMessages(posted).at(-1)?.ciRepoKey).toBe("/repo-a");
+
+        // A request still carrying the old key gets no reply (ciDetailHandler.test.ts), so the
+        // pane must learn the new key: the switch clears it, and the next commit carries the key.
+        repoKey = "/repo-b";
+        posted.length = 0;
+        provider.clear();
+        expect(posted, "the switch clears the pane").toEqual([{ type: "clear" }]);
+        // The same commit, as both repositories can share history.
+        provider.setCommitDetail(sampleDetail());
+        await flushMicrotasks();
+        expect(setDetailMessages(posted).at(-1)?.ciRepoKey, "key after the switch").toBe("/repo-b");
+    });
+});
+
+describe("CommitInfoViewProvider Open in Checks", () => {
+    const ciSource = {
+        enabled: true,
+        repoKey: () => "/repo",
+        getDetail: async () => undefined,
+    };
+    const openMessages = (posted: readonly unknown[]) =>
+        posted.filter((message) => isRecord(message) && message.type === "openChecksTab");
+
+    it("review: Open in Checks survives a view that is not ready yet", async () => {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        provider.setCiSource(ciSource);
+        const { webviewView, posted, receiveMessage } = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+        provider.openChecksTab(sampleDetail().hash);
+        expect(openMessages(posted), "posted before the webview listens").toEqual([]);
+
+        await receiveMessage({ type: "ready" });
+        expect(openMessages(posted), "open request after ready").toEqual([
+            { type: "openChecksTab", repoKey: "/repo", hash: sampleDetail().hash },
+        ]);
+
+        // A reload of the same view must not switch the tab again on its own.
+        await receiveMessage({ type: "ready" });
+        expect(openMessages(posted), "open request repeated on reload").toHaveLength(1);
+    });
+
+    it("Open in Checks before the view was ever resolved reaches it once it is ready", async () => {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        provider.setCiSource(ciSource);
+        provider.openChecksTab(sampleDetail().hash);
+
+        const { webviewView, posted, receiveMessage } = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+        expect(openMessages(posted), "open request after first resolve").toEqual([
+            { type: "openChecksTab", repoKey: "/repo", hash: sampleDetail().hash },
+        ]);
+    });
+
+    it("Open in Checks on a ready view posts at once", async () => {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        provider.setCiSource(ciSource);
+        const { webviewView, posted, receiveMessage } = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+
+        provider.openChecksTab(sampleDetail().hash);
+        expect(openMessages(posted), "open request on a ready view").toHaveLength(1);
+        await receiveMessage({ type: "ready" });
+        expect(openMessages(posted), "open request repeated on reload").toHaveLength(1);
+    });
+
+    it("review: a late ready from a replaced view does not hand its request to the new view", async () => {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        provider.setCiSource(ciSource);
+        const old = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(old.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        // Hold the old view's ready handler inside its await until the view has been replaced.
+        let releaseOldReady = (): void => {};
+        const iconTheme = (provider as unknown as { iconTheme: IconThemeService }).iconTheme;
+        vi.spyOn(iconTheme, "initIconThemeData").mockReturnValueOnce(
+            new Promise<void>((resolve) => {
+                releaseOldReady = resolve;
+            }),
+        );
+        const oldReady = old.receiveMessage({ type: "ready" });
+
+        const replacement = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(replacement.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        provider.openChecksTab(sampleDetail().hash);
+        releaseOldReady();
+        await oldReady;
+        expect(openMessages(replacement.posted), "not before replacement ready").toEqual([]);
+
+        await replacement.receiveMessage({ type: "ready" });
+        expect(openMessages(replacement.posted), "open request after replacement ready").toEqual([
+            { type: "openChecksTab", repoKey: "/repo", hash: sampleDetail().hash },
+        ]);
+    });
+
+    it("review: a repository switch before the view is ready keeps the request's own repository", async () => {
+        let repoKey = "/repo-a";
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        provider.setCiSource({ ...ciSource, repoKey: () => repoKey });
+        const { webviewView, posted, receiveMessage } = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+        provider.openChecksTab(sampleDetail().hash);
+        repoKey = "/repo-b";
+        await receiveMessage({ type: "ready" });
+        expect(
+            openMessages(posted),
+            "the held request names the repository it was made in",
+        ).toEqual([{ type: "openChecksTab", repoKey: "/repo-a", hash: sampleDetail().hash }]);
+    });
+
+    it("review: disposing a replaced view leaves the new view ready", async () => {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        provider.setCiSource(ciSource);
+        const old = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(old.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await old.receiveMessage({ type: "ready" });
+        const replacement = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(replacement.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await replacement.receiveMessage({ type: "ready" });
+
+        old.dispose();
+        provider.openChecksTab(sampleDetail().hash);
+        expect(openMessages(replacement.posted), "open request after old view disposed").toEqual([
+            { type: "openChecksTab", repoKey: "/repo", hash: sampleDetail().hash },
+        ]);
+    });
+});
 
 describe("CommitInfoViewProvider redundant setCommitDetail post", () => {
     afterEach(() => {

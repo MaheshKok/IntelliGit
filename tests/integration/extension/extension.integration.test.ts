@@ -375,6 +375,8 @@ class MockCommitGraphViewProvider {
     onRebaseDialogSubmit = this.rebaseDialogSubmitEmitter.event;
     onRebaseDialogCancel = this.rebaseDialogCancelEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
+    onOpenCommitInChecks = new MockEventEmitter<string>().event;
+    getCommitCiDetail = vi.fn(async () => undefined);
     setBranches = vi.fn();
     refresh = vi.fn(async () => undefined);
     clearChecksCache = vi.fn();
@@ -431,6 +433,9 @@ class MockCommitInfoViewProvider {
     }>();
     setCommitDetail = vi.fn();
     clear = vi.fn();
+    setCiSource = vi.fn();
+    openChecksTab = vi.fn();
+    refreshChecksTab = vi.fn();
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     dispose = vi.fn();
 }

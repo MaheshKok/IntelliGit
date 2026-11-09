@@ -48,6 +48,7 @@ function listWebviewSourceFiles(directory: string): string[] {
 const OUTBOUND_UNION_DECLARATIONS = [
     "src/webviews/protocol/changelists.ts:ChangelistOutbound",
     "src/webviews/protocol/changelists.ts:PartialEditorOutbound",
+    "src/webviews/protocol/commitCiMessages.ts:CommitCiOutbound",
     "src/webviews/protocol/commitGraphTypes.ts:CommitGraphOutbound",
     "src/webviews/protocol/commitInfoTypes.ts:CommitInfoOutbound",
     "src/webviews/protocol/commitPanelMessages.ts:OutboundMessage",

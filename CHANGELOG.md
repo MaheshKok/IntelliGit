@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-11-08
+
+### Added
+
+- A new Checks tab next to a commit's changed files shows its CI workflows, jobs and steps with their durations, opening straight to the step that failed.
+
 ## [0.43.2] - 2026-11-07
 
 ### Fixed

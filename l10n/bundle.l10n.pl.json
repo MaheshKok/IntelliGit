@@ -986,5 +986,6 @@
     "The view could not refresh after the targeted history step: {message}": "Nie można odświeżyć widoku po kroku wskazanej historii: {message}",
     "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "IntelliGit wymaga Git {0} lub nowszego do rozwiązywania scalania, częściowych zatwierdzeń i przywracania z półki, ale znaleziono Git {1}. Zaktualizuj Git, aby korzystać z tych funkcji.",
     "IntelliGit CI": "IntelliGit CI",
-    "The signed-in account changed during the request.": "Zalogowane konto zmieniło się w trakcie żądania."
+    "The signed-in account changed during the request.": "Zalogowane konto zmieniło się w trakcie żądania.",
+    "Commit checks error: {message}": "Błąd sprawdzeń commitów: {message}"
 }

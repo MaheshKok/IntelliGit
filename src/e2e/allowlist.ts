@@ -43,6 +43,8 @@ export const MEMENTO_ALLOWLIST: Readonly<Record<MementoScope, readonly Allowlist
         exact("intelligit.reviewPrompt.status"),
         exact("intelligit.reviewPrompt.installedAt"),
         exact("intelligit.commitChecks.cache.v1"),
+        // E2E-only CI detail fixture (src/e2e/ciFixture.ts); no production code writes it.
+        exact("intelligit.e2e.ciFixture"),
     ],
 };
 

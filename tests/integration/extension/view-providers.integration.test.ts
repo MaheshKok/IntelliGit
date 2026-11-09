@@ -2309,6 +2309,61 @@ describe("view providers integration", () => {
         }
     });
 
+    it("a credential change tells every open Checks tab to drop its detail and ask again", async () => {
+        let graph:
+            | {
+                  dispose: () => void;
+                  resolveWebviewView: (view: object, context: object, token: object) => void;
+              }
+            | undefined;
+        try {
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    globalState: createMemento(),
+                    secrets: {},
+                } as never,
+                [{ root: "/workspace", label: "workspace" }],
+                {
+                    commitGraph: {
+                        setProvider: (provider: unknown) => (graph = provider as typeof graph),
+                    },
+                } as never,
+            );
+            const commitInfo = vscodeMock.window.registerWebviewViewProvider.mock.calls.find(
+                ([viewType]) => viewType === "intelligit.commitFiles",
+            )?.[1] as {
+                resolveWebviewView: (view: object, context: object, token: object) => void;
+            };
+            expect(commitInfo, "the Changed Files view provider").toBeDefined();
+            const graphView = createWebviewView();
+            const infoView = createWebviewView();
+            const graphPosts = vi.fn(async () => true);
+            const infoPosts = vi.fn(async () => true);
+            (graphView.view.webview as { postMessage: unknown }).postMessage = graphPosts;
+            (infoView.view.webview as { postMessage: unknown }).postMessage = infoPosts;
+            graph!.resolveWebviewView(graphView.view, {}, {});
+            commitInfo.resolveWebviewView(infoView.view, {}, {});
+            await flushMicrotasks();
+            graphPosts.mockClear();
+            infoPosts.mockClear();
+
+            await registeredCommands.get("intelligit.commitChecks.refreshBadges")!();
+
+            const invalidated = { type: "commitCiDetailInvalidated" };
+            expect(graphPosts, "the Git Log panel's Checks tab").toHaveBeenCalledWith(invalidated);
+            expect(infoPosts, "the Changed Files view's Checks tab").toHaveBeenCalledWith(
+                invalidated,
+            );
+        } finally {
+            graph?.dispose();
+        }
+    });
+
     it("workspace folder changes refresh repository rows and fall back when the active repository disappears", async () => {
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
         const repoA = "/workspace/app-a";
@@ -3712,6 +3767,16 @@ describe("view providers integration", () => {
             expect.arrayContaining(["branches:/repo-b", "log:/repo-b", "status:/repo-b"]),
         );
         expect(callRoots).not.toEqual(expect.arrayContaining(["log:/repo-a", "status:/repo-a"]));
+        // The Checks tab's repository key: without it the tab keeps asking under /repo-a and
+        // the host, now on /repo-b, answers none of those requests.
+        expect(postMessageSpy, "the new selection reaches the webview").toHaveBeenCalledWith({
+            type: "repositories",
+            repositories: [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            selectedRepositoryRoot: "/repo-b",
+        });
         const restoreMessages = postMessageSpy.mock.calls
             .map(([message]) => message)
             .filter(
@@ -3774,6 +3839,68 @@ describe("view providers integration", () => {
             send({ type: "selectRepository", repositoryRoot: "/missing" }),
         ).rejects.toThrow("Unknown repository root received from webview.");
         expect(executor.setRoot).not.toHaveBeenCalled();
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider re-keys the webview before a repository preference write that fails", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const executor = { root: "/repo-a", setRoot: vi.fn() };
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock("/repo-a") as unknown as object,
+            { fsPath: "/repo-a", path: "/repo-a" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+            {},
+            undefined,
+            {
+                executor,
+                repositories: [
+                    { root: "/repo-a", label: "Repo A" },
+                    { root: "/repo-b", label: "Repo B" },
+                ],
+                selectedRepositoryRoot: "/repo-a",
+                onSelectedRepositoryRootChanged: async () => {
+                    throw new Error("preference write failed");
+                },
+            },
+        );
+        const testProvider = provider as unknown as {
+            panel: { webview: { postMessage: typeof postMessageSpy }; dispose: () => void };
+            iconTheme: { getThemeData: () => unknown; dispose: () => void };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = { webview: { postMessage: postMessageSpy }, dispose: vi.fn() };
+        testProvider.iconTheme = {
+            dispose: vi.fn(),
+            getThemeData: () => ({
+                folderIcons: { folderIcon: "folder", folderExpandedIcon: "folder-open" },
+                iconFonts: [],
+            }),
+        };
+        postMessageSpy.mockClear();
+
+        await expect(
+            testProvider.handleMessage.call(provider, {
+                type: "selectRepository",
+                repositoryRoot: "/repo-b",
+            }),
+        ).rejects.toThrow("preference write failed");
+
+        // The host already serves /repo-b, so a Checks request still keyed to /repo-a would get
+        // no reply and the tab would keep loading.
+        expect(executor.setRoot).toHaveBeenCalledWith("/repo-b");
+        expect(
+            postMessageSpy,
+            "the new key reaches the pane after a failed preference write",
+        ).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "repositories", selectedRepositoryRoot: "/repo-b" }),
+        );
+        expect(
+            postMessageSpy,
+            "the old selection is cleared after a failed preference write",
+        ).toHaveBeenCalledWith({ type: "clearCommitDetail" });
         provider.dispose();
     });
 
@@ -3954,6 +4081,28 @@ describe("view providers integration", () => {
         });
         expect(lastCommitChecksSnapshot()).toEqual(expect.objectContaining({ state: "success" }));
         expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider tells its Checks tab to ask again after a credential change", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const posts = vi.fn(async () => true);
+        (provider as unknown as { panel: object }).panel = {
+            webview: { postMessage: posts },
+            dispose: vi.fn(),
+        };
+
+        provider.clearChecksCache();
+
+        expect(posts).toHaveBeenCalledWith({ type: "commitCiDetailInvalidated" });
         provider.dispose();
     });
 

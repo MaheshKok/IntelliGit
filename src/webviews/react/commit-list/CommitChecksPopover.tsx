@@ -19,6 +19,8 @@ interface Props {
     onOpenCheckUrl: (url: string) => void;
     /** Sign in to the snapshot's `signInHost` from the popover (recoverable `unavailable` only). */
     onSignIn?: (host: string) => void;
+    /** Selects the row and shows the Checks tab; the button is hidden when absent. */
+    onOpenInChecks?: (hash: string) => void;
 }
 
 const PANEL_MAX_WIDTH = 420;
@@ -51,6 +53,7 @@ export function CommitChecksButton({
     onRequestChecks,
     onOpenCheckUrl,
     onSignIn,
+    onOpenInChecks,
 }: Props): React.ReactElement | null {
     const buttonRef = React.useRef<HTMLButtonElement>(null);
     const panelRef = React.useRef<HTMLDivElement>(null);
@@ -174,6 +177,14 @@ export function CommitChecksButton({
                         onRefresh={requestRefresh}
                         onOpenCheckUrl={onOpenCheckUrl}
                         onSignIn={onSignIn}
+                        onOpenInChecks={
+                            onOpenInChecks
+                                ? () => {
+                                      closePanel();
+                                      onOpenInChecks(hash);
+                                  }
+                                : undefined
+                        }
                     />,
                     document.body,
                 )}
@@ -192,6 +203,7 @@ function CommitChecksPanel({
     onRefresh,
     onOpenCheckUrl,
     onSignIn,
+    onOpenInChecks,
 }: {
     panelRef: React.RefObject<HTMLDivElement>;
     hash: string;
@@ -202,6 +214,7 @@ function CommitChecksPanel({
     onRefresh: () => void;
     onOpenCheckUrl: (url: string) => void;
     onSignIn?: (host: string) => void;
+    onOpenInChecks?: () => void;
 }): React.ReactElement {
     const snapshot = checks && checks !== "loading" ? checks : undefined;
     const refreshDisabled = checks === "loading" || refreshing;
@@ -329,12 +342,30 @@ function CommitChecksPanel({
                         </div>
                     )}
                 </div>
+                <OpenInChecksFooter onOpenInChecks={onOpenInChecks} />
             </div>
         </div>
     );
 }
 
-function StateIcon({ state }: { state?: CommitCheckState }): React.ReactElement {
+/** The popover footer's "Open in Checks" button; absent where no Checks tab exists. */
+function OpenInChecksFooter({
+    onOpenInChecks,
+}: {
+    onOpenInChecks?: () => void;
+}): React.ReactElement | null {
+    if (!onOpenInChecks) return null;
+    return (
+        <div style={footerStyle}>
+            <button type="button" style={linkButtonStyle} onClick={onOpenInChecks}>
+                {t("commit.checks.openInChecks")}
+            </button>
+        </div>
+    );
+}
+
+/** The colored check-state icon shared by the row badge, the popover and the Checks tab. */
+export function StateIcon({ state }: { state?: CommitCheckState }): React.ReactElement {
     const color = colorForState(state);
     const style: React.CSSProperties = { color, flexShrink: 0 };
     if (state === "failure" || state === "timed_out" || state === "action_required") {
@@ -561,6 +592,11 @@ const emptyStyle: React.CSSProperties = {
     flexDirection: "column",
     alignItems: "flex-start",
     gap: 8,
+};
+
+const footerStyle: React.CSSProperties = {
+    padding: "8px 18px 12px",
+    borderTop: `1px solid ${JETBRAINS_UI.color.divider}`,
 };
 
 const signInButtonStyle: React.CSSProperties = {

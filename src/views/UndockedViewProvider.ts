@@ -28,6 +28,11 @@ import { operationSnapshotForRepository } from "./commitPanelOperationSnapshot";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { runBoundedFanout, COMMIT_CHECK_FANOUT_LIMIT } from "./commitCheckFanout";
+import {
+    answerCommitCiDetailRequest,
+    CommitCiDetailLoops,
+    openCommitChecksSettings,
+} from "./ciDetailHandler";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
 import { postWebviewMessage } from "./webviewDelivery";
@@ -61,6 +66,7 @@ import type {
 import {
     CommitChecksCoordinator,
     DEFAULT_COMMIT_CHECKS_TTL_MS,
+    type CommitChecksCoordinatorOptions,
 } from "../services/commitChecks/coordinator";
 import { summaryForState } from "../services/commitChecks/normalize";
 import {
@@ -146,6 +152,7 @@ interface UndockedViewProviderOptions {
     commitCiDetailService?: CommitCiDetailService;
     ciGenerations?: CiGenerations;
     ciTrace?: CiTrace;
+    ciFixture?: CommitChecksCoordinatorOptions["fixture"];
     commitChecksProviders?: readonly CommitChecksProvider[];
     /** Shared activation-owned coordinator; undocked providers never construct their own. */
     commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator;
@@ -241,8 +248,10 @@ export class UndockedViewProvider {
     private selectedCommitDetail: CommitDetail | null = null;
     private commitDetailLoading = false;
     private readonly commitChecks: CommitChecksCoordinator;
+    private readonly ciGenerations?: CiGenerations;
     private commitChecksGeneration = 0;
     private commitCheckDemandSeq = 0;
+    private readonly ciDetailLoops = new CommitCiDetailLoops();
     private loadedCommitHashes = new Set<string>();
     private checkableCommitHashes = new Set<string>();
     private constrainCommitCheckHashes = false;
@@ -383,6 +392,7 @@ export class UndockedViewProvider {
                 });
             }),
         });
+        this.ciGenerations = options.ciGenerations;
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
             options.commitChecksProviders ?? [
@@ -400,6 +410,7 @@ export class UndockedViewProvider {
                 detailService: options.commitCiDetailService,
                 generations: options.ciGenerations,
                 trace: options.ciTrace,
+                fixture: options.ciFixture,
                 settingsFingerprint: commitChecksSettingsFingerprint(commitChecksSettings),
             },
         );
@@ -411,11 +422,13 @@ export class UndockedViewProvider {
      *
      * Called after a credential change (sign-in or sign-out) because a stored
      * "unavailable" snapshot is a terminal state the coordinator would otherwise
-     * never re-fetch, leaving the badge stuck after the user signs in.
+     * never re-fetch, leaving the badge stuck after the user signs in. An open Checks tab
+     * is told to drop the previous account's detail and ask again.
      */
     clearChecksCache(): void {
         this.commitChecksGeneration += 1;
         this.commitChecks.clear();
+        this.postToWebview({ type: "commitCiDetailInvalidated" });
     }
     /**
      * Updates the panel title fragment used when the active repository label changes.
@@ -529,10 +542,14 @@ export class UndockedViewProvider {
         const shouldContinue = this.beginRepositorySwitch();
         this.applyRepositoryRoot(repository, { reset: true, updateExecutor: true });
         if (!shouldContinue()) return;
+        // Re-key the webview before the fallible preference write: the host already serves the
+        // new root and drops requests keyed to the old one, so a failed write must not leave the
+        // Checks tab waiting on a reply that never comes.
+        this.sendRepositories();
+        this.postCommitDetailState();
         // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.onSelectedRepositoryRootChanged?.(repository.root);
         if (!shouldContinue()) return;
-        this.sendRepositories();
         await this.reloadSelectedRepository(shouldContinue);
     }
 
@@ -768,6 +785,7 @@ export class UndockedViewProvider {
         this.panel.onDidDispose(() => {
             this.fileStats.dispose();
             this.commitCheckDemandSeq += 1;
+            this.ciDetailLoops.dispose();
             this.commitMessageGenerationCoordinator?.dropHost(this.commitMessageGenerationHost);
             this.nativeCommitInputBridge.setVisible(false);
             this.panel = undefined;
@@ -1254,6 +1272,30 @@ export class UndockedViewProvider {
                     "intelligit.commitChecks.signIn",
                     assertString(msg.host, "host"),
                 );
+                break;
+            case "requestCommitCiDetail": {
+                const panel = this.panel;
+                await answerCommitCiDetailRequest(
+                    {
+                        repoKey: () => this.selectedRepositoryRoot,
+                        generations: this.ciGenerations,
+                        getDetail: (hash, options, ctx) =>
+                            this.commitChecks.getDetail(hash, options, ctx),
+                    },
+                    { ...msg },
+                    (reply) => {
+                        // Reply to the panel that asked, never one opened since.
+                        if (this.panel === panel) this.postToWebview(reply);
+                    },
+                    this.ciDetailLoops,
+                );
+                break;
+            }
+            case "cancelCommitCiDetail":
+                this.ciDetailLoops.cancel(msg.requestId);
+                break;
+            case "openCommitChecksSettings":
+                await openCommitChecksSettings();
                 break;
             case "dock":
                 this._onDockRequested.fire();

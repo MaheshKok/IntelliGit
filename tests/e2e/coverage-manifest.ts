@@ -631,6 +631,10 @@ const WEBVIEW_ENTRIES = [
     { kind: "webview", id: "openCommitFileDiff", mutating: false },
     { kind: "webview", id: "requestVisibleCommitChecks", mutating: false },
     { kind: "webview", id: "openCommitCheckUrl", mutating: false },
+    { kind: "webview", id: "requestCommitCiDetail", mutating: false },
+    { kind: "webview", id: "cancelCommitCiDetail", mutating: false },
+    { kind: "webview", id: "openCommitChecksSettings", mutating: false },
+    { kind: "webview", id: "openCommitInChecks", mutating: false },
     {
         kind: "webview",
         id: "signInForCommitChecks",

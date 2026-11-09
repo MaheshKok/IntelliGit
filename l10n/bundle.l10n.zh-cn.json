@@ -986,5 +986,6 @@
     "The view could not refresh after the targeted history step: {message}": "目标历史步骤之后无法刷新视图：{message}",
     "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "IntelliGit 需要 Git {0} 或更高版本才能使用合并解决、部分提交和搁置架恢复功能，但检测到的是 Git {1}。请更新 Git 以使用这些功能。",
     "IntelliGit CI": "IntelliGit CI",
-    "The signed-in account changed during the request.": "请求期间已登录的帐户发生了变化。"
+    "The signed-in account changed during the request.": "请求期间已登录的帐户发生了变化。",
+    "Commit checks error: {message}": "提交检查错误: {message}"
 }

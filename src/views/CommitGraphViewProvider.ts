@@ -5,7 +5,14 @@
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import { postWebviewMessage } from "./webviewDelivery";
-import type { Branch, Commit, CommitDetail, GitWorktree, ThemeFolderIconMap } from "../types";
+import type {
+    Branch,
+    Commit,
+    CommitCiDetail,
+    CommitDetail,
+    GitWorktree,
+    ThemeFolderIconMap,
+} from "../types";
 import type {
     BranchAction,
     CommitAction,
@@ -37,6 +44,7 @@ import { isValidGitHash } from "../services/gitHelpers";
 import {
     CommitChecksCoordinator,
     DEFAULT_COMMIT_CHECKS_TTL_MS,
+    type CommitChecksCoordinatorOptions,
 } from "../services/commitChecks/coordinator";
 import { summaryForState } from "../services/commitChecks/normalize";
 import {
@@ -45,8 +53,14 @@ import {
 } from "../services/commitChecks/settingsConfig";
 import type { CommitChecksService } from "../services/commitChecks/service";
 import type { CommitCiDetailService } from "../services/commitChecks/detailService";
-import type { CiGenerations } from "../services/commitChecks/ciGenerations";
+import type { CiGenerations, CiOperationContext } from "../services/commitChecks/ciGenerations";
 import type { CiTrace } from "../services/commitChecks/ciTrace";
+import type { CommitChecksFetchOptions } from "../services/commitChecks/service";
+import {
+    answerCommitCiDetailRequest,
+    CommitCiDetailLoops,
+    openCommitChecksSettings,
+} from "./ciDetailHandler";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
@@ -87,6 +101,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     private commitDetailLoading = false;
     private readonly commitChecks: CommitChecksCoordinator;
     private commitCheckDemandSeq = 0;
+    private readonly ciDetailLoops = new CommitCiDetailLoops();
     private loadedCommitHashes = new Set<string>();
     private checkableCommitHashes = new Set<string>();
     private constrainCommitCheckHashes = false;
@@ -155,6 +170,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     }>();
     readonly onOpenCommitFileDiff = this._onOpenCommitFileDiff.event;
 
+    /** The sidebar graph's "Open in Checks": its details pane lives in another view. */
+    private readonly _onOpenCommitInChecks = new vscode.EventEmitter<string>();
+    readonly onOpenCommitInChecks = this._onOpenCommitInChecks.event;
+
     /**
      * Creates the graph provider for one active repository view contribution.
      *
@@ -178,6 +197,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             ciGenerations?: CiGenerations;
             ciTrace?: CiTrace;
             commitChecksProviders?: readonly CommitChecksProvider[];
+            /** Repository the Checks tab asks about; absent hides the Checks tab. */
+            ciRepoKey?: () => string;
+            ciFixture?: CommitChecksCoordinatorOptions["fixture"];
         } = {},
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
@@ -200,6 +222,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                 detailService: options.commitCiDetailService,
                 generations: options.ciGenerations,
                 trace: options.ciTrace,
+                fixture: options.ciFixture,
                 settingsFingerprint: commitChecksSettingsFingerprint(settings),
             },
         );
@@ -210,10 +233,25 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
      *
      * Called after a credential change (sign-in or sign-out) because a stored
      * "unavailable" snapshot is a terminal state the coordinator would otherwise
-     * never re-fetch, leaving the badge stuck after the user signs in.
+     * never re-fetch, leaving the badge stuck after the user signs in. An open Checks tab
+     * is told to drop the previous account's detail and ask again.
      */
     clearChecksCache(): void {
         this.commitChecks.clear();
+        this.postToWebview({ type: "commitCiDetailInvalidated" });
+    }
+
+    /**
+     * The CI detail of one commit, for the Checks tab of this or another view.
+     *
+     * @returns Undefined when no enabled provider serves the repository or `ctx` went stale.
+     */
+    getCommitCiDetail(
+        hash: string,
+        options: CommitChecksFetchOptions,
+        ctx: CiOperationContext,
+    ): Promise<CommitCiDetail | undefined> {
+        return this.commitChecks.getDetail(hash, options, ctx);
     }
 
     /**
@@ -267,6 +305,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         webviewView.onDidDispose(() => {
             if (this.view === webviewView) {
                 this.commitCheckDemandSeq += 1;
+                this.ciDetailLoops.dispose();
                 this.view = undefined;
                 this.iconTheme.dispose();
                 this.disposeThemeChangeDisposables();
@@ -397,6 +436,35 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                             "intelligit.commitChecks.signIn",
                             this.assertString(msg.host, "host"),
                         );
+                        break;
+                    case "requestCommitCiDetail": {
+                        const repoKey = this.options.ciRepoKey;
+                        if (!repoKey) break;
+                        const view = this.view;
+                        await answerCommitCiDetailRequest(
+                            {
+                                repoKey,
+                                generations: this.options.ciGenerations,
+                                getDetail: (hash, options, ctx) =>
+                                    this.getCommitCiDetail(hash, options, ctx),
+                            },
+                            { ...msg },
+                            (reply) => {
+                                // Reply to the webview that asked, never one resolved since.
+                                if (this.view === view) this.postToWebview(reply);
+                            },
+                            this.ciDetailLoops,
+                        );
+                        break;
+                    }
+                    case "cancelCommitCiDetail":
+                        this.ciDetailLoops.cancel(msg.requestId);
+                        break;
+                    case "openCommitChecksSettings":
+                        await openCommitChecksSettings();
+                        break;
+                    case "openCommitInChecks":
+                        this._onOpenCommitInChecks.fire(this.assertGitHash(msg.hash, "hash"));
                         break;
                     case "fetch":
                     case "pull":
@@ -1014,6 +1082,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                 folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: this.folderIconsByName,
                 iconFonts,
+                ciRepoKey: this.options.ciRepoKey?.(),
             };
             const serialized = serializeWebviewPayload(payload);
             if (isRedundantPost(serialized, this.lastPostedPayload)) return;
@@ -1087,6 +1156,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         this._onRebaseDialogSubmit.dispose();
         this._onRebaseDialogCancel.dispose();
         this._onOpenCommitFileDiff.dispose();
+        this._onOpenCommitInChecks.dispose();
     }
 
     /**
