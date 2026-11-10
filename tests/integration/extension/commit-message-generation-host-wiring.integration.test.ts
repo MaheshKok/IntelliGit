@@ -286,7 +286,11 @@ describe("commit-message generation host wiring", () => {
         const context = {
             extensionUri: { fsPath: "/extension", path: "/extension" },
             subscriptions: [] as Array<{ dispose: () => void }>,
-            workspaceState: { get: vi.fn(), update: vi.fn(async () => undefined) },
+            workspaceState: {
+                get: vi.fn(),
+                keys: vi.fn(() => []),
+                update: vi.fn(async () => undefined),
+            },
             secrets: {},
         };
 
@@ -349,6 +353,7 @@ describe("repository switch", () => {
             subscriptions: [] as Array<{ dispose: () => void }>,
             workspaceState: {
                 get: vi.fn(),
+                keys: vi.fn(() => []),
                 update: vi.fn(async (key: string, value: unknown) => {
                     if (key === "intelligit.selectedRepositoryRoot" && value === "/repo-b") {
                         throw new Error("preference write failed");
@@ -393,7 +398,7 @@ describe("repository switch", () => {
         const context = {
             extensionUri: { fsPath: "/extension", path: "/extension" },
             subscriptions: [] as Array<{ dispose: () => void }>,
-            workspaceState: { get: vi.fn(), update },
+            workspaceState: { get: vi.fn(), keys: vi.fn(() => []), update },
             secrets: {},
         };
         await activateRepositoryMode(context as never, [

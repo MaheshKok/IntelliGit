@@ -168,6 +168,7 @@ function createMemento(initial: Record<string, unknown> = {}) {
     const store = new Map<string, unknown>(Object.entries(initial));
     return {
         get: vi.fn((key: string) => store.get(key)),
+        keys: vi.fn(() => [...store.keys()]),
         update: vi.fn(async (key: string, value: unknown | undefined) => {
             if (value === undefined) {
                 store.delete(key);
@@ -189,6 +190,7 @@ function createControlledMemento(initial: Record<string, unknown> = {}) {
     return {
         memento: {
             get: vi.fn((key: string) => store.get(key)),
+            keys: vi.fn(() => [...store.keys()]),
             update: vi.fn(
                 (key: string, value: unknown | undefined) =>
                     new Promise<void>((resolve) => {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { CiJob, CiRun, CommitCiDetail, CommitCiDetailData } from "../../../../src/types";
 import type { CommitChecksPersistentState } from "../../../../src/services/commitChecks/persistentCache";
 import { CiDetailPersistentCache } from "../../../../src/services/commitChecks/detailPersistentCache";
+import { CiActionFenceStore } from "../../../../src/services/commitChecks/ciActionFence";
 import {
     CommitCiDetailService,
     type CiDetailServeContext,
@@ -37,11 +38,15 @@ function detail(overrides: Partial<CommitCiDetailData> = {}): CommitCiDetailData
     };
 }
 
-function memento(): CommitChecksPersistentState & { values: Map<string, unknown> } {
+function memento(): CommitChecksPersistentState & {
+    values: Map<string, unknown>;
+    keys(): readonly string[];
+} {
     const values = new Map<string, unknown>();
     return {
         values,
         get: vi.fn((key: string) => values.get(key)),
+        keys: vi.fn(() => [...values.keys()]),
         update: vi.fn(async (key: string, value: unknown) => {
             if (value === undefined) values.delete(key);
             else values.set(key, value);
@@ -117,6 +122,70 @@ describe("CommitCiDetailService", () => {
         expect(fetchDetail).toHaveBeenCalledTimes(1);
         expect(await persistent.get(KEY)).toBeUndefined();
         expect(state.values.has(STORAGE_KEY)).toBe(false);
+    });
+
+    it("a fetch started before a fence began never ends it", async () => {
+        const fences = new CiActionFenceStore(memento());
+        const details = new CommitCiDetailService({ fences });
+        const pending = deferred<CommitCiDetailData>();
+        const served = details.getOrFetch(KEY, () => pending.promise, SERVE);
+        await fences.begin({
+            repoKey: "/repo",
+            hash: "abc1234",
+            provider: "github",
+            action: "rerunFailed",
+            targetId: "1",
+            runId: "1",
+            before: { attempt: 1, state: "failure" },
+            evidence: "runAttempt",
+        });
+        pending.resolve(
+            detail({
+                complete: false,
+                outcome: "pending",
+                runs: [run({ attempt: 1, state: "running" })],
+            }),
+        );
+        await served;
+        expect(
+            fences.isFenced("abc1234"),
+            "a pre-click read showing running keeps the re-run fence",
+        ).toBe(true);
+        fences.dispose();
+    });
+
+    it("served actionFence follows the fence store", async () => {
+        const fences = new CiActionFenceStore(memento());
+        const details = new CommitCiDetailService({ fences });
+        const fetchDetail = vi.fn(async () => detail());
+        await expect(details.getOrFetch(KEY, fetchDetail, SERVE)).resolves.not.toHaveProperty(
+            "actionFence",
+        );
+
+        await fences.begin({
+            repoKey: "/repo",
+            hash: "abc1234",
+            provider: "github",
+            action: "rerunFailed",
+            targetId: "1",
+            runId: "1",
+            before: { attempt: 1, state: "failure" },
+            evidence: "runAttempt",
+        });
+        await expect(details.getOrFetch(KEY, fetchDetail, SERVE)).resolves.toMatchObject({
+            actionFence: { targetId: "1", action: "rerunFailed", notSeen: false },
+        });
+        // Another repository showing the same SHA has no fence of its own.
+        await expect(
+            details.getOrFetch(KEY, fetchDetail, { ...SERVE, repoKey: "/other" }),
+        ).resolves.not.toHaveProperty("actionFence");
+
+        await fences.fail("/repo", "abc1234", "1");
+        await expect(details.getOrFetch(KEY, fetchDetail, SERVE)).resolves.not.toHaveProperty(
+            "actionFence",
+        );
+        expect(fetchDetail).toHaveBeenCalledTimes(1);
+        fences.dispose();
     });
 
     it("persisted contractVersion ≠ current is a miss", async () => {
@@ -222,6 +291,103 @@ describe("CommitCiDetailService", () => {
             ]);
             expect(await persistent.get(KEY)).toBeUndefined();
             expect(state.values.has(STORAGE_KEY)).toBe(false);
+        });
+
+        const rerunFence = {
+            repoKey: "/repo",
+            hash: "abc1234",
+            provider: "github",
+            action: "rerunFailed",
+            targetId: "1",
+            runId: "1",
+            before: { attempt: 1, state: "failure" },
+            evidence: "runAttempt",
+        } as const;
+
+        it("a scan page update carries the commit's action fence", async () => {
+            const fences = new CiActionFenceStore(memento());
+            await fences.begin(rerunFence);
+            const details = new CommitCiDetailService({ fences });
+            const posts: CommitCiDetail[] = [];
+            await details.getOrFetch(KEY, async () => capped(), SERVE, {}, undefined, {
+                continueScan: async (cursor) => pages[cursor.url],
+                isCurrent: () => true,
+                onUpdate: (served) => posts.push(served),
+            });
+            await vi.waitFor(() => expect(posts.at(-1)?.runs[0].failedScan?.state).toBe("done"));
+            expect(
+                posts.map((served) => served.actionFence?.targetId),
+                "every scan page re-post keeps the fence label",
+            ).toEqual(posts.map(() => "1"));
+            fences.dispose();
+        });
+
+        it("a fenced commit keeps the pending TTL even once its scan completes the detail", async () => {
+            let now = 0;
+            const fences = new CiActionFenceStore(memento(), { now: () => now });
+            await fences.begin(rerunFence);
+            const details = new CommitCiDetailService({ ttlMs: 30_000, now: () => now, fences });
+            const fetchDetail = vi.fn(async () => capped());
+            const posts: CommitCiDetail[] = [];
+            await details.getOrFetch(KEY, fetchDetail, SERVE, {}, undefined, {
+                continueScan: async (cursor) => pages[cursor.url],
+                isCurrent: () => true,
+                onUpdate: (served) => posts.push(served),
+            });
+            await vi.waitFor(() => expect(posts.at(-1)?.complete).toBe(true));
+            now += 31_000;
+            await details.getOrFetch(KEY, fetchDetail, SERVE);
+            expect(
+                fetchDetail,
+                "a fenced commit past the pending TTL is fetched again",
+            ).toHaveBeenCalledTimes(2);
+            fences.dispose();
+        });
+
+        it("a cancel that ends its fence drops the old scan's found jobs instead of carrying them", async () => {
+            const fences = new CiActionFenceStore(memento());
+            const details = new CommitCiDetailService({ fences });
+            const runningRun = (state: CiRun["state"]): CiDetailFetch => {
+                const fetched = capped();
+                return { ...fetched, runs: [{ ...fetched.runs[0], state }] };
+            };
+            const page12 = deferred<CiFailedScanPage>();
+            const posts: CommitCiDetail[] = [];
+            await details.getOrFetch(KEY, async () => runningRun("running"), SERVE, {}, undefined, {
+                continueScan: (cursor) =>
+                    cursor.url === "page-12" ? page12.promise : Promise.resolve(pages[cursor.url]),
+                isCurrent: () => true,
+                onUpdate: (served) => posts.push(served),
+            });
+            await vi.waitFor(() =>
+                expect(posts.at(-1)?.runs[0].jobs.map((job) => job.id)).toContain("job 1050"),
+            );
+
+            await fences.begin({
+                ...rerunFence,
+                action: "cancel",
+                before: { attempt: 1, state: "running" },
+                evidence: "cancelled",
+            });
+            const after = await details.getOrFetch(
+                KEY,
+                async () => runningRun("cancelled"),
+                SERVE,
+                { force: true },
+                undefined,
+                {
+                    continueScan: () => new Promise<CiFailedScanPage>(() => undefined),
+                    isCurrent: () => true,
+                    onUpdate: () => undefined,
+                },
+            );
+            expect(
+                after.runs[0].jobs.map((job) => job.id),
+                "a pre-cancel scan's found jobs never reach the post-cancel detail",
+            ).toEqual(["job 1"]);
+            expect(fences.isFenced("abc1234")).toBe(false);
+            page12.resolve(pages["page-12"]);
+            fences.dispose();
         });
 
         it("each scan page re-posts with the original requestId", async () => {

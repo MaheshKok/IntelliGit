@@ -7,6 +7,7 @@ import { CI_DETAIL_CONTRACT_VERSION } from "../../shared/ci/contractVersion";
 import { isCommitCiDetailData } from "../../shared/ci/persistedShape";
 import type { CommitCiDetail, CommitCiDetailData } from "../../types";
 import { randomUUID } from "node:crypto";
+import type { CiActionFenceView } from "./ciActionFence";
 import {
     clearGenerationKey,
     isUnconfirmedWrites,
@@ -31,6 +32,8 @@ export interface CiDetailPersistentCacheOptions {
     maxAgeMs?: number;
     /** Injectable clock for tests. */
     now?: () => number;
+    /** Action fences: a fenced commit's detail is never written. */
+    fence?: CiActionFenceView;
 }
 
 interface PersistedDetailEntry {
@@ -54,6 +57,7 @@ export class CiDetailPersistentCache {
     private readonly maxEntries: number;
     private readonly maxAgeMs: number;
     private readonly now: () => number;
+    private readonly fence?: CiActionFenceView;
     private operations: Promise<void> = Promise.resolve();
 
     /**
@@ -70,6 +74,7 @@ export class CiDetailPersistentCache {
         this.maxEntries = Math.max(1, Math.floor(options.maxEntries ?? DEFAULT_MAX_ENTRIES));
         this.maxAgeMs = Math.max(0, Math.floor(options.maxAgeMs ?? DEFAULT_MAX_AGE_MS));
         this.now = options.now ?? Date.now;
+        this.fence = options.fence;
     }
 
     /**
@@ -83,6 +88,8 @@ export class CiDetailPersistentCache {
             const payload = this.read();
             const entry = payload.entries.find((candidate) => candidate.key === key);
             if (!entry || Object.hasOwn(payload.unconfirmed, key)) return undefined;
+            // A fenced commit's stored entry may predate the action: a miss, with no LRU write.
+            if (this.fence?.isFenced(entry.data.hash)) return undefined;
             entry.lastAccessedAt = this.now();
             await this.write(this.trim(payload));
             return entry.data;
@@ -111,6 +118,8 @@ export class CiDetailPersistentCache {
         }
         const data = toPersistedData(detail);
         await this.enqueue(async () => {
+            // Checked here, not when queued: a fence begun while this write waited refuses it.
+            if (this.fence?.isFenced(detail.hash)) return;
             const payload = this.read();
             // A clear in any window since the fetch started outdates this detail.
             if (write && write.generation !== payload.generation) return;
@@ -165,6 +174,25 @@ export class CiDetailPersistentCache {
                 entries: payload.entries.filter((entry) => entry.key !== key),
                 unconfirmed: markUnconfirmed(payload.unconfirmed, key, undefined),
                 generation: payload.generation,
+            });
+        });
+    }
+
+    /**
+     * Removes every persisted detail of one commit, under any key, in order with every
+     * queued read and write; another window may have saved it.
+     *
+     * @param hash - Commit hash.
+     */
+    async deleteHash(hash: string): Promise<void> {
+        await this.enqueue(async () => {
+            const payload = this.read();
+            const entries = payload.entries.filter((entry) => entry.data.hash !== hash);
+            if (entries.length === payload.entries.length) return;
+            await this.write({
+                ...payload,
+                entries,
+                unconfirmed: keepUnconfirmed(payload.unconfirmed, entries),
             });
         });
     }

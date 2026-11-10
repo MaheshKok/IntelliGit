@@ -5,6 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type { CommitChecksSnapshot, ProviderId } from "../../types";
+import type { CiActionFenceStore } from "./ciActionFence";
 import type { CiTrace, CiTraceOutcome } from "./ciTrace";
 import type { CommitChecksPersistentCache, PersistentWrite } from "./persistentCache";
 
@@ -35,6 +36,11 @@ export interface CommitChecksServiceOptions {
     persistentCache?: CommitChecksPersistentCache;
     /** Token-free diagnostic trace. */
     trace?: CiTrace;
+    /**
+     * Action fences: a fenced commit is served from L1 only, with the pending TTL, and
+     * fetched again once its fence ends.
+     */
+    fences?: Pick<CiActionFenceStore, "isFenced" | "onDidEnd">;
 }
 
 /** Controls whether a commit-check request may use fresh cache snapshots. */
@@ -54,6 +60,7 @@ export class CommitChecksService {
     private readonly now: () => number;
     private readonly persistentCache?: CommitChecksPersistentCache;
     private readonly trace?: CiTrace;
+    private readonly fences?: CommitChecksServiceOptions["fences"];
     // False once a clear() failed: the store may still hold another account's entries.
     private persistentReadable = Promise.resolve(true);
     private generation = 0;
@@ -62,6 +69,12 @@ export class CommitChecksService {
     // Keys whose saved copy invalidate() failed to delete: not read again until a window
     // reload, after which the old copy is readable again until the next save replaces it.
     private readonly undeletedSaves = new Set<string>();
+    // Fence ends seen so far, and the count at each commit's latest end (one per action).
+    private fenceEndCount = 0;
+    private readonly fenceEnds = new Map<string, number>();
+    // Commits whose stored entries may predate an ended action, with that end's count:
+    // never read from the store until that end's removal succeeds.
+    private readonly staleStored = new Map<string, number>();
 
     /**
      * Creates the shared runtime cache.
@@ -76,6 +89,8 @@ export class CommitChecksService {
         this.now = options.now ?? Date.now;
         this.persistentCache = options.persistentCache;
         this.trace = options.trace;
+        this.fences = options.fences;
+        this.fences?.onDidEnd((hash) => this.fenceEnded(hash));
     }
 
     /**
@@ -109,9 +124,17 @@ export class CommitChecksService {
         if (inflight) return inflight;
         if (!options.force && this.persistentCache) {
             const readGeneration = this.captureGeneration(key);
+            const readFenceEnds = this.fenceEndCount;
             const persisted = await this.getPersisted(key);
-            // A read queued before invalidate() or clear() still sees the old entry.
-            if (persisted && this.isCurrentGeneration(key, readGeneration)) {
+            // A read queued before invalidate() or clear() still sees the old entry, and a
+            // fenced commit's stored entry may predate the action.
+            if (
+                persisted &&
+                this.isCurrentGeneration(key, readGeneration) &&
+                !this.fences?.isFenced(persisted.hash) &&
+                !this.fenceEndedSince(persisted.hash, readFenceEnds) &&
+                !this.staleStored.has(persisted.hash)
+            ) {
                 // A forced refresh that started or finished during the read is newer than the
                 // saved copy; one still confirming its save is joined, never served early.
                 const running = this.inflight.get(key);
@@ -138,11 +161,16 @@ export class CommitChecksService {
         const newerInflight = this.inflight.get(key);
         if (newerInflight) return newerInflight;
         const generation = this.captureGeneration(key);
+        const fenceEnds = this.fenceEndCount;
         const startedAt = this.now();
+        // A fence that ended during the fetch means the answer may predate the action.
+        const isCurrent = (snapshot: CommitChecksSnapshot): boolean =>
+            this.isCurrentGeneration(key, generation) &&
+            !this.fenceEndedSince(snapshot.hash, fenceEnds);
         const request = fetchSnapshot()
             .then(async (snapshot): Promise<CommitChecksSnapshot> => {
                 const ms = this.now() - startedAt;
-                if (this.isCurrentGeneration(key, generation)) {
+                if (isCurrent(snapshot)) {
                     const entry = {
                         snapshot,
                         fetchedAt: this.now(),
@@ -176,7 +204,7 @@ export class CommitChecksService {
                         storageFailed,
                     );
                     await this.confirmSaved(key, entry, confirm, writeId, storageFailed);
-                    if (this.isCurrentGeneration(key, generation)) return snapshot;
+                    if (isCurrent(snapshot)) return snapshot;
                 }
                 trace("discarded-generation", snapshot.hash, ms);
                 // Another window's clear() leaves this request in the map; a retry must not join it.
@@ -225,6 +253,34 @@ export class CommitChecksService {
         }
     }
 
+    /**
+     * A commit's fence ended: what was fetched or saved while it was fenced may be the
+     * pre-action answer (also one another window saved), so it is dropped and fetched again.
+     * Returns the stored entries' removal; a rejection keeps the fence stored.
+     */
+    private fenceEnded(hash: string): Promise<void> | undefined {
+        this.fenceEndCount += 1;
+        this.fenceEnds.set(hash, this.fenceEndCount);
+        for (const [key, entry] of this.cache) {
+            if (entry.snapshot.hash === hash) this.cache.delete(key);
+        }
+        const end = this.fenceEndCount;
+        this.staleStored.set(hash, end);
+        return this.persistentCache?.deleteHash(hash).then(
+            () => {
+                if (this.staleStored.get(hash) === end) this.staleStored.delete(hash);
+            },
+            (error: unknown) => {
+                this.trace?.({ kind: "snapshot", outcome: "failed", reason: "storage", hash });
+                throw error;
+            },
+        );
+    }
+
+    private fenceEndedSince(hash: string, count: number): boolean {
+        return (this.fenceEnds.get(hash) ?? 0) > count;
+    }
+
     // Another window's clear() bumps only the store's shared generation, not this service's.
     private captureGeneration(key: string): Generation {
         return [this.generation, this.keyGenerations.get(key) ?? 0, this.storeGeneration()];
@@ -245,9 +301,11 @@ export class CommitChecksService {
     }
 
     private isFresh(entry: CacheEntry): boolean {
+        const ageMs = this.now() - entry.fetchedAt;
+        // A re-run or cancel the provider has not shown yet: any answer may be the old one.
+        if (this.fences?.isFenced(entry.snapshot.hash)) return ageMs < this.pendingTtlMs;
         if (isCompleteSnapshot(entry.snapshot)) return true;
         const { state } = entry.snapshot;
-        const ageMs = this.now() - entry.fetchedAt;
         if (state === "none") return ageMs < this.noneTtlMs;
         if (state === "unavailable") return ageMs < this.unavailableTtlMs;
         // Pending, including a failure whose other checks are still running.

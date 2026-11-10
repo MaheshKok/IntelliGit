@@ -325,14 +325,29 @@ export interface CommitCiDetailData {
     signInHost?: string;
 }
 
+/** A CI write action the user can start from the Checks tab. */
+export type CiAction = "rerunFailed" | "rerunJob" | "cancel";
+
+/**
+ * How a fetched detail shows that an action took effect, chosen by the provider and
+ * stored with the action fence:
+ * - `runAttempt`: the run's attempt rose, or it moved to queued or running (GitHub re-runs);
+ * - `newerJobSameLogicalId`: the run has a newer job with the same logical id (GitLab job retry);
+ * - `newerJobInPipeline`: the run has a job newer than every job at click time (GitLab pipeline retry);
+ * - `cancelled`: the run is cancelled or complete (cancel, every provider).
+ */
+export type CiActionEvidence =
+    "runAttempt" | "newerJobSameLogicalId" | "newerJobInPipeline" | "cancelled";
+
 /** CI detail as the webview receives it: data plus values attached at read time. */
 export interface CommitCiDetail extends CommitCiDetailData {
     /** From the installed provider, never from a cache. */
     capabilities: ProviderCiCapabilities;
     repoKey: string;
+    /** A re-run or cancel the provider has not shown yet; `notSeen` after 10 minutes. */
     actionFence?: {
         targetId: string;
-        action: "rerunFailed" | "rerunJob" | "cancel";
+        action: CiAction;
         notSeen: boolean;
     };
     /**

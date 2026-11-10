@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.5] - 2026-11-10
+
+### Changed
+
+- Nothing changes in the extension yet. This is groundwork so that the coming Re-run and Cancel buttons can remember your click across a restart, and an old CI result never comes back while the new run starts.
+
 ## [0.43.4] - 2026-11-10
 
 ### Added
