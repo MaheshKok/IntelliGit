@@ -67,7 +67,7 @@ export function linkHeaderNext(response: FetchResponse): string | undefined {
  * whose next link cannot be read never counts as the last.
  */
 function linkEntries(header: string): { uri: string; rel?: string }[] {
-    const entry = /[\s,]*<([^>]*)>/y;
+    const entry = /([\s,]*)<([^>]*)>/y;
     const param = /\s*;\s*([^\s;,=]+)\s*(?:=\s*(?:"((?:[^"\\]|\\.)*)"|([^\s;,"]+)))?/y;
     const entries: { uri: string; rel?: string }[] = [];
     let at = 0;
@@ -75,6 +75,8 @@ function linkEntries(header: string): { uri: string; rel?: string }[] {
         entry.lastIndex = at;
         const target = entry.exec(header);
         if (!target) break;
+        // Link = #link-value (RFC 8288 §3): every value after the first follows a comma.
+        if (entries.length > 0 && !target[1].includes(",")) throw malformedLinkHeader();
         at = entry.lastIndex;
         let rel: string | undefined;
         for (;;) {
@@ -88,7 +90,7 @@ function linkEntries(header: string): { uri: string; rel?: string }[] {
                 if (!rel.trim()) throw malformedLinkHeader();
             }
         }
-        entries.push({ uri: target[1], rel });
+        entries.push({ uri: target[2], rel });
     }
     if (!/^[\s,]*$/.test(header.slice(at))) throw malformedLinkHeader();
     return entries;

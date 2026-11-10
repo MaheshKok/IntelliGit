@@ -185,6 +185,25 @@ describe("linkHeaderNext", () => {
             "https://a.test/x?page=2",
         );
     });
+
+    it("link-values with no comma between them cannot be read, so paging never continues on them", () => {
+        const next = (link: string | string[]): string | undefined =>
+            linkHeaderNext({ statusCode: 200, headers: { link }, body: {} });
+        // RFC 8288 §3: Link = #link-value, so every value after the first follows a comma.
+        for (const link of [
+            '<https://a.test/x?page=1>; rel="prev" <https://a.test/x?page=3>; rel="next"',
+            '<https://a.test/x?page=1><https://a.test/x?page=3>; rel="next"',
+        ]) {
+            expect(() => next(link), link).toThrow("Malformed Link header.");
+        }
+        // Separate header lines are joined with a comma, so they stay readable.
+        expect(
+            next([
+                '<https://a.test/x?page=1>; rel="prev"',
+                '<https://a.test/x?page=3>; rel="next"',
+            ]),
+        ).toBe("https://a.test/x?page=3");
+    });
 });
 
 describe("isUnderApiPrefix", () => {

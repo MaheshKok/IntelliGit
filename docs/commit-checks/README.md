@@ -107,9 +107,11 @@ For GitHub, the detailed view reads the commit's workflow runs and each run's la
 jobs and steps from the Actions API, 100 items per page and at most 10 pages (1,000
 items) per list. A longer list is shown as "the first 1,000"; when that run failed,
 IntelliGit keeps reading the pages past the limit one at a time, keeping only failed
-jobs, so every failed job is still listed. That scan pauses while the rate-limit gate
-cools down and resumes when the cooldown ends; if a page fails it stops, and Refresh
-continues from the page it stopped at. Its progress is kept in memory only. Next-page
+jobs, so a scan that reaches the end of the list shows every failed job. That scan
+pauses while the rate-limit gate cools down and resumes when the cooldown ends; if a
+page fails, a next-page link is refused or the job budget runs out, it stops and the
+failed jobs it found so far may be only part of the list. Refresh continues from the
+page it stopped at. Its progress is kept in memory only. Next-page
 links are followed only when they stay on `https://api.github.com` under the
 repository's own path; any other link stops paging, is never requested, and the list
 is marked as cut short, so the token is never sent anywhere else.

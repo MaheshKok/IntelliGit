@@ -14,9 +14,12 @@ export function generatedJob(
     conclusion = "success",
     overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
+    const id = 1_000_000 + position;
     return {
         ...jobFixture,
-        id: 1_000_000 + position,
+        id,
+        url: `https://api.github.com/repos/microsoft/vscode/actions/jobs/${id}`,
+        html_url: `https://github.com/microsoft/vscode/actions/runs/${jobFixture.run_id}/job/${id}`,
         name: `job ${position}`,
         conclusion,
         check_run_url: `https://api.github.com/repos/microsoft/vscode/check-runs/${2_000_000 + position}`,

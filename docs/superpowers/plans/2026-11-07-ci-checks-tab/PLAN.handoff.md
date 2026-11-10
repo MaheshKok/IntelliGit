@@ -66,3 +66,8 @@
 - Amendment item 5 built test first here (runScan's dropped-page branch); narrow Codex round ACCEPT, its one MINOR fixed with a second test case. Details in the review log.
 - Version 0.43.3 with its own CHANGELOG entry.
 - Keep in step with #414: rebase --onto its new tip and port its review fixes.
+
+## Commit map for this PR (2026-11-10)
+- #414 squash-merged into `main` as 98efa7c8; this branch was rebased onto it and PR #415 now targets `main`.
+- The review ranges and commit ids above (f005d90f..d41b4585, 392fdf68, ee59d01f, 018dbbb5 and earlier) are on the local branch `feat/ci-checks-tab`, which is not on origin. On PR #415 that work is one commit, 2b65390b (the lift); amendment item 5 is 3d8e7626 and the #414 test port is c08e0cb0. The PR's own squash merge replaces these with one commit on `main`.
+- Follow-up (stop rule, item 3; cubic 4529413302): a job with no `run_attempt` passes the attempt checks (`githubProvider.ts:333`, `:361`, `:428`). GitHub's job payloads carry the field (`workflowJob.json`), so no job is known to reach a detail unchecked; refusing such jobs would mark every detail incomplete if the field were ever omitted.
