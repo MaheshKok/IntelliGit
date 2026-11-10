@@ -56,6 +56,9 @@ export class CommitCiDetailService {
     private readonly inflight = new Map<string, Promise<ServedDetailData>>();
     // Grows by one entry per invalidated key (a write action), never per fetch.
     private readonly keyGenerations = new Map<string, number>();
+    // Keys whose saved copy invalidate() failed to delete: not read again until a window
+    // reload, after which the old copy is readable again until the next save replaces it.
+    private readonly undeletedSaves = new Set<string>();
     private readonly pendingTtlMs: number;
     private readonly noneTtlMs: number;
     private readonly unavailableTtlMs: number;
@@ -214,7 +217,12 @@ export class CommitCiDetailService {
         this.keyGenerations.set(key, (this.keyGenerations.get(key) ?? 0) + 1);
         this.cache.delete(key);
         this.inflight.delete(key);
-        await this.persistentCache?.delete(key);
+        try {
+            await this.persistentCache?.delete(key);
+        } catch (error) {
+            this.undeletedSaves.add(key);
+            throw error;
+        }
     }
 
     /** Clears every detail after auth or settings changes; late results are dropped. */
@@ -272,6 +280,7 @@ export class CommitCiDetailService {
     }
 
     private async getPersisted(key: string): Promise<CommitCiDetailData | undefined> {
+        if (this.undeletedSaves.has(key)) return undefined;
         try {
             if (!(await this.persistentReadable)) return undefined;
             return await this.persistentCache?.get(key);

@@ -36,11 +36,13 @@ export function settlementOf(detail: CommitCiDetailData): CiSettlement {
 }
 
 /**
- * Reports whether a detail is settled; `unknown` counts as incomplete everywhere.
+ * Reports whether a detail is settled; `unknown` counts as incomplete everywhere, and an
+ * `unavailable` detail is never complete, so it is retried after its TTL and never saved.
  *
  * @param detail - Provider detail for one commit.
  */
 export function isCompleteDetail(detail: CommitCiDetailData): boolean {
+    if (detail.outcome === "unavailable") return false;
     return settlementOf(detail) === "settled";
 }
 

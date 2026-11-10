@@ -59,6 +59,9 @@ export class CommitChecksService {
     private generation = 0;
     // Grows by one entry per invalidated key (a write action), never per fetch.
     private readonly keyGenerations = new Map<string, number>();
+    // Keys whose saved copy invalidate() failed to delete: not read again until a window
+    // reload, after which the old copy is readable again until the next save replaces it.
+    private readonly undeletedSaves = new Set<string>();
 
     /**
      * Creates the shared runtime cache.
@@ -200,7 +203,12 @@ export class CommitChecksService {
         this.keyGenerations.set(key, (this.keyGenerations.get(key) ?? 0) + 1);
         this.cache.delete(key);
         this.inflight.delete(key);
-        await this.persistentCache?.delete(key);
+        try {
+            await this.persistentCache?.delete(key);
+        } catch (error) {
+            this.undeletedSaves.add(key);
+            throw error;
+        }
     }
 
     /** Clears runtime snapshots and in-flight fetches after auth/settings changes. */
@@ -260,7 +268,7 @@ export class CommitChecksService {
     }
 
     private async getPersisted(key: string): Promise<CommitChecksSnapshot | undefined> {
-        if (!this.persistentCache) return undefined;
+        if (!this.persistentCache || this.undeletedSaves.has(key)) return undefined;
         try {
             if (!(await this.persistentReadable)) return undefined;
             return await this.persistentCache.get(key);

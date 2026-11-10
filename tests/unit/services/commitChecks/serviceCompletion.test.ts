@@ -474,6 +474,19 @@ describe("CommitChecksService completion and per-key fence", () => {
         await expect(slow).resolves.toMatchObject({ state: "success" });
     });
 
+    it("a saved copy that invalidate() failed to delete is not served again", async () => {
+        const persistent = new CommitChecksPersistentCache(memento());
+        await persistent.set(KEY, snapshot("failure"));
+        const service = new CommitChecksService({ persistentCache: persistent });
+        const failed = new Error("storage down");
+        vi.spyOn(persistent, "delete").mockRejectedValueOnce(failed);
+
+        await expect(service.invalidate(KEY)).rejects.toBe(failed);
+        const next = vi.fn(async () => snapshot("success"));
+        await expect(service.getOrFetch(KEY, next)).resolves.toMatchObject({ state: "success" });
+        expect(next).toHaveBeenCalledTimes(1);
+    });
+
     it("an answer its caller rejects after the save is removed, and a newer answer under the key is kept", async () => {
         const now = 1_000;
         const state = memento();

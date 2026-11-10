@@ -280,6 +280,32 @@ describe("CommitCiDetailService", () => {
         await expect(slow).resolves.toMatchObject({ outcome: "success" });
     });
 
+    it("a detail saved copy that invalidate() failed to delete is not served again", async () => {
+        const state = memento();
+        await service(state).service.getOrFetch(KEY, async () => detail(), SERVE);
+        const { service: details, persistent } = service(state);
+        const failed = new Error("storage down");
+        vi.spyOn(persistent, "delete").mockRejectedValueOnce(failed);
+
+        await expect(details.invalidate(KEY)).rejects.toBe(failed);
+        const next = vi.fn(async () => detail({ outcome: "success" }));
+        await expect(details.getOrFetch(KEY, next, SERVE)).resolves.toMatchObject({
+            outcome: "success",
+        });
+        expect(next).toHaveBeenCalledTimes(1);
+    });
+
+    it("an unavailable detail marked complete is retried after its TTL and never saved", async () => {
+        let now = 0;
+        const { service: details, persistent } = service(memento(), () => now);
+        const fetchDetail = vi.fn(async () => detail({ outcome: "unavailable" }));
+        await details.getOrFetch(KEY, fetchDetail, SERVE);
+        expect(await persistent.get(KEY)).toBeUndefined();
+        now += 15 * 60 * 1000;
+        await details.getOrFetch(KEY, fetchDetail, SERVE);
+        expect(fetchDetail).toHaveBeenCalledTimes(2);
+    });
+
     it("served capabilities follow the provider, persisted JSON has none", async () => {
         const state = memento();
         const { service: details } = service(state);

@@ -21,9 +21,10 @@ export type CiLogicalCheckSource =
  * Builds the cross-commit identity of a check.
  *
  * @param source - The job with its workflow or pipeline name, or a flat status check.
- * @returns `scope + "\0" + name` for jobs, `"status\0" + name` for flat checks.
+ * @returns `"job\0" + scope + "\0" + name` for jobs, `"status\0" + name` for flat checks,
+ *   so a workflow named `status` never collides with a flat check.
  */
 export function logicalCheckId(source: CiLogicalCheckSource): string {
     if (source.kind === "status") return `status\0${source.name}`;
-    return `${source.scope ?? ""}\0${source.name}`;
+    return `job\0${source.scope ?? ""}\0${source.name}`;
 }

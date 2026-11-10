@@ -4,7 +4,7 @@ import { logicalCheckId } from "../../../../src/shared/ci/identity";
 describe("logicalCheckId", () => {
     it("workflow and job form the GitHub logical id", () => {
         expect(logicalCheckId({ kind: "job", scope: "CI", name: "unit-tests" })).toBe(
-            "CI\0unit-tests",
+            "job\0CI\0unit-tests",
         );
         // Same job name in two workflows must stay two identities.
         expect(logicalCheckId({ kind: "job", scope: "Release", name: "unit-tests" })).not.toBe(
@@ -13,8 +13,14 @@ describe("logicalCheckId", () => {
     });
 
     it("a missing pipeline name is an empty scope", () => {
-        expect(logicalCheckId({ kind: "job", scope: null, name: "build" })).toBe("\0build");
-        expect(logicalCheckId({ kind: "job", name: "build" })).toBe("\0build");
+        expect(logicalCheckId({ kind: "job", scope: null, name: "build" })).toBe("job\0\0build");
+        expect(logicalCheckId({ kind: "job", name: "build" })).toBe("job\0\0build");
+    });
+
+    it("a job in a workflow or pipeline named status never shares a flat check's id", () => {
+        expect(logicalCheckId({ kind: "job", scope: "status", name: "build" })).not.toBe(
+            logicalCheckId({ kind: "status", name: "build" }),
+        );
     });
 
     it("status checks are prefixed", () => {
