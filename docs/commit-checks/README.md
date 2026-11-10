@@ -111,7 +111,8 @@ jobs, so a scan that reaches the end of the list shows every failed job. That sc
 pauses while the rate-limit gate cools down and resumes when the cooldown ends; if a
 page fails, a next-page link is refused or the job budget runs out, it stops and the
 failed jobs it found so far may be only part of the list. Refresh continues from the
-page it stopped at. Its progress is kept in memory only. Next-page
+page it stopped at. If the run was re-run while the scan was reading, the scan stops
+instead and Refresh reads the run again from the start. Its progress is kept in memory only. Next-page
 links are followed only when they stay on `https://api.github.com` under the
 repository's own path; any other link stops paging, is never requested, and the list
 is marked as cut short, so the token is never sent anywhere else.
