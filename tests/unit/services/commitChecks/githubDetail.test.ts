@@ -41,6 +41,9 @@ import {
 } from "../../../../src/services/commitChecks/detailService";
 import { NO_CI_CAPABILITIES } from "../../../../src/shared/ci/capabilities";
 import { logicalCheckId } from "../../../../src/shared/ci/identity";
+import { CiGenerations } from "../../../../src/services/commitChecks/ciGenerations";
+import { CommitChecksCoordinator } from "../../../../src/services/commitChecks/coordinator";
+import type { GitOps } from "../../../../src/git/operations";
 
 const SHA = runFixture.head_sha;
 const REPO_ID = runFixture.repository.id;
@@ -1474,6 +1477,87 @@ describe("failed-job overflow scan", () => {
             scanPages(gh.log),
             "a missing first total still refuses the next link after Refresh",
         ).toEqual([11]);
+    });
+
+    it.each<[string, number | undefined]>([
+        [
+            "a scan page dropped by a lifecycle bump still hands its missing first total to the scan",
+            undefined,
+        ],
+        // A named total gives the dropped page an onward link the cursor must not take.
+        ["a scan page dropped by a lifecycle bump never moves the scan to its next link", 2000],
+    ])("%s", async (_name, firstTotal) => {
+        let responses = 0;
+        let n = 0;
+        const gh = fakeGitHub(
+            state({
+                runs: [FAILED_RUN],
+                jobsByRun: new Map([[String(runFixture.id), failedRunJobs()]]),
+                nextLink: (url, page) =>
+                    url.includes("/jobs?") && page === 11 && n < 30
+                        ? `${jobsPageUrl(runFixture.id, 11)}&nonce=${++n}`
+                        : undefined,
+                // The first 1 000 never name a count; the first scan page names `firstTotal`, later ones 2 000.
+                jobsTotal: (_total, page) =>
+                    page <= 10 ? undefined : responses++ > 0 ? 2000 : firstTotal,
+            }),
+        );
+        let release!: () => void;
+        const held = new Promise<void>((done) => {
+            release = done;
+        });
+        let holdFirstScanPage = true;
+        const fetchWithMeta: FetchJsonWithMeta = async (url, headers) => {
+            const response = await gh.fetchWithMeta(url, headers);
+            if (holdFirstScanPage && isJobsPage(url, 11)) {
+                holdFirstScanPage = false;
+                await held;
+            }
+            return response;
+        };
+        const generations = new CiGenerations();
+        const gitOps = {
+            getRemotes: vi.fn(async () => ["origin"]),
+            getRemoteUrl: vi.fn(async () => "https://github.com/microsoft/vscode.git"),
+        } as unknown as GitOps;
+        const coordinator = new CommitChecksCoordinator(
+            gitOps,
+            [new GitHubProvider(gh.fetchJson, undefined, fetchWithMeta)],
+            {},
+            { generations },
+        );
+        const stalePosts: CommitCiDetail[] = [];
+        await coordinator.getDetail(SHA, {}, generations.capture("/repo"), (detail) =>
+            stalePosts.push(detail),
+        );
+        await vi.waitFor(() => expect(scanPages(gh.log)).toEqual([11]));
+
+        // A discovered repository closes while the first scan page is in flight.
+        generations.bumpLifecycle();
+        release();
+        // Lets the dropped page's scan loop finish before the next request starts one.
+        await new Promise((done) => setTimeout(done, 0));
+
+        const droppedUrl = gh.log.find((url) => isJobsPage(url, 11));
+        gh.log.length = 0;
+        const posts: CommitCiDetail[] = [];
+        await coordinator.getDetail(SHA, {}, generations.capture("/repo"), (detail) =>
+            posts.push(detail),
+        );
+        await vi.waitFor(() =>
+            expect(["stopped", "done"]).toContain(posts.at(-1)?.runs[0].failedScan?.state),
+        );
+        expect(stalePosts, "the dropped page is never published").toEqual([]);
+        expect(
+            gh.log.find((url) => isJobsPage(url, 11)),
+            "the cursor never moves to the dropped page's next link",
+        ).toBe(droppedUrl);
+        if (firstTotal === undefined) {
+            expect(
+                scanPages(gh.log),
+                "same scan retains its first missing budget after a lifecycle interruption",
+            ).toEqual([11]);
+        }
     });
 
     it("a scan page holding another attempt's job is discarded on a stable run, never posted as a failure", async () => {

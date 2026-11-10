@@ -412,8 +412,15 @@ export class CommitCiDetailService {
                 const page = await requester.hooks.continueScan(scan.cursor);
                 // Read again: a newer request may have replaced the hooks during the await.
                 const latest = this.scanHooks.get(key) ?? requester;
-                // A stale requester's page is dropped; the cursor stays for the next request.
-                if (!latest.hooks.isCurrent() || !this.isScanLive(key, scan, generation)) return;
+                // A stale requester's page is dropped; the cursor stays for the next request
+                // but keeps the budget the page froze, so a later page cannot raise it.
+                if (!latest.hooks.isCurrent() || !this.isScanLive(key, scan, generation)) {
+                    const frozen = "next" in page ? page.next?.jobsTotal : undefined;
+                    if (scan.cursor.jobsTotal === undefined && frozen !== undefined) {
+                        scan.cursor = { ...scan.cursor, jobsTotal: frozen };
+                    }
+                    return;
+                }
                 const entry = this.cache.get(key) as DetailEntry;
                 if ("runChanged" in page) {
                     // No automatic refetch, which a run re-run before every page would repeat

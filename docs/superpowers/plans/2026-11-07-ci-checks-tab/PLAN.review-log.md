@@ -751,3 +751,13 @@ PHASE 2: HALT review still failing after takeover
 - Proof: `bun vitest run githubDetail paginate httpMeta detailService && bun run format:check && ... && bun run package` exit 0; focused 121/121, full 7650/7650, package 88 entries.
 PHASE 2: HALT review still failing after takeover
 - Owner answer after wave 8 (2026-11-10, Root note): option A with a cap. Plan amendment item 5: a stale scan page hands its frozen budget (number or `null` marker) to a cursor that has none; its jobs stay unpublished. Last round on the budget rule; any further budget-path finding goes under Follow-ups unless it makes requests without bound.
+
+## Phase 2 lifted onto Phase 1's PR branch (feat/396-ci-checks-phase-2, base feat/395-ci-checks-phase-1)
+- Lift: Phase 2's net diff (2cdbaaf8..3d70e160) applied on Phase 1's PR tip 41d17bbc as 064c7d4b; Phase 19 action-fence code dropped; Phase 1's later L2-read block kept (join a running fetch; a newer L1 entry served only when fresh and servable, now through `served()` with `startScans`). Ported #414 fixes: cubic 4528524761, 4528716134.
+
+### Phase 2 amendment item 5 (Root, test first) and its narrow Codex round
+- Change: `detailService.ts` runScan, the dropped-page branch: when the cursor has no `jobsTotal`, it takes the dropped page's `next.jobsTotal` (number or `null`); the page's jobs are not published and the cursor's url/read/jobsRead stay.
+- Red before fix (githubDetail, real GitHubProvider + CommitChecksCoordinator + CiGenerations): `same scan retains its first missing budget after a lifecycle interruption: expected [ Array(10) ] to deeply equal [ 11 ]`. Green after.
+- Codex round (review model gpt-6.1-sol, effort high, thread 01a1c6ba-561d-7932-bfd2-073740be3001): VERDICT: ACCEPT. Focused suites 113/113. Mutations: remove assignment, flip `=== undefined`, ignore `null` marker each red on the line above; "move the cursor to page.next wholesale" stayed green.
+- [MINOR] githubDetail.test.ts:1545, the suites miss a dropped page advancing the cursor wholesale. Disposition: fixed. The test is now two cases; the new one ("a scan page dropped by a lifecycle bump never moves the scan to its next link") gives the first scan page a total so its `next` is a real onward link. Wholesale mutant red: `the cursor never moves to the dropped page's next link: expected '...page=11&nonce=1' to be '...page=11'`. Remove-assignment mutant still red on the budget line. Focused 111/111 (githubDetail + detailService).
+- Codex's probes also confirmed the lift: L2-race `newer.data` and missing `startScans` mutants red; applyPage, carryScans and served unchanged by the lift.

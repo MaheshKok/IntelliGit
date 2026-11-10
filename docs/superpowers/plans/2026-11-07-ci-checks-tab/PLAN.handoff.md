@@ -60,3 +60,9 @@
 - Open finding (Codex REQUIRED, `detailService.ts:463`): a page dropped because its requester went stale loses its frozen budget, so a later total of 2 000 allows 10 overflow requests instead of 1. Path: `repositoryMode.ts:402-410` bumps the lifecycle when a discovered repository closes.
 - Fix: PLAN.md Phase 2 amendment item 5. Test first, red before the fix, with real provider, coordinator, detail service and generations.
 - Cap: last round on the budget rule. Any further budget-path finding is a Follow-up unless it makes requests without bound.
+
+## Phase 2 lifted onto Phase 1's PR (2026-11-10)
+- Branch feat/396-ci-checks-phase-2, stacked on feat/395-ci-checks-phase-1 (PR #414); its own PR closes #396. Phase 19 action-fence code is not on this branch.
+- Amendment item 5 built test first here (runScan's dropped-page branch); narrow Codex round ACCEPT, its one MINOR fixed with a second test case. Details in the review log.
+- Version 0.43.3 with its own CHANGELOG entry.
+- Keep in step with #414: rebase --onto its new tip and port its review fixes.
