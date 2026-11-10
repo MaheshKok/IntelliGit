@@ -868,6 +868,12 @@ describe("UndockedViewProvider Checks tab loops", () => {
 
     it("a panel reload stops its previous context's Checks tab loop; a closed panel's late ready does not", async () => {
         await withLoopHarness(async ({ provider, getDetail }) => {
+            // Only the loop matters here: ready's repository startup needs a real workspace.
+            const host = provider as unknown as { handleMessage: (msg: unknown) => Promise<void> };
+            const handleMessage = host.handleMessage.bind(provider);
+            vi.spyOn(host, "handleMessage").mockImplementation(async (msg) =>
+                (msg as { type: string }).type === "ready" ? undefined : handleMessage(msg),
+            );
             const retired = openTestPanel(provider);
             retired.dispose();
             const current = openTestPanel(provider);
