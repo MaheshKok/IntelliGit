@@ -131,17 +131,21 @@ export class CommitCiDetailService {
                 if (running) return running;
                 const newer = this.cache.get(key);
                 if (newer && newer !== cached) {
-                    this.traceOutcome("hit-l1", newer.data, serve);
-                    return newer.data;
+                    if (this.isFresh(newer) && this.isServable(newer)) {
+                        this.traceOutcome("hit-l1", newer.data, serve);
+                        return newer.data;
+                    }
+                    // The newer entry expired while the read waited: fetch, never fall back.
+                } else {
+                    this.cache.set(key, {
+                        data: persisted,
+                        fetchedAt: this.now(),
+                        storeGeneration: readGeneration[2],
+                    });
+                    this.evictOldest();
+                    this.traceOutcome("hit-l2", persisted, serve);
+                    return persisted;
                 }
-                this.cache.set(key, {
-                    data: persisted,
-                    fetchedAt: this.now(),
-                    storeGeneration: readGeneration[2],
-                });
-                this.evictOldest();
-                this.traceOutcome("hit-l2", persisted, serve);
-                return persisted;
             }
         }
         const newerInflight = this.inflight.get(key);

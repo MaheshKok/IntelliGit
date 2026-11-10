@@ -446,7 +446,32 @@ describe("CommitChecksService completion and per-key fence", () => {
         now += 31_000;
         const next = vi.fn(async () => snapshot("pending"));
         await expect(service.getOrFetch(KEY, next)).resolves.toMatchObject({ state: "success" });
+        // With the saved copy gone, only the in-memory replacement can answer.
+        await persistent.delete(KEY);
+        await expect(service.getOrFetch(KEY, next)).resolves.toMatchObject({ state: "success" });
         expect(next).not.toHaveBeenCalled();
+    });
+
+    it("a persisted read that outlives a forced refresh's short-lived answer fetches again", async () => {
+        let now = 1_000;
+        const persistent = new CommitChecksPersistentCache(memento(), { now: () => now });
+        await persistent.set(KEY, snapshot("failure"));
+        const service = new CommitChecksService({ now: () => now, persistentCache: persistent });
+        const releaseRead = deferred<void>();
+        const read = persistent.get.bind(persistent);
+        vi.spyOn(persistent, "get").mockImplementationOnce(async (key) => {
+            const value = await read(key);
+            await releaseRead.promise;
+            return value;
+        });
+
+        const slow = service.getOrFetch(KEY, async () => snapshot("success"));
+        await service.getOrFetch(KEY, async () => snapshot("pending"), { force: true });
+        now += 31_000;
+        releaseRead.resolve();
+
+        // Neither the expired refresh nor the older saved copy is served.
+        await expect(slow).resolves.toMatchObject({ state: "success" });
     });
 
     it("an answer its caller rejects after the save is removed, and a newer answer under the key is kept", async () => {

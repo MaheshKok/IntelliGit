@@ -115,17 +115,21 @@ export class CommitChecksService {
                 if (running) return running;
                 const newer = this.cache.get(key);
                 if (newer && newer !== cached) {
-                    trace("hit-l1", newer.snapshot.hash);
-                    return newer.snapshot;
+                    if (this.isFresh(newer) && this.isServable(newer)) {
+                        trace("hit-l1", newer.snapshot.hash);
+                        return newer.snapshot;
+                    }
+                    // The newer entry expired while the read waited: fetch, never fall back.
+                } else {
+                    this.cache.set(key, {
+                        snapshot: persisted,
+                        fetchedAt: this.now(),
+                        storeGeneration: readGeneration[2],
+                    });
+                    this.evictOldest();
+                    trace("hit-l2", persisted.hash);
+                    return persisted;
                 }
-                this.cache.set(key, {
-                    snapshot: persisted,
-                    fetchedAt: this.now(),
-                    storeGeneration: readGeneration[2],
-                });
-                this.evictOldest();
-                trace("hit-l2", persisted.hash);
-                return persisted;
             }
         }
         const newerInflight = this.inflight.get(key);

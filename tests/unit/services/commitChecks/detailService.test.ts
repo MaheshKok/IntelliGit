@@ -245,7 +245,39 @@ describe("CommitCiDetailService", () => {
         await expect(details.getOrFetch(KEY, next, SERVE)).resolves.toMatchObject({
             outcome: "success",
         });
+        // With the saved copy gone, only the in-memory replacement can answer.
+        await persistent.delete(KEY);
+        await expect(details.getOrFetch(KEY, next, SERVE)).resolves.toMatchObject({
+            outcome: "success",
+        });
         expect(next).not.toHaveBeenCalled();
+    });
+
+    it("a persisted read that outlives a forced refresh's short-lived detail fetches again", async () => {
+        let now = 1_000;
+        const state = memento();
+        await service(state, () => now).service.getOrFetch(KEY, async () => detail(), SERVE);
+        const { service: details, persistent } = service(state, () => now);
+        const releaseRead = deferred<void>();
+        const read = persistent.get.bind(persistent);
+        vi.spyOn(persistent, "get").mockImplementationOnce(async (key) => {
+            const value = await read(key);
+            await releaseRead.promise;
+            return value;
+        });
+
+        const slow = details.getOrFetch(KEY, async () => detail({ outcome: "success" }), SERVE);
+        await details.getOrFetch(
+            KEY,
+            async () => detail({ complete: false, outcome: "pending" }),
+            SERVE,
+            { force: true },
+        );
+        now += 31_000;
+        releaseRead.resolve();
+
+        // Neither the expired refresh nor the older saved copy is served.
+        await expect(slow).resolves.toMatchObject({ outcome: "success" });
     });
 
     it("served capabilities follow the provider, persisted JSON has none", async () => {
