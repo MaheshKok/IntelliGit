@@ -112,6 +112,9 @@ function showsActionEffect(
     const run = detail.runs.find((candidate) => candidate.id === fence.runId);
     if (!run) return false;
     const { before } = fence;
+    // A lagging read of an earlier attempt shows nothing about the clicked one.
+    const olderAttempt =
+        run.attempt !== undefined && before.attempt !== undefined && run.attempt < before.attempt;
     switch (fence.evidence) {
         case "runAttempt": {
             const attemptRose =
@@ -119,7 +122,9 @@ function showsActionEffect(
                 before.attempt !== undefined &&
                 run.attempt > before.attempt;
             const restarted =
-                run.state !== before.state && (run.state === "queued" || run.state === "running");
+                !olderAttempt &&
+                run.state !== before.state &&
+                (run.state === "queued" || run.state === "running");
             return attemptRose || restarted;
         }
         case "newerJobSameLogicalId":
@@ -129,7 +134,7 @@ function showsActionEffect(
         case "newerJobInPipeline":
             return run.jobs.some((job) => isNewerId(job.id, before.maxJobId));
         case "cancelled":
-            return CANCEL_ENDED_STATES.has(run.state);
+            return !olderAttempt && CANCEL_ENDED_STATES.has(run.state);
     }
 }
 

@@ -1143,6 +1143,7 @@ No phase has a real dev-server URL, so no phase has a browser check. Proof is un
   - "endByUserRefresh ends a not-seen fence and does nothing before" (mutation: end on any call → red)
 
   Also `detailService.test.ts` › "served actionFence follows the fence store" (mutation: omit it → red).
+- Owner amendment 2026-11-10 (Fable R1 on #418): the `cancelled` rule and the `restarted` clause require the read's run attempt to be no older than the click-time attempt when both are known. This amends the `runAttempt` and `cancelled` rules of §3 step 4.
 - Done when: the tests pass, and Gate G exits 0. Patch bump with CHANGELOG "Groundwork: IntelliGit can now remember a CI re-run or cancel across a restart, so an old result never comes back while the new run starts."
 - Review gate: reviewer checks that the fence is awaited before any send path can run, that the check runs inside the `enqueue` callback, that no code deletes a fence by age, that each evidence rule matches §3 step 4, and that the timer is re-armed from the stored time. R1 (Fable) review: persisted format and async ordering.
 

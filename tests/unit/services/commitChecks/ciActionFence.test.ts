@@ -400,6 +400,102 @@ describe("CiActionFenceStore", () => {
         fences.dispose();
     });
 
+    describe("a read older than the click-time attempt", () => {
+        const cancelOfAttempt2 = start({
+            action: "cancel",
+            before: { attempt: 2, state: "running" },
+            evidence: "cancelled",
+        });
+
+        it("a lagging attempt-1 failure does not end a cancel of attempt 2", async () => {
+            const fences = new CiActionFenceStore(memento());
+            await fences.begin(cancelOfAttempt2);
+            await expect(
+                fences.resolve(REPO, HASH, detail([run({ attempt: 1, state: "failure" })])),
+                "a lagging attempt-1 read never ends a cancel of attempt 2",
+            ).resolves.toBe(false);
+            expect(fences.isFenced(HASH)).toBe(true);
+            fences.dispose();
+        });
+
+        it("the clicked attempt cancelled, or a newer one finished, ends a cancel of attempt 2", async () => {
+            const fences = new CiActionFenceStore(memento());
+            await fences.begin(cancelOfAttempt2);
+            await expect(
+                fences.resolve(REPO, HASH, detail([run({ attempt: 2, state: "cancelled" })])),
+                "the clicked attempt 2 cancelled ends the cancel",
+            ).resolves.toBe(true);
+            await fences.begin(cancelOfAttempt2);
+            await expect(
+                fences.resolve(REPO, HASH, detail([run({ attempt: 3, state: "failure" })])),
+                "a newer attempt 3 finished ends the cancel",
+            ).resolves.toBe(true);
+            expect(fences.isFenced(HASH)).toBe(false);
+            fences.dispose();
+        });
+
+        it("an unknown attempt on either side keeps today's rule", async () => {
+            const fences = new CiActionFenceStore(memento());
+            await fences.begin(
+                start({ action: "cancel", before: { state: "running" }, evidence: "cancelled" }),
+            );
+            await expect(
+                fences.resolve(REPO, HASH, detail([run({ attempt: 1, state: "failure" })])),
+                "no click-time attempt: a complete read ends the cancel",
+            ).resolves.toBe(true);
+            await fences.begin(cancelOfAttempt2);
+            await expect(
+                fences.resolve(REPO, HASH, detail([run({ attempt: undefined, state: "failure" })])),
+                "no read attempt: a complete read ends the cancel",
+            ).resolves.toBe(true);
+            await fences.begin(start({ before: { state: "failure" } }));
+            await expect(
+                fences.resolve(REPO, HASH, detail([run({ attempt: 1, state: "running" })])),
+                "no click-time attempt: a move to running ends the re-run",
+            ).resolves.toBe(true);
+            fences.dispose();
+        });
+
+        it("a lagging older-attempt running read is not a restart of a re-run", async () => {
+            const fences = new CiActionFenceStore(memento());
+            await fences.begin(start({ before: { attempt: 2, state: "failure" } }));
+            await expect(
+                fences.resolve(REPO, HASH, detail([run({ attempt: 1, state: "running" })])),
+                "a lagging attempt-1 running read is not a restart of attempt 2",
+            ).resolves.toBe(false);
+            expect(fences.isFenced(HASH)).toBe(true);
+            await expect(
+                fences.resolve(REPO, HASH, detail([run({ attempt: 2, state: "queued" })])),
+                "the clicked attempt 2 moving to queued is a restart",
+            ).resolves.toBe(true);
+            fences.dispose();
+        });
+
+        it("a fence the older-attempt rule keeps alive still ends by the not-seen timer and Refresh", async () => {
+            vi.useFakeTimers({ now: 0 });
+            const workspace = memento();
+            const fences = new CiActionFenceStore(workspace);
+            await fences.begin(cancelOfAttempt2);
+            const lagging = detail([run({ attempt: 1, state: "failure" })]);
+            await expect(
+                fences.resolve(REPO, HASH, lagging),
+                "the lagging read keeps the cancel fence",
+            ).resolves.toBe(false);
+            await vi.advanceTimersByTimeAsync(ACTION_FENCE_NOT_SEEN_MS);
+            await expect(fences.resolve(REPO, HASH, lagging)).resolves.toBe(false);
+            expect(fences.fenceFor(REPO, HASH)?.notSeen, "the kept fence reads not seen").toBe(
+                true,
+            );
+            await expect(
+                fences.endByUserRefresh(REPO, HASH, "77"),
+                "Refresh on the not-seen target ends the kept fence",
+            ).resolves.toBe(true);
+            expect(fences.isFenced(HASH)).toBe(false);
+            fences.dispose();
+            expect(new CiActionFenceStore(workspace).isFenced(HASH)).toBe(false);
+        });
+    });
+
     it("the evidence rule is read from the stored record after a restart", async () => {
         const workspace = memento();
         const provider = {
