@@ -866,6 +866,37 @@ describe("UndockedViewProvider Checks tab loops", () => {
         });
     });
 
+    it("a panel reload stops its previous context's Checks tab loop; a closed panel's late ready does not", async () => {
+        await withLoopHarness(async ({ provider, getDetail }) => {
+            const retired = openTestPanel(provider);
+            retired.dispose();
+            const current = openTestPanel(provider);
+            attachPostedMessageRecorder(current);
+            void current.receiveMessage({
+                type: "requestCommitCiDetail",
+                requestId: 1,
+                repoKey: "/repo-a",
+                hash: HASH_A,
+            });
+            await vi.advanceTimersByTimeAsync(0);
+
+            void retired.receiveMessage({ type: "ready" });
+            await vi.advanceTimersByTimeAsync(10 * 60_000);
+            const beforeReload = getDetail.mock.calls.length;
+            expect(
+                beforeReload,
+                "the current panel's loop kept re-reading after a closed panel's late ready",
+            ).toBeGreaterThan(1);
+
+            // A window reload sends ready again without reopening the panel.
+            void current.receiveMessage({ type: "ready" });
+            await vi.advanceTimersByTimeAsync(10 * 60_000);
+            expect(getDetail, "fetches after the panel reloaded").toHaveBeenCalledTimes(
+                beforeReload,
+            );
+        });
+    });
+
     it("closing the panel stops its Checks tab loop", async () => {
         await withLoopHarness(async ({ provider, getDetail }) => {
             const panel = openTestPanel(provider);

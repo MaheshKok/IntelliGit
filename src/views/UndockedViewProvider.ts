@@ -800,6 +800,8 @@ export class UndockedViewProvider {
             const ciMessage =
                 msg.type === "requestCommitCiDetail" || msg.type === "cancelCommitCiDetail";
             if (ciMessage && this.panel !== panel) return;
+            // A window reload sends ready without reopening the panel and ends the old scan loop.
+            if (msg.type === "ready" && this.panel === panel) this.ciDetailLoops.dispose();
             try {
                 if (isChangeWorkflowCommand(msg.type)) await this.handleChangeWorkflowMessage(msg);
                 else await this.handleMessage(msg);
