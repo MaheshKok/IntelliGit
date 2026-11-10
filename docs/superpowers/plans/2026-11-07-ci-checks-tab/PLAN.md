@@ -1141,6 +1141,12 @@ No phase has a real dev-server URL, so no phase has a browser check. Proof is un
   - "notSeen switches while the request gate is in cooldown" (mutation: tie the switch to a fetch → red)
   - "after 10 min reports notSeen and stays" (mutation: delete after 10 min → red)
   - "endByUserRefresh ends a not-seen fence and does nothing before" (mutation: end on any call → red)
+  - Owner amendment, › "a read older than the click-time attempt":
+    - "a lagging attempt-1 failure does not end a cancel of attempt 2" (`cancelled` rule; mutation: remove the guard → red)
+    - "a lagging older-attempt running read is not a restart of a re-run" (`runAttempt` rule; mutation: remove the guard → red)
+    - "the clicked attempt cancelled, or a newer one finished, ends a cancel of attempt 2" (mutation: same attempt counts as older → red)
+    - "an unknown attempt on either side keeps today's rule" (mutation: an unknown attempt counts as older → red)
+    - "a fence kept alive by the older-attempt rule reads not seen after the timer and ends on Refresh" (mutation: remove the guard → red)
 
   Also `detailService.test.ts` › "served actionFence follows the fence store" (mutation: omit it → red).
 - Owner amendment 2026-11-10 (Fable R1 on #418): the older-attempt guard, now in §3 step 4's `runAttempt` and `cancelled` rules.
