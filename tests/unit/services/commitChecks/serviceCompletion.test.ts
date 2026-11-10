@@ -403,6 +403,52 @@ describe("CommitChecksService completion and per-key fence", () => {
         );
     });
 
+    it("a persisted read that ends while a forced refresh confirms its save shares the refresh's rejection", async () => {
+        const persistent = new CommitChecksPersistentCache(memento());
+        await persistent.set(KEY, snapshot("failure"));
+        const service = new CommitChecksService({ persistentCache: persistent });
+        const releaseRead = deferred<void>();
+        const read = persistent.get.bind(persistent);
+        vi.spyOn(persistent, "get").mockImplementationOnce(async (key) => {
+            const value = await read(key);
+            await releaseRead.promise;
+            return value;
+        });
+        const rejected = new Error("caller rejected the answer");
+        let reject!: (error: Error) => void;
+        const confirm = vi.fn(() => new Promise<void>((_, fail) => (reject = fail)));
+
+        const slow = service.getOrFetch(KEY, async () => snapshot("pending"));
+        const forced = service.getOrFetch(
+            KEY,
+            async () => snapshot("success"),
+            { force: true },
+            undefined,
+            confirm,
+        );
+        await vi.waitFor(() => expect(confirm).toHaveBeenCalled());
+        releaseRead.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        reject(rejected);
+
+        // The unconfirmed refresh is never served on its own.
+        await expect(forced).rejects.toBe(rejected);
+        await expect(slow).rejects.toBe(rejected);
+    });
+
+    it("a saved copy read after an expired in-memory entry replaces that entry", async () => {
+        let now = 1_000;
+        const persistent = new CommitChecksPersistentCache(memento(), { now: () => now });
+        const service = new CommitChecksService({ now: () => now, persistentCache: persistent });
+        await service.getOrFetch(KEY, async () => snapshot("pending"));
+        // Another window saved the settled answer.
+        await persistent.set(KEY, snapshot("success"));
+        now += 31_000;
+        const next = vi.fn(async () => snapshot("pending"));
+        await expect(service.getOrFetch(KEY, next)).resolves.toMatchObject({ state: "success" });
+        expect(next).not.toHaveBeenCalled();
+    });
+
     it("an answer its caller rejects after the save is removed, and a newer answer under the key is kept", async () => {
         const now = 1_000;
         const state = memento();
@@ -462,6 +508,31 @@ describe("CommitChecksService completion and per-key fence", () => {
         await expect(stale).resolves.toMatchObject({ state: "pending" });
         const next = vi.fn(async () => snapshot("pending"));
         await expect(service.getOrFetch(KEY, next)).resolves.toMatchObject({ state: "pending" });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it("a persisted read that ends after a forced refresh does not replace the refreshed answer", async () => {
+        const persistent = new CommitChecksPersistentCache(memento());
+        await persistent.set(KEY, snapshot("failure"));
+        const service = new CommitChecksService({ persistentCache: persistent });
+        const releaseRead = deferred<void>();
+        const read = persistent.get.bind(persistent);
+        vi.spyOn(persistent, "get").mockImplementationOnce(async (key) => {
+            const value = await read(key);
+            await releaseRead.promise;
+            return value;
+        });
+
+        // The read has already seen the old entry when the forced refresh lands.
+        const slow = service.getOrFetch(KEY, async () => snapshot("pending"));
+        await expect(
+            service.getOrFetch(KEY, async () => snapshot("success"), { force: true }),
+        ).resolves.toMatchObject({ state: "success" });
+        releaseRead.resolve();
+
+        await expect(slow).resolves.toMatchObject({ state: "success" });
+        const next = vi.fn(async () => snapshot("pending"));
+        await expect(service.getOrFetch(KEY, next)).resolves.toMatchObject({ state: "success" });
         expect(next).not.toHaveBeenCalled();
     });
 

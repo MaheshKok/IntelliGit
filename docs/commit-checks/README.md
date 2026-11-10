@@ -104,8 +104,8 @@ detail across restarts only when the run is finished and every run, job and chec
 listed in full.
 
 Diagnostic lines for CI requests go to the **IntelliGit CI** output channel. They name
-the operation, provider, short commit hash and the request's address without its query
-string; they never contain tokens, request headers or log text.
+the operation, provider and short commit hash; they never contain tokens, request
+headers or log text.
 
 Automatic HTTP requests pass through a gate for each provider/API-origin pair. Every
 gate allows four concurrent requests and starts no more than 300 automatic requests in

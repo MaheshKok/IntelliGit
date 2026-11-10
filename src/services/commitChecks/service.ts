@@ -109,6 +109,15 @@ export class CommitChecksService {
             const persisted = await this.getPersisted(key);
             // A read queued before invalidate() or clear() still sees the old entry.
             if (persisted && this.isCurrentGeneration(key, readGeneration)) {
+                // A forced refresh that started or finished during the read is newer than the
+                // saved copy; one still confirming its save is joined, never served early.
+                const running = this.inflight.get(key);
+                if (running) return running;
+                const newer = this.cache.get(key);
+                if (newer && newer !== cached) {
+                    trace("hit-l1", newer.snapshot.hash);
+                    return newer.snapshot;
+                }
                 this.cache.set(key, {
                     snapshot: persisted,
                     fetchedAt: this.now(),

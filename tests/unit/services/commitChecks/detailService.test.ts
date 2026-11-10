@@ -172,6 +172,82 @@ describe("CommitCiDetailService", () => {
         expect(fetchDetail).not.toHaveBeenCalled();
     });
 
+    it("a persisted read that ends after a forced refresh does not replace the refreshed detail", async () => {
+        const state = memento();
+        await service(state).service.getOrFetch(KEY, async () => detail(), SERVE);
+        const { service: details, persistent } = service(state);
+        const releaseRead = deferred<void>();
+        const read = persistent.get.bind(persistent);
+        vi.spyOn(persistent, "get").mockImplementationOnce(async (key) => {
+            const value = await read(key);
+            await releaseRead.promise;
+            return value;
+        });
+
+        // The read has already seen the old entry when the forced refresh lands.
+        const slow = details.getOrFetch(KEY, async () => detail(), SERVE);
+        await expect(
+            details.getOrFetch(KEY, async () => detail({ outcome: "success" }), SERVE, {
+                force: true,
+            }),
+        ).resolves.toMatchObject({ outcome: "success" });
+        releaseRead.resolve();
+
+        await expect(slow).resolves.toMatchObject({ outcome: "success" });
+        const next = vi.fn(async () => detail());
+        await expect(details.getOrFetch(KEY, next, SERVE)).resolves.toMatchObject({
+            outcome: "success",
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it("a persisted read that ends while a forced refresh confirms its save shares the refresh's rejection", async () => {
+        const state = memento();
+        await service(state).service.getOrFetch(KEY, async () => detail(), SERVE);
+        const { service: details, persistent } = service(state);
+        const releaseRead = deferred<void>();
+        const read = persistent.get.bind(persistent);
+        vi.spyOn(persistent, "get").mockImplementationOnce(async (key) => {
+            const value = await read(key);
+            await releaseRead.promise;
+            return value;
+        });
+        const rejected = new Error("caller rejected the answer");
+        let reject!: (error: Error) => void;
+        const confirm = vi.fn(() => new Promise<void>((_, fail) => (reject = fail)));
+
+        const slow = details.getOrFetch(KEY, async () => detail(), SERVE);
+        const forced = details.getOrFetch(
+            KEY,
+            async () => detail({ outcome: "success" }),
+            SERVE,
+            { force: true },
+            confirm,
+        );
+        await vi.waitFor(() => expect(confirm).toHaveBeenCalled());
+        releaseRead.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        reject(rejected);
+
+        // The unconfirmed refresh is never served on its own.
+        await expect(forced).rejects.toBe(rejected);
+        await expect(slow).rejects.toBe(rejected);
+    });
+
+    it("a saved detail read after an expired in-memory entry replaces that entry", async () => {
+        let now = 1_000;
+        const { service: details, persistent } = service(memento(), () => now);
+        await details.getOrFetch(KEY, async () => detail({ complete: false }), SERVE);
+        // Another window saved the finished detail.
+        await persistent.set(KEY, detail({ outcome: "success" }));
+        now += 31_000;
+        const next = vi.fn(async () => detail({ complete: false }));
+        await expect(details.getOrFetch(KEY, next, SERVE)).resolves.toMatchObject({
+            outcome: "success",
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
     it("served capabilities follow the provider, persisted JSON has none", async () => {
         const state = memento();
         const { service: details } = service(state);

@@ -108,6 +108,8 @@ describe("provider accountKey", () => {
 
             storage.failing = true;
             expect(await accountKey(provider, ref)).not.toBe(await accountKey(provider, ref));
+            // Only the two sign-ins above wrote to secret storage; reading the key writes nothing.
+            expect(storage.store).toHaveBeenCalledTimes(2);
         });
     }
 });
