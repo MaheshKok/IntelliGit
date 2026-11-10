@@ -4,7 +4,14 @@
 // host-specific.
 
 import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
-import type { CiJob, CommitChecksSnapshot, CommitCiDetailData, ProviderId } from "../../types";
+import type {
+    CiAction,
+    CiActionEvidence,
+    CiJob,
+    CommitChecksSnapshot,
+    CommitCiDetailData,
+    ProviderId,
+} from "../../types";
 import type { CiOperationContext } from "./ciGenerations";
 
 export type { ProviderId } from "../../types";
@@ -99,4 +106,9 @@ export interface CommitChecksProvider {
     ): Promise<CiFailedScanPage>;
     /** Continuation guard: true only for a next-page URL under this provider's API base. */
     allowNext?(ref: ProviderRepoRef, url: string): boolean;
+    /**
+     * The evidence rule that ends an action's fence, stored with the fence when the action
+     * starts. Absent = `cancelled` for cancel; re-run actions need it.
+     */
+    actionEvidence?(action: CiAction): CiActionEvidence;
 }

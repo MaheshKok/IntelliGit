@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.5] - 2026-11-10
+
+### Changed
+
+- Groundwork: IntelliGit can now remember a CI re-run or cancel across a restart, so an old result never comes back while the new run starts.
+
 ## [0.43.3] - 2026-11-10
 
 ### Added

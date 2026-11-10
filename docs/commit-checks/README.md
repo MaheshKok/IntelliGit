@@ -140,3 +140,18 @@ an hour. It also honors provider-specific response signals:
 
 A bare HTTP 403 from GitLab or either Bitbucket provider remains an authentication or
 availability result, not a quota cooldown.
+
+## Re-run and cancel
+
+Before IntelliGit sends a re-run or cancel request, it saves a note for that run or job
+in the workspace and waits for the save to finish; if the note cannot be saved, the
+request is not sent. While a note exists for a commit, that commit's check results are
+kept in memory only and refreshed on the short pending interval (30 seconds). They are
+never written to the caches that survive a restart, so an old result cannot come back
+while the new run starts.
+
+The note itself is kept across a restart. It ends when a fetched result shows the
+action took effect (a new run attempt or job, or the run cancelled or finished), or at
+once when the request definitely fails, for example when the provider refuses it. Nothing removes it by age: after 10 minutes
+without that evidence the target reads "not seen yet - Refresh", and clicking Refresh
+then ends the note and fetches the commit again. A Refresh before then keeps the note.

@@ -42,6 +42,7 @@ import { CommitChecksPersistentCache } from "../services/commitChecks/persistent
 import { CommitCiDetailService } from "../services/commitChecks/detailService";
 import { CiDetailPersistentCache } from "../services/commitChecks/detailPersistentCache";
 import { CiGenerations } from "../services/commitChecks/ciGenerations";
+import { CiActionFenceStore } from "../services/commitChecks/ciActionFence";
 import { createCiTrace } from "../services/commitChecks/ciTrace";
 import { createCommitChecksProviders } from "./commitChecksProviders";
 import { captureWebviewViewProvider } from "../e2e/webviewCapture";
@@ -266,19 +267,30 @@ export async function activateRepositoryMode(
         });
         return ciTraceChannel;
     });
+    // Loads the stored re-run and cancel fences now, so they apply before the first fetch.
+    // Optional like every other workspaceState use here: activation test contexts omit it.
+    const ciActionFences =
+        context.workspaceState &&
+        new CiActionFenceStore(context.workspaceState, { trace: ciTrace });
     const commitChecksService = new CommitChecksService({
         ...commitChecksCacheTtls,
         persistentCache: new CommitChecksPersistentCache(context.globalState, {
             noneMaxAgeMs: 60 * 60 * 1000,
+            fence: ciActionFences,
         }),
         trace: ciTrace,
+        fences: ciActionFences,
     });
     const commitCiDetailService = new CommitCiDetailService({
         ...commitChecksCacheTtls,
-        persistentCache: new CiDetailPersistentCache(context.globalState),
+        persistentCache: new CiDetailPersistentCache(context.globalState, {
+            fence: ciActionFences,
+        }),
         trace: ciTrace,
+        fences: ciActionFences,
     });
     const ciGenerations = new CiGenerations();
+    if (ciActionFences) context.subscriptions.push(ciActionFences);
     context.subscriptions.push(
         {
             dispose: () => {

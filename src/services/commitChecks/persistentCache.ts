@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { isCompleteSnapshot } from "../../shared/ci/completion";
 import { isCommitChecksSnapshot } from "../../shared/ci/persistedShape";
 import type { CommitChecksSnapshot } from "../../types";
+import type { CiActionFenceView } from "./ciActionFence";
 
 const SCHEMA_VERSION = 1;
 const DEFAULT_STORAGE_KEY = "intelligit.commitChecks.cache.v1";
@@ -30,6 +31,8 @@ export interface CommitChecksPersistentCacheOptions {
     noneMaxAgeMs?: number;
     /** Injectable clock for tests. */
     now?: () => number;
+    /** Action fences: a fenced commit's snapshot is never written. */
+    fence?: CiActionFenceView;
 }
 
 interface PersistedCommitChecksEntry {
@@ -78,6 +81,7 @@ export class CommitChecksPersistentCache {
     private readonly maxAgeMs: number;
     private readonly noneMaxAgeMs: number;
     private readonly now: () => number;
+    private readonly fence?: CiActionFenceView;
     private operations: Promise<void> = Promise.resolve();
 
     /**
@@ -98,6 +102,7 @@ export class CommitChecksPersistentCache {
             Math.floor(options.noneMaxAgeMs ?? DEFAULT_NONE_MAX_AGE_MS),
         );
         this.now = options.now ?? Date.now;
+        this.fence = options.fence;
     }
 
     /**
@@ -140,6 +145,8 @@ export class CommitChecksPersistentCache {
             return;
         }
         await this.enqueue(async () => {
+            // Checked here, not when queued: a fence begun while this write waited refuses it.
+            if (this.fence?.isFenced(snapshot.hash)) return;
             const payload = this.read();
             // A clear in any window since the fetch started outdates this answer.
             if (write && write.generation !== payload.generation) return;
@@ -196,6 +203,25 @@ export class CommitChecksPersistentCache {
                 entries: payload.entries.filter((entry) => entry.key !== key),
                 unconfirmed: markUnconfirmed(payload.unconfirmed, key, undefined),
                 generation: payload.generation,
+            });
+        });
+    }
+
+    /**
+     * Removes every persisted snapshot of one commit, under any key, in order with every
+     * queued read and write; another window may have saved it.
+     *
+     * @param hash - Commit hash.
+     */
+    async deleteHash(hash: string): Promise<void> {
+        await this.enqueue(async () => {
+            const payload = this.read();
+            const entries = payload.entries.filter((entry) => entry.snapshot.hash !== hash);
+            if (entries.length === payload.entries.length) return;
+            await this.write({
+                ...payload,
+                entries,
+                unconfirmed: keepUnconfirmed(payload.unconfirmed, entries),
             });
         });
     }

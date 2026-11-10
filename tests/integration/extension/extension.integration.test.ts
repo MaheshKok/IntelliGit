@@ -316,6 +316,7 @@ type MockExtensionContext = {
     extensionUri: { fsPath: string; path: string };
     workspaceState?: {
         get: <T>(key: string, defaultValue?: T) => T | undefined;
+        keys: () => readonly string[];
         update: ReturnType<typeof vi.fn>;
     };
     subscriptions: Array<{ dispose: () => void }>;
@@ -1074,6 +1075,7 @@ function createWorkspaceState(
         get: vi.fn(<T>(key: string, defaultValue?: T) =>
             values.has(key) ? (values.get(key) as T) : defaultValue,
         ),
+        keys: vi.fn(() => [...values.keys()]),
         update: vi.fn(async (key: string, value: unknown) => {
             values.set(key, value);
         }),

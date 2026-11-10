@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
 import { hasUnfinishedWork, isCompleteDetail } from "../../shared/ci/completion";
 import type { CiFailedScan, CiJob, CommitCiDetail, CommitCiDetailData } from "../../types";
+import type { CiActionFenceStore } from "./ciActionFence";
 import type { CiTrace, CiTraceOutcome, CiTraceReason } from "./ciTrace";
 import type { CiDetailPersistentCache } from "./detailPersistentCache";
 import type { PersistentWrite } from "./persistentCache";
@@ -78,6 +79,12 @@ export interface CommitCiDetailServiceOptions {
     persistentCache?: CiDetailPersistentCache;
     /** Token-free diagnostic trace. */
     trace?: CiTrace;
+    /**
+     * Action fences: a fenced commit is served from L1 only with the pending TTL, every
+     * fetched detail is checked for the action's evidence, the fence is attached, and the
+     * commit is fetched again once its fence ends.
+     */
+    fences?: Pick<CiActionFenceStore, "isFenced" | "fenceFor" | "resolve" | "onDidEnd">;
 }
 
 /** Shared in-memory CI detail cache with in-flight de-dupe and a per-key fence. */
@@ -98,9 +105,16 @@ export class CommitCiDetailService {
     private readonly now: () => number;
     private readonly persistentCache?: CiDetailPersistentCache;
     private readonly trace?: CiTrace;
+    private readonly fences?: CommitCiDetailServiceOptions["fences"];
     // False once a clear() failed: the store may still hold another account's entries.
     private persistentReadable = Promise.resolve(true);
     private generation = 0;
+    // Fence ends seen so far, and the count at each commit's latest end (one per action).
+    private fenceEndCount = 0;
+    private readonly fenceEnds = new Map<string, number>();
+    // Commits whose stored entries may predate an ended action, with that end's count:
+    // never read from the store until that end's removal succeeds.
+    private readonly staleStored = new Map<string, number>();
 
     /**
      * Creates the shared detail cache.
@@ -115,6 +129,8 @@ export class CommitCiDetailService {
         this.now = options.now ?? Date.now;
         this.persistentCache = options.persistentCache;
         this.trace = options.trace;
+        this.fences = options.fences;
+        this.fences?.onDidEnd((hash) => this.fenceEnded(hash));
     }
 
     /**
@@ -141,7 +157,8 @@ export class CommitCiDetailService {
         scan?: CiFailedScanHooks,
     ): Promise<CommitCiDetail> {
         if (scan) this.scanHooks.set(key, { hooks: scan, serve });
-        return attach(await this.getData(key, fetchDetail, serve, options, confirm), serve);
+        const data = await this.getData(key, fetchDetail, serve, options, confirm);
+        return attach(data, serve, this.fences?.fenceFor(serve.repoKey, data.hash));
     }
 
     private async getData(
@@ -162,9 +179,17 @@ export class CommitCiDetailService {
         if (inflight) return inflight;
         if (!options.force && this.persistentCache) {
             const readGeneration = this.captureGeneration(key);
+            const readFenceEnds = this.fenceEndCount;
             const persisted = await this.getPersisted(key);
-            // A read queued before invalidate() or clear() still sees the old entry.
-            if (persisted && this.isCurrentGeneration(key, readGeneration)) {
+            // A read queued before invalidate() or clear() still sees the old entry, and a
+            // fenced commit's stored entry may predate the action.
+            if (
+                persisted &&
+                this.isCurrentGeneration(key, readGeneration) &&
+                !this.fences?.isFenced(persisted.hash) &&
+                !this.fenceEndedSince(persisted.hash, readFenceEnds) &&
+                !this.staleStored.has(persisted.hash)
+            ) {
                 // A forced refresh that started or finished during the read is newer than the
                 // saved copy; one still confirming its save is joined, never served early.
                 const running = this.inflight.get(key);
@@ -192,9 +217,19 @@ export class CommitCiDetailService {
         const newerInflight = this.inflight.get(key);
         if (newerInflight) return newerInflight;
         const generation = this.captureGeneration(key);
+        let fenceEnds = this.fenceEndCount;
+        // A fence that ended during the fetch means the answer may predate the action.
+        const isCurrent = (data: CommitCiDetailData): boolean =>
+            this.isCurrentGeneration(key, generation) &&
+            !this.fenceEndedSince(data.hash, fenceEnds);
         const request = fetchDetail()
             .then(async ({ scanCursors, ...data }): Promise<ServedDetailData> => {
-                if (this.isCurrentGeneration(key, generation)) {
+                if (isCurrent(data)) {
+                    // Ends the fences this detail shows took effect before the save below
+                    // is queued (they leave memory synchronously); never rejects. This
+                    // detail is the evidence, so the end it causes does not outdate it.
+                    void this.fences?.resolve(serve.repoKey, data.hash, data);
+                    fenceEnds = this.fenceEndCount;
                     const previous = this.cache.get(key);
                     if (
                         options.force &&
@@ -235,7 +270,7 @@ export class CommitCiDetailService {
                         storageFailed,
                     );
                     await this.confirmSaved(key, entry, confirm, writeId, storageFailed);
-                    if (this.isCurrentGeneration(key, generation)) {
+                    if (isCurrent(data)) {
                         // A scan that finds its run changed must start a new fetch, not join this one.
                         if (this.inflight.get(key) === request) this.inflight.delete(key);
                         this.startScans(key, entry, generation);
@@ -289,6 +324,34 @@ export class CommitCiDetailService {
         }
     }
 
+    /**
+     * A commit's fence ended: what was fetched or saved while it was fenced may be the
+     * pre-action answer (also one another window saved), so it is dropped and fetched again.
+     * Returns the stored entries' removal; a rejection keeps the fence stored.
+     */
+    private fenceEnded(hash: string): Promise<void> | undefined {
+        this.fenceEndCount += 1;
+        this.fenceEnds.set(hash, this.fenceEndCount);
+        for (const [key, entry] of this.cache) {
+            if (entry.data.hash === hash) this.cache.delete(key);
+        }
+        const end = this.fenceEndCount;
+        this.staleStored.set(hash, end);
+        return this.persistentCache?.deleteHash(hash).then(
+            () => {
+                if (this.staleStored.get(hash) === end) this.staleStored.delete(hash);
+            },
+            (error: unknown) => {
+                this.trace?.({ kind: "detail", outcome: "failed", reason: "storage", hash });
+                throw error;
+            },
+        );
+    }
+
+    private fenceEndedSince(hash: string, count: number): boolean {
+        return (this.fenceEnds.get(hash) ?? 0) > count;
+    }
+
     // Another window's clear() bumps only the store's shared generation, not this service's.
     private captureGeneration(key: string): Generation {
         return [this.generation, this.keyGenerations.get(key) ?? 0, this.storeGeneration()];
@@ -309,9 +372,11 @@ export class CommitCiDetailService {
     }
 
     private isFresh(entry: DetailEntry): boolean {
+        const ageMs = this.now() - entry.fetchedAt;
+        // A re-run or cancel the provider has not shown yet: any answer may be the old one.
+        if (this.fences?.isFenced(entry.data.hash)) return ageMs < this.pendingTtlMs;
         // Judged on what is served: a scan can complete a detail whose stored data is not.
         if (isCompleteDetail(served(entry))) return true;
-        const ageMs = this.now() - entry.fetchedAt;
         if (entry.data.outcome === "none") return ageMs < this.noneTtlMs;
         if (entry.data.outcome === "unavailable") return ageMs < this.unavailableTtlMs;
         return ageMs < this.pendingTtlMs;
@@ -449,7 +514,13 @@ export class CommitCiDetailService {
                 } else {
                     this.traceScan(applyPage(scan, page), entry.data, requester.serve);
                 }
-                latest.hooks.onUpdate?.(attach(served(entry), latest.serve));
+                latest.hooks.onUpdate?.(
+                    attach(
+                        served(entry),
+                        latest.serve,
+                        this.fences?.fenceFor(latest.serve.repoKey, entry.data.hash),
+                    ),
+                );
             }
         } finally {
             scan.active = false;
@@ -585,7 +656,22 @@ function served(entry: DetailEntry): CommitCiDetailData {
     };
 }
 
-/** Attaches the read-time values; the cached object itself never carries them. */
-export function attach(data: ServedDetailData, serve: CiDetailServeContext): CommitCiDetail {
-    return { ...data, capabilities: serve.capabilities, repoKey: serve.repoKey };
+/**
+ * Attaches the read-time values; the cached object itself never carries them.
+ *
+ * @param data - The cached or fetched detail.
+ * @param serve - Capabilities and repository.
+ * @param actionFence - The commit's action fence in that repository, if any.
+ */
+export function attach(
+    data: ServedDetailData,
+    serve: CiDetailServeContext,
+    actionFence?: CommitCiDetail["actionFence"],
+): CommitCiDetail {
+    return {
+        ...data,
+        capabilities: serve.capabilities,
+        repoKey: serve.repoKey,
+        ...(actionFence && { actionFence }),
+    };
 }

@@ -275,7 +275,11 @@ describe("commit-message generation host wiring", () => {
         const context = {
             extensionUri: { fsPath: "/extension", path: "/extension" },
             subscriptions: [] as Array<{ dispose: () => void }>,
-            workspaceState: { get: vi.fn(), update: vi.fn(async () => undefined) },
+            workspaceState: {
+                get: vi.fn(),
+                keys: vi.fn(() => []),
+                update: vi.fn(async () => undefined),
+            },
             secrets: {},
         };
 
