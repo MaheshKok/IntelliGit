@@ -105,7 +105,7 @@ listed in full.
 
 For GitHub, the detailed view reads the commit's workflow runs and each run's latest
 jobs and steps from the Actions API, 100 items per page and at most 10 pages (1,000
-items) per list. A longer list is shown as "the first 1,000"; when that run failed,
+items) per list. A longer list comes back marked as cut short at 1,000 items; when that run failed,
 IntelliGit keeps reading the pages past the limit one at a time, keeping only failed
 jobs, so a scan that reaches the end of the list shows every failed job. That scan
 pauses while the rate-limit gate cools down and resumes when the cooldown ends; if a

@@ -120,8 +120,9 @@ const DETAIL_MAX_READS = 3;
 /**
  * GitHub lists a ref's check runs from its 1 000 most recent check suites only
  * (https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference). The API
- * does not report the limit, so it is GitHub's documented value; at or past it the flat list
- * is partial and a job missing from the snapshot is looked up in its own suite.
+ * does not report the limit, so it is GitHub's documented value. Past it the flat list is
+ * partial; exactly at it is treated the same, since the suites count is not documented to go
+ * past the limit, and a job missing from the snapshot is looked up in its own suite.
  */
 const REF_CHECK_SUITE_LIMIT = 1000;
 
