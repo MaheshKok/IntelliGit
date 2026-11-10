@@ -400,6 +400,67 @@ describe("CiActionFenceStore", () => {
         fences.dispose();
     });
 
+    it("a detail fetched before the fence began never ends it", async () => {
+        const workspace = memento();
+        const fences = new CiActionFenceStore(workspace);
+        const fetchStarted = fences.sequence();
+        await fences.begin(start({ before: { attempt: 1, state: "failure" } }));
+        const restart = detail([run({ attempt: 1, state: "running" })]);
+        await expect(
+            fences.resolve(REPO, HASH, restart, fetchStarted),
+            "a read started before the click never ends its fence",
+        ).resolves.toBe(false);
+        fences.dispose();
+        const reopened = new CiActionFenceStore(workspace);
+        await expect(
+            reopened.resolve(REPO, HASH, restart, reopened.sequence()),
+            "after a restart every read post-dates the stored fence",
+        ).resolves.toBe(true);
+        reopened.dispose();
+    });
+
+    it("a read started while the fence's write is pending never ends it", async () => {
+        const workspace = memento();
+        const write = deferred();
+        const store = workspace.update;
+        workspace.update = vi.fn(async (key: string, value: unknown) => {
+            await write.promise;
+            await store(key, value);
+        });
+        const fences = new CiActionFenceStore(workspace);
+        const begun = fences.begin(start({ before: { attempt: 1, state: "failure" } }));
+        const fetchStarted = fences.sequence();
+        write.resolve();
+        await begun;
+        await expect(
+            fences.resolve(
+                REPO,
+                HASH,
+                detail([run({ attempt: 1, state: "running" })]),
+                fetchStarted,
+            ),
+            "a read started before the action was sent never ends its fence",
+        ).resolves.toBe(false);
+        fences.dispose();
+    });
+
+    it("another fence beginning mid-fetch does not hold back this fence's evidence", async () => {
+        const fences = new CiActionFenceStore(memento());
+        await fences.begin(start({ before: { attempt: 1, state: "failure" } }));
+        const fetchStarted = fences.sequence();
+        await fences.begin(start({ action: "rerunJob", targetId: "100" }));
+        await expect(
+            fences.resolve(
+                REPO,
+                HASH,
+                detail([run({ attempt: 2, state: "running" })]),
+                fetchStarted,
+            ),
+            "a fence begun before the fetch ends on its evidence",
+        ).resolves.toBe(true);
+        fences.dispose();
+    });
+
     describe("a read older than the click-time attempt", () => {
         const cancelOfAttempt2 = start({
             action: "cancel",
@@ -1572,6 +1633,63 @@ describe("when a fence ends", () => {
         await expect(
             detailService.getOrFetch(DETAIL_KEY, async () => RERUN_STARTED, SERVE),
         ).resolves.toMatchObject({ outcome: "pending" });
+        fences.dispose();
+    });
+
+    it("a later end's successful removal also drops an earlier retained fence on the same target", async () => {
+        const workspace = memento();
+        const fences = new CiActionFenceStore(workspace);
+        let removalFails = true;
+        fences.onDidEnd(async () => {
+            if (removalFails) throw new Error("disk");
+        });
+
+        await fences.begin(start());
+        await fences.resolve(REPO, HASH, RERUN_STARTED);
+        expect(
+            storedFences(workspace),
+            "a failed removal keeps the ended fence stored",
+        ).toHaveLength(1);
+
+        removalFails = false;
+        await fences.begin(start({ before: { attempt: 2, state: "failure" } }));
+        await fences.resolve(REPO, HASH, detail([run({ attempt: 3, state: "failure" })]));
+        expect(
+            storedFences(workspace),
+            "a removal that succeeded after the earlier end leaves no fence to restore",
+        ).toEqual([]);
+        fences.dispose();
+    });
+
+    it("an earlier end's successful removal keeps a later end's fence stored when that removal fails", async () => {
+        const workspace = memento();
+        const fences = new CiActionFenceStore(workspace);
+        const removals: { resolve: () => void; reject: () => void }[] = [];
+        fences.onDidEnd(
+            () =>
+                new Promise<void>((resolve, reject) => {
+                    removals.push({ resolve, reject: () => reject(new Error("disk")) });
+                }),
+        );
+
+        await fences.begin(start());
+        const firstEnd = fences.resolve(REPO, HASH, RERUN_STARTED);
+        await fences.begin(start({ before: { attempt: 2, state: "failure" } }));
+        const secondEnd = fences.resolve(
+            REPO,
+            HASH,
+            detail([run({ attempt: 3, state: "failure" })]),
+        );
+        expect(removals).toHaveLength(2);
+        removals[0].resolve();
+        await firstEnd;
+        removals[1].reject();
+        await secondEnd;
+
+        expect(
+            storedFences(workspace),
+            "the later fence's own removal failed, so it stays stored",
+        ).toMatchObject([{ before: { attempt: 2, state: "failure" } }]);
         fences.dispose();
     });
 

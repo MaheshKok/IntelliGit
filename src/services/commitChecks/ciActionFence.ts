@@ -165,6 +165,10 @@ export class CiActionFenceStore implements CiActionFenceView {
     private readonly retained = new Set<CiActionFenceRecord>();
     // Fences `fail` is removing from storage; they stay in memory until that write succeeds.
     private readonly removing = new Set<CiActionFenceRecord>();
+    // The order fences began in this window, in memory only: a fence loaded from storage
+    // began before anything this window fetches.
+    private readonly begunAt = new WeakMap<CiActionFenceRecord, number>();
+    private begun = 0;
     private writes: Promise<void> = Promise.resolve();
     private readonly now: () => number;
     private readonly trace?: CiTrace;
@@ -236,6 +240,8 @@ export class CiActionFenceStore implements CiActionFenceView {
         if (!this.fences.includes(record) || this.removing.has(record)) {
             throw new Error("The action's fence was ended before it was sent.");
         }
+        // Numbered once its write settled: a fetch started during the write predates the send.
+        this.begunAt.set(record, ++this.begun);
         this.traceFence("fenced", record);
     }
 
@@ -268,6 +274,14 @@ export class CiActionFenceStore implements CiActionFenceView {
     }
 
     /**
+     * How many fences began in this window. Capture it when a fetch starts and pass it to
+     * `resolve`, so a fetch already in flight when a fence began never ends that fence.
+     */
+    sequence(): number {
+        return this.begun;
+    }
+
+    /**
      * Ends every fence of the commit in that repository that the fetched detail shows took
      * effect; another repository's fence for the same commit stays. The fences leave memory
      * before this returns its promise, so a write queued right after sees them gone.
@@ -275,15 +289,22 @@ export class CiActionFenceStore implements CiActionFenceView {
      * @param repoKey - Repository the detail was fetched for.
      * @param hash - The detail's commit.
      * @param detail - A freshly fetched detail.
+     * @param fetchStarted - `sequence()` when the fetch started; fences begun after it stay.
      * @returns True when at least one fence ended.
      */
-    async resolve(repoKey: string, hash: string, detail: CommitCiDetailData): Promise<boolean> {
+    async resolve(
+        repoKey: string,
+        hash: string,
+        detail: CommitCiDetailData,
+        fetchStarted?: number,
+    ): Promise<boolean> {
         const ended = this.fences.filter(
             (fence) =>
                 fence.repoKey === repoKey &&
                 fence.hash === hash &&
                 fence.provider === detail.provider &&
                 !this.unsettled.has(fence) &&
+                (fetchStarted === undefined || (this.begunAt.get(fence) ?? 0) <= fetchStarted) &&
                 showsActionEffect(fence, detail),
         );
         await this.end(ended);
@@ -379,8 +400,11 @@ export class CiActionFenceStore implements CiActionFenceView {
         this.fences = this.fences.filter((fence) => !ended.includes(fence));
         for (const fence of ended) this.retained.add(fence);
         const removals = [...new Set(ended.map((fence) => fence.hash))].map(async (hash) => {
+            // A removal covers every fence of the commit retained when it starts, earlier
+            // ends included; a fence retained later waits for its own removal.
+            const covered = [...this.retained].filter((fence) => fence.hash === hash);
             if (!(await this.emitEnd(hash))) return;
-            for (const fence of ended) if (fence.hash === hash) this.retained.delete(fence);
+            for (const fence of covered) this.retained.delete(fence);
         });
         await Promise.all(removals);
         for (const fence of ended) if (this.retained.has(fence)) this.traceFence("failed", fence);

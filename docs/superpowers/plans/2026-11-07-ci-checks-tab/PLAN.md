@@ -332,7 +332,7 @@ Every fetch captures `(globalGeneration, keyGeneration[key])` when it starts and
 1. Before `runAction` sends anything, the fence is written and awaited (`workspaceState.update`). A failed write means the action is not sent.
 2. Then the request is sent. A definite failure (forbidden, other 4xx/5xx, not sent) deletes the fence. `ok` and `uncertain` keep it and run `invalidate(hash)` and the forced fetch (§6).
 3. While any fence exists for a hash, snapshot and detail results for that hash stay in L1 with the pending TTL and are never persisted. The fence check runs inside the persistent store's `enqueue` callback, immediately before the write, so a `set` queued before the fence existed but run after it is still refused (plan-standard rule 2).
-4. A fetched result ends the fence only when it shows the action took effect for the target, by the fence's stored `evidence` rule (Codex R3 #4). The provider names the rule per action (`actionEvidence(action)`, declared from Phase 8):
+4. A fetched result ends the fence only when it shows the action took effect for the target, by the fence's stored `evidence` rule (Codex R3 #4). A fetch that started before the fence began never ends it (cubic on #418: its answer predates the click; the begin order is kept in memory only, so after a restart every fetch post-dates the stored fences). The provider names the rule per action (`actionEvidence(action)`, declared from Phase 8):
    - `runAttempt` (GitHub re-run failed and re-run job): run `runId` has an `attempt` higher than `before.attempt`, or its state moved from `before.state` to `queued` or `running` while its `attempt` is not lower than `before.attempt` (owner amendment 2026-11-10: a lagging read of an older attempt is not a restart; an unknown attempt on either side keeps the state rule). The run is watched, not the old job id, because a GitHub re-run starts a new run attempt [ASSUMED: the re-run job also gets a new job id; watching the run attempt works either way].
    - `newerJobSameLogicalId` (GitLab job retry): pipeline `runId` has a job with the same `logicalId` as `before.logicalId` and a numeric id higher than `before.jobId`, in any state. A GitLab retry creates a new job id ([GitLab retry semantics](https://docs.gitlab.com/ci/jobs/#retry-jobs)), so a retry that already finished before the next poll still ends the fence.
    - `newerJobInPipeline` (GitLab pipeline retry, "Re-run failed"): pipeline `runId` has a job whose id is higher than `before.maxJobId` [PROPOSED: same reasoning as the job retry].
@@ -1151,7 +1151,13 @@ No phase has a real dev-server URL, so no phase has a browser check. Proof is un
     - "an unknown attempt on either side keeps today's rule" (mutation: an unknown attempt counts as older → red)
     - "a fence kept alive by the older-attempt rule reads not seen after the timer and ends on Refresh" (mutation: remove the guard → red)
 
-  Also `detailService.test.ts` › "served actionFence follows the fence store" (mutation: omit it → red).
+  - "a detail fetched before the fence began never ends it" (mutation: resolve ignores the fetch start → red; a stored fence counts as begun after every fetch → red)
+  - "a read started while the fence's write is pending never ends it" (mutation: number the fence before its write settles → red; Fable R1 on #418)
+  - "another fence beginning mid-fetch does not hold back this fence's evidence" (mutation: compare the latest begin instead of the fence's own → red)
+  - "a later end's successful removal also drops an earlier retained fence on the same target" (mutation: drop only this end's fences → red; CodeRabbit on #418)
+  - "an earlier end's successful removal keeps a later end's fence stored when that removal fails" (mutation: drop every retained fence of the commit on success → red)
+
+  Also `detailService.test.ts` › "served actionFence follows the fence store" (mutation: omit it → red), and › "a fetch started before a fence began never ends it" (mutation: drop the fetch start at the `resolve` call → red).
 - Owner amendment 2026-11-10 (Fable R1 on #418): the older-attempt guard, now in §3 step 4's `runAttempt` and `cancelled` rules.
 - Done when: the tests pass, and Gate G exits 0. Patch bump with CHANGELOG "Groundwork: IntelliGit can now remember a CI re-run or cancel across a restart, so an old result never comes back while the new run starts."
 - Review gate: reviewer checks that the fence is awaited before any send path can run, that the check runs inside the `enqueue` callback, that no code deletes a fence by age, that each evidence rule matches §3 step 4, and that the timer is re-armed from the stored time. R1 (Fable) review: persisted format and async ordering.

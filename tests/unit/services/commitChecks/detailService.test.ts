@@ -124,6 +124,36 @@ describe("CommitCiDetailService", () => {
         expect(state.values.has(STORAGE_KEY)).toBe(false);
     });
 
+    it("a fetch started before a fence began never ends it", async () => {
+        const fences = new CiActionFenceStore(memento());
+        const details = new CommitCiDetailService({ fences });
+        const pending = deferred<CommitCiDetailData>();
+        const served = details.getOrFetch(KEY, () => pending.promise, SERVE);
+        await fences.begin({
+            repoKey: "/repo",
+            hash: "abc1234",
+            provider: "github",
+            action: "rerunFailed",
+            targetId: "1",
+            runId: "1",
+            before: { attempt: 1, state: "failure" },
+            evidence: "runAttempt",
+        });
+        pending.resolve(
+            detail({
+                complete: false,
+                outcome: "pending",
+                runs: [run({ attempt: 1, state: "running" })],
+            }),
+        );
+        await served;
+        expect(
+            fences.isFenced("abc1234"),
+            "a pre-click read showing running keeps the re-run fence",
+        ).toBe(true);
+        fences.dispose();
+    });
+
     it("served actionFence follows the fence store", async () => {
         const fences = new CiActionFenceStore(memento());
         const details = new CommitCiDetailService({ fences });

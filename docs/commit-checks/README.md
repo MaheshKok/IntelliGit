@@ -179,12 +179,21 @@ availability result, not a quota cooldown.
 Before IntelliGit sends a re-run or cancel request, it saves a note for that run or job
 in the workspace and waits for the save to finish; if the note cannot be saved, the
 request is not sent. While a note exists for a commit, that commit's check results are
-kept in memory only and refreshed on the short pending interval (30 seconds). They are
-never written to the caches that survive a restart, so an old result cannot come back
-while the new run starts.
+kept in memory only and count as out of date after 30 seconds (the short pending cache
+lifetime), so the next look at the commit fetches it again; how often the commit is
+polled is a separate schedule. The results are never written to the caches that survive
+a restart, so an old result cannot come back while the new run starts.
 
-The note itself is kept across a restart. It ends when a fetched result shows the
-action took effect (a new run attempt or job, or the run cancelled or finished), or at
-once when the request definitely fails, for example when the provider refuses it. Nothing removes it by age: after 10 minutes
-without that evidence the target reads "not seen yet - Refresh", and clicking Refresh
-then ends the note and fetches the commit again. A Refresh before then keeps the note.
+The note itself is kept across a restart. It ends when a result fetched after the click
+shows the action took effect, or at once when the request definitely fails, for example
+when the provider refuses it. What counts as taking effect depends on the action:
+
+- Re-run on GitHub: the run gets a new attempt, or moves back to queued or running.
+- Retry of a GitLab job: a newer job with the same name appears in the pipeline.
+- Retry of a GitLab pipeline: a job newer than any the pipeline had appears.
+- Cancel: the run is cancelled or finished.
+
+A result for an older run attempt than the one clicked never ends a note. Nothing
+removes a note by age: after 10 minutes without that evidence the target reads
+"not seen yet - Refresh", and clicking Refresh then ends the note and fetches the
+commit again. A Refresh before then keeps the note.

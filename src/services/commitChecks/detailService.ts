@@ -84,7 +84,10 @@ export interface CommitCiDetailServiceOptions {
      * fetched detail is checked for the action's evidence, the fence is attached, and the
      * commit is fetched again once its fence ends.
      */
-    fences?: Pick<CiActionFenceStore, "isFenced" | "fenceFor" | "resolve" | "onDidEnd">;
+    fences?: Pick<
+        CiActionFenceStore,
+        "isFenced" | "fenceFor" | "resolve" | "onDidEnd" | "sequence"
+    >;
 }
 
 /** Shared in-memory CI detail cache with in-flight de-dupe and a per-key fence. */
@@ -218,6 +221,7 @@ export class CommitCiDetailService {
         if (newerInflight) return newerInflight;
         const generation = this.captureGeneration(key);
         let fenceEnds = this.fenceEndCount;
+        const fenceSequence = this.fences?.sequence();
         // A fence that ended during the fetch means the answer may predate the action.
         const isCurrent = (data: CommitCiDetailData): boolean =>
             this.isCurrentGeneration(key, generation) &&
@@ -228,7 +232,7 @@ export class CommitCiDetailService {
                     // Ends the fences this detail shows took effect before the save below
                     // is queued (they leave memory synchronously); never rejects. This
                     // detail is the evidence, so the end it causes does not outdate it.
-                    void this.fences?.resolve(serve.repoKey, data.hash, data);
+                    void this.fences?.resolve(serve.repoKey, data.hash, data, fenceSequence);
                     fenceEnds = this.fenceEndCount;
                     const previous = this.cache.get(key);
                     if (
