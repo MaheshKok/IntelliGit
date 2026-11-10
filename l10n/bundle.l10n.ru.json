@@ -986,5 +986,7 @@
     "The view could not refresh after the targeted history step: {message}": "Не удалось обновить представление после шага целевой истории: {message}",
     "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "Для разрешения слияния, частичных коммитов и восстановления полок IntelliGit требуется Git {0} или новее, но найден Git {1}. Обновите Git, чтобы использовать эти функции.",
     "IntelliGit CI": "IntelliGit CI",
-    "The signed-in account changed during the request.": "Учётная запись, в которую выполнен вход, изменилась во время запроса."
+    "The signed-in account changed during the request.": "Учётная запись, в которую выполнен вход, изменилась во время запроса.",
+    "The provider's next-page link was refused.": "Ссылка поставщика на следующую страницу отклонена.",
+    "Malformed Link header.": "Некорректный заголовок Link."
 }

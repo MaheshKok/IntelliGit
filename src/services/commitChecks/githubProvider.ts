@@ -5,9 +5,26 @@
 
 import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
-import type { CommitCheckItem, CommitChecksSnapshot, CommitCheckState } from "../../types";
+import type {
+    CiCoverage,
+    CiFlatCheck,
+    CiJob,
+    CiRun,
+    CiState,
+    CiStep,
+    CommitCheckItem,
+    CommitChecksSnapshot,
+    CommitCheckState,
+    CommitCiDetailData,
+} from "../../types";
 import { getErrorMessage } from "../../utils/errors";
-import { HttpError, httpGetJson, type FetchJson } from "./http";
+import {
+    HttpError,
+    httpGetJson,
+    httpGetJsonWithMeta,
+    type FetchJson,
+    type FetchJsonWithMeta,
+} from "./http";
 import {
     aggregateState,
     compactText,
@@ -18,8 +35,19 @@ import {
     summaryForItems,
     unavailableSnapshot,
 } from "./normalize";
+import { CI_MAX_PAGES, CI_PAGE_SIZE, isUnderApiPrefix, linkHeaderNext, paginate } from "./paginate";
+import { RequestGateCooldownError } from "./requestGate";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
-import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
+import { hasUnfinishedWork } from "../../shared/ci/completion";
+import { logicalCheckId } from "../../shared/ci/identity";
+import type {
+    CiDetailFetch,
+    CiFailedScanCursor,
+    CiFailedScanPage,
+    CommitChecksProvider,
+    HostMap,
+    ProviderRepoRef,
+} from "./types";
 
 interface GitHubRepoRef extends ProviderRepoRef {
     readonly owner: string;
@@ -27,6 +55,7 @@ interface GitHubRepoRef extends ProviderRepoRef {
 }
 
 interface GitHubCheckRun {
+    id?: unknown;
     name?: unknown;
     status?: unknown;
     conclusion?: unknown;
@@ -42,7 +71,59 @@ interface GitHubStatus {
     target_url?: unknown;
 }
 
+interface GitHubWorkflowRun {
+    id?: unknown;
+    name?: unknown;
+    display_title?: unknown;
+    html_url?: unknown;
+    status?: unknown;
+    conclusion?: unknown;
+    workflow_id?: unknown;
+    event?: unknown;
+    actor?: { login?: unknown } | null;
+    head_branch?: unknown;
+    run_number?: unknown;
+    run_attempt?: unknown;
+    created_at?: unknown;
+    run_started_at?: unknown;
+    updated_at?: unknown;
+    check_suite_id?: unknown;
+    repository?: { id?: unknown } | null;
+}
+
+interface GitHubWorkflowJob {
+    id?: unknown;
+    name?: unknown;
+    workflow_name?: unknown;
+    status?: unknown;
+    conclusion?: unknown;
+    html_url?: unknown;
+    check_run_url?: unknown;
+    started_at?: unknown;
+    completed_at?: unknown;
+    run_attempt?: unknown;
+    steps?: unknown;
+}
+
+interface GitHubWorkflowStep {
+    number?: unknown;
+    name?: unknown;
+    status?: unknown;
+    conclusion?: unknown;
+    started_at?: unknown;
+    completed_at?: unknown;
+}
+
 const GITHUB_PAGE_SIZE = 100;
+/** Whole detail reads before a run that keeps re-running is shown as it was last read. */
+const DETAIL_MAX_READS = 3;
+/**
+ * GitHub lists a ref's check runs from its 1 000 most recent check suites only
+ * (https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference). The API
+ * does not report the limit, so it is GitHub's documented value; at or past it the flat list
+ * is partial and a job missing from the snapshot is looked up in its own suite.
+ */
+const REF_CHECK_SUITE_LIMIT = 1000;
 
 /** Parses GitHub.com remote URLs from HTTPS, SSH, and scp-like Git remotes. */
 export function parseGithubRemoteUrl(remoteUrl: string): GitHubRepoRef | null {
@@ -84,20 +165,31 @@ export function normalizeGithubChecks(
 /** GitHub commit-check provider backed by the built-in VS Code GitHub session. */
 export class GitHubProvider implements CommitChecksProvider {
     readonly id = "github" as const;
-    /** No CI detail features yet; each flag turns on in the phase that implements it. */
-    readonly capabilities = NO_CI_CAPABILITIES;
+    /** Each flag turns on in the phase that implements it. */
+    readonly capabilities = Object.freeze({
+        ...NO_CI_CAPABILITIES,
+        runs: true,
+        jobs: true,
+        steps: true,
+        runHeader: true,
+    });
 
     /**
-     * Accepts an injected HTTP boundary and an optional CI/CD include override.
+     * Accepts injected HTTP boundaries and an optional CI/CD include override.
      *
      * @param fetchJson - The HTTP boundary; defaults to the real HTTPS helper in production.
      * @param ciCdPattern - Optional include pattern from `commitChecks.ciCdFilter`; when
      *   omitted the built-in `CICD_CHECK_PATTERN` is used. The review-bot exclusion always
      *   applies regardless of this override.
+     * @param fetchWithMeta - The HTTP boundary for the `Link`-paged run and job lists.
+     * @param cooldownEnd - The request gate's cooldown end for a URL's bucket (0 when not
+     *   cooling down); tells a rate-limit response on a scan page from a permission refusal.
      */
     constructor(
         private readonly fetchJson: FetchJson = httpGetJson,
         private readonly ciCdPattern?: RegExp,
+        private readonly fetchWithMeta: FetchJsonWithMeta = httpGetJsonWithMeta,
+        private readonly cooldownEnd: (url: string) => number = () => 0,
     ) {}
 
     /** Matches any github.com remote; the host map is not consulted for GitHub. */
@@ -125,69 +217,601 @@ export class GitHubProvider implements CommitChecksProvider {
 
     /** Authenticates, fetches check-runs + statuses in parallel, and normalizes them. */
     async getChecks(ref: ProviderRepoRef, hash: string): Promise<CommitChecksSnapshot> {
-        const { host, owner, repo } = ref as GitHubRepoRef;
+        const session = await openSession(hash);
+        if (!isSession(session)) return session;
+        return (await this.fetchSnapshot(ref as GitHubRepoRef, hash, session)).snapshot;
+    }
 
-        let session: vscode.AuthenticationSession | undefined;
+    /**
+     * Fetches the commit's workflow runs, their latest jobs and steps, and the snapshot's
+     * checks that are not jobs. Any page failure yields an `unavailable` detail; never throws.
+     */
+    async getDetail(ref: ProviderRepoRef, hash: string): Promise<CiDetailFetch> {
+        const gitHubRef = ref as GitHubRepoRef;
+        const session = await openSession(hash);
+        if (!isSession(session)) return flatDetail(session);
         try {
-            session = await vscode.authentication.getSession("github", ["repo"], {
-                silent: true,
-            });
+            // A re-run during a read restarts it whole, since the snapshot's check runs belong
+            // to the old attempt too. The last read keeps what it saw, marked incomplete.
+            for (let read = 1; ; read += 1) {
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
+                const detail = await this.readDetail(
+                    gitHubRef,
+                    hash,
+                    session,
+                    read === DETAIL_MAX_READS,
+                );
+                if (detail) return detail;
+            }
         } catch (err) {
-            return unavailableSnapshot(
-                hash,
-                vscode.l10n.t("GitHub authentication failed: {message}", {
-                    message: getErrorMessage(err),
-                }),
-            );
+            return flatDetail(failedSnapshot(hash, gitHubRef.host, err, session.accessToken));
         }
-        if (!session) {
-            return { hash, state: "none", summary: summaryForState("none"), items: [] };
-        }
+    }
 
-        const headers = {
-            Accept: "application/vnd.github+json",
-            Authorization: `Bearer ${session.accessToken}`,
-            "User-Agent": "vscode-intelligit",
-            "X-GitHub-Api-Version": "2022-11-28",
+    /**
+     * One read of the detail: run list, snapshot, then each run's jobs and its attempt again.
+     * GitHub can announce a re-run's attempt before its jobs and check runs catch up, so the
+     * read counts only when the attempt is unchanged, every job reports the run's attempt and
+     * every job's check run is in the snapshot. Otherwise it returns undefined, or on the
+     * last read an incomplete detail that is never saved.
+     */
+    private async readDetail(
+        ref: GitHubRepoRef,
+        hash: string,
+        session: vscode.AuthenticationSession,
+        lastRead: boolean,
+    ): Promise<CiDetailFetch | undefined> {
+        const fetch = (url: string) => this.fetchWithMeta(url, githubHeaders(session));
+        let repositoryId: string | undefined;
+        const runsPage = await paginate(
+            fetch,
+            `${repoApiUrl(ref)}/actions/runs?head_sha=${encodeURIComponent(hash)}&per_page=${CI_PAGE_SIZE}`,
+            linkHeaderNext,
+            (body) => {
+                const runs = readList<GitHubWorkflowRun>(body, "workflow_runs");
+                repositoryId ??= readId(runs[0]?.repository?.id);
+                return runs;
+            },
+            CI_MAX_PAGES,
+            (url) => this.allowNext(ref, url, repositoryId),
+        );
+        const { snapshot, checkRunIds } = await this.fetchSnapshot(ref, hash, session, true);
+        if (snapshot.state === "unavailable") return flatDetail(snapshot);
+        // At GitHub's suite limit the snapshot is partial whether or not a job is missing from
+        // it: the flat list reports the gap, and a missing job is looked up in its own suite.
+        const refLimited = await this.refAtSuiteLimit(ref, hash, session);
+        const inOwnSuite = async (run: GitHubWorkflowRun, missing: readonly string[]) => {
+            const suiteId = readId(run.check_suite_id);
+            if (!refLimited || suiteId === undefined) return false;
+            const suite = await paginate(
+                fetch,
+                `${repoApiUrl(ref)}/check-suites/${encodeURIComponent(suiteId)}/check-runs?filter=all&per_page=${CI_PAGE_SIZE}`,
+                linkHeaderNext,
+                (body) => readCheckRuns(body).flatMap((checkRun) => readId(checkRun.id) ?? []),
+                CI_MAX_PAGES,
+                (url) => this.allowNext(ref, url, repositoryId),
+            );
+            const ids = new Set(suite.items);
+            return missing.every((id) => ids.has(id));
         };
-        const base = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
-            repo,
-        )}/commits/${encodeURIComponent(hash)}`;
+        let rerun = false;
+        const runs: CiRun[] = [];
+        // Every run as read, hidden jobs included, so a hidden job's check run is no flat check.
+        const readRuns: CiRun[] = [];
+        const scanCursors: CiFailedScanCursor[] = [];
+        for (const run of runsPage.items) {
+            const runId = readId(run.id);
+            if (runId === undefined) continue;
+            const runName = readString(run.name) || readString(run.display_title);
+            let jobsTotal: number | undefined;
+            // Serial by GitHub's own instruction, like the check-run pager below.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            const jobsPage = await paginate(
+                fetch,
+                `${repoApiUrl(ref)}/actions/runs/${runId}/jobs?filter=latest&per_page=${CI_PAGE_SIZE}`,
+                linkHeaderNext,
+                (body) => {
+                    jobsTotal ??= totalCount(body);
+                    return readList<GitHubWorkflowJob>(body, "jobs").map((job) =>
+                        toJob(job, runName),
+                    );
+                },
+                CI_MAX_PAGES,
+                (url) => this.allowNext(ref, url, repositoryId),
+            );
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            const current = await this.currentRun(ref, runId, session);
+            const ciRun = toRun(run, runId, runName, jobsPage.items, jobsPage.coverage);
+            const missing = ciRun.jobs.flatMap((job) =>
+                job.checkRunId === undefined || checkRunIds.has(job.checkRunId)
+                    ? []
+                    : [job.checkRunId],
+            );
+            const consistent =
+                optionalNumber(current.run_attempt) === ciRun.attempt &&
+                ciRun.jobs.every(
+                    (job) => job.attempt === undefined || job.attempt === ciRun.attempt,
+                ) &&
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
+                (missing.length === 0 || (await inOwnSuite(run, missing)));
+            if (!consistent) {
+                if (!lastRead) return undefined;
+                rerun = true;
+            }
+            readRuns.push(ciRun);
+            const next = ciRun.state === "failure" ? jobsPage.next : undefined;
+            if (consistent) {
+                runs.push(ciRun);
+                if (next) {
+                    scanCursors.push({
+                        runId,
+                        runAttempt: ciRun.attempt,
+                        runName,
+                        url: next,
+                        jobsRead: jobsPage.items.length,
+                        ...(jobsTotal !== undefined && { jobsTotal }),
+                    });
+                }
+            } else {
+                // A run shows only its own attempt's jobs. Its overflow scan stops instead of
+                // starting, since its run check would restart it on every page; Refresh reads again.
+                runs.push({
+                    ...ciRun,
+                    jobs: ciRun.jobs.filter(
+                        (job) => job.attempt === undefined || job.attempt === ciRun.attempt,
+                    ),
+                    ...(next && {
+                        failedScan: {
+                            state: "stopped" as const,
+                            found: 0,
+                            error: vscode.l10n.t("Remote data changed. Reload and try again."),
+                        },
+                    }),
+                });
+            }
+        }
+        const otherChecks = otherChecksOf(snapshot.items, readRuns);
+        return {
+            ...detailOf(hash, runs, runsPage.coverage, otherChecks),
+            ...(refLimited && {
+                otherChecksCoverage: { reason: "pageBound" as const, shown: otherChecks.length },
+            }),
+            ...(rerun && { complete: false }),
+            ...(scanCursors.length > 0 && { scanCursors }),
+        };
+    }
+
+    /**
+     * Reads one page of a failed run's jobs past the page bound and keeps only failed jobs.
+     * A request-gate cooldown is reported as `pausedUntil`, never as a failure; never throws.
+     */
+    async continueFailedScan(
+        ref: ProviderRepoRef,
+        cursor: CiFailedScanCursor,
+    ): Promise<CiFailedScanPage> {
+        // The cursor came from a guarded link, so its repository id is the one the API named.
+        const repositoryId = /^\/repositories\/(\d+)\//.exec(safePathname(cursor.url))?.[1];
+        const refused = vscode.l10n.t("The provider's next-page link was refused.");
+        if (!this.allowNext(ref, cursor.url, repositoryId)) return { error: refused };
+        const session = await openSession("");
+        if (!isSession(session)) {
+            return { error: session.error ?? summaryForState(session.state) };
+        }
+        // The budget is the job count first read; a later page's count never replaces it. A stop
+        // or pause after the page that read it keeps it in the same page's cursor.
+        let jobsTotal = cursor.jobsTotal;
+        const kept = () => (jobsTotal === undefined ? {} : { next: { ...cursor, jobsTotal } });
+        try {
+            const changed = {
+                runChanged: true,
+                error: vscode.l10n.t("Remote data changed. Reload and try again."),
+            } as const;
+            const runChanged = async () => {
+                const run = await this.currentRun(ref as GitHubRepoRef, cursor.runId, session);
+                return (
+                    readId(run.id) !== cursor.runId ||
+                    optionalNumber(run.run_attempt) !== cursor.runAttempt
+                );
+            };
+            // Read before every page, resumes included, so a re-run elsewhere stops the scan.
+            if (await runChanged()) return changed;
+            const response = await this.fetchWithMeta(cursor.url, githubHeaders(session));
+            // `null` remembers a missing first count, so a later page's count never fills it in.
+            if (jobsTotal === undefined) jobsTotal = totalCount(response.body) ?? null;
+            // And after it: a re-run before this page answered would mix the two attempts' jobs.
+            if (await runChanged()) return changed;
+            const jobs = readList<GitHubWorkflowJob>(response.body, "jobs").map((job) =>
+                toJob(job, cursor.runName),
+            );
+            // The run kept its attempt but the page did not catch up: discard it.
+            if (
+                jobs.some((job) => job.attempt !== undefined && job.attempt !== cursor.runAttempt)
+            ) {
+                return changed;
+            }
+            const failed = jobs.filter((job) => job.state === "failure");
+            const next = linkHeaderNext(response);
+            if (next === undefined) return { failed };
+            const read = [...(cursor.read ?? []), requestedUrl(cursor.url)];
+            const jobsRead = (cursor.jobsRead ?? 0) + jobs.length;
+            // A link back to a page already read would loop the scan without end. A respelt link
+            // to one is caught once the run's own job count is read, and an empty page that links
+            // onward makes no progress.
+            if (
+                !this.allowNext(ref, next, repositoryId) ||
+                read.includes(requestedUrl(next)) ||
+                jobs.length === 0 ||
+                jobsTotal === null ||
+                jobsRead >= jobsTotal
+            ) {
+                // The same page again, with the budget saved, so Refresh resumes under it.
+                return { failed, error: refused, ...kept() };
+            }
+            return { failed, next: { ...cursor, url: next, read, jobsRead, jobsTotal } };
+        } catch (err) {
+            if (err instanceof RequestGateCooldownError) {
+                return { pausedUntil: err.until, ...kept() };
+            }
+            // A 429 or a quota 403 puts the gate into cooldown; a permission 403 does not.
+            if (err instanceof HttpError && (err.statusCode === 429 || err.statusCode === 403)) {
+                const until = this.cooldownEnd(cursor.url);
+                if (until > 0) return { pausedUntil: until, ...kept() };
+            }
+            const failed = failedSnapshot("", ref.host, err, session.accessToken);
+            return { error: failed.error ?? "", ...kept() };
+        }
+    }
+
+    /**
+     * Continuation guard (K33): a next link must stay on the API origin under this
+     * repository's path, `/repos/{owner}/{repo}/` or, as GitHub's own `Link` headers name it,
+     * `/repositories/{id}/` for the id the API reported for this repository.
+     */
+    allowNext(ref: ProviderRepoRef, url: string, repositoryId?: string): boolean {
+        const { owner, repo } = ref as GitHubRepoRef;
+        const prefixes = [`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/`];
+        if (repositoryId !== undefined) prefixes.push(`/repositories/${repositoryId}/`);
+        return isUnderApiPrefix(url, apiBase(ref), prefixes);
+    }
+
+    /** Whether the commit has as many check suites as GitHub lists check runs from. */
+    private async refAtSuiteLimit(
+        ref: GitHubRepoRef,
+        hash: string,
+        session: vscode.AuthenticationSession,
+    ): Promise<boolean> {
+        const response = await this.fetchWithMeta(
+            `${repoApiUrl(ref)}/commits/${encodeURIComponent(hash)}/check-suites?per_page=1`,
+            githubHeaders(session),
+        );
+        const total = (response.body as { total_count?: unknown } | null)?.total_count;
+        return typeof total === "number" && total >= REF_CHECK_SUITE_LIMIT;
+    }
+
+    /** The workflow run as the API reports it now; an empty run for an empty body. */
+    private async currentRun(
+        ref: GitHubRepoRef,
+        runId: string,
+        session: vscode.AuthenticationSession,
+    ): Promise<GitHubWorkflowRun> {
+        const response = await this.fetchWithMeta(
+            `${repoApiUrl(ref)}/actions/runs/${encodeURIComponent(runId)}`,
+            githubHeaders(session),
+        );
+        return response.body ?? {};
+    }
+
+    /**
+     * The snapshot, plus the id of every check run read, before the CI/CD filter drops any:
+     * the detail checks each job's check run against them.
+     */
+    private async fetchSnapshot(
+        ref: GitHubRepoRef,
+        hash: string,
+        session: vscode.AuthenticationSession,
+        requireBoth = false,
+    ): Promise<{ snapshot: CommitChecksSnapshot; checkRunIds: ReadonlySet<string> }> {
+        const headers = githubHeaders(session);
+        const base = `${repoApiUrl(ref)}/commits/${encodeURIComponent(hash)}`;
 
         const [checkRunsResult, statusesResult] = await Promise.allSettled([
             fetchAllCheckRuns(this.fetchJson, base, headers),
             fetchAllStatuses(this.fetchJson, base, headers),
         ]);
 
-        if (checkRunsResult.status === "rejected" && statusesResult.status === "rejected") {
-            if (
-                isCredentialRejection(checkRunsResult.reason) ||
-                isCredentialRejection(statusesResult.reason)
-            ) {
-                // Parity with GitLab and both Bitbucket providers: a rejected credential
-                // yields a badge carrying signInHost, which is what renders the popover's
-                // "Sign in" action. Without it a revoked session is a dead-end error badge
-                // whose only recovery is a window reload. The sign-in command routes
-                // github.com to VS Code's own session prompt rather than the token store,
-                // which this provider never reads.
-                return unavailableSnapshot(
-                    hash,
-                    vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
-                    host,
-                );
-            }
-            // getErrorMessage redacts URL-embedded credentials; redactSecret strips the
-            // session token in case a transport error echoed the Authorization header.
-            const message = getErrorMessage(checkRunsResult.reason);
-            return unavailableSnapshot(hash, redactSecret(message, session.accessToken));
+        const rejected = [checkRunsResult, statusesResult].flatMap((result) =>
+            result.status === "rejected" ? [result.reason as unknown] : [],
+        );
+        // The badge shows whichever endpoint answered; the detail claims full coverage, so it
+        // needs both.
+        if (rejected.length === 2 || (rejected.length === 1 && requireBoth)) {
+            // A refused credential on either endpoint wins; else the check-run error is shown.
+            const reason = rejected.find(isCredentialRejection) ?? rejected[0];
+            return {
+                snapshot: failedSnapshot(hash, ref.host, reason, session.accessToken),
+                checkRunIds: new Set(),
+            };
         }
 
-        return normalizeGithubChecks(
+        const checkRuns =
+            checkRunsResult.status === "fulfilled" ? checkRunsResult.value : undefined;
+        return {
+            snapshot: normalizeGithubChecks(
+                hash,
+                checkRuns,
+                statusesResult.status === "fulfilled" ? statusesResult.value : undefined,
+                this.ciCdPattern,
+            ),
+            checkRunIds: new Set(readCheckRuns(checkRuns).flatMap((run) => readId(run.id) ?? [])),
+        };
+    }
+}
+
+/** The VS Code GitHub session, or the snapshot to show when there is none or it failed. */
+async function openSession(
+    hash: string,
+): Promise<vscode.AuthenticationSession | CommitChecksSnapshot> {
+    try {
+        const session = await vscode.authentication.getSession("github", ["repo"], {
+            silent: true,
+        });
+        return session ?? { hash, state: "none", summary: summaryForState("none"), items: [] };
+    } catch (err) {
+        return unavailableSnapshot(
             hash,
-            checkRunsResult.status === "fulfilled" ? checkRunsResult.value : undefined,
-            statusesResult.status === "fulfilled" ? statusesResult.value : undefined,
-            this.ciCdPattern,
+            vscode.l10n.t("GitHub authentication failed: {message}", {
+                message: getErrorMessage(err),
+            }),
         );
+    }
+}
+
+function isSession(
+    value: vscode.AuthenticationSession | CommitChecksSnapshot,
+): value is vscode.AuthenticationSession {
+    return "accessToken" in value;
+}
+
+function githubHeaders(session: vscode.AuthenticationSession): Record<string, string> {
+    return {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${session.accessToken}`,
+        "User-Agent": "vscode-intelligit",
+        "X-GitHub-Api-Version": "2022-11-28",
+    };
+}
+
+/** REST API origin for the remote's host (github.com → api.github.com). */
+function apiBase(ref: ProviderRepoRef): string {
+    return `https://api.${ref.host}`;
+}
+
+function repoApiUrl(ref: GitHubRepoRef): string {
+    return `${apiBase(ref)}/repos/${encodeURIComponent(ref.owner)}/${encodeURIComponent(ref.repo)}`;
+}
+
+/**
+ * The unavailable snapshot for a failed request: a sign-in prompt when the credential was
+ * refused, else the error text with the session token redacted.
+ */
+function failedSnapshot(
+    hash: string,
+    host: string,
+    reason: unknown,
+    token: string,
+): CommitChecksSnapshot {
+    if (isCredentialRejection(reason)) {
+        // Parity with GitLab and both Bitbucket providers: a rejected credential yields a
+        // badge carrying signInHost, which is what renders the popover's "Sign in" action.
+        // Without it a revoked session is a dead-end error badge whose only recovery is a
+        // window reload. The sign-in command routes github.com to VS Code's own session
+        // prompt rather than the token store, which this provider never reads.
+        return unavailableSnapshot(
+            hash,
+            vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
+            host,
+        );
+    }
+    // getErrorMessage redacts URL-embedded credentials; redactSecret strips the session
+    // token in case a transport error echoed the Authorization header.
+    return unavailableSnapshot(hash, redactSecret(getErrorMessage(reason), token));
+}
+
+/** The run-less detail for a snapshot that is none or unavailable; never complete. */
+function flatDetail(snapshot: CommitChecksSnapshot): CommitCiDetailData {
+    return {
+        hash: snapshot.hash,
+        provider: "github",
+        complete: false,
+        outcome: snapshot.state,
+        runs: [],
+        runsCoverage: "full",
+        otherChecks: [],
+        otherChecksCoverage: "full",
+        error: snapshot.error,
+        signInHost: snapshot.signInHost,
+    };
+}
+
+function detailOf(
+    hash: string,
+    runs: CiRun[],
+    runsCoverage: CiCoverage,
+    otherChecks: CiFlatCheck[],
+): CommitCiDetailData {
+    const states = [
+        ...runs.flatMap((run) => [run.state, ...run.jobs.map((job) => job.state)]),
+        ...otherChecks.map((check) => check.state),
+    ];
+    const outcome = aggregateState(
+        states.map((state) => ({
+            state: state === "queued" || state === "running" ? "pending" : state,
+        })),
+    );
+    return {
+        hash,
+        provider: "github",
+        complete: outcome !== "none" && !hasUnfinishedWork(runs, otherChecks),
+        outcome,
+        runs,
+        runsCoverage,
+        otherChecks,
+        // The snapshot pages through every check run and status, so its list has no bound.
+        otherChecksCoverage: "full",
+    };
+}
+
+/**
+ * Snapshot checks that are not one of the jobs: matched by check-run id; an item without an
+ * id (an older cached snapshot) only when exactly one job has its name, since a visible
+ * duplicate beats a hidden status.
+ */
+function otherChecksOf(items: CommitCheckItem[], runs: CiRun[]): CiFlatCheck[] {
+    const jobs = runs.flatMap((run) => run.jobs);
+    const checkRunIds = new Set(jobs.map((job) => job.checkRunId));
+    return items
+        .filter((item) =>
+            item.id !== undefined
+                ? item.source !== "check-run" || !checkRunIds.has(item.id)
+                : jobs.filter((job) => job.checkName === item.name).length !== 1,
+        )
+        .map((item) => ({
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            state: item.state,
+            source: item.source,
+            url: item.url,
+        }));
+}
+
+function toRun(
+    run: GitHubWorkflowRun,
+    id: string,
+    name: string,
+    jobs: CiJob[],
+    jobsCoverage: CiCoverage,
+): CiRun {
+    const status = readString(run.status);
+    return {
+        id,
+        name: name || id,
+        url: optionalString(run.html_url),
+        state: mapActionsState(status, readString(run.conclusion)),
+        workflowId: readId(run.workflow_id),
+        event: optionalString(run.event),
+        actor: optionalString(run.actor?.login),
+        ref: optionalString(run.head_branch),
+        runNumber: optionalNumber(run.run_number),
+        attempt: optionalNumber(run.run_attempt),
+        createdAt: optionalString(run.created_at),
+        startedAt: optionalString(run.run_started_at),
+        completedAt: status === "completed" ? optionalString(run.updated_at) : undefined,
+        jobs,
+        jobsCoverage,
+    };
+}
+
+/** Maps one Actions job; `scope` is the run's workflow name when the job does not carry one. */
+function toJob(job: GitHubWorkflowJob, scope: string): CiJob {
+    const id = readId(job.id) ?? "";
+    const name = readString(job.name) || id;
+    return {
+        id,
+        logicalId: logicalCheckId({
+            kind: "job",
+            scope: readString(job.workflow_name) || scope,
+            name,
+        }),
+        checkRunId: /\/check-runs\/(\d+)$/.exec(safePathname(readString(job.check_run_url)))?.[1],
+        name,
+        checkName: name,
+        state: mapActionsState(readString(job.status), readString(job.conclusion)),
+        url: optionalString(job.html_url),
+        startedAt: optionalString(job.started_at),
+        completedAt: optionalString(job.completed_at),
+        attempt: optionalNumber(job.run_attempt),
+        steps: (Array.isArray(job.steps) ? (job.steps as GitHubWorkflowStep[]) : []).map(toStep),
+    };
+}
+
+function toStep(step: GitHubWorkflowStep): CiStep {
+    return {
+        number: optionalNumber(step.number) ?? 0,
+        name: readString(step.name),
+        state: mapActionsState(readString(step.status), readString(step.conclusion)),
+        startedAt: optionalString(step.started_at),
+        completedAt: optionalString(step.completed_at),
+    };
+}
+
+/** Maps an Actions run, job or step `status` and `conclusion` to the shared CI state. */
+function mapActionsState(status: string, conclusion: string): CiState {
+    switch (status) {
+        case "in_progress":
+            return "running";
+        case "queued":
+        case "waiting":
+        case "requested":
+        case "pending":
+            return "queued";
+        case "completed":
+            break;
+        default:
+            return "unknown";
+    }
+    switch (conclusion) {
+        case "success":
+        case "cancelled":
+        case "skipped":
+        case "neutral":
+            return conclusion;
+        case "failure":
+        case "timed_out":
+        case "startup_failure":
+        case "action_required":
+            return "failure";
+        default:
+            return "unknown";
+    }
+}
+
+function readList<T>(body: unknown, field: string): T[] {
+    if (!body || typeof body !== "object") return [];
+    const list = (body as Record<string, unknown>)[field];
+    return Array.isArray(list) ? (list as T[]) : [];
+}
+
+/** A numeric or string API id as a string; GitHub ids exceed 2^31 but stay exact doubles. */
+function readId(value: unknown): string | undefined {
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    return typeof value === "string" && value ? value : undefined;
+}
+
+function optionalString(value: unknown): string | undefined {
+    return readString(value) || undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function totalCount(body: unknown): number | undefined {
+    return optionalNumber((body as { total_count?: unknown } | null)?.total_count);
+}
+
+/** The URL a request actually sends: normalized, without the fragment. */
+function requestedUrl(url: string): string {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    return parsed.href;
+}
+
+function safePathname(url: string): string {
+    try {
+        return new URL(url).pathname;
+    } catch {
+        return "";
     }
 }
 
@@ -321,6 +945,7 @@ function toCheckRunItem(run: GitHubCheckRun): CommitCheckItem {
     const summary = readString((output as { summary?: unknown }).summary);
     const title = readString((output as { title?: unknown }).title);
     return {
+        id: readId(run.id),
         name: readString(run.name) || vscode.l10n.t("GitHub check"),
         description: compactText(summary || title || readString(run.status)),
         state: mapCheckRunState(readString(run.status), readString(run.conclusion)),
@@ -331,6 +956,7 @@ function toCheckRunItem(run: GitHubCheckRun): CommitCheckItem {
 
 function toStatusItem(status: GitHubStatus): CommitCheckItem {
     return {
+        id: optionalString(status.context),
         name: readString(status.context) || vscode.l10n.t("Commit status"),
         description: compactText(readString(status.description) || readString(status.state)),
         state: mapStatusState(readString(status.state)),

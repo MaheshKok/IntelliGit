@@ -1,0 +1,31 @@
+{
+    "id": 42491176871,
+    "name": "Code OSS",
+    "head_branch": "alexdima/agents-layout-scope-chat-default",
+    "head_sha": "856458acf08c3a70cac43d49c4bc51817ac26415",
+    "path": ".github/workflows/pr.yml",
+    "display_title": "sessions: keep layout state per chat by default",
+    "run_number": 79153,
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "workflow_id": 4196599,
+    "check_suite_id": 115101836054,
+    "url": "https://api.github.com/repos/microsoft/vscode/actions/runs/42491176871",
+    "html_url": "https://github.com/microsoft/vscode/actions/runs/42491176871",
+    "created_at": "2026-11-08T14:43:09Z",
+    "updated_at": "2026-11-08T14:50:20Z",
+    "actor": {
+        "login": "alexdima",
+        "id": 5047891,
+        "type": "User"
+    },
+    "run_attempt": 1,
+    "run_started_at": "2026-11-08T14:43:09Z",
+    "jobs_url": "https://api.github.com/repos/microsoft/vscode/actions/runs/42491176871/jobs",
+    "repository": {
+        "id": 41881900,
+        "name": "vscode",
+        "full_name": "microsoft/vscode"
+    }
+}
