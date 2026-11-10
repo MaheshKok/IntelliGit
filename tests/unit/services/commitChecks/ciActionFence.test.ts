@@ -1661,6 +1661,31 @@ describe("when a fence ends", () => {
         fences.dispose();
     });
 
+    it("a later end's successful removal also drops an earlier retained fence on another target of the commit", async () => {
+        const workspace = memento();
+        const fences = new CiActionFenceStore(workspace);
+        let removalFails = true;
+        fences.onDidEnd(async () => {
+            if (removalFails) throw new Error("disk");
+        });
+
+        await fences.begin(start());
+        await fences.resolve(REPO, HASH, RERUN_STARTED);
+        expect(
+            storedFences(workspace),
+            "a failed removal keeps the ended fence stored",
+        ).toHaveLength(1);
+
+        removalFails = false;
+        await fences.begin(start({ targetId: "88", runId: "88" }));
+        await fences.resolve(REPO, HASH, detail([run({ id: "88", attempt: 2, state: "running" })]));
+        expect(
+            storedFences(workspace),
+            "the earlier fence's own storage key is cleared too",
+        ).toEqual([]);
+        fences.dispose();
+    });
+
     it("an earlier end's successful removal keeps a later end's fence stored when that removal fails", async () => {
         const workspace = memento();
         const fences = new CiActionFenceStore(workspace);

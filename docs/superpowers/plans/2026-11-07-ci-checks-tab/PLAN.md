@@ -1155,6 +1155,7 @@ No phase has a real dev-server URL, so no phase has a browser check. Proof is un
   - "a read started while the fence's write is pending never ends it" (mutation: number the fence before its write settles → red; Fable R1 on #418)
   - "another fence beginning mid-fetch does not hold back this fence's evidence" (mutation: compare the latest begin instead of the fence's own → red)
   - "a later end's successful removal also drops an earlier retained fence on the same target" (mutation: drop only this end's fences → red; CodeRabbit on #418)
+  - "a later end's successful removal also drops an earlier retained fence on another target of the commit" (mutation: leave the covered fence's own key unwritten → red)
   - "an earlier end's successful removal keeps a later end's fence stored when that removal fails" (mutation: drop every retained fence of the commit on success → red)
 
   Also `detailService.test.ts` › "served actionFence follows the fence store" (mutation: omit it → red), and › "a fetch started before a fence began never ends it" (mutation: drop the fetch start at the `resolve` call → red).

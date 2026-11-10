@@ -399,17 +399,23 @@ export class CiActionFenceStore implements CiActionFenceView {
         for (const fence of ended) this.disarm(fence);
         this.fences = this.fences.filter((fence) => !ended.includes(fence));
         for (const fence of ended) this.retained.add(fence);
+        // Every fence whose key is rewritten: the ended ones, plus earlier retained fences a
+        // removal here covered, which may sit under another target's key.
+        const rewrite = new Set(ended);
         const removals = [...new Set(ended.map((fence) => fence.hash))].map(async (hash) => {
             // A removal covers every fence of the commit retained when it starts, earlier
             // ends included; a fence retained later waits for its own removal.
             const covered = [...this.retained].filter((fence) => fence.hash === hash);
             if (!(await this.emitEnd(hash))) return;
-            for (const fence of covered) this.retained.delete(fence);
+            for (const fence of covered) {
+                this.retained.delete(fence);
+                rewrite.add(fence);
+            }
         });
         await Promise.all(removals);
         for (const fence of ended) if (this.retained.has(fence)) this.traceFence("failed", fence);
         try {
-            await Promise.all(ended.map((fence) => this.persist(fence)));
+            await Promise.all([...rewrite].map((fence) => this.persist(fence)));
         } catch {
             // The fence is gone for this window; after a restart it applies again until a
             // fetch shows the action or the user refreshes, which costs caching only.
