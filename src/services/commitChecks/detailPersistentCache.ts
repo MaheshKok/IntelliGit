@@ -88,6 +88,8 @@ export class CiDetailPersistentCache {
             const payload = this.read();
             const entry = payload.entries.find((candidate) => candidate.key === key);
             if (!entry || Object.hasOwn(payload.unconfirmed, key)) return undefined;
+            // A fenced commit's stored entry may predate the action: a miss, with no LRU write.
+            if (this.fence?.isFenced(entry.data.hash)) return undefined;
             entry.lastAccessedAt = this.now();
             await this.write(this.trim(payload));
             return entry.data;

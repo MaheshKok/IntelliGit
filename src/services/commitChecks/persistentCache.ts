@@ -118,6 +118,8 @@ export class CommitChecksPersistentCache {
             if (!entry || Object.hasOwn(payload.unconfirmed, key) || !this.isUsable(entry)) {
                 return undefined;
             }
+            // A fenced commit's stored entry may predate the action: a miss, with no LRU write.
+            if (this.fence?.isFenced(entry.snapshot.hash)) return undefined;
             entry.lastAccessedAt = this.now();
             await this.write(this.trim(payload));
             return entry.snapshot;

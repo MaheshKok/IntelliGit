@@ -760,7 +760,9 @@ describe("CiActionFenceStore", () => {
             const workspace = memento();
             const fences = new CiActionFenceStore(workspace);
             await fences.begin(first);
-            await expect(fences.begin(second)).rejects.toThrow();
+            await expect(fences.begin(second)).rejects.toThrow(
+                "An earlier action on this target is still waiting.",
+            );
 
             expect(fences.fenceFor(REPO, HASH)).toMatchObject({ action: first.action });
             expect(storedFences(workspace)).toEqual([
@@ -940,6 +942,28 @@ describe("CiActionFenceStore", () => {
         await details.getOrFetch(DETAIL_KEY, fetchDetail, SERVE);
         expect(fetchSnapshot, "an unfenced complete snapshot stays in L1").toHaveBeenCalledTimes(1);
         expect(fetchDetail, "an unfenced complete detail stays in L1").toHaveBeenCalledTimes(1);
+        fences.dispose();
+    });
+
+    it("reading a fenced commit's stored entries is a miss that never rewrites shared storage", async () => {
+        const global = memento();
+        const fences = new CiActionFenceStore(memento());
+        const snapshots = new CommitChecksPersistentCache(global, { fence: fences });
+        const details = new CiDetailPersistentCache(global, { fence: fences });
+        await snapshots.set(SNAPSHOT_KEY, snapshot());
+        await details.set(DETAIL_KEY, detail());
+        await fences.begin(start());
+        vi.mocked(global.update).mockClear();
+
+        expect(
+            await snapshots.get(SNAPSHOT_KEY),
+            "a fenced stored snapshot is a miss",
+        ).toBeUndefined();
+        expect(await details.get(DETAIL_KEY), "a fenced stored detail is a miss").toBeUndefined();
+        expect(
+            global.update,
+            "reading a fenced commit never rewrites shared storage",
+        ).not.toHaveBeenCalled();
         fences.dispose();
     });
 

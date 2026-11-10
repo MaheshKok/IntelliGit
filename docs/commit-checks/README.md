@@ -143,6 +143,9 @@ availability result, not a quota cooldown.
 
 ## Re-run and cancel
 
+> Planned: the Re-run and Cancel actions are not available yet. This section describes
+> how they will behave; the note store below is in place, but nothing creates a note yet.
+
 Before IntelliGit sends a re-run or cancel request, it saves a note for that run or job
 in the workspace and waits for the save to finish; if the note cannot be saved, the
 request is not sent. While a note exists for a commit, that commit's check results are
