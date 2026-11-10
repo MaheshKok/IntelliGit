@@ -272,7 +272,11 @@ describe("GitHubProvider.getDetail", () => {
                 jobs: [
                     {
                         id: String(jobFixture.id),
-                        logicalId: "Code OSS\0Detect Changes",
+                        logicalId: logicalCheckId({
+                            source: "job",
+                            scope: "Code OSS",
+                            name: "Detect Changes",
+                        }),
                         checkRunId: String(jobFixture.id),
                         name: "Detect Changes",
                         checkName: "Detect Changes",
