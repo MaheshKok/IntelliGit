@@ -4,7 +4,7 @@
 // the details pane to its Checks tab; a message for another repository changes nothing.
 
 import React, { act, useRef } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitDetail } from "../../../src/types";
 import { CommitInfoPane } from "../../../src/webviews/react/commit-info/CommitInfoPane";
 import { useCommitGraphMessages } from "../../../src/webviews/react/commit-graph/useCommitGraphMessages";
@@ -105,6 +105,12 @@ beforeEach(() => {
     mockVscodeApi.postMessage.mockReset();
     mockVscodeApi.getState.mockReset();
     mockVscodeApi.setState.mockReset();
+    // The Checks tab switch is on only in an E2E control channel webview.
+    window.intelligitE2E = true;
+});
+
+afterEach(() => {
+    delete window.intelligitE2E;
 });
 
 describe("openChecksTab host message", () => {

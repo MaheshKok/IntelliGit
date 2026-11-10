@@ -20,6 +20,7 @@ import {
 } from "../shared/fileTree";
 import { ChecksTab } from "./checks/ChecksTab";
 import {
+    isChecksTabEnabled,
     OPEN_CHECKS_TAB_EVENT,
     persistCommitInfoTab,
     readCommitInfoTab,
@@ -193,7 +194,8 @@ export function CommitInfoPane({
         window.addEventListener(OPEN_CHECKS_TAB_EVENT, showChecks);
         return () => window.removeEventListener(OPEN_CHECKS_TAB_EVENT, showChecks);
     }, []);
-    const showChecks = ciRepoKey !== undefined && tab === "checks";
+    const checksAvailable = ciRepoKey !== undefined && isChecksTabEnabled();
+    const showChecks = checksAvailable && tab === "checks";
 
     const detailHash = detail?.hash ?? null;
     const tree = useMemo<TreeEntry[]>(() => {
@@ -275,7 +277,7 @@ export function CommitInfoPane({
             overflow="hidden"
             bg={JETBRAINS_UI.color.panel}
         >
-            {ciRepoKey !== undefined ? <CommitInfoTabs tab={tab} onChoose={chooseTab} /> : null}
+            {checksAvailable ? <CommitInfoTabs tab={tab} onChoose={chooseTab} /> : null}
             {showChecks ? (
                 <ChecksTab repoKey={ciRepoKey} hash={detail.hash} enabled={commitChecksEnabled} />
             ) : (

@@ -37,8 +37,20 @@ export function persistCommitInfoTab(tab: CommitInfoTab): void {
     }
 }
 
+/**
+ * The switch that hides the unfinished Checks tab and every way into it. It is on only in a
+ * webview of the E2E control channel, whose flag the host injects in development E2E runs alone,
+ * so an installed extension hides the tab by default (the host's fetch guard does not trust this
+ * flag). The last Checks tab phase turns it on for good by deleting it, together with the host's
+ * check in `src/views/ciDetailHandler.ts`.
+ */
+export function isChecksTabEnabled(): boolean {
+    return window.intelligitE2E === true;
+}
+
 /** Saves the Checks tab and tells a mounted details pane to show it now. */
 export function openChecksTab(): void {
+    if (!isChecksTabEnabled()) return;
     persistCommitInfoTab("checks");
     window.dispatchEvent(new Event(OPEN_CHECKS_TAB_EVENT));
 }

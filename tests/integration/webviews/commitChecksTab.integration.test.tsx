@@ -4,7 +4,7 @@
 // the commit and repository on screen may render (PLAN.md journeys 1, 2, 15 and 16).
 
 import React, { act } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CiJob, CiRun, CommitCiDetail, CommitDetail } from "../../../src/types";
 import { NO_CI_CAPABILITIES } from "../../../src/shared/ci/capabilities";
 import { PENDING_CHECK_RETRY_DELAYS_MS } from "../../../src/shared/ci/pollSchedule";
@@ -34,6 +34,12 @@ beforeEach(() => {
     mockVscodeApi.getState.mockReset();
     mockVscodeApi.getState.mockReturnValue({ commitInfoTab: "checks" });
     mockVscodeApi.setState.mockReset();
+    // The Checks tab switch is on only in an E2E control channel webview.
+    window.intelligitE2E = true;
+});
+
+afterEach(() => {
+    delete window.intelligitE2E;
 });
 
 function commit(hash: string): CommitDetail {

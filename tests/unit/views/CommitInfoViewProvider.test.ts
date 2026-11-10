@@ -20,7 +20,7 @@
  * posts still go out.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createCommitInfoVscodeDouble } from "../../visual/recorder/commitInfoVscodeDouble";
 
@@ -30,6 +30,7 @@ vi.mock("vscode", () => createCommitInfoVscodeDouble());
 
 import type * as vscode from "vscode";
 import { createFakeExtensionUri } from "../../visual/recorder/commitInfoVscodeDouble";
+import { setE2eControlChannelActive } from "../../../src/e2e/activationState";
 import { CommitInfoViewProvider } from "../../../src/views/CommitInfoViewProvider";
 import type { IconThemeService } from "../../../src/views/shared/IconThemeService";
 import type { CommitCiDetail, CommitDetail } from "../../../src/types";
@@ -147,6 +148,10 @@ function setDetailMessages(posted: readonly unknown[]): Record<string, unknown>[
 }
 
 describe("CommitInfoViewProvider Checks tab scan re-posts", () => {
+    // The Checks tab switch is on only while the E2E control channel is.
+    beforeEach(() => setE2eControlChannelActive(true));
+    afterEach(() => setE2eControlChannelActive(false));
+
     it("cancelCommitCiDetail from a hidden tab stops that request's re-posts", async () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
         try {

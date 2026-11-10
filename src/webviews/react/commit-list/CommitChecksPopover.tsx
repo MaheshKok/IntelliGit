@@ -4,6 +4,7 @@ import { FiCheckCircle, FiClock, FiMinusCircle } from "react-icons/fi";
 import { IoIosCloseCircleOutline } from "react-icons/io";
 import { VscRefresh } from "react-icons/vsc";
 import type { CommitChecksSnapshot, CommitCheckState } from "../../../types";
+import { isChecksTabEnabled } from "../commit-info/checks/checksTabState";
 import { t } from "../shared/i18n";
 import { SPIN_KEYFRAMES } from "../shared/components/iconStyles";
 import { JETBRAINS_UI, SHADOW, Z_INDEX } from "../shared/tokens";
@@ -354,7 +355,7 @@ function OpenInChecksFooter({
 }: {
     onOpenInChecks?: () => void;
 }): React.ReactElement | null {
-    if (!onOpenInChecks) return null;
+    if (!onOpenInChecks || !isChecksTabEnabled()) return null;
     return (
         <div style={footerStyle}>
             <button type="button" style={linkButtonStyle} onClick={onOpenInChecks}>

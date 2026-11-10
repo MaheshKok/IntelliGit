@@ -3,6 +3,7 @@
 // exists: same repository on screen, same sign-in, same CI settings.
 
 import * as vscode from "vscode";
+import { isE2eControlChannelActive } from "../e2e/activationState";
 import type { CiGenerations, CiOperationContext } from "../services/commitChecks/ciGenerations";
 import type { CommitChecksFetchOptions } from "../services/commitChecks/service";
 import { isValidGitHash } from "../services/gitHelpers";
@@ -51,6 +52,9 @@ export async function answerCommitCiDetailRequest(
     if (force !== undefined && typeof force !== "boolean") {
         throw new Error("Invalid CI detail force flag.");
     }
+    // The Checks tab switch (see `isChecksTabEnabled` in the webview's checksTabState.ts): while
+    // the tab is hidden, no message may start a CI detail fetch or its overflow scan.
+    if (!isE2eControlChannelActive()) return;
     if (repoKey !== source.repoKey()) return;
     const stopped = loops.start(requestId);
     const ctx: CiOperationContext = source.generations?.capture(repoKey) ?? {

@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.44.0] - 2026-11-08
+## [0.43.4] - 2026-11-10
 
 ### Added
 
-- A new Checks tab next to a commit's changed files shows its CI workflows, jobs and steps with their durations, opening straight to the step that failed.
+- Groundwork for a coming Checks tab that will show a commit's CI workflows, jobs and steps, opening straight to the step that failed. The tab stays hidden until it is finished, so IntelliGit looks and works the same for now.
 
 ## [0.43.2] - 2026-11-07
 

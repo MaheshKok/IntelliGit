@@ -30,6 +30,9 @@ enabled.
 
 ## Checks tab
 
+The Checks tab is still being built and stays hidden in released versions until it is
+finished; this section describes it as it will appear. While hidden, it fetches nothing.
+
 The commit-details pane has two tabs, **Files** (the default) and **Checks**. The pane
 remembers the tab you chose. The Checks tab shows the selected commit's CI as a tree:
 workflow or pipeline, then its jobs, then each job's steps, each with its state,

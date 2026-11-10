@@ -4,7 +4,7 @@
 // wired the way the graph apps wire them: the row's callback calls `openChecksTab`.
 
 import React, { act } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Commit, CommitChecksSnapshot, CommitDetail } from "../../../src/types";
 import { CommitInfoPane } from "../../../src/webviews/react/commit-info/CommitInfoPane";
 import { openChecksTab } from "../../../src/webviews/react/commit-info/checks/checksTabState";
@@ -31,6 +31,12 @@ beforeEach(() => {
     mockVscodeApi.postMessage.mockReset();
     mockVscodeApi.getState.mockReset();
     mockVscodeApi.setState.mockReset();
+    // The Checks tab switch is on only in an E2E control channel webview.
+    window.intelligitE2E = true;
+});
+
+afterEach(() => {
+    delete window.intelligitE2E;
 });
 
 const commit: Commit = {

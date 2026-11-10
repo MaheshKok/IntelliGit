@@ -1,7 +1,8 @@
 // The host side of the Checks tab: a detail request is answered only while the world it
 // started in still exists (same repository, same sign-in, same CI settings).
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setE2eControlChannelActive } from "../../../src/e2e/activationState";
 import { CiGenerations } from "../../../src/services/commitChecks/ciGenerations";
 import type { CiFailedScan, CommitCiDetail } from "../../../src/types";
 import { NO_CI_CAPABILITIES } from "../../../src/shared/ci/capabilities";
@@ -55,7 +56,25 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
     return { promise, resolve };
 }
 
+// The Checks tab switch is on only while the E2E control channel is; these tests turn it on.
+beforeEach(() => setE2eControlChannelActive(true));
+afterEach(() => setE2eControlChannelActive(false));
+
 describe("answerCommitCiDetailRequest", () => {
+    it("answers no request while the Checks tab switch is off", async () => {
+        setE2eControlChannelActive(false);
+        const getDetail = vi.fn(async () => detail("/repo"));
+        const post = vi.fn();
+        await answerCommitCiDetailRequest(
+            { repoKey: () => "/repo", generations: new CiGenerations(), getDetail },
+            { type: "requestCommitCiDetail", requestId: 1, repoKey: "/repo", hash: HASH },
+            post,
+            new CommitCiDetailLoops(),
+        );
+        expect(getDetail, "no CI detail is fetched").not.toHaveBeenCalled();
+        expect(post, "no reply is posted").not.toHaveBeenCalled();
+    });
+
     it("a failed forced Refresh of a running overflow scan is not re-read automatically", async () => {
         vi.useFakeTimers();
         try {
