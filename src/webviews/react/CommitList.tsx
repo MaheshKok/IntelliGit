@@ -80,6 +80,8 @@ interface Props {
     onRequestCommitChecks?: (hashes: string[], force?: boolean) => void;
     onOpenCommitCheckUrl?: (url: string) => void;
     onSignInForCommitChecks?: (host: string) => void;
+    /** Shows the commit's Checks tab in the details pane (the row is selected first). */
+    onOpenCommitInChecks?: (hash: string) => void;
     showSearch?: boolean;
     showAuthorDate?: boolean;
     headerLabel?: string;
@@ -182,6 +184,7 @@ export function CommitList({
     onRequestCommitChecks,
     onOpenCommitCheckUrl,
     onSignInForCommitChecks,
+    onOpenCommitInChecks,
     showSearch = true,
     showAuthorDate = true,
     headerLabel,
@@ -750,6 +753,7 @@ export function CommitList({
                     }
                     onOpenCommitCheckUrl={onOpenCommitCheckUrl}
                     onSignInForCommitChecks={onSignInForCommitChecks}
+                    onOpenCommitInChecks={onOpenCommitInChecks}
                     onCommitHover={onCommitHover}
                     onCommitUnhover={onCommitUnhover}
                     onRowContextMenu={handleRowContextMenu}

@@ -7,6 +7,7 @@ import path from "node:path";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { COMMIT_CHECK_FANOUT_LIMIT } from "../../../src/views/commitCheckFanout";
 import { createNoopNativeCommitInputBridge } from "../../helpers/nativeCommitInputBridgeDouble";
+import type { CommitCiDetail } from "../../../src/types";
 
 type MessageHandler = (message: unknown) => void | Promise<void>;
 type CommandHandler = (...args: unknown[]) => unknown;
@@ -891,6 +892,32 @@ async function flushMicrotasks(): Promise<void> {
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
+}
+
+/** A Checks tab detail whose failed-job overflow scan never ends. */
+async function endlessScanDetail(hash: string): Promise<CommitCiDetail> {
+    const { NO_CI_CAPABILITIES } = await import("../../../src/shared/ci/capabilities");
+    return {
+        hash,
+        provider: "github",
+        complete: true,
+        outcome: "failure",
+        runs: [
+            {
+                id: "1",
+                name: "CI",
+                state: "failure",
+                jobs: [],
+                jobsCoverage: { reason: "pageBound", shown: 1000 },
+                failedScan: { state: "running", found: 0 },
+            },
+        ],
+        runsCoverage: "full",
+        otherChecks: [],
+        otherChecksCoverage: "full",
+        capabilities: NO_CI_CAPABILITIES,
+        repoKey: "/repo",
+    };
 }
 
 function refreshingStates(): boolean[] {
@@ -2309,6 +2336,130 @@ describe("view providers integration", () => {
         }
     });
 
+    it("a credential change tells every open Checks tab to drop its detail and ask again", async () => {
+        let graph:
+            | {
+                  dispose: () => void;
+                  resolveWebviewView: (view: object, context: object, token: object) => void;
+              }
+            | undefined;
+        try {
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    globalState: createMemento(),
+                    secrets: {},
+                } as never,
+                [{ root: "/workspace", label: "workspace" }],
+                {
+                    commitGraph: {
+                        setProvider: (provider: unknown) => (graph = provider as typeof graph),
+                    },
+                } as never,
+            );
+            const commitInfo = vscodeMock.window.registerWebviewViewProvider.mock.calls.find(
+                ([viewType]) => viewType === "intelligit.commitFiles",
+            )?.[1] as {
+                resolveWebviewView: (view: object, context: object, token: object) => void;
+            };
+            expect(commitInfo, "the Changed Files view provider").toBeDefined();
+            const graphView = createWebviewView();
+            const infoView = createWebviewView();
+            const graphPosts = vi.fn(async () => true);
+            const infoPosts = vi.fn(async () => true);
+            (graphView.view.webview as { postMessage: unknown }).postMessage = graphPosts;
+            (infoView.view.webview as { postMessage: unknown }).postMessage = infoPosts;
+            graph!.resolveWebviewView(graphView.view, {}, {});
+            commitInfo.resolveWebviewView(infoView.view, {}, {});
+            await flushMicrotasks();
+            graphPosts.mockClear();
+            infoPosts.mockClear();
+
+            await registeredCommands.get("intelligit.commitChecks.refreshBadges")!();
+
+            const invalidated = { type: "commitCiDetailInvalidated" };
+            expect(graphPosts, "the Git Log panel's Checks tab").toHaveBeenCalledWith(invalidated);
+            expect(infoPosts, "the Changed Files view's Checks tab").toHaveBeenCalledWith(
+                invalidated,
+            );
+        } finally {
+            graph?.dispose();
+        }
+    });
+
+    it("the Changed Files view's Checks tab receives each overflow-scan page the Git Log graph reads", async () => {
+        const { setE2eControlChannelActive } = await import("../../../src/e2e/activationState");
+        let graph:
+            | {
+                  dispose: () => void;
+                  getCommitCiDetail: (...args: unknown[]) => Promise<CommitCiDetail | undefined>;
+              }
+            | undefined;
+        try {
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    globalState: createMemento(),
+                    secrets: {},
+                } as never,
+                [{ root: "/workspace", label: "workspace" }],
+                {
+                    commitGraph: {
+                        setProvider: (provider: unknown) => (graph = provider as typeof graph),
+                    },
+                } as never,
+            );
+            const commitInfo = vscodeMock.window.registerWebviewViewProvider.mock.calls.find(
+                ([viewType]) => viewType === "intelligit.commitFiles",
+            )?.[1] as {
+                resolveWebviewView: (view: object, context: object, token: object) => void;
+            };
+            const hash = "a".repeat(40);
+            const page = await endlessScanDetail(hash);
+            const getDetail = vi
+                .spyOn(graph!, "getCommitCiDetail")
+                .mockImplementation(async (...args) => {
+                    (args[3] as ((detail: CommitCiDetail) => void) | undefined)?.(page);
+                    return undefined;
+                });
+            const infoView = createWebviewView();
+            const infoPosts = vi.fn(async () => true);
+            (infoView.view.webview as { postMessage: unknown }).postMessage = infoPosts;
+            commitInfo.resolveWebviewView(infoView.view, {}, {});
+            await infoView.send({ type: "ready" });
+            setE2eControlChannelActive(true);
+
+            await infoView.send({
+                type: "requestCommitCiDetail",
+                requestId: 6,
+                repoKey: "/workspace",
+                hash,
+            });
+            expect(getDetail, "the Changed Files request reached the graph").toHaveBeenCalled();
+            expect(
+                infoPosts,
+                "the scan page posted to the Changed Files view",
+            ).toHaveBeenCalledWith({
+                type: "commitCiDetail",
+                requestId: 6,
+                repoKey: "/workspace",
+                hash,
+                detail: page,
+            });
+        } finally {
+            setE2eControlChannelActive(false);
+            graph?.dispose();
+        }
+    });
+
     it("workspace folder changes refresh repository rows and fall back when the active repository disappears", async () => {
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
         const repoA = "/workspace/app-a";
@@ -3712,6 +3863,16 @@ describe("view providers integration", () => {
             expect.arrayContaining(["branches:/repo-b", "log:/repo-b", "status:/repo-b"]),
         );
         expect(callRoots).not.toEqual(expect.arrayContaining(["log:/repo-a", "status:/repo-a"]));
+        // The Checks tab's repository key: without it the tab keeps asking under /repo-a and
+        // the host, now on /repo-b, answers none of those requests.
+        expect(postMessageSpy, "the new selection reaches the webview").toHaveBeenCalledWith({
+            type: "repositories",
+            repositories: [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            selectedRepositoryRoot: "/repo-b",
+        });
         const restoreMessages = postMessageSpy.mock.calls
             .map(([message]) => message)
             .filter(
@@ -3774,6 +3935,68 @@ describe("view providers integration", () => {
             send({ type: "selectRepository", repositoryRoot: "/missing" }),
         ).rejects.toThrow("Unknown repository root received from webview.");
         expect(executor.setRoot).not.toHaveBeenCalled();
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider re-keys the webview before a repository preference write that fails", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const executor = { root: "/repo-a", setRoot: vi.fn() };
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock("/repo-a") as unknown as object,
+            { fsPath: "/repo-a", path: "/repo-a" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+            {},
+            undefined,
+            {
+                executor,
+                repositories: [
+                    { root: "/repo-a", label: "Repo A" },
+                    { root: "/repo-b", label: "Repo B" },
+                ],
+                selectedRepositoryRoot: "/repo-a",
+                onSelectedRepositoryRootChanged: async () => {
+                    throw new Error("preference write failed");
+                },
+            },
+        );
+        const testProvider = provider as unknown as {
+            panel: { webview: { postMessage: typeof postMessageSpy }; dispose: () => void };
+            iconTheme: { getThemeData: () => unknown; dispose: () => void };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = { webview: { postMessage: postMessageSpy }, dispose: vi.fn() };
+        testProvider.iconTheme = {
+            dispose: vi.fn(),
+            getThemeData: () => ({
+                folderIcons: { folderIcon: "folder", folderExpandedIcon: "folder-open" },
+                iconFonts: [],
+            }),
+        };
+        postMessageSpy.mockClear();
+
+        await expect(
+            testProvider.handleMessage.call(provider, {
+                type: "selectRepository",
+                repositoryRoot: "/repo-b",
+            }),
+        ).rejects.toThrow("preference write failed");
+
+        // The host already serves /repo-b, so a Checks request still keyed to /repo-a would get
+        // no reply and the tab would keep loading.
+        expect(executor.setRoot).toHaveBeenCalledWith("/repo-b");
+        expect(
+            postMessageSpy,
+            "the new key reaches the pane after a failed preference write",
+        ).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "repositories", selectedRepositoryRoot: "/repo-b" }),
+        );
+        expect(
+            postMessageSpy,
+            "the old selection is cleared after a failed preference write",
+        ).toHaveBeenCalledWith({ type: "clearCommitDetail" });
         provider.dispose();
     });
 
@@ -3954,6 +4177,28 @@ describe("view providers integration", () => {
         });
         expect(lastCommitChecksSnapshot()).toEqual(expect.objectContaining({ state: "success" }));
         expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider tells its Checks tab to ask again after a credential change", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const posts = vi.fn(async () => true);
+        (provider as unknown as { panel: object }).panel = {
+            webview: { postMessage: posts },
+            dispose: vi.fn(),
+        };
+
+        provider.clearChecksCache();
+
+        expect(posts).toHaveBeenCalledWith({ type: "commitCiDetailInvalidated" });
         provider.dispose();
     });
 
@@ -5188,6 +5433,246 @@ describe("view providers integration", () => {
         expect(snapshots).toEqual(["abc1234", "def5678"]);
         expect(providerGetChecks).toHaveBeenCalledTimes(2);
         provider.dispose();
+    });
+
+    it("CommitGraphViewProvider answers no Checks tab request from a replaced webview", async () => {
+        const { setE2eControlChannelActive } = await import("../../../src/e2e/activationState");
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        setE2eControlChannelActive(true);
+        try {
+            const provider = new CommitGraphViewProvider(
+                { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+                makeGitOpsMock() as unknown as object,
+                makeCredentialStore() as unknown as object,
+                { ciRepoKey: () => "/repo" } as unknown as object,
+            );
+            const getDetail = vi.spyOn(provider, "getCommitCiDetail").mockResolvedValue(undefined);
+            const retired = createWebviewView();
+            provider.resolveWebviewView(
+                retired.view as unknown as object,
+                {} as unknown as object,
+                {} as unknown as object,
+            );
+            const current = createWebviewView();
+            provider.resolveWebviewView(
+                current.view as unknown as object,
+                {} as unknown as object,
+                {} as unknown as object,
+            );
+            postMessageSpy.mockClear();
+
+            await retired.send({
+                type: "requestCommitCiDetail",
+                requestId: 1,
+                repoKey: "/repo",
+                hash: "a".repeat(40),
+            });
+
+            expect(
+                getDetail,
+                "the replaced webview's request starts no fetch",
+            ).not.toHaveBeenCalled();
+            expect(
+                postMessageSpy.mock.calls.filter(
+                    ([message]) =>
+                        typeof message === "object" &&
+                        message !== null &&
+                        "type" in message &&
+                        message.type === "commitCiDetail",
+                ),
+                "no reply reaches the current webview",
+            ).toEqual([]);
+            provider.dispose();
+        } finally {
+            setE2eControlChannelActive(false);
+        }
+    });
+
+    it.each([
+        { stop: "a successor webview is resolved", replace: true },
+        { stop: "the provider is disposed", replace: false },
+    ])("CommitGraphViewProvider stops a Checks tab loop when $stop", async ({ replace }) => {
+        const { setE2eControlChannelActive } = await import("../../../src/e2e/activationState");
+        const { NO_CI_CAPABILITIES } = await import("../../../src/shared/ci/capabilities");
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        setE2eControlChannelActive(true);
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        try {
+            const provider = new CommitGraphViewProvider(
+                { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+                makeGitOpsMock() as unknown as object,
+                makeCredentialStore() as unknown as object,
+                { ciRepoKey: () => "/repo" } as unknown as object,
+            );
+            // An overflow scan that never ends keeps the request's loop re-reading.
+            const getDetail = vi
+                .spyOn(provider, "getCommitCiDetail")
+                .mockImplementation(async (hash: string) => ({
+                    hash,
+                    provider: "github",
+                    complete: true,
+                    outcome: "failure",
+                    runs: [
+                        {
+                            id: "1",
+                            name: "CI",
+                            state: "failure",
+                            jobs: [],
+                            jobsCoverage: { reason: "pageBound", shown: 1000 },
+                            failedScan: { state: "running", found: 0 },
+                        },
+                    ],
+                    runsCoverage: "full",
+                    otherChecks: [],
+                    otherChecksCoverage: "full",
+                    capabilities: NO_CI_CAPABILITIES,
+                    repoKey: "/repo",
+                }));
+            const first = createWebviewView();
+            provider.resolveWebviewView(
+                first.view as unknown as object,
+                {} as unknown as object,
+                {} as unknown as object,
+            );
+            const answered = first.send({
+                type: "requestCommitCiDetail",
+                requestId: 1,
+                repoKey: "/repo",
+                hash: "a".repeat(40),
+            });
+            await vi.advanceTimersByTimeAsync(0);
+            expect(getDetail).toHaveBeenCalledTimes(1);
+
+            if (replace) {
+                provider.resolveWebviewView(
+                    createWebviewView().view as unknown as object,
+                    {} as unknown as object,
+                    {} as unknown as object,
+                );
+            } else {
+                provider.dispose();
+            }
+            await vi.advanceTimersByTimeAsync(10 * 60_000);
+            expect(getDetail, "fetches after the loop's webview was gone").toHaveBeenCalledTimes(1);
+            await answered;
+            provider.dispose();
+        } finally {
+            vi.useRealTimers();
+            setE2eControlChannelActive(false);
+        }
+    });
+
+    it("CommitGraphViewProvider stops a Checks tab loop on a webview reload, not on a replaced webview's late ready", async () => {
+        const { setE2eControlChannelActive } = await import("../../../src/e2e/activationState");
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        setE2eControlChannelActive(true);
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        try {
+            const provider = new CommitGraphViewProvider(
+                { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+                makeGitOpsMock() as unknown as object,
+                makeCredentialStore() as unknown as object,
+                { ciRepoKey: () => "/repo" } as unknown as object,
+            );
+            const getDetail = vi
+                .spyOn(provider, "getCommitCiDetail")
+                .mockImplementation(async (hash: string) => endlessScanDetail(hash));
+            const retired = createWebviewView();
+            provider.resolveWebviewView(
+                retired.view as unknown as object,
+                {} as unknown as object,
+                {} as unknown as object,
+            );
+            const current = createWebviewView();
+            provider.resolveWebviewView(
+                current.view as unknown as object,
+                {} as unknown as object,
+                {} as unknown as object,
+            );
+            const answered = current.send({
+                type: "requestCommitCiDetail",
+                requestId: 1,
+                repoKey: "/repo",
+                hash: "a".repeat(40),
+            });
+            await vi.advanceTimersByTimeAsync(0);
+            expect(getDetail).toHaveBeenCalledTimes(1);
+
+            const lateReady = retired.send({ type: "ready" });
+            await vi.advanceTimersByTimeAsync(10 * 60_000);
+            await lateReady;
+            const fetches = getDetail.mock.calls.length;
+            expect(
+                fetches,
+                "the current webview's loop kept re-reading after a replaced webview's late ready",
+            ).toBeGreaterThan(1);
+
+            // VS Code reloads a hidden view's webview without resolving the view again.
+            const reloaded = current.send({ type: "ready" });
+            await vi.advanceTimersByTimeAsync(10 * 60_000);
+            await reloaded;
+            expect(getDetail, "fetches after the webview reloaded").toHaveBeenCalledTimes(fetches);
+            await answered;
+            provider.dispose();
+        } finally {
+            vi.useRealTimers();
+            setE2eControlChannelActive(false);
+        }
+    });
+
+    it("CommitGraphViewProvider posts each overflow-scan page of a Checks tab request", async () => {
+        const { setE2eControlChannelActive } = await import("../../../src/e2e/activationState");
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        setE2eControlChannelActive(true);
+        try {
+            const provider = new CommitGraphViewProvider(
+                { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+                makeGitOpsMock() as unknown as object,
+                makeCredentialStore() as unknown as object,
+                { ciRepoKey: () => "/repo" } as unknown as object,
+            );
+            const hash = "a".repeat(40);
+            const page = await endlessScanDetail(hash);
+            // The coordinator itself is replaced, so both the handler adapter and
+            // `getCommitCiDetail` must hand the page callback on for it to arrive.
+            const commitChecks = (
+                provider as unknown as {
+                    commitChecks: { getDetail: (...args: unknown[]) => Promise<unknown> };
+                }
+            ).commitChecks;
+            vi.spyOn(commitChecks, "getDetail").mockImplementation(async (...args) => {
+                (args[3] as ((detail: unknown) => void) | undefined)?.(page);
+                return undefined;
+            });
+            const webview = createWebviewView();
+            provider.resolveWebviewView(
+                webview.view as unknown as object,
+                {} as unknown as object,
+                {} as unknown as object,
+            );
+            postMessageSpy.mockClear();
+
+            await webview.send({
+                type: "requestCommitCiDetail",
+                requestId: 4,
+                repoKey: "/repo",
+                hash,
+            });
+            expect(postMessageSpy, "the scan page posted to the Checks tab").toHaveBeenCalledWith({
+                type: "commitCiDetail",
+                requestId: 4,
+                repoKey: "/repo",
+                hash,
+                detail: page,
+            });
+            provider.dispose();
+        } finally {
+            setE2eControlChannelActive(false);
+        }
     });
 
     it("CommitGraphViewProvider replaces stale visible commit-check demand", async () => {

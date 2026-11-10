@@ -38,6 +38,7 @@ interface CommitListRowsProps {
     onRequestCommitChecks?: (hash: string, force?: boolean) => void;
     onOpenCommitCheckUrl?: (url: string) => void;
     onSignInForCommitChecks?: (host: string) => void;
+    onOpenCommitInChecks?: (hash: string) => void;
     onCommitHover?: (commit: Commit, event: React.MouseEvent) => void;
     onCommitUnhover?: () => void;
     onRowContextMenu: (event: React.MouseEvent, commit: Commit) => void;
@@ -67,6 +68,7 @@ export function CommitListRows({
     onRequestCommitChecks,
     onOpenCommitCheckUrl,
     onSignInForCommitChecks,
+    onOpenCommitInChecks,
     onCommitHover,
     onCommitUnhover,
     onRowContextMenu,
@@ -114,6 +116,7 @@ export function CommitListRows({
                                 onRequestChecks={onRequestCommitChecks}
                                 onOpenCheckUrl={onOpenCommitCheckUrl}
                                 onSignIn={onSignInForCommitChecks}
+                                onOpenInChecks={onOpenCommitInChecks}
                             />
                         );
                     })}

@@ -987,6 +987,7 @@
     "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "IntelliGit 需要 Git {0} 或更新版本才能使用合併解決、部分提交和擱置架還原功能，但偵測到的是 Git {1}。請更新 Git 以使用這些功能。",
     "IntelliGit CI": "IntelliGit CI",
     "The signed-in account changed during the request.": "要求期間已登入的帳戶已變更。",
+    "Commit checks error: {message}": "提交檢查錯誤：{message}",
     "The provider's next-page link was refused.": "已拒絕提供者的下一頁連結。",
     "Malformed Link header.": "Link 標頭格式不正確。"
 }

@@ -28,6 +28,36 @@ registered provider claims the commit. If that provider is disabled, the badge i
 `none` — the extension does not fall through to a different remote whose provider is
 enabled.
 
+## Checks tab
+
+The Checks tab is still being built and stays hidden in released versions until it is
+finished; this section describes it as it will appear. While it is hidden, no Checks tab
+detail is fetched; the commit-list CI badges still fetch as before.
+
+The commit-details pane has two tabs, **Files** (the default) and **Checks**. The pane
+remembers the tab you chose. The Checks tab shows the selected commit's CI as a tree:
+workflow or pipeline, then its jobs, then each job's steps, each with its state,
+duration and start time. Failed jobs open down to the step that failed. Statuses and
+third-party checks that belong to no workflow sit under **Other checks**. Selecting a
+job shows its details beside the tree when the pane is at least 760 px wide, and below
+it in a narrower pane.
+
+- The header shows the overall state, the duration and, when the provider reports it,
+  "push by <actor> · <ref> · #<run>". **Refresh** always fetches again; **Open in
+  browser** appears when the provider gives a link.
+- Controls appear only for what the provider can do. A provider whose workflow detail
+  this release does not read (GitLab, Bitbucket Cloud and Bitbucket Server / Data
+  Center) shows a flat list with no empty sections.
+- A very large run shows a note when its list was cut short, with a link to the rest
+  in the browser. Failed jobs past that limit are still listed as they are found.
+- The tab shows the same signed-out, error and rate-limit states as the popover, and a
+  link to the setting when CI checks are turned off. Signing in or out reloads an open
+  tab, so it never keeps showing the previous account's checks.
+- The popover's **Open in Checks** button selects the commit and switches to this tab.
+
+The tab asks for detail only while it is open. A reply for a commit or repository that
+is no longer selected, or an older reply for the same commit, is dropped.
+
 ## Authentication per provider
 
 | Provider | Credential | How to provide it | Scope / permission |

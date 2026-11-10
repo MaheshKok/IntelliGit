@@ -19,6 +19,7 @@ import type { RepositoryViewIdentity } from "../../protocol/undockedMessages";
 import { BranchColumn } from "../BranchColumn";
 import { CommitList } from "../CommitList";
 import { CommitInfoPane } from "../commit-info/CommitInfoPane";
+import { openChecksTab } from "../commit-info/checks/checksTabState";
 import theme from "../commit-panel/theme";
 import { t } from "../shared/i18n";
 import { JETBRAINS_UI } from "../shared/tokens";
@@ -396,6 +397,9 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                                 ? handleSignInForCommitChecks
                                                 : undefined
                                         }
+                                        onOpenCommitInChecks={
+                                            commitChecksEnabled ? openChecksTab : undefined
+                                        }
                                         isViewVisible={isViewVisible}
                                     />
                                 </div>
@@ -439,6 +443,8 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                             folderExpandedIcon={commitFolderExpandedIcon}
                                             folderIconsByName={commitFolderIconsByName}
                                             onOpenDiff={handleOpenDiff}
+                                            ciRepoKey={repositoryRoot}
+                                            commitChecksEnabled={commitChecksEnabled}
                                         />
                                     </div>
                                 )}
