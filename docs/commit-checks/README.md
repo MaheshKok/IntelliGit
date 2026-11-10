@@ -96,6 +96,17 @@ settings scoped), so snapshots from different providers or repositories are neve
 shared. Eligible settled and no-check snapshots can also be retained across extension
 restarts; pending and unavailable snapshots are not persisted.
 
+A snapshot counts as settled only when every check in it has finished. A failure
+reported while other checks are still running stays on the short pending refresh
+interval and is not kept across restarts, so the badge keeps updating until the last
+job ends. The detailed CI view uses its own cache with the same intervals; it keeps a
+detail across restarts only when the run is finished and every run, job and check was
+listed in full.
+
+Diagnostic lines for CI requests go to the **IntelliGit CI** output channel. They name
+the operation, provider and short commit hash; they never contain tokens, request
+headers or log text.
+
 Automatic HTTP requests pass through a gate for each provider/API-origin pair. Every
 gate allows four concurrent requests and starts no more than 300 automatic requests in
 an hour. It also honors provider-specific response signals:

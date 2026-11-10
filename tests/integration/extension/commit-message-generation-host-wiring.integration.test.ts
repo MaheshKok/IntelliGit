@@ -53,6 +53,7 @@ vi.mock("vscode", () => ({
             update: vi.fn(async () => undefined),
         })),
         onDidChangeWorkspaceFolders: vi.fn(() => disposable()),
+        onDidChangeConfiguration: vi.fn(() => disposable()),
     },
     window: {
         activeTextEditor: undefined,

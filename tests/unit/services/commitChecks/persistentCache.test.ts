@@ -3,7 +3,7 @@ import type { CommitChecksSnapshot } from "../../../../src/types";
 import {
     CommitChecksPersistentCache,
     type CommitChecksPersistentState,
-    isPersistentCommitCheckState,
+    isPersistableSnapshot,
 } from "../../../../src/services/commitChecks/persistentCache";
 
 function snapshot(state: CommitChecksSnapshot["state"]): CommitChecksSnapshot {
@@ -25,12 +25,12 @@ function state(): CommitChecksPersistentState {
 }
 
 describe("CommitChecksPersistentCache", () => {
-    it("stores every state except pending and unavailable", () => {
-        expect(isPersistentCommitCheckState("success")).toBe(true);
-        expect(isPersistentCommitCheckState("unknown")).toBe(true);
-        expect(isPersistentCommitCheckState("none")).toBe(true);
-        expect(isPersistentCommitCheckState("pending")).toBe(false);
-        expect(isPersistentCommitCheckState("unavailable")).toBe(false);
+    it("stores every complete state and none, never pending or unavailable", () => {
+        expect(isPersistableSnapshot(snapshot("success"))).toBe(true);
+        expect(isPersistableSnapshot(snapshot("unknown"))).toBe(true);
+        expect(isPersistableSnapshot(snapshot("none"))).toBe(true);
+        expect(isPersistableSnapshot(snapshot("pending"))).toBe(false);
+        expect(isPersistableSnapshot(snapshot("unavailable"))).toBe(false);
     });
 
     it("expires none snapshots before terminal snapshots", async () => {

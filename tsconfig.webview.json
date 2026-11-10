@@ -17,6 +17,7 @@
         "src/webviews/react/**/*.ts",
         "src/webviews/react/**/*.tsx",
         "src/webviews/react/**/*.d.ts",
+        "src/shared/**/*.ts",
         "src/types.ts"
     ]
 }

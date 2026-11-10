@@ -10,8 +10,9 @@ import { getErrorMessage } from "../../utils/errors";
 import type { FetchJson } from "./http";
 import { aggregateState, redactSecret, summaryForItems, unavailableSnapshot } from "./normalize";
 import { isStatusPage, toStatusItem, type BitbucketStatus } from "./bitbucketShared";
+import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
-import type { CredentialStore } from "./credentialStore";
+import { tokenAccountKey, type CredentialStore } from "./credentialStore";
 
 /** Built-in Bitbucket Cloud git host (the only host this provider serves). */
 const CLOUD_HOST = "bitbucket.org";
@@ -102,6 +103,8 @@ function buildRef(rawPath: string): BitbucketCloudRepoRef | null {
  */
 export class BitbucketCloudProvider implements CommitChecksProvider {
     readonly id = "bitbucket-cloud" as const;
+    /** No CI detail features yet; each flag turns on in the phase that implements it. */
+    readonly capabilities = NO_CI_CAPABILITIES;
 
     /**
      * Creates a BitbucketCloudProvider.
@@ -132,6 +135,11 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
     keyFor(ref: ProviderRepoRef): string {
         const { host, workspace, repo } = ref as BitbucketCloudRepoRef;
         return `bitbucket-cloud:${host.toLowerCase()}:${workspace.toLowerCase()}/${repo.toLowerCase()}`;
+    }
+
+    /** Fingerprint of the token stored for the host; never the token. */
+    accountKey(ref: ProviderRepoRef): Promise<string> {
+        return tokenAccountKey(() => this.store.get(ref.host));
     }
 
     /**

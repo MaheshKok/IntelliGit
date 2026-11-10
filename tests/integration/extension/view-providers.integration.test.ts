@@ -2210,6 +2210,7 @@ describe("view providers integration", () => {
             let rejectFirstRequest: ((reason?: unknown) => void) | undefined;
             let markFirstRequestStarted: (() => void) | undefined;
             let requestsStarted = 0;
+            const requestedUrls: string[] = [];
             const firstRequestStarted = new Promise<void>((resolve) => {
                 markFirstRequestStarted = resolve;
             });
@@ -2239,6 +2240,7 @@ describe("view providers integration", () => {
                 ) =>
                     async (url: string) => {
                         requestsStarted += 1;
+                        requestedUrls.push(url);
                         if (requestsStarted === 1) {
                             firstResponse = onResponse;
                             markFirstRequestStarted?.();
@@ -2298,8 +2300,10 @@ describe("view providers integration", () => {
             await firstRequest;
 
             graph!.clearChecksCache();
+            const before = requestedUrls.length;
             await webview.send({ type: "requestVisibleCommitChecks", hashes: [secondHash] });
-            expect(requestsStarted).toBe(2);
+            // No cooldown from the stale 429: the second commit's request still goes out.
+            expect(requestedUrls.slice(before).some((url) => url.includes(secondHash))).toBe(true);
         } finally {
             graph?.dispose();
         }
@@ -2356,6 +2360,148 @@ describe("view providers integration", () => {
         expect(captured.commitPanel!.activeRepositoryRoot).toBe(repoB);
         expect(captured.commitPanel!.runtimes.has(repoA)).toBe(false);
         expect(captured.commitPanel!.runtimes.has(repoB)).toBe(true);
+    });
+
+    it("bumps the CI lifecycle generation when CI settings change or a repository closes", async () => {
+        const { CiGenerations } = await import("../../../src/services/commitChecks/ciGenerations");
+        const bumpLifecycle = vi.spyOn(CiGenerations.prototype, "bumpLifecycle");
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const repoA = "/workspace/app-a";
+        const repoB = "/workspace/app-b";
+        const context = {
+            extensionUri: vscodeMock.Uri.file("/ext"),
+            subscriptions: [] as unknown[],
+            workspaceState: createMemento(),
+            secrets: {},
+        };
+        try {
+            await activateRepositoryMode(
+                context as never,
+                [
+                    { root: repoA, label: "app-a" },
+                    { root: repoB, label: "app-b" },
+                ],
+                { commitPanel: { setProvider: vi.fn() } } as never,
+            );
+            const configListeners = (
+                vscodeMock.workspace.onDidChangeConfiguration.mock.calls as unknown as [
+                    (event: { affectsConfiguration(section: string): boolean }) => void,
+                ][]
+            ).map(([listener]) => listener);
+            bumpLifecycle.mockClear();
+
+            for (const listener of configListeners) {
+                listener({ affectsConfiguration: (section) => section === "intelligit.shelf" });
+            }
+            expect(bumpLifecycle).not.toHaveBeenCalled();
+            for (const listener of configListeners) {
+                listener({
+                    affectsConfiguration: (section) => section === "intelligit.commitChecks",
+                });
+            }
+            expect(bumpLifecycle).toHaveBeenCalledTimes(1);
+
+            bumpLifecycle.mockClear();
+            discoverGitRepositoriesSpy.mockResolvedValueOnce([
+                { root: repoA, label: "app-a" },
+                { root: repoB, label: "app-b" },
+            ]);
+            await workspaceFolderListeners[0]();
+            await flushMicrotasks();
+            expect(bumpLifecycle).not.toHaveBeenCalled();
+
+            workspaceState.workspaceFolders = [{ uri: { fsPath: repoB, path: repoB } }];
+            discoverGitRepositoriesSpy.mockResolvedValueOnce([{ root: repoB, label: "app-b" }]);
+            await workspaceFolderListeners[0]();
+            await flushMicrotasks();
+            expect(bumpLifecycle).toHaveBeenCalledTimes(1);
+        } finally {
+            bumpLifecycle.mockRestore();
+        }
+    });
+
+    it("clears the snapshot and detail caches when CI settings change", async () => {
+        const { CommitChecksService } = await import("../../../src/services/commitChecks/service");
+        const { CommitCiDetailService } =
+            await import("../../../src/services/commitChecks/detailService");
+        const snapshotClear = vi.spyOn(CommitChecksService.prototype, "clear");
+        const detailClear = vi.spyOn(CommitCiDetailService.prototype, "clear");
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        try {
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    secrets: {},
+                } as never,
+                [{ root: "/workspace", label: "workspace" }],
+            );
+            const configListeners = (
+                vscodeMock.workspace.onDidChangeConfiguration.mock.calls as unknown as [
+                    (event: { affectsConfiguration(section: string): boolean }) => void,
+                ][]
+            ).map(([listener]) => listener);
+            snapshotClear.mockClear();
+            detailClear.mockClear();
+
+            for (const listener of configListeners) {
+                listener({ affectsConfiguration: (section) => section === "intelligit.shelf" });
+            }
+            expect(snapshotClear).not.toHaveBeenCalled();
+            expect(detailClear).not.toHaveBeenCalled();
+            for (const listener of configListeners) {
+                listener({
+                    affectsConfiguration: (section) => section === "intelligit.commitChecks",
+                });
+            }
+            expect(snapshotClear).toHaveBeenCalledTimes(1);
+            expect(detailClear).toHaveBeenCalledTimes(1);
+        } finally {
+            snapshotClear.mockRestore();
+            detailClear.mockRestore();
+        }
+    });
+
+    it("names the CI trace channel with a localized string", async () => {
+        const { CommitCiDetailService } =
+            await import("../../../src/services/commitChecks/detailService");
+        const detailClear = vi.spyOn(CommitCiDetailService.prototype, "clear");
+        const translate = vi
+            .spyOn(vscodeMock.l10n, "t")
+            .mockImplementation((message: string) => `[t]${message}`);
+        const window = vscodeMock.window as unknown as Record<string, unknown>;
+        const createOutputChannel = vi.fn(() => ({
+            trace: vi.fn(),
+            info: vi.fn(),
+            warn: vi.fn(),
+            dispose: vi.fn(),
+        }));
+        window.createOutputChannel = createOutputChannel;
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        try {
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    secrets: {},
+                } as never,
+                [{ root: "/workspace", label: "workspace" }],
+            );
+            // The credential refresh clears the shared detail service; its spy hands us the instance.
+            await registeredCommands.get("intelligit.commitChecks.refreshBadges")!();
+            const details = detailClear.mock.contexts[0] as {
+                trace: (event: { kind: string; outcome: string }) => void;
+            };
+            details.trace({ kind: "detail", outcome: "fetched" });
+
+            expect(createOutputChannel).toHaveBeenCalledWith("[t]IntelliGit CI", { log: true });
+        } finally {
+            delete window.createOutputChannel;
+            translate.mockRestore();
+            detailClear.mockRestore();
+        }
     });
 
     it("registers startup active-editor repository watchers once", async () => {
@@ -4061,7 +4207,8 @@ describe("view providers integration", () => {
         // rounds. Bounded, so a regression fails on the assertion below rather than by hanging.
         for (let round = 0; round < 20 && !(viewportSettled && retrySettled); round += 1) {
             for (const resolve of resolvers.splice(0)) resolve();
-            await Promise.resolve();
+            // A full task turn, so every await between a freed worker and its next fetch drains.
+            await new Promise<void>((done) => setImmediate(done));
         }
         await viewportDemand;
         await retryDemand;
@@ -5170,7 +5317,8 @@ describe("view providers integration", () => {
         // rounds. Bounded, so a regression fails on the assertion below rather than by hanging.
         for (let round = 0; round < 20 && !(viewportSettled && retrySettled); round += 1) {
             for (const resolve of resolvers.splice(0)) resolve();
-            await Promise.resolve();
+            // A full task turn, so every await between a freed worker and its next fetch drains.
+            await new Promise<void>((done) => setImmediate(done));
         }
         await viewportDemand;
         await retryDemand;

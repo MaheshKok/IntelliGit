@@ -66,11 +66,13 @@ describe("CommitChecksService", () => {
         service.clear();
         const second = service.getOrFetch(key, secondFetch);
         resolveFirst(snapshot("pending"));
-        await first;
+        // The fenced first request has settled and joined the post-clear one.
+        await new Promise((resolve) => setTimeout(resolve, 0));
 
         const third = service.getOrFetch(key, thirdFetch);
         resolveSecond(snapshot("success"));
 
+        await expect(first).resolves.toEqual(expect.objectContaining({ state: "success" }));
         await expect(second).resolves.toEqual(expect.objectContaining({ state: "success" }));
         await expect(third).resolves.toEqual(expect.objectContaining({ state: "success" }));
         expect(firstFetch).toHaveBeenCalledTimes(1);

@@ -1,3 +1,5 @@
+import type { ProviderCiCapabilities } from "./shared/ci/capabilities";
+
 /**
  * Git branch metadata shared by extension-host services and webview branch renderers.
  *
@@ -140,6 +142,10 @@ export interface CommitCheckItem {
     state: CommitCheckState;
     source: "check-run" | "status";
     url?: string;
+    /** Execution identity (check-run id or status context); dedup inside one commit only. */
+    id?: string;
+    /** Logical check identity across commits (see `logicalCheckId`). */
+    logicalId?: string;
 }
 
 /** Host-normalized check/status snapshot for one commit hash. */
@@ -156,6 +162,184 @@ export interface CommitChecksSnapshot {
      * HTTP errors, terminal states, and GitHub (which uses VS Code's built-in session).
      */
     signInHost?: string;
+}
+
+/** Identifier for a supported commit-check host. */
+export type ProviderId = "github" | "gitlab" | "bitbucket-cloud" | "bitbucket-server";
+
+/**
+ * Execution state of one CI run, job or step; `running` is the only state with a live timer.
+ *
+ * @public consumed by later CI tab phases.
+ */
+export type CiState =
+    "queued" | "running" | "success" | "failure" | "cancelled" | "skipped" | "neutral" | "unknown";
+
+/**
+ * Whether every item of a bounded collection was read. Separate from completion: a
+ * finished run can still be shown only in part.
+ *
+ * @public consumed by later CI tab phases.
+ */
+export type CiCoverage = "full" | { reason: "pageBound" | "rejectedNext"; shown: number };
+
+/**
+ * Progress of the in-memory scan for failed jobs past the page bound; never persisted.
+ *
+ * @public consumed by later CI tab phases.
+ */
+export interface CiFailedScan {
+    state: "running" | "paused" | "stopped" | "done";
+    /** Failed items found past the bound so far. */
+    found: number;
+    /** Set when `state` is `"stopped"`. */
+    error?: string;
+}
+
+/**
+ * One step of a CI job.
+ *
+ * @public consumed by later CI tab phases.
+ */
+export interface CiStep {
+    number: number;
+    name: string;
+    state: CiState;
+    startedAt?: string;
+    completedAt?: string;
+}
+
+/** One CI job (GitHub Actions job, GitLab job, Bitbucket Cloud step). */
+export interface CiJob {
+    /** Execution id; dedup inside one commit only. */
+    id: string;
+    /** Logical check identity across commits. */
+    logicalId: string;
+    /** GitHub only: check-run id parsed from the job's check-run link. */
+    checkRunId?: string;
+    name: string;
+    checkName: string;
+    state: CiState;
+    url?: string;
+    startedAt?: string;
+    completedAt?: string;
+    attempt?: number;
+    steps: CiStep[];
+    /** GitHub only, from the check run's `output.annotations_count`. */
+    annotationCount?: number;
+    optional?: boolean;
+    required?: "yes" | "no" | "unknown";
+    /** Provider failure text, at most 2 000 characters. */
+    failureSummary?: string;
+    /** `null` = unknown, `undefined` = not asked. */
+    usualDurationMs?: number | null;
+}
+
+/** One workflow run or pipeline with its jobs. */
+export interface CiRun {
+    id: string;
+    name: string;
+    url?: string;
+    state: CiState;
+    /** GitHub workflow id; absent for providers without a workflow concept. */
+    workflowId?: string;
+    event?: string;
+    actor?: string;
+    ref?: string;
+    runNumber?: number;
+    attempt?: number;
+    createdAt?: string;
+    startedAt?: string;
+    completedAt?: string;
+    usualDurationMs?: number | null;
+    jobs: CiJob[];
+    /** Coverage of the jobs/steps collection (page bound or a refused next link). */
+    jobsCoverage: CiCoverage;
+    /** Present while failed items past the bound are being found. */
+    failedScan?: CiFailedScan;
+}
+
+/**
+ * A check outside the run tree: statuses, third-party checks, Bitbucket Server builds.
+ *
+ * @public consumed by later CI tab phases.
+ */
+export interface CiFlatCheck {
+    /** Execution identity: check-run id, status context or build key. */
+    id?: string;
+    logicalId?: string;
+    name: string;
+    description: string;
+    state: CommitCheckState;
+    source: "check-run" | "status" | "build";
+    url?: string;
+    durationMs?: number | null;
+    required?: "yes" | "no" | "unknown";
+    usualDurationMs?: number | null;
+}
+
+/**
+ * One attempt of a job on one commit.
+ *
+ * @public consumed by later CI tab phases.
+ */
+export interface CiAttempt {
+    attempt: number;
+    executionId: string;
+    state: CiState;
+    startedAt?: string;
+    completedAt?: string;
+}
+
+/**
+ * Attempt history of one logical job inside one run.
+ *
+ * @public consumed by later CI tab phases.
+ */
+export interface CiAttemptHistory {
+    /** GitHub workflow run id; GitLab pipeline id. */
+    runId: string;
+    logicalId: string;
+    /** Chronological, unique by `executionId`. */
+    attempts: CiAttempt[];
+    coverage: CiCoverage;
+}
+
+/** CI detail for one commit, as providers return it and as it is persisted. */
+export interface CommitCiDetailData {
+    hash: string;
+    provider: ProviderId;
+    /** No run, job or flat check is queued, running or pending. */
+    complete: boolean;
+    /** Same aggregate rule as the snapshot (failure wins). */
+    outcome: CommitCheckState;
+    runs: CiRun[];
+    /** Coverage of the run/pipeline list itself. */
+    runsCoverage: CiCoverage;
+    otherChecks: CiFlatCheck[];
+    /** Coverage of the flat check list itself. */
+    otherChecksCoverage: CiCoverage;
+    requiredStatus?: "known" | "partial" | "unknown";
+    attemptHistory?: CiAttemptHistory[];
+    error?: string;
+    signInHost?: string;
+}
+
+/** CI detail as the webview receives it: data plus values attached at read time. */
+export interface CommitCiDetail extends CommitCiDetailData {
+    /** From the installed provider, never from a cache. */
+    capabilities: ProviderCiCapabilities;
+    repoKey: string;
+    actionFence?: {
+        targetId: string;
+        action: "rerunFailed" | "rerunJob" | "cancel";
+        notSeen: boolean;
+    };
+    /**
+     * Set when a forced refresh failed while an earlier detail was cached: the detail is
+     * that earlier one, and this is the refresh's error (empty when the provider gave none).
+     */
+    refreshError?: string;
 }
 
 /**

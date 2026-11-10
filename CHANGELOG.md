@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.2] - 2026-11-07
+
+### Fixed
+
+- A commit whose CI failed while other jobs were still running now keeps updating until every job finishes.
+- Saved CI results now belong to the account that loaded them, so after you switch accounts the previous account's results are never shown, even after a restart, while results are still loading, or when you sign in again from another window.
+
 ## [0.43.1] - 2026-11-07
 
 ### Fixed

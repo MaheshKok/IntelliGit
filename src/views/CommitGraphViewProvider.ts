@@ -44,6 +44,9 @@ import {
     type CommitChecksSettings,
 } from "../services/commitChecks/settingsConfig";
 import type { CommitChecksService } from "../services/commitChecks/service";
+import type { CommitCiDetailService } from "../services/commitChecks/detailService";
+import type { CiGenerations } from "../services/commitChecks/ciGenerations";
+import type { CiTrace } from "../services/commitChecks/ciTrace";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
@@ -171,6 +174,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             hostMap?: HostMap;
             settings?: CommitChecksSettings;
             commitChecksService?: CommitChecksService;
+            commitCiDetailService?: CommitCiDetailService;
+            ciGenerations?: CiGenerations;
+            ciTrace?: CiTrace;
             commitChecksProviders?: readonly CommitChecksProvider[];
         } = {},
     ) {
@@ -191,6 +197,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                 providerEnabled: settings?.providers,
                 ttlMs: DEFAULT_COMMIT_CHECKS_TTL_MS,
                 service: options.commitChecksService,
+                detailService: options.commitCiDetailService,
+                generations: options.ciGenerations,
+                trace: options.ciTrace,
                 settingsFingerprint: commitChecksSettingsFingerprint(settings),
             },
         );
