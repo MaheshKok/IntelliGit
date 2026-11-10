@@ -42,6 +42,8 @@ interface Props {
     onRequestChecks?: (hash: string, force?: boolean) => void;
     onOpenCheckUrl?: (url: string) => void;
     onSignIn?: (host: string) => void;
+    /** Switches the commit details pane to its Checks tab for this commit. */
+    onOpenInChecks?: (hash: string) => void;
 }
 
 /** Keyboard and pointer modifiers that determine commit-list selection membership. */
@@ -421,8 +423,19 @@ function CommitRowInner({
     onRequestChecks,
     onOpenCheckUrl,
     onSignIn,
+    onOpenInChecks,
 }: Props): React.ReactElement {
     const isMergeCommit = commit.parentHashes.length > 1;
+    const openInChecks = React.useMemo(
+        () =>
+            onOpenInChecks
+                ? (hash: string) => {
+                      onSelect(hash);
+                      onOpenInChecks(hash);
+                  }
+                : undefined,
+        [onOpenInChecks, onSelect],
+    );
     const rowStyle = React.useMemo<React.CSSProperties>(
         () => ({
             height: ROW_HEIGHT,
@@ -546,6 +559,7 @@ function CommitRowInner({
                     onRequestChecks={onRequestChecks}
                     onOpenCheckUrl={onOpenCheckUrl}
                     onSignIn={onSignIn}
+                    onOpenInChecks={openInChecks}
                 />
             ) : null}
         </div>
@@ -573,6 +587,7 @@ function areEqual(prev: Props, next: Props): boolean {
         prev.onRequestChecks === next.onRequestChecks &&
         prev.onOpenCheckUrl === next.onOpenCheckUrl &&
         prev.onSignIn === next.onSignIn &&
+        prev.onOpenInChecks === next.onOpenInChecks &&
         prev.onSelect === next.onSelect &&
         prev.onContextMenu === next.onContextMenu
     );

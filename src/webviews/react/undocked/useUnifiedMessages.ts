@@ -9,6 +9,7 @@ import type {
     UnifiedInbound,
     UnifiedOutbound,
 } from "../../protocol/undockedMessages";
+import { openChecksTab } from "../commit-info/checks/checksTabState";
 import { getVsCodeApi } from "../shared/vscodeApi";
 import type { SectionWidths } from "./sectionWidths";
 import type { CommitPanelAction, CommitPanelState, GraphAction } from "./commitPanelState";
@@ -131,6 +132,20 @@ function handleRepositoriesMessage(
         context.graphDispatch({ type: "resetRepository" });
         context.cpDispatch({ type: "RESET_REPOSITORY" });
     }
+}
+
+/** Selects the commit and shows the Checks tab, for the selected repository only. */
+function handleOpenChecksTabMessage(
+    data: Extract<UnifiedInbound, { type: "openChecksTab" }>,
+    context: MessageContext,
+): void {
+    if (data.repoKey !== context.selectedRepositoryRootRef.current) return;
+    if (data.hash !== context.selectedHashRef.current) {
+        context.selectedHashRef.current = data.hash;
+        context.graphDispatch({ type: "selectCommit", hash: data.hash });
+        vscode.postMessage({ type: "selectCommit", hash: data.hash });
+    }
+    openChecksTab();
 }
 
 /** Applies messages that update graph data, selection, visibility, and load state. */
@@ -384,6 +399,7 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
         const handler = (event: MessageEvent<UnifiedInbound>) => {
             const data = event.data;
             if (data.type === "repositories") return handleRepositoriesMessage(data, context);
+            if (data.type === "openChecksTab") return handleOpenChecksTabMessage(data, context);
             if (isGraphMessage(data)) return handleGraphMessage(data, context);
             if (isCommitPanelMessage(data)) return handleCommitPanelMessage(data, context);
             if (isLayoutMessage(data)) return handleLayoutMessage(data, context);

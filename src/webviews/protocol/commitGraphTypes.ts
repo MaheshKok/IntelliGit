@@ -15,6 +15,15 @@ import type {
     InteractiveRebaseRangeCommit,
     RebaseSubmissionEntry,
 } from "../../git/interactiveRebase/types";
+import type {
+    CancelCommitCiDetailMessage,
+    CommitCiDetailInvalidatedMessage,
+    CommitCiDetailMessage,
+    OpenCommitChecksSettingsMessage,
+    OpenChecksTabMessage,
+    OpenCommitInChecksMessage,
+    RequestCommitCiDetailMessage,
+} from "./commitCiMessages";
 
 // Re-exported so the rebase dialog can share the host's todo vocabulary without importing from
 // `src/git/**` directly, which the webview architecture rule forbids. The protocol layer is the
@@ -237,7 +246,11 @@ export type CommitGraphOutbound =
           decision: ReviewPromptDecision;
           /** External page the answer asked for, if any; the host resolves the actual URL. */
           open?: ReviewPromptTarget;
-      };
+      }
+    | RequestCommitCiDetailMessage
+    | CancelCommitCiDetailMessage
+    | OpenCommitChecksSettingsMessage
+    | OpenCommitInChecksMessage;
 
 /** How the user answered the review card. `later` is the only non-terminal outcome. */
 export type ReviewPromptDecision = "rated" | "declined" | "later";
@@ -360,6 +373,8 @@ export type CommitGraphInbound =
           folderIconsByName?: ThemeFolderIconMap;
           /** Webview-safe font-face payloads needed to render glyph-based file icons. */
           iconFonts?: ThemeIconFont[];
+          /** Repository the Checks tab asks about; absent hides the Checks tab. */
+          ciRepoKey?: string;
       }
     | {
           /** Event clearing commit detail panes after branch/filter changes or no selection. */
@@ -396,4 +411,7 @@ export type CommitGraphInbound =
           type: "setViewVisibility";
           /** `true` when the hosting view/panel is currently visible. */
           visible: boolean;
-      };
+      }
+    | CommitCiDetailMessage
+    | CommitCiDetailInvalidatedMessage
+    | OpenChecksTabMessage;

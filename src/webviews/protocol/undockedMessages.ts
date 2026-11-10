@@ -10,6 +10,11 @@ import type {
     OutboundMessage as CommitPanelOutbound,
 } from "./commitPanelMessages";
 import type { CommitGraphInbound } from "./commitGraphTypes";
+import type {
+    CancelCommitCiDetailMessage,
+    OpenCommitChecksSettingsMessage,
+    RequestCommitCiDetailMessage,
+} from "./commitCiMessages";
 
 /** The shared operation-state contract carried by undocked commit-panel updates. */
 type UndockedCommitPanelUpdate = Extract<CommitPanelInbound, { type: "update" }>;
@@ -207,6 +212,9 @@ type GraphOutbound =
           /** Host to sign into; validated host-side before the sign-in command runs. */
           host: string;
       }
+    | RequestCommitCiDetailMessage
+    | CancelCommitCiDetailMessage
+    | OpenCommitChecksSettingsMessage
     | {
           /** Command requesting the controller to return IntelliGit to docked views. */
           type: "dock";

@@ -325,6 +325,7 @@ type MockExtensionContext = {
 let latestCommitGraphProvider: MockCommitGraphViewProvider | undefined;
 let latestSidebarGraphProvider: MockCommitGraphViewProvider | undefined;
 let latestCommitPanelProvider: MockCommitPanelViewProvider | undefined;
+let latestCommitInfoProvider: MockCommitInfoViewProvider | undefined;
 let latestUndockedProvider: MockUndockedViewProvider | undefined;
 let commitPanelRefreshHook:
     ((provider: MockCommitPanelViewProvider) => void | Promise<void>) | undefined;
@@ -355,6 +356,7 @@ class MockCommitGraphViewProvider {
         commitHash: string;
         filePath: string;
     }>();
+    private openCommitInChecksEmitter = new MockEventEmitter<string>();
 
     constructor(
         _uri: unknown,
@@ -376,6 +378,8 @@ class MockCommitGraphViewProvider {
     onRebaseDialogSubmit = this.rebaseDialogSubmitEmitter.event;
     onRebaseDialogCancel = this.rebaseDialogCancelEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
+    onOpenCommitInChecks = this.openCommitInChecksEmitter.event;
+    getCommitCiDetail = vi.fn(async () => undefined);
     setBranches = vi.fn();
     refresh = vi.fn(async () => undefined);
     clearChecksCache = vi.fn();
@@ -421,17 +425,27 @@ class MockCommitGraphViewProvider {
     emitOpenCommitFileDiff(payload: { commitHash: string; filePath: string }): void {
         this.openCommitFileDiffEmitter.fire(payload);
     }
+    /** Emits an Open in Checks request from the mocked graph provider's badge popover. */
+    emitOpenCommitInChecks(hash: string): void {
+        this.openCommitInChecksEmitter.fire(hash);
+    }
 }
 
 /** Commit info provider mock for file-diff event plumbing. */
 class MockCommitInfoViewProvider {
     static readonly viewType = "intelligit.commitFiles";
+    constructor() {
+        latestCommitInfoProvider = this;
+    }
     private openCommitFileDiffEmitter = new MockEventEmitter<{
         commitHash: string;
         filePath: string;
     }>();
     setCommitDetail = vi.fn();
     clear = vi.fn();
+    setCiSource = vi.fn();
+    openChecksTab = vi.fn();
+    refreshChecksTab = vi.fn();
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     dispose = vi.fn();
 }
@@ -1111,6 +1125,7 @@ describe("extension integration", () => {
         latestCommitGraphProvider = undefined;
         latestSidebarGraphProvider = undefined;
         latestCommitPanelProvider = undefined;
+        latestCommitInfoProvider = undefined;
         latestUndockedProvider = undefined;
         commitPanelRefreshHook = undefined;
 
@@ -1360,6 +1375,23 @@ describe("extension integration", () => {
         expect(latestSidebarGraphProvider!.clearChecksCache).toHaveBeenCalledTimes(1);
         expect(latestCommitGraphProvider!.refresh).toHaveBeenCalledTimes(1);
         expect(latestSidebarGraphProvider!.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it("Open in Checks from the sidebar graph opens that commit in the details pane's Checks tab", async () => {
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        if (!latestSidebarGraphProvider) throw new Error("Expected sidebar graph provider");
+        if (!latestCommitInfoProvider) throw new Error("Expected commit info provider");
+        const hash = "a".repeat(40);
+
+        latestSidebarGraphProvider.emitOpenCommitInChecks(hash);
+
+        expect(latestCommitInfoProvider.openChecksTab).toHaveBeenCalledWith(hash);
     });
 
     it("clears the activity bar changed-files badge when the refreshed count reaches zero", async () => {

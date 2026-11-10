@@ -316,6 +316,13 @@ export function NativeCommitGraph({
         },
         [vscode],
     );
+    // The details pane is the separate Changed Files view, so the host relays this to it.
+    const handleOpenCommitInChecks = useCallback(
+        (hash: string) => {
+            vscode.postMessage({ type: "openCommitInChecks", hash });
+        },
+        [vscode],
+    );
     const handleRebaseDialogSubmit = useCallback(
         (entries: readonly RebaseTodoEntry[]) => {
             const dialog = rebaseDialogRef.current;
@@ -358,6 +365,7 @@ export function NativeCommitGraph({
                 onSignInForCommitChecks={
                     commitChecksEnabled ? handleSignInForCommitChecks : undefined
                 }
+                onOpenCommitInChecks={commitChecksEnabled ? handleOpenCommitInChecks : undefined}
                 isViewVisible={isViewVisible}
                 showSearch={false}
                 showAuthorDate={false}

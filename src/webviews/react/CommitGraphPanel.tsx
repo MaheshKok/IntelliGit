@@ -29,6 +29,7 @@ import type {
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
+import { openChecksTab } from "./commit-info/checks/checksTabState";
 import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 import { JETBRAINS_UI } from "./shared/tokens";
 import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
@@ -142,6 +143,7 @@ interface CommitGraphPanelState {
     iconFonts: ThemeIconFont[];
     unpushedHashes: Set<string>;
     commitChecksEnabled: boolean;
+    ciRepoKey?: string;
 }
 
 const initialCommitGraphPanelState: CommitGraphPanelState = {
@@ -195,6 +197,7 @@ function commitGraphPanelReducer(
                 commitFolderExpandedIcon: action.folderExpandedIcon,
                 commitFolderIconsByName: action.folderIconsByName,
                 iconFonts: action.iconFonts ?? state.iconFonts,
+                ciRepoKey: action.ciRepoKey,
             };
         case "clearCommitDetail":
             return {
@@ -271,6 +274,7 @@ export function CommitGraphPanel({
         iconFonts,
         unpushedHashes,
         commitChecksEnabled,
+        ciRepoKey,
     } = state;
     const [branchWidth, setBranchWidth] = useState(() => {
         try {
@@ -375,6 +379,7 @@ export function CommitGraphPanel({
         sendReady,
         loadingMore,
         selectedHash,
+        ciRepoKey,
         setViewVisible,
         onShowRebaseDialog: handleShowRebaseDialog,
         onShowReviewPrompt: setReviewPromptRequestId,
@@ -598,6 +603,7 @@ export function CommitGraphPanel({
                         onSignInForCommitChecks={
                             commitChecksEnabled ? handleSignInForCommitChecks : undefined
                         }
+                        onOpenCommitInChecks={commitChecksEnabled ? openChecksTab : undefined}
                         isViewVisible={viewVisible}
                     />
                 </div>
@@ -636,6 +642,8 @@ export function CommitGraphPanel({
                             folderExpandedIcon={commitFolderExpandedIcon}
                             folderIconsByName={commitFolderIconsByName}
                             onOpenDiff={handleOpenDiff}
+                            ciRepoKey={ciRepoKey}
+                            commitChecksEnabled={commitChecksEnabled}
                         />
                     </div>
                 )}

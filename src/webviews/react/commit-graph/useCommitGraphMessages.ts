@@ -5,6 +5,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type React from "react";
 import type { CommitGraphInbound } from "../../protocol/commitGraphTypes";
+import { openChecksTab } from "../commit-info/checks/checksTabState";
 import type { CommitGraphPanelAction } from "./types";
 import type { VsCodeApi } from "../shared/vscodeApi";
 
@@ -19,6 +20,8 @@ export function useCommitGraphMessages(params: {
     sendReady: boolean;
     loadingMore: React.MutableRefObject<boolean>;
     selectedHash: string | null;
+    /** Repository the Checks tab shows; an `openChecksTab` message for another one is dropped. */
+    ciRepoKey?: string;
     setViewVisible: (visible: boolean) => void;
     onShowRebaseDialog: (dialog: Extract<CommitGraphInbound, { type: "showRebaseDialog" }>) => void;
     onShowReviewPrompt: (requestId: string) => void;
@@ -29,15 +32,18 @@ export function useCommitGraphMessages(params: {
         sendReady,
         loadingMore,
         selectedHash,
+        ciRepoKey,
         setViewVisible,
         onShowRebaseDialog,
         onShowReviewPrompt,
     } = params;
     const selectedHashRef = useRef<string | null>(selectedHash);
+    const ciRepoKeyRef = useRef(ciRepoKey);
     const selectFirstOnNextLoadRef = useRef(false);
     useLayoutEffect(() => {
         selectedHashRef.current = selectedHash;
-    }, [selectedHash]);
+        ciRepoKeyRef.current = ciRepoKey;
+    }, [selectedHash, ciRepoKey]);
     // Held in a ref for the same reason as `selectedHashRef`: this effect owns the single
     // `ready` post and the window subscription, so its dependency list must stay fixed. Naming
     // the callback as a dependency would re-post `ready` and re-subscribe whenever a host
@@ -129,6 +135,7 @@ export function useCommitGraphMessages(params: {
                         folderExpandedIcon: data.folderExpandedIcon,
                         folderIconsByName: data.folderIconsByName,
                         iconFonts: data.iconFonts,
+                        ciRepoKey: data.ciRepoKey,
                     });
                     break;
                 case "clearCommitDetail":
@@ -145,6 +152,15 @@ export function useCommitGraphMessages(params: {
                     break;
                 case "showReviewPrompt":
                     onShowReviewPromptRef.current(data.requestId);
+                    break;
+                case "openChecksTab":
+                    if (data.repoKey !== ciRepoKeyRef.current) break;
+                    if (data.hash !== selectedHashRef.current) {
+                        selectedHashRef.current = data.hash;
+                        dispatch({ type: "selectCommit", hash: data.hash });
+                        vscode.postMessage({ type: "selectCommit", hash: data.hash });
+                    }
+                    openChecksTab();
                     break;
                 case "loadError":
                     selectFirstOnNextLoadRef.current = false;

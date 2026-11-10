@@ -879,7 +879,9 @@ describe("CommitGraphApp integration", () => {
 });
 
 describe("UndockedApp integration", () => {
-    function mockUndockedChildren(): void {
+    function mockUndockedChildren(
+        CommitInfoPane: (props: { ciRepoKey?: string }) => ReactNode = () => <div>Info</div>,
+    ): void {
         vi.doMock("../../../src/webviews/react/BranchColumn", () => ({
             BranchColumn: () => <div>Branches</div>,
         }));
@@ -887,7 +889,7 @@ describe("UndockedApp integration", () => {
             CommitList: () => <div>Graph</div>,
         }));
         vi.doMock("../../../src/webviews/react/commit-info/CommitInfoPane", () => ({
-            CommitInfoPane: () => <div>Info</div>,
+            CommitInfoPane,
         }));
         vi.doMock("../../../src/webviews/react/commit-panel/components/TabBar", () => ({
             TabBar: ({ commitContent }: { commitContent: ReactNode }) => <div>{commitContent}</div>,
@@ -1006,6 +1008,45 @@ describe("UndockedApp integration", () => {
             expect(vscode.setState.mock.calls).toHaveLength(savedWidths);
         },
     );
+
+    it("a repository switch hands the commit details pane the new Checks repository", async () => {
+        vi.resetModules();
+        Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200 });
+        installVsCodeMock();
+        createRootHost();
+        mockUndockedChildren(({ ciRepoKey }) => (
+            <div data-testid="info-pane" data-ci-repo-key={ciRepoKey ?? ""} />
+        ));
+        await import("../../../src/webviews/react/UndockedApp");
+        await flush();
+        const selectRoot = (root: string) =>
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "repositories",
+                            repositories: [
+                                { root: "/repo-a", label: "Repo A" },
+                                { root: "/repo-b", label: "Repo B" },
+                            ],
+                            selectedRepositoryRoot: root,
+                        },
+                    }),
+                );
+            });
+        const paneKey = () =>
+            document.querySelector('[data-testid="info-pane"]')?.getAttribute("data-ci-repo-key");
+
+        // The app's first render can land after one flush, so each check polls briefly.
+        await vi.waitFor(() => expect(paneKey()).toBe(""));
+        selectRoot("/repo-a");
+        await vi.waitFor(() => expect(paneKey()).toBe("/repo-a"));
+        // The host answers no request under the old key, so the tab must ask under the new one.
+        selectRoot("/repo-b");
+        await vi.waitFor(() =>
+            expect(paneKey(), "Checks repository after the switch").toBe("/repo-b"),
+        );
+    });
 
     it("keeps support panes at their defaults until a drag and preserves dragged proportions", async () => {
         vi.resetModules();

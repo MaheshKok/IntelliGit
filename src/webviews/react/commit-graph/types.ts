@@ -41,6 +41,7 @@ export type CommitGraphPanelAction =
           folderExpandedIcon?: ThemeTreeIcon;
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
+          ciRepoKey?: string;
       }
     | { type: "clearCommitDetail"; loading?: boolean }
     | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
