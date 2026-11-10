@@ -154,9 +154,17 @@ function RunGroup({
                             aria-current={selectedJobId === job.id ? "true" : undefined}
                             onClick={() => onSelectJob(job)}
                             onKeyDown={(event) => {
+                                // A key pressed on a control inside the row belongs to that control.
+                                if (event.target !== event.currentTarget) return;
                                 if (event.key === "Enter" || event.key === " ") {
                                     event.preventDefault();
                                     onSelectJob(job);
+                                } else if (
+                                    expandable &&
+                                    event.key === (open ? "ArrowLeft" : "ArrowRight")
+                                ) {
+                                    event.preventDefault();
+                                    onToggle(job);
                                 }
                             }}
                             style={{

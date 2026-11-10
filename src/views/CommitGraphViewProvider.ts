@@ -242,7 +242,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     }
 
     /**
-     * The CI detail of one commit, for the Checks tab of this or another view.
+     * The CI detail of one commit, for the Checks tab of this or another view. `onScanUpdate`
+     * receives the detail again after each failed-job overflow scan page.
      *
      * @returns Undefined when no enabled provider serves the repository or `ctx` went stale.
      */
@@ -250,8 +251,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         hash: string,
         options: CommitChecksFetchOptions,
         ctx: CiOperationContext,
+        onScanUpdate?: (detail: CommitCiDetail) => void,
     ): Promise<CommitCiDetail | undefined> {
-        return this.commitChecks.getDetail(hash, options, ctx);
+        return this.commitChecks.getDetail(hash, options, ctx, onScanUpdate);
     }
 
     /**
@@ -288,6 +290,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         this.commitCheckDemandSeq += 1;
         this.disposeThemeChangeDisposables();
         this.iconTheme.dispose();
+        // The replaced view's re-post loop would keep fetching for a webview that is gone.
+        this.ciDetailLoops.dispose();
         this.view = webviewView;
         this.lastPostedPayload = undefined;
         this.applyRepositoryDescription();
@@ -343,6 +347,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         // the final `postCommitDetailState()` re-send what the webview already
                         // has -- reintroducing the duplicate post this guard exists to remove.
                         this.lastPostedPayload = undefined;
+                        // A reload ends the old scan loop; a replaced view's late ready must not.
+                        if (this.view === webviewView) this.ciDetailLoops.dispose();
                         this.postToWebview({
                             type: "setViewVisibility",
                             visible: webviewView.visible,
@@ -446,8 +452,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                             {
                                 repoKey,
                                 generations: this.options.ciGenerations,
-                                getDetail: (hash, options, ctx) =>
-                                    this.getCommitCiDetail(hash, options, ctx),
+                                getDetail: (hash, options, ctx, onScanUpdate) =>
+                                    this.getCommitCiDetail(hash, options, ctx, onScanUpdate),
                             },
                             { ...msg },
                             (reply) => {
@@ -1146,6 +1152,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
      */
     dispose(): void {
         this.commitCheckDemandSeq += 1;
+        this.ciDetailLoops.dispose();
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
         this._onCommitSelected.dispose();

@@ -364,7 +364,8 @@ export async function activateRepositoryMode(
         repoKey: () => repoRoot,
         generations: ciGenerations,
         enabled: commitCheckSettings.enabled,
-        getDetail: (hash, options, ctx) => commitGraph.getCommitCiDetail(hash, options, ctx),
+        getDetail: (hash, options, ctx, onScanUpdate) =>
+            commitGraph.getCommitCiDetail(hash, options, ctx, onScanUpdate),
     });
     sidebarGraph.onOpenCommitInChecks((hash) => commitInfo.openChecksTab(hash));
     const commitPanel = new CommitPanelViewProvider(

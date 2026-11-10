@@ -77,6 +77,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         _token: vscode.CancellationToken,
     ): void {
         this.iconTheme.dispose();
+        // The replaced view's re-post loop would keep fetching for a webview that is gone.
+        this.ciDetailLoops.dispose();
         this.view = webviewView;
         this.ready = false;
         this.lastPostedPayload = undefined;
@@ -104,6 +106,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     // following `postCurrentState()` re-send what the webview already has --
                     // reintroducing the duplicate post this guard exists to remove.
                     this.lastPostedPayload = undefined;
+                    // A reload ends the old scan loop; a replaced view's late ready must not.
+                    if (this.view === webviewView) this.ciDetailLoops.dispose();
                     try {
                         await this.iconTheme.initIconThemeData();
                     } catch (err) {
@@ -193,10 +197,13 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({ type: "commitCiDetailInvalidated" });
     }
 
-    /** Posts a held "Open in Checks" once, when the webview is ready to receive it. */
+    /**
+     * Posts a held "Open in Checks" once, when the webview is ready and shows that commit: the
+     * graph selects the row and asks at once, while the commit's detail is still loading.
+     */
     private postPendingChecksTab(): void {
         const pending = this.pendingChecks;
-        if (!this.ready || pending === undefined) return;
+        if (!this.ready || pending === undefined || this.detail?.hash !== pending.hash) return;
         this.pendingChecks = undefined;
         this.postToWebview({ type: "openChecksTab", ...pending });
     }
@@ -265,6 +272,9 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.loading = false;
         this.folderIconsByName = {};
         this.postCurrentState();
+        // Only the newest selection's detail arrives here, so another commit means the user moved on.
+        if (this.pendingChecks?.hash !== detail.hash) this.pendingChecks = undefined;
+        this.postPendingChecksTab();
         this.decorateAndStoreDetail(detail, requestId).catch((err) => {
             if (requestId !== this.requestSeq) return;
             const msg = getErrorMessage(err);
@@ -283,6 +293,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.loading = options?.loading ?? false;
         this.folderIconsByName = {};
         this.lastPostedPayload = undefined;
+        // The held commit's load was cancelled; a later plain click must not open Checks.
+        this.pendingChecks = undefined;
         if (this.ready) {
             this.postToWebview(this.loading ? { type: "clear", loading: true } : { type: "clear" });
         }
@@ -368,6 +380,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
      * Releases the icon theme resolver and file-diff event emitter owned by this provider.
      */
     dispose(): void {
+        this.ciDetailLoops.dispose();
         this.iconTheme.dispose();
         this._onOpenCommitFileDiff.dispose();
     }

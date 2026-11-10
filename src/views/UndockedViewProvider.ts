@@ -793,7 +793,13 @@ export class UndockedViewProvider {
             this.disposeThemeChangeDisposables();
             this._onDidDispose.fire();
         });
+        const panel = this.panel;
         this.panel.webview.onDidReceiveMessage(async (msg: UnifiedOutbound) => {
+            // Request ids restart in each panel, so a closed panel's late Checks tab message
+            // could restart or cancel its successor's loop.
+            const ciMessage =
+                msg.type === "requestCommitCiDetail" || msg.type === "cancelCommitCiDetail";
+            if (ciMessage && this.panel !== panel) return;
             try {
                 if (isChangeWorkflowCommand(msg.type)) await this.handleChangeWorkflowMessage(msg);
                 else await this.handleMessage(msg);
@@ -1279,8 +1285,8 @@ export class UndockedViewProvider {
                     {
                         repoKey: () => this.selectedRepositoryRoot,
                         generations: this.ciGenerations,
-                        getDetail: (hash, options, ctx) =>
-                            this.commitChecks.getDetail(hash, options, ctx),
+                        getDetail: (hash, options, ctx, onScanUpdate) =>
+                            this.commitChecks.getDetail(hash, options, ctx, onScanUpdate),
                     },
                     { ...msg },
                     (reply) => {

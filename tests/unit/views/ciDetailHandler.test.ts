@@ -146,6 +146,7 @@ describe("answerCommitCiDetailRequest", () => {
             HASH,
             { force: true },
             expect.objectContaining({ repoKey: "/repo" }),
+            expect.any(Function),
         );
         expect(post).toHaveBeenCalledWith({
             type: "commitCiDetail",
@@ -220,6 +221,119 @@ describe("answerCommitCiDetailRequest", () => {
                 { force: false },
                 { force: false },
                 { force: false },
+            ]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("each scan page re-posts the detail with the same requestId", async () => {
+        vi.useFakeTimers();
+        try {
+            let onScanUpdate: ((update: CommitCiDetail) => void) | undefined;
+            const loops = new CommitCiDetailLoops();
+            const post = vi.fn();
+            const answered = answerCommitCiDetailRequest(
+                {
+                    repoKey: () => "/repo",
+                    generations: new CiGenerations(),
+                    getDetail: async (_hash, _options, _ctx, onUpdate) => {
+                        onScanUpdate = onUpdate;
+                        return scanned("running", 0);
+                    },
+                },
+                { type: "requestCommitCiDetail", requestId: 6, repoKey: "/repo", hash: HASH },
+                post,
+                loops,
+            );
+            await vi.advanceTimersByTimeAsync(0);
+            expect(post).toHaveBeenCalledTimes(1);
+
+            // Two pages arrive before the ladder's first re-read.
+            onScanUpdate?.(scanned("running", 1));
+            onScanUpdate?.(scanned("running", 2));
+            expect(
+                post.mock.calls.map(([reply]) => [
+                    reply.requestId,
+                    reply.detail.runs[0].failedScan,
+                ]),
+                "each scan page reaches the webview under the request's id",
+            ).toEqual([
+                [6, { state: "running", found: 0 }],
+                [6, { state: "running", found: 1 }],
+                [6, { state: "running", found: 2 }],
+            ]);
+
+            loops.dispose();
+            onScanUpdate?.(scanned("done", 3));
+            await vi.advanceTimersByTimeAsync(LONG_MS);
+            await answered;
+            expect(
+                post,
+                "a scan page after the loop was stopped posts nothing",
+            ).toHaveBeenCalledTimes(3);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("a scan page that arrives after the repository switched is not posted", async () => {
+        let current = "/repo";
+        let onScanUpdate: ((update: CommitCiDetail) => void) | undefined;
+        const post = vi.fn();
+        const pending = deferred<CommitCiDetail | undefined>();
+        const answered = answerCommitCiDetailRequest(
+            {
+                repoKey: () => current,
+                generations: new CiGenerations(),
+                getDetail: (_hash, _options, _ctx, onUpdate) => {
+                    onScanUpdate = onUpdate;
+                    return pending.promise;
+                },
+            },
+            { type: "requestCommitCiDetail", requestId: 2, repoKey: "/repo", hash: HASH },
+            post,
+            new CommitCiDetailLoops(),
+        );
+        current = "/other";
+        onScanUpdate?.(scanned("running", 1));
+        expect(post, "a scan page posted for a repository no longer shown").not.toHaveBeenCalled();
+        pending.resolve(undefined);
+        await answered;
+    });
+
+    it("a scan page delivered during a ladder re-read is posted under the request's id", async () => {
+        vi.useFakeTimers();
+        try {
+            let reads = 0;
+            const post = vi.fn();
+            const answered = answerCommitCiDetailRequest(
+                {
+                    repoKey: () => "/repo",
+                    generations: new CiGenerations(),
+                    getDetail: async (_hash, _options, _ctx, onUpdate) => {
+                        reads += 1;
+                        if (reads === 1) return scanned("running", 0);
+                        onUpdate?.(scanned("running", 1));
+                        return scanned("done", 2);
+                    },
+                },
+                { type: "requestCommitCiDetail", requestId: 8, repoKey: "/repo", hash: HASH },
+                post,
+                new CommitCiDetailLoops(),
+            );
+            await vi.runAllTimersAsync();
+            await answered;
+            expect(
+                post.mock.calls.map(([reply]) => [
+                    reply.requestId,
+                    reply.detail.runs[0].failedScan,
+                ]),
+                "the page from the ladder's re-read reaches the webview",
+            ).toEqual([
+                [8, { state: "running", found: 0 }],
+                [8, { state: "running", found: 1 }],
+                [8, { state: "done", found: 2 }],
             ]);
         } finally {
             vi.useRealTimers();

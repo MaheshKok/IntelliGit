@@ -45,8 +45,9 @@ it in a narrower pane.
 - The header shows the overall state, the duration and, when the provider reports it,
   "push by <actor> · <ref> · #<run>". **Refresh** always fetches again; **Open in
   browser** appears when the provider gives a link.
-- Controls appear only for what the provider can do. A provider without workflows
-  (Bitbucket Server / Data Center) shows a flat list with no empty sections.
+- Controls appear only for what the provider can do. A provider whose workflow detail
+  this release does not read (GitLab, Bitbucket Cloud and Bitbucket Server / Data
+  Center) shows a flat list with no empty sections.
 - A very large run shows a note when its list was cut short, with a link to the rest
   in the browser. Failed jobs past that limit are still listed as they are found.
 - The tab shows the same signed-out, error and rate-limit states as the popover, and a

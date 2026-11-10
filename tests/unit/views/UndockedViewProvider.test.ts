@@ -53,7 +53,9 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { CommitDetail, WorkingFile } from "../../../src/types";
+import type { CommitCiDetail, CommitDetail, WorkingFile } from "../../../src/types";
+import { setE2eControlChannelActive } from "../../../src/e2e/activationState";
+import { NO_CI_CAPABILITIES } from "../../../src/shared/ci/capabilities";
 import type { WorkingFileStatsLoader } from "../../../src/views/workingFileStatsLoader";
 import { GitExecutor } from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
@@ -774,4 +776,145 @@ describe("UndockedViewProvider shelf listing after a host-side rewrite", () => {
             await removeScratchDirectories(parentDir);
         }
     }, 30_000);
+});
+
+describe("UndockedViewProvider Checks tab loops", () => {
+    const HASH_A = "a".repeat(40);
+    const HASH_B = "b".repeat(40);
+
+    /** A detail whose overflow scan never ends, so the request's loop keeps re-reading. */
+    function runningScan(hash: string): CommitCiDetail {
+        return {
+            hash,
+            provider: "github",
+            complete: true,
+            outcome: "failure",
+            runs: [
+                {
+                    id: "1",
+                    name: "CI",
+                    state: "failure",
+                    jobs: [],
+                    jobsCoverage: { reason: "pageBound", shown: 1000 },
+                    failedScan: { state: "running", found: 0 },
+                },
+            ],
+            runsCoverage: "full",
+            otherChecks: [],
+            otherChecksCoverage: "full",
+            capabilities: NO_CI_CAPABILITIES,
+            repoKey: "/repo-a",
+        };
+    }
+
+    async function withLoopHarness(
+        body: (harness: {
+            provider: UndockedViewProvider;
+            getDetail: ReturnType<typeof vi.fn>;
+        }) => Promise<void>,
+    ): Promise<void> {
+        setE2eControlChannelActive(true);
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const { provider } = createBridgeProvider();
+        const getDetail = vi
+            .spyOn(
+                (provider as unknown as { commitChecks: { getDetail: () => unknown } })
+                    .commitChecks,
+                "getDetail",
+            )
+            .mockImplementation(async (hash: unknown) => runningScan(hash as string));
+        try {
+            await body({ provider, getDetail: getDetail as unknown as ReturnType<typeof vi.fn> });
+        } finally {
+            provider.dispose();
+            vi.useRealTimers();
+            setE2eControlChannelActive(false);
+        }
+    }
+
+    it("a closed panel's late Checks tab messages leave its successor's loop running", async () => {
+        await withLoopHarness(async ({ provider, getDetail }) => {
+            const retired = openTestPanel(provider);
+            retired.dispose();
+            const current = openTestPanel(provider);
+            attachPostedMessageRecorder(current);
+            // Neither request is awaited: a loop that is never stopped would never settle.
+            void current.receiveMessage({
+                type: "requestCommitCiDetail",
+                requestId: 1,
+                repoKey: "/repo-a",
+                hash: HASH_A,
+            });
+            await vi.advanceTimersByTimeAsync(0);
+
+            // Request ids restart per panel, so the retired panel's id 1 names the current loop too.
+            await retired.receiveMessage({ type: "cancelCommitCiDetail", requestId: 1 });
+            void retired.receiveMessage({
+                type: "requestCommitCiDetail",
+                requestId: 2,
+                repoKey: "/repo-a",
+                hash: HASH_B,
+            });
+            await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+            const hashes = getDetail.mock.calls.map(([hash]) => hash);
+            expect(hashes, "the retired panel's request started a fetch").not.toContain(HASH_B);
+            expect(
+                hashes.length,
+                "the current panel's loop kept re-reading after the retired panel's cancel",
+            ).toBeGreaterThan(1);
+        });
+    });
+
+    it("closing the panel stops its Checks tab loop", async () => {
+        await withLoopHarness(async ({ provider, getDetail }) => {
+            const panel = openTestPanel(provider);
+            attachPostedMessageRecorder(panel);
+            const answered = panel.receiveMessage({
+                type: "requestCommitCiDetail",
+                requestId: 1,
+                repoKey: "/repo-a",
+                hash: HASH_A,
+            });
+            await vi.advanceTimersByTimeAsync(0);
+            expect(getDetail).toHaveBeenCalledTimes(1);
+
+            panel.dispose();
+            await vi.advanceTimersByTimeAsync(10 * 60_000);
+            expect(getDetail, "fetches after the panel was closed").toHaveBeenCalledTimes(1);
+            await answered;
+        });
+    });
+
+    it("each overflow-scan page reaches the panel under the request's id", async () => {
+        await withLoopHarness(async ({ provider, getDetail }) => {
+            const page = runningScan(HASH_A);
+            getDetail.mockImplementation(
+                async (
+                    _hash: string,
+                    _options: unknown,
+                    _ctx: unknown,
+                    onScanUpdate?: (detail: CommitCiDetail) => void,
+                ) => {
+                    onScanUpdate?.(page);
+                    return undefined;
+                },
+            );
+            const panel = openTestPanel(provider);
+            const posted = attachPostedMessageRecorder(panel);
+            await panel.receiveMessage({
+                type: "requestCommitCiDetail",
+                requestId: 3,
+                repoKey: "/repo-a",
+                hash: HASH_A,
+            });
+            expect(posted, "the scan page posted to the panel").toContainEqual({
+                type: "commitCiDetail",
+                requestId: 3,
+                repoKey: "/repo-a",
+                hash: HASH_A,
+                detail: page,
+            });
+        });
+    });
 });

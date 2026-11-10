@@ -330,6 +330,43 @@ describe("Commit details Checks tab", () => {
         expect(row.getAttribute("aria-expanded"), "aria-expanded on the row").toBeNull();
     });
 
+    it("ArrowRight expands and ArrowLeft collapses a focused job row", () => {
+        const { container } = mount(pane(HASH_A));
+        const steps = [{ number: 1, name: "Checkout", state: "success" as const }];
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, { runs: [run([job("lint", "success", { steps })])] }),
+        );
+        const press = (target: HTMLElement, key: string): void =>
+            act(() => {
+                target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+            });
+        const expanded = (): string | null | undefined =>
+            expandToggle(container, "lint")?.getAttribute("aria-expanded");
+
+        press(jobRow(container, "lint"), "ArrowRight");
+        expect(expanded(), "ArrowRight on the row expands the job").toBe("true");
+        press(jobRow(container, "lint"), "ArrowLeft");
+        expect(expanded(), "ArrowLeft on the row collapses the job").toBe("false");
+
+        // A key pressed on the chevron is the button's own, never the row's.
+        press(expandToggle(container, "lint")!, "ArrowRight");
+        expect(expanded(), "ArrowRight bubbled from the chevron").toBe("false");
+        const enter = new KeyboardEvent("keydown", {
+            key: "Enter",
+            bubbles: true,
+            cancelable: true,
+        });
+        act(() => {
+            expandToggle(container, "lint")!.dispatchEvent(enter);
+        });
+        expect(enter.defaultPrevented, "Enter bubbled from the chevron was cancelled").toBe(false);
+        expect(
+            jobRow(container, "lint").getAttribute("aria-current"),
+            "Enter bubbled from the chevron selected the job",
+        ).toBeNull();
+    });
+
     it("the checks list uses list semantics, not a tree it cannot navigate", () => {
         const { container } = mount(pane(HASH_A));
         reply(

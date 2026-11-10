@@ -20,6 +20,7 @@ export interface CommitCiDetailSource {
         hash: string,
         options: CommitChecksFetchOptions,
         ctx: CiOperationContext,
+        onScanUpdate?: (detail: CommitCiDetail) => void,
     ): Promise<CommitCiDetail | undefined>;
 }
 
@@ -27,7 +28,8 @@ export interface CommitCiDetailSource {
  * Validates a `requestCommitCiDetail` message, fetches the detail and posts the reply,
  * dropping it when the repository, sign-in or CI settings changed meanwhile. While a run's
  * failed-job overflow scan is running or paused, its progress is re-posted under the same
- * request id on the pending ladder until the scan finishes or stops, or the loop is cancelled.
+ * request id after each scan page and on the pending ladder until the scan finishes or stops,
+ * or the loop is cancelled.
  *
  * @param source - The host's repository, generations and detail fetch.
  * @param msg - Untrusted webview message.
@@ -69,18 +71,23 @@ export async function answerCommitCiDetailRequest(
             ? source.generations.isCurrent(ctx, currentRepoKey)
             : repoKey === currentRepoKey;
     };
-    let detail = await source.getDetail(hash, { force: force === true }, ctx);
+    // Each overflow-scan page re-posts at once while this request is still the loop's newest.
+    const onScanUpdate = (update: CommitCiDetail): void => {
+        if (isCurrent()) post({ type: "commitCiDetail", requestId, repoKey, hash, detail: update });
+    };
+    let detail = await source.getDetail(hash, { force: force === true }, ctx, onScanUpdate);
     if (!isCurrent()) return;
     post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
-    // The overflow scan adds failed jobs to the cached entry after this reply, so its
-    // progress is re-read and re-posted under the same request id until the scan ends.
-    // A newer request or a hidden tab stops the loop, its pending wait included. A failed
-    // forced Refresh is never retried on its own: its error stays shown until the next one.
+    // The scan pages reach only the newest requester of a commit's detail, so its progress is
+    // also re-read and re-posted under the same request id until the scan ends: another view
+    // asking for the same commit takes the page updates over. A newer request or a hidden tab
+    // stops the loop, its pending wait included. A failed forced Refresh is never retried on
+    // its own: its error stays shown until the next one.
     for (let rung = 0; scanInProgress(detail) && detail?.refreshError === undefined; rung += 1) {
         const delays = PENDING_CHECK_RETRY_DELAYS_MS;
         await sleep(delays[Math.min(rung, delays.length - 1)], stopped);
         if (!isCurrent()) return;
-        detail = await source.getDetail(hash, { force: false }, ctx);
+        detail = await source.getDetail(hash, { force: false }, ctx, onScanUpdate);
         if (!isCurrent()) return;
         post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
     }

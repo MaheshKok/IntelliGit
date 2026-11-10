@@ -160,13 +160,18 @@ export class CommitChecksCoordinator {
                 hash,
                 state: outcome,
                 summary: summaryForState(outcome),
-                items: otherChecks.map(({ name, description, state, url }) => ({
-                    name,
-                    description,
-                    state,
-                    source: "status" as const,
-                    url,
-                })),
+                items: otherChecks.map(
+                    ({ id, logicalId, name, description, state, source, url }) => ({
+                        id,
+                        logicalId,
+                        name,
+                        description,
+                        state,
+                        // A snapshot has no build source; Bitbucket Server's live badge reports builds as statuses.
+                        source: source === "build" ? ("status" as const) : source,
+                        url,
+                    }),
+                ),
                 ...(error === undefined ? {} : { error }),
                 ...(signInHost === undefined ? {} : { signInHost }),
             };
