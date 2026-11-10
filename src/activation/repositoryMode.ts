@@ -36,11 +36,6 @@ import {
 import { CredentialStore } from "../services/commitChecks/credentialStore";
 import { normalizeHostMap } from "../services/commitChecks/hostConfig";
 import { normalizeCommitChecksSettings } from "../services/commitChecks/settingsConfig";
-import { GitHubProvider } from "../services/commitChecks/githubProvider";
-import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
-import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
-import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
-import { createHttpGetJson, type FetchJson } from "../services/commitChecks/http";
 import { CommitChecksRequestGateRegistry } from "../services/commitChecks/requestGate";
 import { CommitChecksService } from "../services/commitChecks/service";
 import { CommitChecksPersistentCache } from "../services/commitChecks/persistentCache";
@@ -48,7 +43,7 @@ import { CommitCiDetailService } from "../services/commitChecks/detailService";
 import { CiDetailPersistentCache } from "../services/commitChecks/detailPersistentCache";
 import { CiGenerations } from "../services/commitChecks/ciGenerations";
 import { createCiTrace } from "../services/commitChecks/ciTrace";
-import type { CommitChecksProvider, ProviderId } from "../services/commitChecks/types";
+import { createCommitChecksProviders } from "./commitChecksProviders";
 import { captureWebviewViewProvider } from "../e2e/webviewCapture";
 import { readE2eCiFixture } from "../e2e/ciFixture";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
@@ -307,21 +302,11 @@ export async function activateRepositoryMode(
     const requestGateRegistry = new CommitChecksRequestGateRegistry(
         vscode.l10n.t("Commit-check requests are temporarily paused due to rate limiting."),
     );
-    const fetchFor =
-        (providerId: ProviderId): FetchJson =>
-        (url, headers) =>
-            requestGateRegistry.run(providerId, url, (generation) => {
-                const fetchJson = createHttpGetJson((response) => {
-                    requestGateRegistry.observeResponse(providerId, response, generation);
-                });
-                return fetchJson(url, headers);
-            });
-    const commitChecksProviders: readonly CommitChecksProvider[] = [
-        new GitHubProvider(fetchFor("github"), commitCheckSettings.ciCdPattern),
-        new GitLabProvider(fetchFor("gitlab"), credentialStore, commitCheckSettings.ciCdPattern),
-        new BitbucketCloudProvider(fetchFor("bitbucket-cloud"), credentialStore),
-        new BitbucketServerProvider(fetchFor("bitbucket-server"), credentialStore),
-    ];
+    const commitChecksProviders = createCommitChecksProviders(
+        requestGateRegistry,
+        credentialStore,
+        commitCheckSettings.ciCdPattern,
+    );
 
     let currentBranches: Branch[] = [];
     let currentWorktrees: GitWorktree[] = [];

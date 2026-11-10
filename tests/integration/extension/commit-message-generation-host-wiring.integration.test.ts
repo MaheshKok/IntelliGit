@@ -241,6 +241,7 @@ vi.mock("../../../src/services/commitChecks/requestGate", () => ({
         );
         constructor(..._args: unknown[]) {}
     },
+    gatedFetchWithMeta: vi.fn(),
 }));
 
 vi.mock("../../../src/services/commitChecks/githubProvider", () => ({ GitHubProvider: class {} }));

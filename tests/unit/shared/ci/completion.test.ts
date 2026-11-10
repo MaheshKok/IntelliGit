@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    hasUnfinishedWork,
     isCompleteDetail,
     isCompleteSnapshot,
     isFullyCovered,
@@ -66,6 +67,16 @@ describe("isCompleteSnapshot", () => {
         expect(isCompleteSnapshot(snapshot("pending", [item("pending")]))).toBe(false);
         expect(isCompleteSnapshot(snapshot("success", [item("success")]))).toBe(true);
         expect(isCompleteSnapshot(snapshot("cancelled", [item("cancelled")]))).toBe(true);
+    });
+});
+
+describe("hasUnfinishedWork", () => {
+    it("a pending flat check is unfinished work while every run and job has finished", () => {
+        const finished = [run({ jobs: [] })];
+        const flat = (state: CommitCheckItem["state"]) => [{ ...item(state), id: "7" }];
+        expect(hasUnfinishedWork(finished, flat("pending")), "a pending status").toBe(true);
+        expect(hasUnfinishedWork(finished, flat("success"))).toBe(false);
+        expect(hasUnfinishedWork(finished, [])).toBe(false);
     });
 });
 

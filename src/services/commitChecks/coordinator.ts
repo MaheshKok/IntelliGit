@@ -16,10 +16,10 @@ import type {
 import { getErrorMessage } from "../../utils/errors";
 import type { CiGenerations, CiOperationContext } from "./ciGenerations";
 import type { CiTrace } from "./ciTrace";
-import { attach, CommitCiDetailService } from "./detailService";
+import { attach, CommitCiDetailService, type CiFailedScanHooks } from "./detailService";
 import { summaryForState, unavailableSnapshot } from "./normalize";
 import { CommitChecksService, type CommitChecksFetchOptions } from "./service";
-import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
+import type { CiDetailFetch, CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
 
 interface ProviderMatch {
     provider: CommitChecksProvider;
@@ -185,11 +185,14 @@ export class CommitChecksCoordinator {
      * @param ctx - Context captured when the operation started. A sign-in change, a CI
      *   settings change, a closed repository or a repository switch after it was captured
      *   also yields undefined, so the caller publishes nothing.
+     * @param onScanUpdate - Receives the detail again after each failed-job overflow scan
+     *   page, while this is the newest request for the commit and `ctx` is still current.
      */
     async getDetail(
         hash: string,
         options: CommitChecksFetchOptions,
         ctx: CiOperationContext,
+        onScanUpdate?: (detail: CommitCiDetail) => void,
     ): Promise<CommitCiDetail | undefined> {
         if (!this.enabled) return undefined;
         const seeded = this.fixture?.(hash);
@@ -207,7 +210,7 @@ export class CommitChecksCoordinator {
         const { provider, ref } = match;
         const getDetail = provider.getDetail?.bind(provider);
         const fetchDetail = getDetail
-            ? async (): Promise<CommitCiDetailData> => {
+            ? async (): Promise<CiDetailFetch> => {
                   try {
                       return await getDetail(ref, hash, ctx);
                   } catch (err) {
@@ -217,9 +220,21 @@ export class CommitChecksCoordinator {
                       );
                   }
               }
-            : async (): Promise<CommitCiDetailData> =>
+            : async (): Promise<CiDetailFetch> =>
                   floorDetail(await this.fetchSnapshot(match, hash, options), provider.id);
         const serve = { repoKey: ctx.repoKey, capabilities: provider.capabilities };
+        const continueFailedScan = provider.continueFailedScan?.bind(provider);
+        const scan: CiFailedScanHooks | undefined = continueFailedScan && {
+            continueScan: async (cursor) => {
+                try {
+                    return await continueFailedScan(ref, cursor, ctx);
+                } catch (err) {
+                    return { error: getErrorMessage(err) };
+                }
+            },
+            isCurrent: () => this.isCurrent(ctx, providerGeneration),
+            onUpdate: onScanUpdate,
+        };
         const detail = await this.withAccount(
             match,
             fetchDetail,
@@ -230,6 +245,7 @@ export class CommitChecksCoordinator {
                     serve,
                     options,
                     confirm,
+                    scan,
                 ),
             (error) => attach(floorDetail(unavailableSnapshot(hash, error), provider.id), serve),
         );

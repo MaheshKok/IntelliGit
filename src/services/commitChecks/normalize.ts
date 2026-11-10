@@ -33,7 +33,7 @@ export function isCiCdCheckItem(
 }
 
 /** Reduces per-check states into one badge state, failing closed on any failure-like state. */
-export function aggregateState(items: CommitCheckItem[]): CommitCheckState {
+export function aggregateState(items: readonly Pick<CommitCheckItem, "state">[]): CommitCheckState {
     if (items.length === 0) return "none";
     const states = items.map((item) => item.state);
     if (states.some((state) => ["failure", "timed_out", "action_required"].includes(state))) {

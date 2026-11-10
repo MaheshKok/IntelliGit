@@ -987,5 +987,7 @@
     "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "IntelliGit benötigt Git {0} oder neuer für die Auflösung von Merge-Konflikten, Teil-Commits und die Wiederherstellung aus der Ablage, hat aber Git {1} gefunden. Aktualisieren Sie Git, um diese Funktionen zu nutzen.",
     "IntelliGit CI": "IntelliGit CI",
     "The signed-in account changed during the request.": "Das angemeldete Konto hat sich während der Anfrage geändert.",
-    "Commit checks error: {message}": "Fehler bei Commit-Prüfungen: {message}"
+    "Commit checks error: {message}": "Fehler bei Commit-Prüfungen: {message}",
+    "The provider's next-page link was refused.": "Der Link des Anbieters zur nächsten Seite wurde abgelehnt.",
+    "Malformed Link header.": "Fehlerhafter Link-Header."
 }

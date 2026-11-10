@@ -1,0 +1,46 @@
+{
+    "id": 128763683988,
+    "run_id": 42491176871,
+    "workflow_name": "Code OSS",
+    "head_branch": "alexdima/agents-layout-scope-chat-default",
+    "run_url": "https://api.github.com/repos/microsoft/vscode/actions/runs/42491176871",
+    "run_attempt": 1,
+    "node_id": "CR_kwDOAn8RLM8AAAAd-unklA",
+    "head_sha": "856458acf08c3a70cac43d49c4bc51817ac26415",
+    "url": "https://api.github.com/repos/microsoft/vscode/actions/jobs/128763683988",
+    "html_url": "https://github.com/microsoft/vscode/actions/runs/42491176871/job/128763683988",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-08T14:43:10Z",
+    "started_at": "2026-11-08T14:43:13Z",
+    "completed_at": "2026-11-08T14:43:37Z",
+    "name": "Detect Changes",
+    "steps": [
+        {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-11-08T14:43:14Z",
+            "completed_at": "2026-11-08T14:43:15Z"
+        },
+        {
+            "name": "Checkout microsoft/vscode",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-11-08T14:43:15Z",
+            "completed_at": "2026-11-08T14:43:27Z"
+        },
+        {
+            "name": "Detect changes",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-11-08T14:43:27Z",
+            "completed_at": "2026-11-08T14:43:28Z"
+        }
+    ],
+    "check_run_url": "https://api.github.com/repos/microsoft/vscode/check-runs/128763683988",
+    "labels": ["vscode-large-runners-ubuntu-8-core"]
+}

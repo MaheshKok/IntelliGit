@@ -40,9 +40,13 @@ const FLAGS: readonly (keyof ProviderCiCapabilities)[] = [
 ];
 
 describe("provider capabilities", () => {
-    it("every provider declares all false in Phase 1", () => {
+    it("each provider declares only the flags its landed phases implement", () => {
         const fetch: FetchJson = vi.fn();
         const store = {} as CredentialStore;
+        // Phase 2: GitHub reads runs, jobs, steps and the run header; nothing else yet.
+        const landed: Record<string, readonly (keyof ProviderCiCapabilities)[]> = {
+            github: ["runs", "jobs", "steps", "runHeader"],
+        };
         const providers: CommitChecksProvider[] = [
             new GitHubProvider(fetch),
             new GitLabProvider(fetch, store),
@@ -50,11 +54,17 @@ describe("provider capabilities", () => {
             new BitbucketServerProvider(fetch, store),
         ];
         for (const provider of providers) {
+            const on = landed[provider.id] ?? [];
             for (const flag of FLAGS) {
-                expect(provider.capabilities[flag], `${provider.id}.${flag}`).toBe(false);
+                expect(provider.capabilities[flag], `${provider.id}.${flag}`).toBe(
+                    on.includes(flag),
+                );
             }
             expect(provider.capabilities.writeScopeHelp).toBeUndefined();
-            expect(provider.getDetail).toBeUndefined();
+            expect(provider.getDetail === undefined, `${provider.id}.getDetail`).toBe(
+                on.length === 0,
+            );
+            expect(Object.isFrozen(provider.capabilities), provider.id).toBe(true);
         }
         expect(Object.keys(NO_CI_CAPABILITIES).sort()).toEqual([...FLAGS].sort());
     });
