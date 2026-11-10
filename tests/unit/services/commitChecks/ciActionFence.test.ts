@@ -471,7 +471,7 @@ describe("CiActionFenceStore", () => {
             fences.dispose();
         });
 
-        it("a fence the older-attempt rule keeps alive still ends by the not-seen timer and Refresh", async () => {
+        it("a fence kept alive by the older-attempt rule reads not seen after the timer and ends on Refresh", async () => {
             vi.useFakeTimers({ now: 0 });
             const workspace = memento();
             const fences = new CiActionFenceStore(workspace);
