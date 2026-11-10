@@ -439,8 +439,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         break;
                     case "requestCommitCiDetail": {
                         const repoKey = this.options.ciRepoKey;
-                        if (!repoKey) break;
-                        const view = this.view;
+                        // A late message from a replaced webview must not touch its successor.
+                        if (!repoKey || this.view !== webviewView) break;
+                        const view = webviewView;
                         await answerCommitCiDetailRequest(
                             {
                                 repoKey,
@@ -458,7 +459,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         break;
                     }
                     case "cancelCommitCiDetail":
-                        this.ciDetailLoops.cancel(msg.requestId);
+                        if (this.view === webviewView) this.ciDetailLoops.cancel(msg.requestId);
                         break;
                     case "openCommitChecksSettings":
                         await openCommitChecksSettings();

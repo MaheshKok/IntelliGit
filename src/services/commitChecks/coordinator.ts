@@ -155,7 +155,7 @@ export class CommitChecksCoordinator {
         }
         const seeded = this.fixture?.(hash);
         if (seeded) {
-            const { outcome, otherChecks } = seeded.detail;
+            const { outcome, otherChecks, error, signInHost } = seeded.detail;
             return {
                 hash,
                 state: outcome,
@@ -167,6 +167,8 @@ export class CommitChecksCoordinator {
                     source: "status" as const,
                     url,
                 })),
+                ...(error === undefined ? {} : { error }),
+                ...(signInHost === undefined ? {} : { signInHost }),
             };
         }
         return this.fetchFresh(hash, options);

@@ -87,7 +87,7 @@ export function ChecksTab({
         >
             <style>{LAYOUT_CSS}</style>
             {state === "disabled" ? null : (
-                <ChecksHeader detail={detail} onRefresh={refresh} onOpenUrl={openUrl} />
+                <ChecksHeader detail={loaded} onRefresh={refresh} onOpenUrl={openUrl} />
             )}
             {detail?.refreshError !== undefined ? (
                 <div role="alert" style={checksStyles.note}>

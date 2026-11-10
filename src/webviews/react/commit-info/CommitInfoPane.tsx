@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { SYSTEM_FONT_STACK } from "../../../utils/constants";
 import { Box, Flex } from "@chakra-ui/react";
 import { VscListTree } from "react-icons/vsc";
@@ -196,6 +196,8 @@ export function CommitInfoPane({
     }, []);
     const checksAvailable = ciRepoKey !== undefined && isChecksTabEnabled();
     const showChecks = checksAvailable && tab === "checks";
+    const tabsId = useId();
+    const shownTab: CommitInfoTab = showChecks ? "checks" : "files";
 
     const detailHash = detail?.hash ?? null;
     const tree = useMemo<TreeEntry[]>(() => {
@@ -277,28 +279,46 @@ export function CommitInfoPane({
             overflow="hidden"
             bg={JETBRAINS_UI.color.panel}
         >
-            {checksAvailable ? <CommitInfoTabs tab={tab} onChoose={chooseTab} /> : null}
-            {showChecks ? (
-                <ChecksTab repoKey={ciRepoKey} hash={detail.hash} enabled={commitChecksEnabled} />
-            ) : (
-                <CommitChangedFilesPanel
-                    repositoryRoot={repositoryRoot}
-                    detail={detail}
-                    tree={tree}
-                    expandedDirs={expandedDirs}
-                    selectedFilePath={selectedFilePath}
-                    filesCollapsed={filesCollapsed}
-                    groupByDir={groupByDir}
-                    folderIcon={folderIcon}
-                    folderExpandedIcon={folderExpandedIcon}
-                    folderIconsByName={folderIconsByName}
-                    onToggleFiles={toggleFilesCollapsed}
-                    onToggleGroupByDir={toggleGroupByDir}
-                    onToggleDir={toggleDir}
-                    onSelectFile={selectFile}
-                    onOpenDiff={onOpenDiff}
-                />
-            )}
+            {checksAvailable ? (
+                <CommitInfoTabs idPrefix={tabsId} tab={tab} onChoose={chooseTab} />
+            ) : null}
+            {/* `contents` keeps the panels' rows as direct flex children of the pane. */}
+            <Box
+                display="contents"
+                {...(checksAvailable
+                    ? {
+                          role: "tabpanel",
+                          id: `${tabsId}-panel-${shownTab}`,
+                          "aria-labelledby": `${tabsId}-tab-${shownTab}`,
+                      }
+                    : {})}
+            >
+                {showChecks ? (
+                    <ChecksTab
+                        repoKey={ciRepoKey}
+                        hash={detail.hash}
+                        enabled={commitChecksEnabled}
+                    />
+                ) : (
+                    <CommitChangedFilesPanel
+                        repositoryRoot={repositoryRoot}
+                        detail={detail}
+                        tree={tree}
+                        expandedDirs={expandedDirs}
+                        selectedFilePath={selectedFilePath}
+                        filesCollapsed={filesCollapsed}
+                        groupByDir={groupByDir}
+                        folderIcon={folderIcon}
+                        folderExpandedIcon={folderExpandedIcon}
+                        folderIconsByName={folderIconsByName}
+                        onToggleFiles={toggleFilesCollapsed}
+                        onToggleGroupByDir={toggleGroupByDir}
+                        onToggleDir={toggleDir}
+                        onSelectFile={selectFile}
+                        onOpenDiff={onOpenDiff}
+                    />
+                )}
+            </Box>
             <CommitResizeDivider
                 visible={(showChecks || !filesCollapsed) && !detailCollapsed}
                 onMouseDown={onResizeStart}
@@ -322,9 +342,11 @@ const TABS: readonly { id: CommitInfoTab; labelKey: string }[] = [
 ];
 
 function CommitInfoTabs({
+    idPrefix,
     tab,
     onChoose,
 }: {
+    idPrefix: string;
     tab: CommitInfoTab;
     onChoose: (tab: CommitInfoTab) => void;
 }): React.ReactElement {
@@ -342,7 +364,10 @@ function CommitInfoTabs({
                     as="button"
                     key={id}
                     role="tab"
+                    id={`${idPrefix}-tab-${id}`}
                     aria-selected={tab === id}
+                    // Only the shown panel exists, so only the selected tab points at one.
+                    aria-controls={tab === id ? `${idPrefix}-panel-${id}` : undefined}
                     onClick={() => onChoose(id)}
                     px="10px"
                     h="28px"

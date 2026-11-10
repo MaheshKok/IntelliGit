@@ -95,6 +95,29 @@ describe("CommitChecksCoordinator fixture", () => {
         expect(snapshot.items.map((item) => item.name)).toEqual(["lint"]);
     });
 
+    it("a seeded unavailable detail keeps its error and sign-in host on the badge", async () => {
+        setE2eControlChannelActive(true);
+        const detail = {
+            ...seededDetail(),
+            outcome: "unavailable" as const,
+            error: "Sign in to gitlab.example.com",
+            signInHost: "gitlab.example.com",
+        };
+        const store = memento({ detail, capabilities: NO_CI_CAPABILITIES });
+        const coordinator = new CommitChecksCoordinator(
+            {} as GitOps,
+            [],
+            {},
+            { fixture: (hash) => readE2eCiFixture(store, hash) },
+        );
+        const snapshot = await coordinator.getChecks(HASH);
+        expect(snapshot).toMatchObject({
+            state: "unavailable",
+            error: "Sign in to gitlab.example.com",
+            signInHost: "gitlab.example.com",
+        });
+    });
+
     it("while the channel is off, a seeded fixture leaves badge requests exactly as without the seam", async () => {
         const store = memento({ detail: seededDetail(), capabilities: NO_CI_CAPABILITIES });
         const badgeRequests = async (
@@ -108,7 +131,8 @@ describe("CommitChecksCoordinator fixture", () => {
             }));
             const provider: CommitChecksProvider = {
                 id: "github",
-                match: (url) => (url.includes("github.com") ? { host: "github.com" } : null),
+                match: (url) =>
+                    url === "git@github.com:owner/repo.git" ? { host: "github.com" } : null,
                 keyFor: (ref) => `github:${ref.host}`,
                 getChecks,
             };

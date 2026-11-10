@@ -217,7 +217,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     ): Promise<void> {
         switch (msg.type) {
             case "requestCommitCiDetail":
-                if (!this.ciSource) return;
+                // A late message from a replaced webview must not touch its successor's loop.
+                if (!this.ciSource || this.view !== view) return;
                 await answerCommitCiDetailRequest(
                     this.ciSource,
                     { ...msg },
@@ -229,7 +230,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                 );
                 return;
             case "cancelCommitCiDetail":
-                this.ciDetailLoops.cancel(msg.requestId);
+                // Request ids restart in each webview, so a replaced one's id may name a live loop.
+                if (this.view === view) this.ciDetailLoops.cancel(msg.requestId);
                 return;
             case "openCommitChecksSettings":
                 await openCommitChecksSettings();

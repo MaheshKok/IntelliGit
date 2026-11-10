@@ -14,9 +14,9 @@ import type {
 /**
  * Commit info messages sent from the standalone Changed Files webview to the host.
  *
- * The standalone pane is display-only except for diff-open commands. The host
- * validates both the commit hash and repository-relative file path before
- * routing to VS Code diff services.
+ * The standalone pane asks the host to open committed file diffs and, from its Checks tab,
+ * to fetch or stop fetching a commit's CI detail, open CI settings, open a CI link and sign
+ * in to a CI host. The host validates every hash, path, URL and host before acting.
  */
 export type CommitInfoOutbound =
     | {

@@ -95,6 +95,7 @@ describe("Webview state allowlist", () => {
             "checked",
             "checkedByRepository",
             "branchColumn",
+            "commitInfoTab",
         ]) {
             expect(isAllowedWebviewStateKey(key)).toBe(true);
         }

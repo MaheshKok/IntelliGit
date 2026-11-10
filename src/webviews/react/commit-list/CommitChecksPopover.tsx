@@ -443,6 +443,9 @@ const panelStyle: React.CSSProperties = {
     maxWidth: `min(${PANEL_MAX_WIDTH}px, calc(100vw - 16px))`,
     maxHeight: `min(${PANEL_MAX_HEIGHT}px, calc(100vh - 16px))`,
     overflow: "hidden",
+    // A column, so a capped panel shrinks the list body and keeps the footer in view.
+    display: "flex",
+    flexDirection: "column",
     background: JETBRAINS_UI.color.panel,
     color: JETBRAINS_UI.color.foreground,
     border: `1px solid ${JETBRAINS_UI.color.tooltipBorder}`,
@@ -541,6 +544,8 @@ const bodyStyle: React.CSSProperties = {
     width: "max-content",
     maxWidth: "100%",
     maxHeight: 250,
+    flex: "1 1 auto",
+    minHeight: 0,
     overflow: "auto",
 };
 
@@ -598,6 +603,7 @@ const emptyStyle: React.CSSProperties = {
 const footerStyle: React.CSSProperties = {
     padding: "8px 18px 12px",
     borderTop: `1px solid ${JETBRAINS_UI.color.divider}`,
+    flexShrink: 0,
 };
 
 const signInButtonStyle: React.CSSProperties = {

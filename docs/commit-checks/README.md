@@ -31,14 +31,16 @@ enabled.
 ## Checks tab
 
 The Checks tab is still being built and stays hidden in released versions until it is
-finished; this section describes it as it will appear. While hidden, it fetches nothing.
+finished; this section describes it as it will appear. While it is hidden, no Checks tab
+detail is fetched; the commit-list CI badges still fetch as before.
 
 The commit-details pane has two tabs, **Files** (the default) and **Checks**. The pane
 remembers the tab you chose. The Checks tab shows the selected commit's CI as a tree:
 workflow or pipeline, then its jobs, then each job's steps, each with its state,
 duration and start time. Failed jobs open down to the step that failed. Statuses and
 third-party checks that belong to no workflow sit under **Other checks**. Selecting a
-job shows its details beside the tree.
+job shows its details beside the tree when the pane is at least 760 px wide, and below
+it in a narrower pane.
 
 - The header shows the overall state, the duration and, when the provider reports it,
   "push by <actor> · <ref> · #<run>". **Refresh** always fetches again; **Open in

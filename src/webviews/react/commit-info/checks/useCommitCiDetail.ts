@@ -64,6 +64,7 @@ export function useCommitCiDetail(
     }
     const newest = useRef<(Selection & { requestId: number }) | null>(null);
     const polls = useRef(0);
+    const pollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
     const send = useCallback(
         (force: boolean) => {
@@ -148,9 +149,15 @@ export function useCommitCiDetail(
             polls.current += 1;
             send(false);
         }, delay);
+        pollTimer.current = timer;
         return () => clearTimeout(timer);
     }, [active, detail, send]);
 
-    const refresh = useCallback(() => send(true), [send]);
+    const refresh = useCallback(() => {
+        // A re-poll firing during the forced fetch would take a newer id and drop its answer.
+        clearTimeout(pollTimer.current);
+        polls.current = 0;
+        send(true);
+    }, [send]);
     return { detail, refresh };
 }

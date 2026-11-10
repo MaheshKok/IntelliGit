@@ -205,7 +205,7 @@ async function expectFrameLayout(tab: Locator, bodyWidth?: number | null): Promi
         }, bodyWidth);
     }
     const width = await body.evaluate((element) => element.clientWidth);
-    const tree = await tab.getByRole("tree").boundingBox();
+    const tree = await tab.getByTestId("ci-tree").boundingBox();
     const detail = await tab.getByTestId("ci-job-detail").boundingBox();
     expect(tree, "tree box").not.toBeNull();
     expect(detail, "job detail box").not.toBeNull();

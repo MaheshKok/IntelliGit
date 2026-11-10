@@ -532,7 +532,7 @@
     "commit.checks.tab.checksPageBound": "Показаны первые {count} проверок",
     "commit.checks.tab.checksRejectedNext": "Показаны первые {count} проверок — ссылка поставщика на следующую страницу отклонена",
     "commit.checks.tab.scanRunning": "Загрузка других неудачных заданий…",
-    "commit.checks.tab.scanPaused": "Загрузка других неудачных заданий — приостановлено из-за ограничения частоты",
+    "commit.checks.tab.scanPaused": "Загрузка других неудачных заданий — приостановлена из-за ограничения частоты",
     "commit.checks.tab.scanStopped": "Не удалось загрузить другие неудачные задания",
     "commit.checks.tab.refreshFailed": "Не удалось обновить: {error}",
     "commit.checks.tab.selectJob": "Выберите задание, чтобы увидеть подробности",

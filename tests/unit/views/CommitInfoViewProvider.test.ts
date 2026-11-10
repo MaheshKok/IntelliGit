@@ -206,6 +206,67 @@ describe("CommitInfoViewProvider Checks tab scan re-posts", () => {
         }
     });
 
+    it("a late cancel from a replaced webview leaves its successor's request running", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        try {
+            const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+            const retired = createInspectableFakeWebviewView();
+            provider.resolveWebviewView(retired.webviewView, INERT_CONTEXT, INERT_TOKEN);
+            const current = createInspectableFakeWebviewView();
+            provider.resolveWebviewView(current.webviewView, INERT_CONTEXT, INERT_TOKEN);
+            await current.receiveMessage({ type: "ready" });
+            provider.setCiSource({
+                enabled: true,
+                repoKey: () => "/repo",
+                getDetail: async () => ({
+                    hash: sampleDetail().hash,
+                    provider: "github",
+                    complete: true,
+                    outcome: "failure",
+                    runs: [
+                        {
+                            id: "1",
+                            name: "CI",
+                            state: "failure",
+                            jobs: [],
+                            jobsCoverage: { reason: "pageBound", shown: 1000 },
+                            failedScan: { state: "running", found: 0 },
+                        },
+                    ],
+                    runsCoverage: "full",
+                    otherChecks: [],
+                    otherChecksCoverage: "full",
+                    capabilities: NO_CI_CAPABILITIES,
+                    repoKey: "/repo",
+                }),
+            });
+            const replies = () =>
+                current.posted.filter(
+                    (message) => isRecord(message) && message.type === "commitCiDetail",
+                );
+
+            // Each webview numbers its requests from 1, so the retired one's id names this one.
+            const answered = current.receiveMessage({
+                type: "requestCommitCiDetail",
+                requestId: 1,
+                repoKey: "/repo",
+                hash: sampleDetail().hash,
+            });
+            await vi.advanceTimersByTimeAsync(0);
+            await retired.receiveMessage({ type: "cancelCommitCiDetail", requestId: 1 });
+            await vi.advanceTimersByTimeAsync(10 * 60_000);
+            expect(
+                replies().length,
+                "the successor's scan progress keeps arriving after the late cancel",
+            ).toBeGreaterThan(1);
+            current.dispose();
+            await vi.advanceTimersByTimeAsync(10 * 60_000);
+            await answered;
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("a repository switch hands the pane the new repository, so its Checks tab asks again", async () => {
         let repoKey = "/repo-a";
         const provider = new CommitInfoViewProvider(createFakeExtensionUri());

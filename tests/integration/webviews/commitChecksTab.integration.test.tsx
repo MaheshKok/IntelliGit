@@ -186,6 +186,10 @@ function jobRow(container: HTMLElement, name: string): HTMLElement {
     return row!;
 }
 
+function expandToggle(container: HTMLElement, name: string): HTMLButtonElement | null {
+    return jobRow(container, name).querySelector<HTMLButtonElement>("button");
+}
+
 describe("Commit details Checks tab", () => {
     it("shows the tree for the selected commit", () => {
         const { container } = mount(pane(HASH_A));
@@ -301,8 +305,8 @@ describe("Commit details Checks tab", () => {
             }),
         );
 
-        expect(jobRow(container, "unit-tests").getAttribute("aria-expanded")).toBe("true");
-        expect(jobRow(container, "lint").getAttribute("aria-expanded")).toBe("false");
+        expect(expandToggle(container, "unit-tests")?.getAttribute("aria-expanded")).toBe("true");
+        expect(expandToggle(container, "lint")?.getAttribute("aria-expanded")).toBe("false");
         const failingStep = container.querySelector<HTMLElement>(
             '[data-testid="ci-step-row"][data-failed="true"]',
         );
@@ -315,6 +319,92 @@ describe("Commit details Checks tab", () => {
         expect(container.querySelector('[data-testid="ci-job-detail"]')?.textContent).toContain(
             "unit-tests",
         );
+    });
+
+    it("a job with no steps has no expand toggle", () => {
+        const { container } = mount(pane(HASH_A));
+        reply(lastRequest(), ciDetail(HASH_A, { runs: [run([job("no-steps", "success")])] }));
+
+        const row = jobRow(container, "no-steps");
+        expect(expandToggle(container, "no-steps"), "expand toggle").toBeNull();
+        expect(row.getAttribute("aria-expanded"), "aria-expanded on the row").toBeNull();
+    });
+
+    it("the checks list uses list semantics, not a tree it cannot navigate", () => {
+        const { container } = mount(pane(HASH_A));
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, {
+                outcome: "failure",
+                runs: [
+                    run([
+                        job("unit-tests", "failure", {
+                            steps: [{ number: 1, name: "Run tests", state: "failure" }],
+                        }),
+                    ]),
+                ],
+                otherChecks: [
+                    { name: "codecov/patch", description: "", state: "success", source: "status" },
+                ],
+            }),
+        );
+
+        const tab = checksTab(container);
+        expect(tab.querySelector('[role="tree"], [role="treeitem"]'), "tree roles").toBeNull();
+        expect(tab.querySelector('[data-testid="ci-tree"]')?.getAttribute("role")).toBe("list");
+        for (const testId of ["ci-run-row", "ci-job-row", "ci-step-row", "ci-check-row"]) {
+            expect(
+                tab.querySelector(`[data-testid="${testId}"]`)?.getAttribute("role"),
+                `${testId} role`,
+            ).toBe("listitem");
+        }
+        expect(jobRow(container, "unit-tests").getAttribute("aria-current"), "selected job").toBe(
+            "true",
+        );
+    });
+
+    it("an unavailable or empty detail draws no status icon, label or duration in the header", () => {
+        const { container, root } = mount(pane(HASH_A));
+        const expectNoStatus = (state: string): void => {
+            const tab = checksTab(container);
+            expect(tab.getAttribute("data-state")).toBe(state);
+            const header = tab.querySelector<HTMLElement>('[data-testid="ci-header"]')!;
+            expect(
+                Array.from(header.children).some((child) => child.tagName.toLowerCase() === "svg"),
+                `${state}: status icon in the header`,
+            ).toBe(false);
+            expect(header.textContent, `${state}: status label and duration`).toBe("");
+        };
+
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, { outcome: "unavailable", runs: [], error: "connect ECONNREFUSED" }),
+        );
+        expectNoStatus("unavailable");
+
+        act(() => root.render(pane(HASH_B)));
+        reply(lastRequest(), ciDetail(HASH_B, { outcome: "none", runs: [] }));
+        expectNoStatus("none");
+    });
+
+    it("the selected tab controls a tab panel that the tab labels", () => {
+        const { container } = mount(pane(HASH_A));
+        for (const name of ["Files", "Checks"]) {
+            act(() => tabButton(container, name).click());
+            const tab = tabButton(container, name);
+            const panelId = tab.getAttribute("aria-controls");
+            expect(panelId, `${name} tab aria-controls`).toBeTruthy();
+            const panel = Array.from(container.querySelectorAll<HTMLElement>("[id]")).find(
+                (candidate) => candidate.id === panelId,
+            );
+            expect(panel?.getAttribute("role"), `${name} panel role`).toBe("tabpanel");
+            expect(tab.id, `${name} tab id`).toBeTruthy();
+            expect(panel!.getAttribute("aria-labelledby"), `${name} panel label`).toBe(tab.id);
+        }
+        expect(
+            container.querySelector('[role="tabpanel"] [data-testid="checks-tab"]'),
+            "the Checks body sits in the tab panel",
+        ).not.toBeNull();
     });
 
     it("drops a detail reply for a commit that is no longer selected", () => {
@@ -573,7 +663,7 @@ describe("Commit details Checks tab", () => {
         );
 
         const tab = checksTab(container);
-        expect(jobRow(container, "unit-tests").getAttribute("aria-expanded")).toBeNull();
+        expect(expandToggle(container, "unit-tests"), "expand toggle").toBeNull();
         expect(tab.querySelector('[data-testid="ci-step-row"]'), "step row").toBeNull();
         expect(tab.querySelector('[data-testid="ci-job-detail"]')?.textContent).toContain(
             "unit-tests",
@@ -788,6 +878,26 @@ describe("Commit details Checks tab", () => {
             expect(detailRequests().length, "requests after a failed forced Refresh").toBe(
                 afterFailure,
             );
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("Refresh while a re-poll waits cancels that re-poll, so the forced fetch keeps its answer", () => {
+        vi.useFakeTimers();
+        try {
+            const { container } = mount(pane(HASH_A));
+            reply(lastRequest(), ciDetail(HASH_A, { complete: false, outcome: "pending" }));
+            act(() => button(container, /^Refresh$/)!.click());
+            const forced = lastRequest();
+            expect(forced.force).toBe(true);
+
+            act(() => vi.advanceTimersByTime(PENDING_CHECK_RETRY_DELAYS_MS[0]));
+            expect(lastRequest().requestId, "the newest request is still the forced Refresh").toBe(
+                forced.requestId,
+            );
+            reply(forced, ciDetail(HASH_A, { runs: [run([job("refreshed", "success")])] }));
+            expect(container.textContent).toContain("refreshed");
         } finally {
             vi.useRealTimers();
         }

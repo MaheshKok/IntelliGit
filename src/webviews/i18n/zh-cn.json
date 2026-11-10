@@ -495,7 +495,7 @@
     "commit.checks.tab.runLine": "{actor} 的 {event} · {ref} · #{runNumber}",
     "commit.checks.tab.otherChecks": "其他检查",
     "commit.checks.tab.openInBrowser": "在浏览器中打开",
-    "commit.checks.tab.jobsPageBound": "显示前 {count} 个作业 — 在浏览器中打开运行查看其余作业",
+    "commit.checks.tab.jobsPageBound": "显示前 {count} 个作业 — 在浏览器中打开运行以查看其余作业",
     "commit.checks.tab.jobsRejectedNext": "显示前 {count} 个作业 — 提供方的下一页链接被拒绝",
     "commit.checks.tab.runsPageBound": "显示前 {count} 次工作流运行",
     "commit.checks.tab.runsRejectedNext": "显示前 {count} 次工作流运行 — 提供方的下一页链接被拒绝",

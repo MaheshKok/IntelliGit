@@ -515,7 +515,7 @@
     "commit.checks.state.pending": "보류 중",
     "commit.checks.state.success": "통과",
     "commit.checks.state.failure": "실패",
-    "commit.checks.state.actionRequired": "작업 필요",
+    "commit.checks.state.actionRequired": "조치 필요",
     "commit.checks.state.cancelled": "취소됨",
     "commit.checks.state.skipped": "건너뜀",
     "commit.checks.state.neutral": "중립",

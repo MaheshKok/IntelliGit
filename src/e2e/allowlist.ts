@@ -68,7 +68,7 @@ export const SECRET_ALLOWLIST: readonly AllowlistEntry[] = [
  * file selection and folder grouping, undocked ignored-files/group-by-dir toggles, the
  * commit-graph panel's resizable-column widths (optionally prefixed per graph instance,
  * see `CommitGraphPanel.ts`'s `stateKey` helper), and the branch column's persisted
- * scroll/expansion state.
+ * scroll/expansion state, and the commit details pane's chosen Files | Checks tab.
  */
 export const WEBVIEW_STATE_ALLOWLIST: readonly AllowlistEntry[] = [
     exact("groupByDir"),
@@ -77,6 +77,7 @@ export const WEBVIEW_STATE_ALLOWLIST: readonly AllowlistEntry[] = [
     exact("checked"),
     exact("checkedByRepository"),
     exact("branchColumn"),
+    exact("commitInfoTab"),
     pattern(/^(?:[A-Za-z0-9_-]+\.)?(?:branchWidth|infoWidth)$/),
 ];
 

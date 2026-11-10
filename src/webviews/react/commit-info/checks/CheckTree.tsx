@@ -39,7 +39,12 @@ export function CheckTree({
         setExpanded((prev) => new Map(prev).set(job.id, !isExpanded(job)));
 
     return (
-        <div role="tree" aria-label={t("commit.checks.title")} style={treeStyle}>
+        <div
+            role="list"
+            data-testid="ci-tree"
+            aria-label={t("commit.checks.title")}
+            style={treeStyle}
+        >
             <CoverageNote
                 coverage={detail.runsCoverage}
                 pageBoundKey="commit.checks.tab.runsPageBound"
@@ -66,7 +71,7 @@ export function CheckTree({
                     // Flat checks may carry no id and may repeat a name; position breaks the tie.
                     // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- Provider rows can be identical.
                     key={`${check.id ?? check.name}:${index}`}
-                    role="treeitem"
+                    role="listitem"
                     data-testid="ci-check-row"
                     style={{ ...rowStyle, paddingLeft: 12 }}
                 >
@@ -124,8 +129,8 @@ function RunGroup({
     onRefresh: () => void;
 }): React.ReactElement {
     return (
-        <div role="group">
-            <div role="treeitem" data-testid="ci-run-row" style={{ ...rowStyle, paddingLeft: 12 }}>
+        <div>
+            <div role="listitem" data-testid="ci-run-row" style={{ ...rowStyle, paddingLeft: 12 }}>
                 <StateIcon state={badgeStateOf(run.state)} />
                 <span style={checksStyles.visuallyHidden}>{stateLabel(run.state)}</span>
                 <span style={{ ...nameStyle, fontWeight: 600 }}>{run.name}</span>
@@ -137,16 +142,16 @@ function RunGroup({
                 </span>
             </div>
             {run.jobs.map((job) => {
-                const open = showSteps && isExpanded(job);
+                const expandable = showSteps && job.steps.length > 0;
+                const open = expandable && isExpanded(job);
                 return (
                     <React.Fragment key={job.id}>
                         <div
-                            role="treeitem"
+                            role="listitem"
                             tabIndex={0}
                             data-testid="ci-job-row"
                             data-name={job.name}
-                            aria-expanded={showSteps ? open : undefined}
-                            aria-selected={selectedJobId === job.id}
+                            aria-current={selectedJobId === job.id ? "true" : undefined}
                             onClick={() => onSelectJob(job)}
                             onKeyDown={(event) => {
                                 if (event.key === "Enter" || event.key === " ") {
@@ -164,11 +169,12 @@ function RunGroup({
                                         : undefined,
                             }}
                         >
-                            {showSteps ? (
+                            {expandable ? (
                                 <button
                                     type="button"
                                     style={checksStyles.iconButton}
                                     aria-label={job.name}
+                                    aria-expanded={open}
                                     tabIndex={-1}
                                     onClick={(event) => {
                                         event.stopPropagation();
@@ -196,7 +202,7 @@ function RunGroup({
                             ? job.steps.map((step) => (
                                   <div
                                       key={step.number}
-                                      role="treeitem"
+                                      role="listitem"
                                       data-testid="ci-step-row"
                                       data-failed={step.state === "failure" ? "true" : undefined}
                                       style={{ ...rowStyle, paddingLeft: 56 }}

@@ -84,7 +84,9 @@ export function spanOf(runs: readonly { startedAt?: string; completedAt?: string
     completedAt?: string;
 } {
     if (runs.length === 0 || runs.some((run) => !run.startedAt || !run.completedAt)) return {};
-    const starts = runs.map((run) => run.startedAt!).sort();
-    const ends = runs.map((run) => run.completedAt!).sort();
+    // By instant: a text sort misorders times written with different timezone offsets.
+    const byInstant = (a: string, b: string): number => Date.parse(a) - Date.parse(b);
+    const starts = runs.map((run) => run.startedAt!).sort(byInstant);
+    const ends = runs.map((run) => run.completedAt!).sort(byInstant);
     return { startedAt: starts[0], completedAt: ends[ends.length - 1] };
 }

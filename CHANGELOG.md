@@ -11,7 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Groundwork for a coming Checks tab that will show a commit's CI workflows, jobs and steps, opening straight to the step that failed. The tab stays hidden until it is finished, so IntelliGit looks and works the same for now.
+- Groundwork for a coming Checks tab that will show a commit's CI workflows, jobs and steps, opening straight to the step that failed. The tab stays hidden until it is finished.
+
+### Changed
+
+- Switching to another repository now clears the selected commit straight away, even when saving the new choice fails or another switch takes over.
 
 ## [0.43.2] - 2026-11-07
 

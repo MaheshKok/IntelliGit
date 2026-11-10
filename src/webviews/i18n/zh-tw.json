@@ -504,7 +504,7 @@
     "commit.checks.tab.scanRunning": "正在載入更多失敗的作業…",
     "commit.checks.tab.scanPaused": "正在載入更多失敗的作業 — 因速率限制已暫停",
     "commit.checks.tab.scanStopped": "無法載入更多失敗的作業",
-    "commit.checks.tab.refreshFailed": "重新整理失敗: {error}",
+    "commit.checks.tab.refreshFailed": "重新整理失敗：{error}",
     "commit.checks.tab.selectJob": "選取一個作業以檢視其詳細資料",
     "commit.checks.tab.state": "狀態",
     "commit.checks.tab.duration": "持續時間",

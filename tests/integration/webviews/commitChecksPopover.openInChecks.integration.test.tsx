@@ -104,4 +104,38 @@ describe("Commit checks popover", () => {
         expect(selectedTab(), "the details pane switched to Checks").toBe("Checks");
         expect(container.querySelector('[data-testid="checks-tab"]')).not.toBeNull();
     });
+
+    it("a capped panel shrinks its scrolling list and keeps the Open in Checks footer", () => {
+        const { container } = mount(
+            <CommitRow
+                commit={commit}
+                graphWidth={0}
+                isPrimary={false}
+                isSelected={false}
+                isUnpushed={false}
+                onSelect={() => undefined}
+                onContextMenu={() => undefined}
+                checks={checks}
+                onRequestChecks={() => undefined}
+                onOpenCheckUrl={() => undefined}
+                onOpenInChecks={() => undefined}
+            />,
+        );
+        act(() => {
+            container
+                .querySelector<HTMLButtonElement>(`[data-testid="commit-checks-button-${HASH}"]`)!
+                .click();
+        });
+
+        // jsdom has no layout, so the flex rules that keep the footer inside the cap are read back.
+        const footer = openInChecksButton()!.parentElement!;
+        const panel = footer.parentElement!;
+        const body = panel.querySelector<HTMLElement>("[aria-busy]")!;
+        expect(panel.style.display, "panel display").toBe("flex");
+        expect(panel.style.flexDirection, "panel direction").toBe("column");
+        expect(body.style.flex, "list flex").toBe("1 1 auto");
+        expect(body.style.minHeight, "list min height").toMatch(/^0(px)?$/);
+        expect(body.style.overflow, "list scrolls").toBe("auto");
+        expect(footer.style.flexShrink, "footer shrink").toBe("0");
+    });
 });

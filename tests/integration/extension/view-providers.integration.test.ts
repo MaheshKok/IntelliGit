@@ -5339,6 +5339,60 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitGraphViewProvider answers no Checks tab request from a replaced webview", async () => {
+        const { setE2eControlChannelActive } = await import("../../../src/e2e/activationState");
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        setE2eControlChannelActive(true);
+        try {
+            const provider = new CommitGraphViewProvider(
+                { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+                makeGitOpsMock() as unknown as object,
+                makeCredentialStore() as unknown as object,
+                { ciRepoKey: () => "/repo" } as unknown as object,
+            );
+            const getDetail = vi.spyOn(provider, "getCommitCiDetail").mockResolvedValue(undefined);
+            const retired = createWebviewView();
+            provider.resolveWebviewView(
+                retired.view as unknown as object,
+                {} as unknown as object,
+                {} as unknown as object,
+            );
+            const current = createWebviewView();
+            provider.resolveWebviewView(
+                current.view as unknown as object,
+                {} as unknown as object,
+                {} as unknown as object,
+            );
+            postMessageSpy.mockClear();
+
+            await retired.send({
+                type: "requestCommitCiDetail",
+                requestId: 1,
+                repoKey: "/repo",
+                hash: "a".repeat(40),
+            });
+
+            expect(
+                getDetail,
+                "the replaced webview's request starts no fetch",
+            ).not.toHaveBeenCalled();
+            expect(
+                postMessageSpy.mock.calls.filter(
+                    ([message]) =>
+                        typeof message === "object" &&
+                        message !== null &&
+                        "type" in message &&
+                        message.type === "commitCiDetail",
+                ),
+                "no reply reaches the current webview",
+            ).toEqual([]);
+            provider.dispose();
+        } finally {
+            setE2eControlChannelActive(false);
+        }
+    });
+
     it("CommitGraphViewProvider replaces stale visible commit-check demand", async () => {
         const { CommitGraphViewProvider } =
             await import("../../../src/views/CommitGraphViewProvider");
