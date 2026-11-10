@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.3] - 2026-11-10
+
+### Added
+
+- IntelliGit now reads the workflows, jobs and steps behind a commit's GitHub checks, ready for the new Checks tab. Failed jobs are found even in very large runs, and GitHub page links are followed only on your GitHub server, so your sign-in never goes anywhere else.
+
 ## [0.43.2] - 2026-11-07
 
 ### Fixed

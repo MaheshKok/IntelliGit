@@ -103,6 +103,20 @@ job ends. The detailed CI view uses its own cache with the same intervals; it ke
 detail across restarts only when the run is finished and every run, job and check was
 listed in full.
 
+For GitHub, the detailed view reads the commit's workflow runs and each run's latest
+jobs and steps from the Actions API, 100 items per page and at most 10 pages (1,000
+items) per list. A longer list comes back marked as cut short at 1,000 items; when that run failed,
+IntelliGit keeps reading the pages past the limit one at a time, keeping only failed
+jobs, so a scan that reaches the end of the list shows every failed job. That scan
+pauses while the rate-limit gate cools down and resumes when the cooldown ends; if a
+page fails, a next-page link is refused or the job budget runs out, it stops and the
+failed jobs it found so far may be only part of the list. Refresh continues from the
+page it stopped at. If the run was re-run while the scan was reading, the scan stops
+instead and Refresh reads the run again from the start. Its progress is kept in memory only. Next-page
+links are followed only when they stay on `https://api.github.com` under the
+repository's own path; any other link stops paging, is never requested, and the list
+is marked as cut short, so the token is never sent anywhere else.
+
 Diagnostic lines for CI requests go to the **IntelliGit CI** output channel. They name
 the operation, provider and short commit hash; they never contain tokens, request
 headers or log text.

@@ -41,6 +41,19 @@ export class HttpError extends Error {
     }
 }
 
+/** A parsed 2xx response with its headers, for callers that page by `Link` or similar headers. */
+export interface FetchResponse {
+    statusCode: number;
+    headers: Record<string, string | string[] | undefined>;
+    body: unknown;
+}
+
+/** Network boundary for callers that need response headers; same rejection rules as `FetchJson`. */
+export type FetchJsonWithMeta = (
+    url: string,
+    headers: Record<string, string>,
+) => Promise<FetchResponse>;
+
 /**
  * Creates an HTTPS JSON getter with an optional response observer.
  *
@@ -50,6 +63,18 @@ export class HttpError extends Error {
 export function createHttpGetJson(
     onResponse?: (metadata: HttpResponseMetadata) => void,
 ): FetchJson {
+    const request = createHttpGetJsonWithMeta(onResponse);
+    return async (url, headers) => (await request(url, headers)).body;
+}
+
+/**
+ * Creates an HTTPS JSON getter that also returns the status and response headers.
+ *
+ * Shares the request core, observer, timeout and rejection rules of `createHttpGetJson`.
+ */
+export function createHttpGetJsonWithMeta(
+    onResponse?: (metadata: HttpResponseMetadata) => void,
+): FetchJsonWithMeta {
     return (url, headers) => {
         return new Promise((resolve, reject) => {
             const req = https.get(url, { headers }, (res) => {
@@ -77,7 +102,11 @@ export function createHttpGetJson(
                         return;
                     }
                     try {
-                        resolve(data ? JSON.parse(data) : {});
+                        resolve({
+                            statusCode,
+                            headers: res.headers,
+                            body: data ? JSON.parse(data) : {},
+                        });
                     } catch {
                         reject(new Error("Invalid JSON response"));
                     }
@@ -93,3 +122,6 @@ export function createHttpGetJson(
 
 /** Default provider-agnostic HTTPS JSON getter. */
 export const httpGetJson = createHttpGetJson();
+
+/** Default provider-agnostic HTTPS JSON getter that keeps response headers. */
+export const httpGetJsonWithMeta = createHttpGetJsonWithMeta();

@@ -5,18 +5,48 @@
 
 import { randomUUID } from "node:crypto";
 import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
-import { isCompleteDetail } from "../../shared/ci/completion";
-import type { CommitCiDetail, CommitCiDetailData } from "../../types";
-import type { CiTrace, CiTraceReason } from "./ciTrace";
+import { hasUnfinishedWork, isCompleteDetail } from "../../shared/ci/completion";
+import type { CiFailedScan, CiJob, CommitCiDetail, CommitCiDetailData } from "../../types";
+import type { CiTrace, CiTraceOutcome, CiTraceReason } from "./ciTrace";
 import type { CiDetailPersistentCache } from "./detailPersistentCache";
 import type { PersistentWrite } from "./persistentCache";
 import type { CommitChecksFetchOptions } from "./service";
+import type { CiDetailFetch, CiFailedScanCursor, CiFailedScanPage } from "./types";
 
 interface DetailEntry {
     data: CommitCiDetailData;
     fetchedAt: number;
     /** The store's clear generation the entry was read or fetched under. */
     storeGeneration: string | undefined;
+    /** Failed-job overflow scans by run id; in memory only, never persisted. */
+    scans?: Map<string, ScanState>;
+}
+
+/** Progress of one run's overflow scan; carried across refetches of the same run attempt. */
+interface ScanState {
+    cursor: CiFailedScanCursor;
+    found: CiJob[];
+    state: CiFailedScan["state"];
+    error?: string;
+    /** True while a page loop runs, so a refetch never starts a second one. */
+    active: boolean;
+    /** Another attempt's data was seen: the detail stays incomplete and the scan is never resumed. */
+    remoteChanged?: true;
+}
+
+/** How the detail service reads overflow-scan pages for a key and tells the newest requester. */
+export interface CiFailedScanHooks {
+    readonly continueScan: (cursor: CiFailedScanCursor) => Promise<CiFailedScanPage>;
+    /** False once the operation that asked may no longer publish. */
+    readonly isCurrent: () => boolean;
+    /** Receives the detail again after every scan page. */
+    readonly onUpdate?: (detail: CommitCiDetail) => void;
+}
+
+/** The newest requester of a key: its scan hooks and where its detail is shown. */
+interface ScanRequester {
+    hooks: CiFailedScanHooks;
+    serve: CiDetailServeContext;
 }
 
 /** This service's clear count, the key's invalidate count and the store's clear generation. */
@@ -54,6 +84,8 @@ export interface CommitCiDetailServiceOptions {
 export class CommitCiDetailService {
     private readonly cache = new Map<string, DetailEntry>();
     private readonly inflight = new Map<string, Promise<ServedDetailData>>();
+    // The newest requester's scan hooks per key, so each scan page reaches whoever shows it now.
+    private readonly scanHooks = new Map<string, ScanRequester>();
     // Grows by one entry per invalidated key (a write action), never per fetch.
     private readonly keyGenerations = new Map<string, number>();
     // Keys whose saved copy invalidate() failed to delete: not read again until a window
@@ -97,20 +129,24 @@ export class CommitCiDetailService {
      * @param confirm - Runs once a fetched detail is saved. A rejection removes exactly
      *   that saved detail from L1 and L2 (never a newer one) and reaches every caller
      *   sharing the fetch.
+     * @param scan - Reads failed-job pages past the page bound for the cursors the fetch
+     *   returns; the latest call's hooks receive every later scan page for the key.
      */
     async getOrFetch(
         key: string,
-        fetchDetail: () => Promise<CommitCiDetailData>,
+        fetchDetail: () => Promise<CiDetailFetch>,
         serve: CiDetailServeContext,
         options: CommitChecksFetchOptions = {},
         confirm?: () => Promise<void>,
+        scan?: CiFailedScanHooks,
     ): Promise<CommitCiDetail> {
+        if (scan) this.scanHooks.set(key, { hooks: scan, serve });
         return attach(await this.getData(key, fetchDetail, serve, options, confirm), serve);
     }
 
     private async getData(
         key: string,
-        fetchDetail: () => Promise<CommitCiDetailData>,
+        fetchDetail: () => Promise<CiDetailFetch>,
         serve: CiDetailServeContext,
         options: CommitChecksFetchOptions,
         confirm: (() => Promise<void>) | undefined,
@@ -119,7 +155,8 @@ export class CommitCiDetailService {
         if (!options.force && cached && this.isFresh(cached) && this.isServable(cached)) {
             this.touch(key, cached);
             this.traceOutcome("hit-l1", cached.data, serve);
-            return cached.data;
+            this.startScans(key, cached, this.captureGeneration(key));
+            return served(cached);
         }
         const inflight = this.inflight.get(key);
         if (inflight) return inflight;
@@ -136,7 +173,8 @@ export class CommitCiDetailService {
                 if (newer && newer !== cached) {
                     if (this.isFresh(newer) && this.isServable(newer)) {
                         this.traceOutcome("hit-l1", newer.data, serve);
-                        return newer.data;
+                        this.startScans(key, newer, this.captureGeneration(key));
+                        return served(newer);
                     }
                     // The newer entry expired while the read waited: fetch, never fall back.
                 } else {
@@ -155,7 +193,7 @@ export class CommitCiDetailService {
         if (newerInflight) return newerInflight;
         const generation = this.captureGeneration(key);
         const request = fetchDetail()
-            .then(async (data): Promise<ServedDetailData> => {
+            .then(async ({ scanCursors, ...data }): Promise<ServedDetailData> => {
                 if (this.isCurrentGeneration(key, generation)) {
                     const previous = this.cache.get(key);
                     if (
@@ -167,9 +205,14 @@ export class CommitCiDetailService {
                     ) {
                         // A failed refresh must not blank the tree: keep the earlier entry as is.
                         this.traceOutcome("failed", data, serve);
-                        return { ...previous.data, refreshError: data.error ?? "" };
+                        return { ...served(previous), refreshError: data.error ?? "" };
                     }
-                    const entry = { data, fetchedAt: this.now(), storeGeneration: generation[2] };
+                    const entry: DetailEntry = {
+                        data,
+                        fetchedAt: this.now(),
+                        storeGeneration: generation[2],
+                        scans: carryScans(data, scanCursors, previous),
+                    };
                     this.cache.set(key, entry);
                     this.evictOldest();
                     this.traceOutcome(
@@ -192,7 +235,12 @@ export class CommitCiDetailService {
                         storageFailed,
                     );
                     await this.confirmSaved(key, entry, confirm, writeId, storageFailed);
-                    if (this.isCurrentGeneration(key, generation)) return data;
+                    if (this.isCurrentGeneration(key, generation)) {
+                        // A scan that finds its run changed must start a new fetch, not join this one.
+                        if (this.inflight.get(key) === request) this.inflight.delete(key);
+                        this.startScans(key, entry, generation);
+                        return served(entry);
+                    }
                 }
                 this.traceOutcome("discarded-generation", data, serve);
                 // Another window's clear() leaves this request in the map; a retry must not join it.
@@ -217,6 +265,7 @@ export class CommitCiDetailService {
         this.keyGenerations.set(key, (this.keyGenerations.get(key) ?? 0) + 1);
         this.cache.delete(key);
         this.inflight.delete(key);
+        this.scanHooks.delete(key);
         try {
             await this.persistentCache?.delete(key);
         } catch (error) {
@@ -230,6 +279,7 @@ export class CommitCiDetailService {
         this.generation += 1;
         this.cache.clear();
         this.inflight.clear();
+        this.scanHooks.clear();
         const clear = this.persistentCache?.clear();
         if (clear) {
             this.persistentReadable = clear.then(
@@ -259,7 +309,8 @@ export class CommitCiDetailService {
     }
 
     private isFresh(entry: DetailEntry): boolean {
-        if (isCompleteDetail(entry.data)) return true;
+        // Judged on what is served: a scan can complete a detail whose stored data is not.
+        if (isCompleteDetail(served(entry))) return true;
         const ageMs = this.now() - entry.fetchedAt;
         if (entry.data.outcome === "none") return ageMs < this.noneTtlMs;
         if (entry.data.outcome === "unavailable") return ageMs < this.unavailableTtlMs;
@@ -335,6 +386,98 @@ export class CommitCiDetailService {
         }
     }
 
+    /** Starts a page loop for each scan left running with none (new, or its requester left). */
+    private startScans(key: string, entry: DetailEntry, generation: Generation): void {
+        for (const scan of entry.scans?.values() ?? []) {
+            if (!scan.active && scan.state === "running") void this.runScan(key, scan, generation);
+        }
+    }
+
+    /**
+     * Reads one failed-job page at a time while the scan's entry, run attempt, key generation
+     * and requester stay current. A gate cooldown pauses until it ends; a changed run or attempt
+     * stops for good; any other failure stops with found jobs and the cursor kept, so a refresh
+     * resumes from there.
+     */
+    private async runScan(key: string, scan: ScanState, generation: Generation): Promise<void> {
+        scan.active = true;
+        try {
+            while (scan.state === "running") {
+                const requester = this.scanHooks.get(key);
+                if (!requester?.hooks.isCurrent() || !this.isScanLive(key, scan, generation)) {
+                    return;
+                }
+                // Serial by design: the gate paces the scan one page at a time (plan §3).
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
+                const page = await requester.hooks.continueScan(scan.cursor);
+                // Read again: a newer request may have replaced the hooks during the await.
+                const latest = this.scanHooks.get(key) ?? requester;
+                // A stale requester's page is dropped; the cursor stays for the next request
+                // but keeps the budget the page froze, so a later page cannot raise it.
+                if (!latest.hooks.isCurrent() || !this.isScanLive(key, scan, generation)) {
+                    const frozen = "next" in page ? page.next?.jobsTotal : undefined;
+                    if (scan.cursor.jobsTotal === undefined && frozen !== undefined) {
+                        scan.cursor = { ...scan.cursor, jobsTotal: frozen };
+                    }
+                    return;
+                }
+                const entry = this.cache.get(key) as DetailEntry;
+                if ("runChanged" in page) {
+                    // No automatic refetch, which a run re-run before every page would repeat
+                    // without bound; the detail stays incomplete, so its next read starts over.
+                    scan.state = "stopped";
+                    scan.error = page.error;
+                    scan.remoteChanged = true;
+                    this.traceScan("failed", entry.data, requester.serve);
+                } else if ("pausedUntil" in page) {
+                    if (page.next) scan.cursor = page.next;
+                    scan.state = "paused";
+                    setTimeout(
+                        () => {
+                            if (
+                                scan.state !== "paused" ||
+                                !this.isScanLive(key, scan, generation)
+                            ) {
+                                return;
+                            }
+                            scan.state = "running";
+                            void this.runScan(key, scan, generation);
+                        },
+                        Math.max(0, page.pausedUntil - this.now()),
+                    );
+                    this.traceScan("paused", entry.data, requester.serve);
+                } else {
+                    this.traceScan(applyPage(scan, page), entry.data, requester.serve);
+                }
+                latest.hooks.onUpdate?.(attach(served(entry), latest.serve));
+            }
+        } finally {
+            scan.active = false;
+        }
+    }
+
+    /** The scan still belongs to the current entry for the key, under the same generation. */
+    private isScanLive(key: string, scan: ScanState, generation: Generation): boolean {
+        return (
+            this.isCurrentGeneration(key, generation) &&
+            this.cache.get(key)?.scans?.get(scan.cursor.runId) === scan
+        );
+    }
+
+    private traceScan(
+        outcome: CiTraceOutcome,
+        data: CommitCiDetailData,
+        serve: CiDetailServeContext,
+    ): void {
+        this.trace?.({
+            kind: "scan",
+            outcome,
+            repoKey: serve.repoKey,
+            provider: data.provider,
+            hash: data.hash,
+        });
+    }
+
     private traceOutcome(
         outcome: "hit-l1" | "hit-l2" | "fetched" | "incomplete" | "discarded-generation" | "failed",
         data: CommitCiDetailData,
@@ -350,6 +493,96 @@ export class CommitCiDetailService {
             ...(reason && { reason }),
         });
     }
+}
+
+/** Adds a read page's new failed jobs and next cursor to the scan; returns the trace outcome. */
+function applyPage(
+    scan: ScanState,
+    page: Exclude<CiFailedScanPage, { pausedUntil: number } | { runChanged: true }>,
+): CiTraceOutcome {
+    if ("failed" in page) {
+        const known = new Set(scan.found.map((job) => job.id));
+        scan.found.push(...page.failed.filter((job) => !known.has(job.id)));
+    }
+    if (page.next) scan.cursor = page.next;
+    if (page.error !== undefined) {
+        scan.state = "stopped";
+        scan.error = page.error;
+        return "failed";
+    }
+    if (!("next" in page && page.next)) scan.state = "done";
+    return "fetched";
+}
+
+/**
+ * One scan per cursor. A scan of the same run id and attempt in the previous entry is carried
+ * as the same object, keeping its found jobs and saved cursor; any other run starts afresh.
+ */
+function carryScans(
+    data: CommitCiDetailData,
+    cursors: readonly CiFailedScanCursor[] | undefined,
+    previous: DetailEntry | undefined,
+): Map<string, ScanState> | undefined {
+    if (!cursors?.length) return undefined;
+    const scans = new Map<string, ScanState>();
+    for (const cursor of cursors) {
+        if (!data.runs.some((run) => run.id === cursor.runId)) continue;
+        const carried = previous?.scans?.get(cursor.runId);
+        if (carried && !carried.remoteChanged && carried.cursor.runAttempt === cursor.runAttempt) {
+            if (carried.state === "stopped") {
+                carried.state = "running";
+                delete carried.error;
+            }
+            scans.set(cursor.runId, carried);
+        } else {
+            scans.set(cursor.runId, { cursor, found: [], state: "running", active: false });
+        }
+    }
+    return scans;
+}
+
+/**
+ * The entry's detail with each scan's found jobs appended and its `failedScan` progress; a
+ * found job's own check run leaves the flat checks, so each check-run id is shown once.
+ */
+function served(entry: DetailEntry): CommitCiDetailData {
+    const scans = entry.scans;
+    if (!scans) return entry.data;
+    const foundCheckRunIds = new Set(
+        [...scans.values()].flatMap((scan) => scan.found.flatMap((job) => job.checkRunId ?? [])),
+    );
+    const otherChecks = entry.data.otherChecks.filter(
+        (check) =>
+            check.source !== "check-run" ||
+            check.id === undefined ||
+            !foundCheckRunIds.has(check.id),
+    );
+    const runs = entry.data.runs.map((run) => {
+        const scan = scans.get(run.id);
+        if (!scan) return run;
+        const shown = new Set(run.jobs.map((job) => job.id));
+        const failedScan: CiFailedScan = {
+            state: scan.state,
+            found: scan.found.length,
+            ...(scan.error !== undefined && { error: scan.error }),
+        };
+        return {
+            ...run,
+            jobs: [...run.jobs, ...scan.found.filter((job) => !shown.has(job.id))],
+            failedScan,
+        };
+    });
+    // A scan exists only for a failed run, so the failure-wins outcome cannot change. The
+    // provider's own reason for an incomplete read (a re-run seen mid-read) still holds.
+    return {
+        ...entry.data,
+        complete:
+            entry.data.complete &&
+            !hasUnfinishedWork(runs, otherChecks) &&
+            ![...scans.values()].some((scan) => scan.remoteChanged),
+        otherChecks,
+        runs,
+    };
 }
 
 /** Attaches the read-time values; the cached object itself never carries them. */

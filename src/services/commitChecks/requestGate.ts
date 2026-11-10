@@ -2,7 +2,12 @@
 // bucket caps concurrent automatic work and shares server-directed cooldowns.
 
 import { getErrorMessage } from "../../utils/errors";
-import { HttpError, type HttpResponseMetadata } from "./http";
+import {
+    createHttpGetJsonWithMeta,
+    HttpError,
+    type FetchJsonWithMeta,
+    type HttpResponseMetadata,
+} from "./http";
 import type { ProviderId } from "./types";
 
 type HttpHeaders = Record<string, string | string[] | undefined>;
@@ -94,6 +99,17 @@ export class CommitChecksRequestGateRegistry {
     }
 
     /**
+     * Read-only: when the provider/API-origin bucket for `url` accepts requests again.
+     *
+     * @param providerId - Commit-check provider that owns the bucket.
+     * @param url - Any URL on the bucket's API origin.
+     * @returns Epoch milliseconds of the cooldown end, or 0 when the bucket is not cooling down.
+     */
+    cooldownEnd(providerId: ProviderId, url: string): number {
+        return this.gates.get(this.keyFor(providerId, url))?.cooldownEnd() ?? 0;
+    }
+
+    /**
      * Clears quota and cooldown state after a credential or configuration change.
      *
      * Idle buckets are discarded, while busy buckets retain their active tasks and waiters so a
@@ -124,6 +140,27 @@ export class CommitChecksRequestGateRegistry {
     private keyFor(providerId: ProviderId, url: string): string {
         return `${providerId}:${new URL(url).origin.toLowerCase()}`;
     }
+}
+
+/**
+ * A metadata fetch whose every request runs through the registry's bucket for `providerId` and
+ * reports its response to that bucket, like activation's gated `FetchJson`.
+ *
+ * @param registry - The request gate registry shared by every provider.
+ * @param providerId - Provider whose bucket gates and observes the requests.
+ * @param create - Builds the transport for one request with the bucket's response observer.
+ */
+export function gatedFetchWithMeta(
+    registry: CommitChecksRequestGateRegistry,
+    providerId: ProviderId,
+    create: typeof createHttpGetJsonWithMeta = createHttpGetJsonWithMeta,
+): FetchJsonWithMeta {
+    return (url, headers) =>
+        registry.run(providerId, url, (generation) =>
+            create((response) => {
+                registry.observeResponse(providerId, response, generation);
+            })(url, headers),
+        );
 }
 
 /**
@@ -179,6 +216,25 @@ export class GitHubRequestGate {
     /** Clears the GitHub compatibility gate after an authentication change. */
     reset(): void {
         this.gate.reset();
+    }
+}
+
+/**
+ * The gate refused a request because its bucket is cooling down or out of budget, before or after
+ * the task was queued. Still a 429 `HttpError` for existing callers; `until` is the cooldown end.
+ */
+export class RequestGateCooldownError extends HttpError {
+    /**
+     * Builds the refusal with the time the bucket accepts requests again.
+     *
+     * @param message - Token-free cooldown message.
+     * @param until - Epoch milliseconds when the cooldown ends.
+     */
+    constructor(
+        message: string,
+        readonly until: number,
+    ) {
+        super(429, message, {});
     }
 }
 
@@ -277,6 +333,11 @@ class ProviderRequestGate {
         this.cooldownError = "";
     }
 
+    /** The cooldown end in epoch milliseconds, or 0 when the bucket is not cooling down. */
+    cooldownEnd(): number {
+        return this.now() < this.cooldownUntil ? this.cooldownUntil : 0;
+    }
+
     /** Returns whether this bucket has neither in-flight tasks nor queued waiters. */
     isIdle(): boolean {
         return this.active === 0 && this.waiters.length === 0;
@@ -363,7 +424,10 @@ class ProviderRequestGate {
 
     private throwIfCoolingDown(): void {
         if (this.now() < this.cooldownUntil) {
-            throw new HttpError(429, this.cooldownError || this.cooldownMessage, {});
+            throw new RequestGateCooldownError(
+                this.cooldownError || this.cooldownMessage,
+                this.cooldownUntil,
+            );
         }
     }
 

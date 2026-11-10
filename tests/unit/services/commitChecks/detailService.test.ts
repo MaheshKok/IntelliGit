@@ -1,11 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CiRun, CommitCiDetailData } from "../../../../src/types";
+import type { CiJob, CiRun, CommitCiDetail, CommitCiDetailData } from "../../../../src/types";
 import type { CommitChecksPersistentState } from "../../../../src/services/commitChecks/persistentCache";
 import { CiDetailPersistentCache } from "../../../../src/services/commitChecks/detailPersistentCache";
 import {
     CommitCiDetailService,
     type CiDetailServeContext,
+    type CiFailedScanHooks,
 } from "../../../../src/services/commitChecks/detailService";
+import type {
+    CiDetailFetch,
+    CiFailedScanCursor,
+    CiFailedScanPage,
+} from "../../../../src/services/commitChecks/types";
 import { NO_CI_CAPABILITIES } from "../../../../src/shared/ci/capabilities";
 import { CI_DETAIL_CONTRACT_VERSION } from "../../../../src/shared/ci/contractVersion";
 
@@ -135,31 +141,305 @@ describe("CommitCiDetailService", () => {
         expect(fetchDetail).toHaveBeenCalledTimes(1);
     });
 
-    it("the detail contract version starts at 1, and persisted details carry and accept 1", async () => {
-        expect(CI_DETAIL_CONTRACT_VERSION).toBe(1);
+    it("the detail contract version is 2: details carry and accept 2, and a version 1 entry is a miss", async () => {
+        expect(CI_DETAIL_CONTRACT_VERSION).toBe(2);
         const state = memento();
         await service(state, () => 1_000).service.getOrFetch(KEY, async () => detail(), SERVE);
         const saved = state.values.get(STORAGE_KEY) as { entries: { contractVersion: number }[] };
-        expect(saved.entries.map((entry) => entry.contractVersion)).toEqual([1]);
+        expect(saved.entries.map((entry) => entry.contractVersion)).toEqual([2]);
 
-        const written = memento();
-        written.values.set(STORAGE_KEY, {
-            entries: [
-                {
-                    key: KEY,
-                    contractVersion: 1,
-                    data: detail(),
-                    fetchedAt: 1_000,
-                    lastAccessedAt: 1_000,
-                },
-            ],
-            unconfirmed: {},
-        });
+        const written = (contractVersion: number) => {
+            const stored = memento();
+            stored.values.set(STORAGE_KEY, {
+                entries: [
+                    {
+                        key: KEY,
+                        contractVersion,
+                        data: detail(),
+                        fetchedAt: 1_000,
+                        lastAccessedAt: 1_000,
+                    },
+                ],
+                unconfirmed: {},
+            });
+            return stored;
+        };
         const fetchDetail = vi.fn(async () => detail({ outcome: "success" }));
         await expect(
-            service(written, () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
+            service(written(2), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
         ).resolves.toMatchObject({ outcome: "failure" });
         expect(fetchDetail).not.toHaveBeenCalled();
+        // Phase 1 entries predate snapshot item ids and job logical ids.
+        await expect(
+            service(written(1), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
+        ).resolves.toMatchObject({ outcome: "success" });
+        expect(fetchDetail).toHaveBeenCalledTimes(1);
+    });
+
+    describe("failed-job overflow scan", () => {
+        const failed = (id: string): CiJob => ({
+            id,
+            logicalId: `ci\0${id}`,
+            name: id,
+            checkName: id,
+            state: "failure",
+            steps: [],
+        });
+        const capped = (): CiDetailFetch => ({
+            ...detail({
+                runs: [
+                    run({
+                        attempt: 1,
+                        jobs: [failed("job 1")],
+                        jobsCoverage: { reason: "pageBound", shown: 1000 },
+                    }),
+                ],
+            }),
+            scanCursors: [{ runId: "1", runAttempt: 1, runName: "CI", url: "page-11" }],
+        });
+        const pages: Record<string, CiFailedScanPage> = {
+            "page-11": {
+                failed: [failed("job 1050")],
+                next: { runId: "1", runAttempt: 1, runName: "CI", url: "page-12" },
+            },
+            "page-12": { failed: [failed("job 1900")] },
+        };
+
+        it("scan detail is never persisted", async () => {
+            const state = memento();
+            const { service: details, persistent } = service(state);
+            const posts: CommitCiDetail[] = [];
+            await details.getOrFetch(KEY, async () => capped(), SERVE, {}, undefined, {
+                continueScan: async (cursor) => pages[cursor.url],
+                isCurrent: () => true,
+                onUpdate: (served) => posts.push(served),
+            });
+            await vi.waitFor(() => expect(posts.at(-1)?.runs[0].failedScan?.state).toBe("done"));
+            expect(posts.at(-1)?.runs[0].jobs.map((job) => job.id)).toEqual([
+                "job 1",
+                "job 1050",
+                "job 1900",
+            ]);
+            expect(await persistent.get(KEY)).toBeUndefined();
+            expect(state.values.has(STORAGE_KEY)).toBe(false);
+        });
+
+        it("each scan page re-posts with the original requestId", async () => {
+            const { service: details } = service();
+            const posts: { requestId: string; detail: CommitCiDetail }[] = [];
+            const page12 = deferred<CiFailedScanPage>();
+            const hooks = (requestId: string): CiFailedScanHooks => ({
+                continueScan: (cursor) =>
+                    cursor.url === "page-12" ? page12.promise : Promise.resolve(pages[cursor.url]),
+                isCurrent: () => true,
+                onUpdate: (served) => posts.push({ requestId, detail: served }),
+            });
+            const first = await details.getOrFetch(
+                KEY,
+                async () => capped(),
+                SERVE,
+                {},
+                undefined,
+                hooks("r1"),
+            );
+            expect(first.runs[0].failedScan).toEqual({ state: "running", found: 0 });
+            await vi.waitFor(() => expect(posts).toHaveLength(1));
+            expect(posts[0].requestId).toBe("r1");
+            expect(posts[0].detail).toMatchObject({
+                repoKey: "/repo",
+                capabilities: NO_CI_CAPABILITIES,
+            });
+            expect(posts[0].detail.runs[0].failedScan).toEqual({ state: "running", found: 1 });
+
+            // A newer request for the same commit takes over the posts; the scan is not restarted.
+            const second = await details.getOrFetch(
+                KEY,
+                async () => capped(),
+                SERVE,
+                {},
+                undefined,
+                hooks("r2"),
+            );
+            expect(second.runs[0].failedScan).toEqual({ state: "running", found: 1 });
+            page12.resolve(pages["page-12"]);
+            await vi.waitFor(() => expect(posts).toHaveLength(2));
+            expect(posts.map((post) => post.requestId)).toEqual(["r1", "r2"]);
+            expect(posts[1].detail.runs[0].failedScan).toEqual({ state: "done", found: 2 });
+        });
+
+        it("a found job's pending flat check leaves the list; the provider's incomplete read stays incomplete", async () => {
+            const flat = (id: string, source: "check-run" | "status") => ({
+                id,
+                name: id,
+                description: "",
+                state: "pending" as const,
+                source,
+            });
+            const scanned = async (otherChecks: ReturnType<typeof flat>[]) => {
+                const posts: CommitCiDetail[] = [];
+                await service().service.getOrFetch(
+                    KEY,
+                    async () => ({
+                        // The snapshot still listed job 1050's check run as running.
+                        ...capped(),
+                        complete: false,
+                        otherChecks,
+                    }),
+                    SERVE,
+                    {},
+                    undefined,
+                    {
+                        continueScan: async (cursor) =>
+                            cursor.url === "page-11"
+                                ? { failed: [{ ...failed("job 1050"), checkRunId: "9050" }] }
+                                : pages[cursor.url],
+                        isCurrent: () => true,
+                        onUpdate: (served) => posts.push(served),
+                    },
+                );
+                await vi.waitFor(() =>
+                    expect(posts.at(-1)?.runs[0].failedScan?.state).toBe("done"),
+                );
+                return posts.at(-1);
+            };
+
+            const alone = await scanned([flat("9050", "check-run")]);
+            expect(alone?.otherChecks).toEqual([]);
+            // The provider read the snapshot and the jobs apart, so its reason still holds.
+            expect(alone, "the scan never overrides the provider's incomplete").toMatchObject({
+                complete: false,
+                outcome: "failure",
+            });
+
+            const withStatus = await scanned([flat("9050", "check-run"), flat("lint", "status")]);
+            expect(withStatus?.otherChecks.map((check) => check.id)).toEqual(["lint"]);
+            expect(withStatus, "a pending status still keeps the detail incomplete").toMatchObject({
+                complete: false,
+                outcome: "failure",
+            });
+        });
+
+        it("a final read the provider marked incomplete stays incomplete through its scan and is fetched again after the pending TTL", async () => {
+            let now = 0;
+            const { service: details, persistent } = service(memento(), () => now);
+            const posts: CommitCiDetail[] = [];
+            // The provider's third read still saw the run re-run, so it is not complete.
+            const fetchDetail = vi.fn(async (): Promise<CiDetailFetch> => ({
+                ...capped(),
+                complete: false,
+            }));
+            const hooks: CiFailedScanHooks = {
+                continueScan: async (cursor) => pages[cursor.url],
+                isCurrent: () => true,
+                onUpdate: (served) => posts.push(served),
+            };
+            const first = await details.getOrFetch(KEY, fetchDetail, SERVE, {}, undefined, hooks);
+            expect(first.complete, "served with its scan attached").toBe(false);
+            await vi.waitFor(() => expect(posts.at(-1)?.runs[0].failedScan?.state).toBe("done"));
+            expect(posts.at(-1)?.complete, "a finished scan keeps the provider's reason").toBe(
+                false,
+            );
+
+            now += 29_000;
+            await details.getOrFetch(KEY, fetchDetail, SERVE, {}, undefined, hooks);
+            expect(fetchDetail).toHaveBeenCalledTimes(1);
+            now += 2_000;
+            await details.getOrFetch(KEY, fetchDetail, SERVE, {}, undefined, hooks);
+            expect(
+                fetchDetail,
+                "the pending TTL expires it and it is fetched again",
+            ).toHaveBeenCalledTimes(2);
+            expect(await persistent.get(KEY)).toBeUndefined();
+        });
+
+        it("a page read while its requester goes stale is neither kept nor posted", async () => {
+            const { service: details } = service();
+            const posts: CommitCiDetail[] = [];
+            const page11 = deferred<CiFailedScanPage>();
+            let current = true;
+            await details.getOrFetch(KEY, async () => capped(), SERVE, {}, undefined, {
+                continueScan: () => page11.promise,
+                isCurrent: () => current,
+                onUpdate: (served) => posts.push(served),
+            });
+            // Sign-out or navigation while page 11 is in flight.
+            current = false;
+            page11.resolve(pages["page-11"]);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            expect(posts).toEqual([]);
+
+            // The user comes back inside the TTL: the L1 hit resumes the scan from page 11.
+            const continueScan = vi.fn(async (cursor: { url: string }) => pages[cursor.url]);
+            const later = await details.getOrFetch(
+                KEY,
+                async () => capped(),
+                SERVE,
+                {},
+                undefined,
+                {
+                    continueScan,
+                    isCurrent: () => true,
+                    onUpdate: (served) => posts.push(served),
+                },
+            );
+            expect(later.runs[0].failedScan).toEqual({ state: "running", found: 0 });
+            await vi.waitFor(() =>
+                expect(
+                    continueScan,
+                    "an L1 hit restarts the scan its stale requester left",
+                ).toHaveBeenCalledTimes(2),
+            );
+            expect(continueScan.mock.calls.map(([cursor]) => cursor.url)).toEqual([
+                "page-11",
+                "page-12",
+            ]);
+            await vi.waitFor(() => expect(posts.at(-1)?.runs[0].failedScan?.state).toBe("done"));
+            expect(posts.at(-1)?.runs[0].jobs.map((job) => job.id)).toEqual([
+                "job 1",
+                "job 1050",
+                "job 1900",
+            ]);
+        });
+
+        it("a run re-run before every overflow page stops its scan without a refetch, and Refresh scans from scratch", async () => {
+            const { service: details } = service();
+            const posts: CommitCiDetail[] = [];
+            const fetchDetail = vi.fn(async () => capped());
+            const changed = "Remote data changed. Reload and try again.";
+            let rerun = true;
+            let checks = 0;
+            const scan = {
+                // Re-run before each page; the cap only ends an unbounded restart loop.
+                continueScan: vi.fn(
+                    async (cursor: CiFailedScanCursor): Promise<CiFailedScanPage> =>
+                        rerun && ++checks <= 5
+                            ? { runChanged: true, error: changed }
+                            : pages[cursor.url],
+                ),
+                isCurrent: () => true,
+                onUpdate: (served: CommitCiDetail) => posts.push(served),
+            };
+            await details.getOrFetch(KEY, fetchDetail, SERVE, {}, undefined, scan);
+            await vi.waitFor(() => expect(scan.continueScan).toHaveBeenCalled());
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            expect(fetchDetail, "no read restarts without bound").toHaveBeenCalledTimes(1);
+            expect(posts.at(-1)?.runs[0].failedScan).toEqual({
+                state: "stopped",
+                found: 0,
+                error: changed,
+            });
+            expect(posts.at(-1)?.complete, "a changed run's scan leaves it incomplete").toBe(false);
+
+            rerun = false;
+            scan.continueScan.mockClear();
+            await details.getOrFetch(KEY, fetchDetail, SERVE, { force: true }, undefined, scan);
+            await vi.waitFor(() => expect(posts.at(-1)?.runs[0].failedScan?.state).toBe("done"));
+            expect(scan.continueScan.mock.calls.map(([cursor]) => cursor.url)).toEqual([
+                "page-11",
+                "page-12",
+            ]);
+            expect(posts.at(-1)?.complete).toBe(true);
+        });
     });
 
     it("a persisted complete detail survives a restart", async () => {

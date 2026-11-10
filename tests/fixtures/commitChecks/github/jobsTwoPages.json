@@ -1,0 +1,111 @@
+{
+    "note": "A run's jobs list over two pages, as GitHub serves it: page 1 names page 2 by repository id in its Link header (rel next and last); page 2 names only prev and first. Each page is trimmed from 100 jobs to keep the file small.",
+    "pages": [
+        {
+            "link": "<https://api.github.com/repositories/41881900/actions/runs/42491176871/jobs?filter=latest&per_page=100&page=2>; rel=\"next\", <https://api.github.com/repositories/41881900/actions/runs/42491176871/jobs?filter=latest&per_page=100&page=2>; rel=\"last\"",
+            "body": {
+                "total_count": 3,
+                "jobs": [
+                    {
+                        "id": 128763683988,
+                        "run_id": 42491176871,
+                        "workflow_name": "Code OSS",
+                        "head_branch": "alexdima/agents-layout-scope-chat-default",
+                        "run_url": "https://api.github.com/repos/microsoft/vscode/actions/runs/42491176871",
+                        "run_attempt": 1,
+                        "node_id": "CR_kwDOAn8RLM8AAAAd-unklA",
+                        "head_sha": "856458acf08c3a70cac43d49c4bc51817ac26415",
+                        "url": "https://api.github.com/repos/microsoft/vscode/actions/jobs/128763683988",
+                        "html_url": "https://github.com/microsoft/vscode/actions/runs/42491176871/job/128763683988",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "created_at": "2026-11-08T14:43:10Z",
+                        "started_at": "2026-11-08T14:43:13Z",
+                        "completed_at": "2026-11-08T14:43:37Z",
+                        "name": "Detect Changes",
+                        "steps": [
+                            {
+                                "name": "Set up job",
+                                "status": "completed",
+                                "conclusion": "success",
+                                "number": 1,
+                                "started_at": "2026-11-08T14:43:14Z",
+                                "completed_at": "2026-11-08T14:43:15Z"
+                            }
+                        ],
+                        "check_run_url": "https://api.github.com/repos/microsoft/vscode/check-runs/128763683988",
+                        "labels": ["vscode-large-runners-ubuntu-8-core"]
+                    },
+                    {
+                        "id": 128763684101,
+                        "run_id": 42491176871,
+                        "workflow_name": "Code OSS",
+                        "head_branch": "alexdima/agents-layout-scope-chat-default",
+                        "run_url": "https://api.github.com/repos/microsoft/vscode/actions/runs/42491176871",
+                        "run_attempt": 1,
+                        "node_id": "CR_kwDOAn8RLM8AAAAd-unmBQ",
+                        "head_sha": "856458acf08c3a70cac43d49c4bc51817ac26415",
+                        "url": "https://api.github.com/repos/microsoft/vscode/actions/jobs/128763684101",
+                        "html_url": "https://github.com/microsoft/vscode/actions/runs/42491176871/job/128763684101",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "created_at": "2026-11-08T14:43:40Z",
+                        "started_at": "2026-11-08T14:43:44Z",
+                        "completed_at": "2026-11-08T14:52:09Z",
+                        "name": "Compile & Hygiene",
+                        "steps": [
+                            {
+                                "name": "Set up job",
+                                "status": "completed",
+                                "conclusion": "success",
+                                "number": 1,
+                                "started_at": "2026-11-08T14:43:45Z",
+                                "completed_at": "2026-11-08T14:43:47Z"
+                            }
+                        ],
+                        "check_run_url": "https://api.github.com/repos/microsoft/vscode/check-runs/128763684101",
+                        "labels": ["vscode-large-runners-ubuntu-8-core"]
+                    }
+                ]
+            }
+        },
+        {
+            "link": "<https://api.github.com/repositories/41881900/actions/runs/42491176871/jobs?filter=latest&per_page=100&page=1>; rel=\"prev\", <https://api.github.com/repositories/41881900/actions/runs/42491176871/jobs?filter=latest&per_page=100&page=1>; rel=\"first\"",
+            "body": {
+                "total_count": 3,
+                "jobs": [
+                    {
+                        "id": 128763684277,
+                        "run_id": 42491176871,
+                        "workflow_name": "Code OSS",
+                        "head_branch": "alexdima/agents-layout-scope-chat-default",
+                        "run_url": "https://api.github.com/repos/microsoft/vscode/actions/runs/42491176871",
+                        "run_attempt": 1,
+                        "node_id": "CR_kwDOAn8RLM8AAAAd-unotQ",
+                        "head_sha": "856458acf08c3a70cac43d49c4bc51817ac26415",
+                        "url": "https://api.github.com/repos/microsoft/vscode/actions/jobs/128763684277",
+                        "html_url": "https://github.com/microsoft/vscode/actions/runs/42491176871/job/128763684277",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "created_at": "2026-11-08T14:43:40Z",
+                        "started_at": "2026-11-08T14:43:46Z",
+                        "completed_at": "2026-11-08T14:58:31Z",
+                        "name": "Linux / Electron",
+                        "steps": [
+                            {
+                                "name": "Run unit tests",
+                                "status": "completed",
+                                "conclusion": "failure",
+                                "number": 1,
+                                "started_at": "2026-11-08T14:50:02Z",
+                                "completed_at": "2026-11-08T14:58:30Z"
+                            }
+                        ],
+                        "check_run_url": "https://api.github.com/repos/microsoft/vscode/check-runs/128763684277",
+                        "labels": ["vscode-large-runners-ubuntu-8-core"]
+                    }
+                ]
+            }
+        }
+    ]
+}
