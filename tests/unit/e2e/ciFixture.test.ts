@@ -3,6 +3,10 @@ import { setE2eControlChannelActive } from "../../../src/e2e/activationState";
 import { E2E_CI_FIXTURE_KEY, readE2eCiFixture } from "../../../src/e2e/ciFixture";
 import type { GitOps } from "../../../src/git/operations";
 import { CommitChecksCoordinator } from "../../../src/services/commitChecks/coordinator";
+import type {
+    CommitChecksProvider,
+    ProviderRepoRef,
+} from "../../../src/services/commitChecks/types";
 import { NO_CI_CAPABILITIES } from "../../../src/shared/ci/capabilities";
 import type { CommitCiDetailData } from "../../../src/types";
 
@@ -89,5 +93,45 @@ describe("CommitChecksCoordinator fixture", () => {
         const snapshot = await coordinator.getChecks(HASH);
         expect(snapshot).toMatchObject({ hash: HASH, state: "failure" });
         expect(snapshot.items.map((item) => item.name)).toEqual(["lint"]);
+    });
+
+    it("while the channel is off, a seeded fixture leaves badge requests exactly as without the seam", async () => {
+        const store = memento({ detail: seededDetail(), capabilities: NO_CI_CAPABILITIES });
+        const badgeRequests = async (
+            fixture?: (hash: string) => ReturnType<typeof readE2eCiFixture>,
+        ) => {
+            const getChecks = vi.fn(async (_ref: ProviderRepoRef, hash: string) => ({
+                hash,
+                state: "success" as const,
+                summary: "success",
+                items: [],
+            }));
+            const provider: CommitChecksProvider = {
+                id: "github",
+                match: (url) => (url.includes("github.com") ? { host: "github.com" } : null),
+                keyFor: (ref) => `github:${ref.host}`,
+                getChecks,
+            };
+            const gitOps = {
+                getRemotes: vi.fn(async () => ["origin"]),
+                getRemoteUrl: vi.fn(async () => "git@github.com:owner/repo.git"),
+            } as unknown as GitOps;
+            const coordinator = new CommitChecksCoordinator(gitOps, [provider], {}, { fixture });
+            const snapshot = await coordinator.getChecks(HASH);
+            return { calls: getChecks.mock.calls, snapshot };
+        };
+
+        const withoutSeam = await badgeRequests();
+        const withSeededFixture = await badgeRequests((hash) => readE2eCiFixture(store, hash));
+
+        expect(
+            withSeededFixture.calls,
+            "the provider is asked for the same commit, the same number of times",
+        ).toEqual(withoutSeam.calls);
+        expect(withoutSeam.calls, "the comparison saw a real provider request").toHaveLength(1);
+        expect(withSeededFixture.snapshot, "the seeded failure never reaches a badge").toEqual(
+            withoutSeam.snapshot,
+        );
+        expect(store.get, "the seeded fixture is never read").not.toHaveBeenCalled();
     });
 });

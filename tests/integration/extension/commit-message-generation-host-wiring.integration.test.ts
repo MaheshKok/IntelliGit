@@ -9,6 +9,9 @@ const undockedOptions = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 const undockedInstances = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 const commitInfoInstances = vi.hoisted(() => [] as Array<{ clear: ReturnType<typeof vi.fn> }>);
 const gitOpsDeriveFor = vi.hoisted(() => vi.fn((root: string) => ({ root })));
+// Shared across GitOps instances so a test can count branch loads, which every repository
+// refresh starts with.
+const gitOpsGetBranches = vi.hoisted(() => vi.fn(async () => []));
 const watchWholeIndexOperation = vi.hoisted(() => vi.fn(() => ({ dispose: vi.fn() })));
 const repositoryCommandDeps = vi.hoisted(() => ({
     value: undefined as Record<string, unknown> | undefined,
@@ -77,7 +80,7 @@ vi.mock("../../../src/git/executor", () => ({
 vi.mock("../../../src/git/operations", () => ({
     GitOps: class {
         deriveFor = gitOpsDeriveFor;
-        getBranches = vi.fn(async () => []);
+        getBranches = gitOpsGetBranches;
         constructor(_executor: unknown) {}
     },
 }));
@@ -375,6 +378,61 @@ describe("repository switch", () => {
             commitInfo?.clear,
             "the old selection is cleared after a failed preference write",
         ).toHaveBeenCalled();
+        for (const subscription of context.subscriptions) subscription.dispose();
+    });
+
+    it("a switch overtaken during its preference write leaves the newer switch's repository, cleared once by each", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        let finishOvertakenWrite!: () => void;
+        const update = vi.fn(async (key: string, value: unknown) => {
+            if (key === "intelligit.selectedRepositoryRoot" && value === "/repo-b") {
+                await new Promise<void>((resolve) => (finishOvertakenWrite = resolve));
+            }
+        });
+        const context = {
+            extensionUri: { fsPath: "/extension", path: "/extension" },
+            subscriptions: [] as Array<{ dispose: () => void }>,
+            workspaceState: { get: vi.fn(), update },
+            secrets: {},
+        };
+        await activateRepositoryMode(context as never, [
+            { root: "/repo-a", label: "repo-a" },
+            { root: "/repo-b", label: "repo-b" },
+        ]);
+        const deps = repositoryCommandDeps.value as {
+            getRepoRoot: () => string;
+            setActiveRepository: (repository: { root: string; label: string }) => Promise<void>;
+        };
+        await vi.waitFor(() => expect(gitOpsGetBranches).toHaveBeenCalled());
+        const commitInfo = commitInfoInstances.at(-1);
+        commitInfo?.clear.mockClear();
+        gitOpsGetBranches.mockClear();
+        update.mockClear();
+
+        const overtaken = deps.setActiveRepository({ root: "/repo-b", label: "repo-b" });
+        // Panes key Checks requests by the host's root, which already names /repo-b here.
+        expect(
+            commitInfo?.clear,
+            "the /repo-b switch clears the /repo-a selection before it waits on its write",
+        ).toHaveBeenCalledTimes(1);
+        await deps.setActiveRepository({ root: "/repo-a", label: "repo-a" });
+        finishOvertakenWrite();
+        await overtaken;
+
+        expect(deps.getRepoRoot(), "the newer switch's repository is active").toBe("/repo-a");
+        expect(
+            commitInfo?.clear,
+            "each switch cleared once and nothing restored a stale selection",
+        ).toHaveBeenCalledTimes(2);
+        expect(
+            update.mock.calls
+                .filter(([key]) => key === "intelligit.selectedRepositoryRoot")
+                .map(([, value]) => value),
+            "the overtaken write had already started; the newer one is issued last",
+        ).toEqual(["/repo-b", "/repo-a"]);
+        expect(gitOpsGetBranches, "only the newer switch loads branch data").toHaveBeenCalledTimes(
+            1,
+        );
         for (const subscription of context.subscriptions) subscription.dispose();
     });
 });
