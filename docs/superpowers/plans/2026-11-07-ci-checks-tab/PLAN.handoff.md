@@ -2,10 +2,11 @@
 
 ## Phases accepted
 - Phase 1: accepted 3965f37a, verification incomplete.
+- Phase 2: accepted bfea9112, manual: finished by hand and merged as #415; owner OK 2026-11-11.
 - Phase 4: accepted f005d90f, verification incomplete.
 - Phase 19: accepted f005d90f, verification incomplete.
 
-## Phase 2: review pending, started at f005d90f47f5a45cb30e5a31cc19f8e1b96e51d6
+## Phase 2 history (accepted bfea9112 on 2026-11-11; this section was review pending, started at f005d90f47f5a45cb30e5a31cc19f8e1b96e51d6)
 - Review range for this narrow round (owner amendment item 4): 336ff8fd..d41b4585. Whole phase: f005d90f..d41b4585 (2cdbaaf8 and 336ff8fd are owner plan amendments, docs only).
 - d41b4585 (Opus takeover of item 4): the scan cursor's `jobsTotal` may be `null`, meaning the first scan page was read and named no `total_count`. continueFailedScan reads a page's total only while `jobsTotal === undefined` (stores `?? null`), so a missing first total stays missing through Refresh, cooldown resumes and error stops (kept() now carries `null` too). The refusal check reads `jobsTotal === null`.
 - 018dbbb5 (fix round 2): budget taken as soon as the page answers; every stop or pause that keeps the scan returns `next` = same page's cursor with the budget. types.ts `{error}`/`{pausedUntil}` take optional `next`; detailService applies it.
@@ -72,3 +73,6 @@
 - The review ranges and commit ids above (f005d90f..d41b4585, 392fdf68, ee59d01f, 018dbbb5 and earlier) are on the local branch `feat/ci-checks-tab`, which is not on origin. On PR #415 that work is one commit, 2b65390b (the lift); amendment item 5 is 3d8e7626 and the #414 test port is c08e0cb0. The PR's own squash merge replaces these with one commit on `main`.
 - Follow-up (stop rule, item 3; cubic 4529413302): a job with no `run_attempt` passes the attempt checks (`githubProvider.ts:334`, `:362`, `:429`). GitHub's job payloads carry the field (`workflowJob.json`), so no job is known to reach a detail unchecked; refusing such jobs would mark every detail incomplete if the field were ever omitted.
 - Correction to "429/403 inside a scan stops it" under Open risks: a 429 or a quota 403 pauses the scan until the gate's cooldown ends and then resumes it (`githubProvider.ts:453-460`); a permission 403, or a 429 that leaves no cooldown, stops it until Refresh.
+
+## Phase 2 accepted by hand (2026-11-11)
+- Phase 2 was lifted onto Phase 1's PR, finished, and merged as #415 (bfea9112); the owner chose to record it accepted so phase-run can move on to Phase 3.
