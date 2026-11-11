@@ -769,6 +769,25 @@ describe("CommitCiDetailService", () => {
         expect(next).toHaveBeenCalledTimes(1);
     });
 
+    it("a saved copy that a session-only read failed to delete is not served after eviction", async () => {
+        const persistent = new CiDetailPersistentCache(memento());
+        const details = new CommitCiDetailService({ persistentCache: persistent, maxEntries: 1 });
+        await details.getOrFetch(KEY, async () => detail({ outcome: "success" }), SERVE);
+        vi.spyOn(persistent, "delete").mockRejectedValueOnce(new Error("storage down"));
+        await details.getOrFetch(KEY, async () => ({ ...detail(), sessionOnly: true }), SERVE, {
+            force: true,
+        });
+        // Another commit's detail pushes the session-only entry out of memory.
+        await details.getOrFetch(`${KEY}-other`, async () => detail(), SERVE);
+        const next = vi.fn(async () => detail());
+        const again = await details.getOrFetch(KEY, next, SERVE);
+        expect(
+            next,
+            "a failed session-only deletion must block the stale saved copy after eviction",
+        ).toHaveBeenCalledTimes(1);
+        expect(again.outcome).toBe("failure");
+    });
+
     it("an unavailable detail marked complete is retried after its TTL and never saved", async () => {
         let now = 0;
         const { service: details, persistent } = service(memento(), () => now);

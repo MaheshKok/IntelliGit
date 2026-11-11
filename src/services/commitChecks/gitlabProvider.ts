@@ -62,6 +62,7 @@ interface GitLabStatus {
     description?: unknown;
     target_url?: unknown;
     allow_failure?: unknown;
+    pipeline_id?: unknown;
 }
 
 /** A pipeline as the single-pipeline request returns it; the list omits `user` and `duration`. */
@@ -349,6 +350,7 @@ export class GitLabProvider implements CommitChecksProvider {
             readArray<GitLabPipeline>,
         );
         const runs: CiRun[] = [];
+        const cutRuns = new Set<string>();
         const scanCursors: CiFailedScanCursor[] = [];
         let retriedMidRead = false;
         let sessionOnly = false;
@@ -383,6 +385,7 @@ export class GitLabProvider implements CommitChecksProvider {
             const jobs = inStageOrder(jobsPage.items).map((job) => toJob(job, runName));
             const run = toRun(pipeline, runId, runName, jobs, jobsPage.coverage);
             runs.push(run);
+            if (jobsPage.coverage !== "full") cutRuns.add(runId);
             if (run.state === "failure" && jobsPage.next) {
                 // The failed-only collection is read from its first page; jobs already shown
                 // are skipped by id. The version is the one the jobs were read under, so a
@@ -400,10 +403,13 @@ export class GitLabProvider implements CommitChecksProvider {
             `${base}/repository/commits/${encodeURIComponent(hash)}/statuses?per_page=${CI_PAGE_SIZE}`,
             readArray<GitLabStatus>,
         );
-        // GitLab lists every job as a commit status under the job's own id.
+        // GitLab lists every job as a commit status under the job's own id. A job past the job
+        // bound is matched by its `pipeline_id` instead (Entities::CommitStatus exposes it);
+        // an external status posted to a cut pipeline is then hidden with it.
         const jobIds = new Set(runs.flatMap((run) => run.jobs.map((job) => job.id)));
         const otherChecks = statuses.items
             .filter((status) => !jobIds.has(readId(status.id) ?? ""))
+            .filter((status) => !cutRuns.has(readId(status.pipeline_id) ?? ""))
             .map((status) => ({ ...toStatusItem(status), id: readId(status.id) }))
             .filter((item) => isCiCdCheckItem(item, this.ciCdPattern));
         return {

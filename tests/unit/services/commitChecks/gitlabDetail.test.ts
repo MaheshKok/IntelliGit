@@ -589,6 +589,58 @@ describe("GitLabProvider.getDetail", () => {
         expect(detail.outcome).toBe("failure");
     });
 
+    /** A pipeline with more jobs than the job bound; the five lowest ids land past it. */
+    function cutPipeline(statuses: Json[]): FakeGitLab {
+        const all = jobs(1005).map((j, i) => ({ ...j, name: `unit tests ${i + 1}` }));
+        all[0] = job(1, "failed", { name: "unit tests 1" });
+        // GitLab's commit-status entity exposes the pipeline each job status belongs to.
+        const own = all
+            .slice(0, 5)
+            .map((j) => ({ id: j.id, name: j.name, status: j.status, pipeline_id: Number(PIPELINE_ID) }));
+        return state({
+            pipelines: [pipeline({ status: "failed" })],
+            jobsByPipeline: new Map([[PIPELINE_ID, [...all].reverse()]]),
+            statuses: [...own, ...statuses],
+        });
+    }
+
+    it("job statuses of a pipeline cut at the job bound are not other checks", async () => {
+        const detail = await provider(fakeGitLab(cutPipeline([]))).getDetail(ref, SHA);
+        expect(
+            detail.otherChecks,
+            "statuses of the pipeline's own jobs past the bound must not become other checks",
+        ).toEqual([]);
+    });
+
+    it("statuses of another pipeline or of none stay other checks when a pipeline is cut", async () => {
+        const otherPipeline = { id: 5000, name: "jenkins build", status: "failed", pipeline_id: 424242 };
+        const noPipeline = { id: 5001, name: "jenkins build arm", status: "failed" };
+        const detail = await provider(fakeGitLab(cutPipeline([otherPipeline, noPipeline]))).getDetail(
+            ref,
+            SHA,
+        );
+        expect(
+            detail.otherChecks.map((check) => check.id),
+            "statuses outside the listed pipelines must stay other checks",
+        ).toEqual(expect.arrayContaining(["5000", "5001"]));
+    });
+
+    it("an external status posted to a fully listed pipeline stays an other check", async () => {
+        const pipelineJobs = [job(1, "success", { name: "unit tests" })];
+        const posted = { id: 5000, name: "jenkins build", status: "failed", pipeline_id: Number(PIPELINE_ID) };
+        const gl = fakeGitLab(
+            state({
+                jobsByPipeline: new Map([[PIPELINE_ID, pipelineJobs]]),
+                statuses: [{ ...pipelineJobs[0], pipeline_id: Number(PIPELINE_ID) }, posted],
+            }),
+        );
+        const detail = await provider(gl).getDetail(ref, SHA);
+        expect(
+            detail.otherChecks.map((check) => check.id),
+            "a status the pipeline's job list does not hold must stay an other check",
+        ).toEqual(["5000"]);
+    });
+
     it("hostile next link: http, other host, other port, other path prefix", async () => {
         const gl = fakeGitLab(state());
         const gitlab = provider(gl);
