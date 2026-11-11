@@ -451,6 +451,49 @@ describe("GitLabProvider.getDetail", () => {
         },
     );
 
+    it("a pipeline over the job bound retried while its jobs are paged stops its scan", async () => {
+        const retried = pipeline({ status: "failed" });
+        const st = state({
+            pipelines: [retried],
+            jobsByPipeline: new Map([[PIPELINE_ID, [...jobs(1000), ...jobs(5, "failed", 1001)]]]),
+        });
+        // Failed again while job page 2 is in flight: only the update time changes.
+        st.onRequest = (url) => {
+            if (jobPages([url])[0] === 2) retried.updated_at = "2026-11-11T10:00:00.000Z";
+        };
+        const gitlab = provider(fakeGitLab(st));
+        const posts: CommitCiDetail[] = [];
+        await new CommitCiDetailService().getOrFetch(
+            KEY,
+            () => gitlab.getDetail(ref, SHA),
+            SERVE,
+            {},
+            undefined,
+            {
+                continueScan: (cursor) => gitlab.continueFailedScan(ref, cursor),
+                isCurrent: () => true,
+                onUpdate: (d) => posts.push(d),
+            },
+        );
+        await vi.waitFor(() =>
+            expect(["stopped", "done"]).toContain(posts.at(-1)?.runs[0].failedScan?.state),
+        );
+        expect(
+            posts.at(-1)?.runs[0].failedScan?.state,
+            "the scan must check the version the jobs were read under, not the later header",
+        ).toBe("stopped");
+    });
+
+    it("a pipeline id with path characters stays inside the project's API path", async () => {
+        const gl = fakeGitLab(state({ pipelines: [pipeline({ id: "../../../../user" })] }));
+        await provider(gl).getDetail(ref, SHA);
+        const escaped = gl.log.filter(
+            (url) =>
+                !new URL(url).pathname.startsWith("/api/v4/projects/gitlab-org%2Fgitlab-runner/"),
+        );
+        expect(escaped, "a listed pipeline id must not leave the project path").toEqual([]);
+    });
+
     /** A persistent detail cache over an in-memory store, shared by two service lifetimes. */
     function persistentStore(): CiDetailPersistentCache {
         const values = new Map<string, unknown>();
@@ -594,9 +637,12 @@ describe("GitLabProvider.getDetail", () => {
         const all = jobs(1005).map((j, i) => ({ ...j, name: `unit tests ${i + 1}` }));
         all[0] = job(1, "failed", { name: "unit tests 1" });
         // GitLab's commit-status entity exposes the pipeline each job status belongs to.
-        const own = all
-            .slice(0, 5)
-            .map((j) => ({ id: j.id, name: j.name, status: j.status, pipeline_id: Number(PIPELINE_ID) }));
+        const own = all.slice(0, 5).map((j) => ({
+            id: j.id,
+            name: j.name,
+            status: j.status,
+            pipeline_id: Number(PIPELINE_ID),
+        }));
         return state({
             pipelines: [pipeline({ status: "failed" })],
             jobsByPipeline: new Map([[PIPELINE_ID, [...all].reverse()]]),
@@ -613,12 +659,16 @@ describe("GitLabProvider.getDetail", () => {
     });
 
     it("statuses of another pipeline or of none stay other checks when a pipeline is cut", async () => {
-        const otherPipeline = { id: 5000, name: "jenkins build", status: "failed", pipeline_id: 424242 };
+        const otherPipeline = {
+            id: 5000,
+            name: "jenkins build",
+            status: "failed",
+            pipeline_id: 424242,
+        };
         const noPipeline = { id: 5001, name: "jenkins build arm", status: "failed" };
-        const detail = await provider(fakeGitLab(cutPipeline([otherPipeline, noPipeline]))).getDetail(
-            ref,
-            SHA,
-        );
+        const detail = await provider(
+            fakeGitLab(cutPipeline([otherPipeline, noPipeline])),
+        ).getDetail(ref, SHA);
         expect(
             detail.otherChecks.map((check) => check.id),
             "statuses outside the listed pipelines must stay other checks",
@@ -627,7 +677,12 @@ describe("GitLabProvider.getDetail", () => {
 
     it("an external status posted to a fully listed pipeline stays an other check", async () => {
         const pipelineJobs = [job(1, "success", { name: "unit tests" })];
-        const posted = { id: 5000, name: "jenkins build", status: "failed", pipeline_id: Number(PIPELINE_ID) };
+        const posted = {
+            id: 5000,
+            name: "jenkins build",
+            status: "failed",
+            pipeline_id: Number(PIPELINE_ID),
+        };
         const gl = fakeGitLab(
             state({
                 jobsByPipeline: new Map([[PIPELINE_ID, pipelineJobs]]),

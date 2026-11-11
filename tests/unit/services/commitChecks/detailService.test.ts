@@ -1049,6 +1049,26 @@ describe("CommitCiDetailService", () => {
         expect(refetch).toHaveBeenCalledTimes(1);
     });
 
+    it("a settled copy a forced refresh failed to drop is not served once the refresh expires", async () => {
+        let now = 1_000;
+        const { service: details, persistent } = service(memento(), () => now);
+        await details.getOrFetch(KEY, async () => detail(), SERVE);
+        vi.spyOn(persistent, "delete").mockRejectedValueOnce(new Error("storage down"));
+        await details.getOrFetch(
+            KEY,
+            async () => detail({ complete: false, outcome: "pending" }),
+            SERVE,
+            { force: true },
+        );
+        now += 31_000;
+        const next = vi.fn(async () => detail({ complete: false, outcome: "pending" }));
+        await details.getOrFetch(KEY, next, SERVE);
+        expect(
+            next,
+            "a settled copy that could not be dropped must not come back after the TTL",
+        ).toHaveBeenCalledTimes(1);
+    });
+
     it("invalidate deletes the persisted entry (new service over the same Memento misses)", async () => {
         const state = memento();
         const { service: details } = service(state);

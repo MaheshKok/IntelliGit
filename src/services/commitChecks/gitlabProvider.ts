@@ -360,15 +360,15 @@ export class GitLabProvider implements CommitChecksProvider {
             // Serial, so one commit's many pipelines never take every gate slot at once.
             // react-doctor-disable-next-line react-doctor/async-await-in-loop
             const jobsPage = await pages(
-                `${base}/pipelines/${runId}/jobs?per_page=${CI_PAGE_SIZE}`,
+                `${base}/pipelines/${encodeURIComponent(runId)}/jobs?per_page=${CI_PAGE_SIZE}`,
                 readArray<GitLabJob>,
             );
             // The header is read after the jobs, so a retry while they were paged shows as a
             // record that differs from the list's. With no `updated_at` only the status can; a
             // field the list left out cannot be compared and is never taken for a retry.
             // react-doctor-disable-next-line react-doctor/async-await-in-loop
-            const pipeline = ((await fetch(`${base}/pipelines/${runId}`)).body ??
-                {}) as GitLabPipeline;
+            const pipeline = ((await fetch(`${base}/pipelines/${encodeURIComponent(runId)}`))
+                .body ?? {}) as GitLabPipeline;
             const listedStatus = readString(listed.status);
             const listedVersion = optionalString(listed.updated_at);
             if (
@@ -394,7 +394,7 @@ export class GitLabProvider implements CommitChecksProvider {
                     runId,
                     ...(runVersion && { runVersion }),
                     runName,
-                    url: `${base}/pipelines/${runId}/jobs?scope[]=failed&per_page=${CI_PAGE_SIZE}`,
+                    url: `${base}/pipelines/${encodeURIComponent(runId)}/jobs?scope[]=failed&per_page=${CI_PAGE_SIZE}`,
                     listed: jobs.map((job) => job.id),
                 });
             }

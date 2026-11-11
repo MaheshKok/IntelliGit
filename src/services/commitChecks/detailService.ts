@@ -424,9 +424,9 @@ export class CommitCiDetailService {
                 ? this.persistentCache?.delete(key)
                 : this.persistentCache?.set(key, data, fetchedAt, write));
         } catch {
-            // A failed persistent write leaves the entry in L1 only. A saved copy that could
-            // not be deleted is older than that entry, so it is never read back.
-            if (sessionOnly) this.undeletedSaves.add(key);
+            // A failed persistent write leaves the entry in L1 only. Whatever stayed saved is
+            // older than that entry, so it is never read back.
+            this.undeletedSaves.add(key);
             storageFailed();
         }
     }
