@@ -5,50 +5,15 @@
 - Phase 2: accepted bfea9112, manual: finished by hand and merged as #415; owner OK 2026-11-11.
 - Phase 4: accepted f005d90f, verification incomplete (merged as #417, d3438a11).
 - Phase 19: accepted f005d90f, verification incomplete (merged as #418, 2490ec17).
-- Phase 2 history, evidence and its review-round notes: see PLAN.review-log.md and git history of this file (05085924).
+- Phase 3: accepted 15a47c9d, manual: two review findings fixed by hand after the takeover halt; owner OK 2026-11-11.
+- Phase 2 history and review notes: PLAN.review-log.md and git history of this file (05085924).
 
-## Phase 3: review pending, started at bfea91127a0669ea2d1311d7dca28550cf8973f3
-- Builder commit bd0477d7, fix round 1 commit b67e21cf, on feat/397-ci-checks-phase-3. Branch HEAD at start was 05085924 (main moved on), so review 05085924..b67e21cf.
-- Scope built: GitLabProvider getDetail, continueFailedScan, allowNext; capabilities runs, jobs, runHeader true (steps false); gated fetchWithMeta and cooldownEnd wired for "gitlab"; CiFailedScanCursor gains `listed?` and `runVersion?`; CI_DETAIL_CONTRACT_VERSION 3; README, CHANGELOG 0.43.6, Gate L string "Malformed x-next-page header.".
-- Fix round 1 resolved findings 1-3 (missing x-total, retry between pages, found jobs left in otherChecks), each with a red-then-green test in gitlabDetail.test.ts and a mutation that turns it red.
-- Proof on b67e21cf's tree: chain green except `bun run test` 7737/7745; the 8 failures are all tests/webview/unit/commit-list-column-resize.test.tsx (`localStorage` under Node v26.5.0), red on base 05085924 too.
-
-## Decisions and why
-- Detail reads: pipelines list, then the single pipeline per pipeline (the list has no user), then its jobs, then the commit statuses.
-- Job order: grouped by stage, stages ordered by their lowest job id.
-- `manual` maps to `neutral` (settled).
-- Scan dedup: `listed` job ids in the cursor, skipped in the provider, so the service's `found` count stays honest.
-- Scan budget: the first scan page's `x-total`, kept `?? null`; with `null` (GitLab leaves x-total out on large collections) the scan follows rising next pages unbudgeted, stopping on an empty page, a refused link, or the last page (fix round 1, finding 1).
-- Run identity (2 options): the cursor records the single pipeline's `updated_at` (`runVersion`), checked before and after each scan page and compared in carryScans; over job-id heuristics, which GitLab's API order does not support. A retry rewrites the pipeline row even when it fails again (finding 2).
-- otherChecks during a scan (2 options): `served()` drops a flat check keyed `source:id` matching a found job's own check: `check-run:<checkRunId>` (GitHub) or `status:<job id>` for a job without a check run (GitLab); over a `provider === "gitlab"` branch in the shared service (finding 3).
-- A GitLab 403 on a scan page stops it; only a 429 with a gate cooldown pauses.
-- detailOf/flatDetail duplicated in gitlabProvider.ts to keep this phase out of githubProvider.ts.
-
-## Open risks
-- The reviewer's own tests "a retry that fails between scan pages..." and "a completed external retry..." (review-3-0/gitlabReview.test.ts) stay red: their fakes change the jobs but never the pipeline record, and the second passes a cursor with no recorded identity, so no field the API returns could show the retry. 24/26 of that file pass on b67e21cf.
-- A cursor without `runVersion` (a pipeline response with no `updated_at`) falls back to the status-only check.
-- A GitHub job with no check-run link whose id equals a numeric status context would drop that status during a scan (GitHub status ids are contexts, so this needs a numeric context equal to a job id).
-- Pipelines with more than 1 000 jobs: statuses of non-failed jobs past the bound still show under Other checks (only failed jobs are scanned).
-- Trigger (bridge) jobs are not in /jobs but are in statuses, so they show under Other checks.
-- `optional: true` is set from `allow_failure` now while `optionalJobs` stays false until Phase 9.
-- GitNexus impact was not run (finding 4): no GitNexus MCP in this session, and the worktree-isolation guard refuses every command that names .gitnexus or gitnexus. Substitute: text search of callers (served: 6 call sites in detailService.ts; carryScans: 1; CiFailedScanCursor: types.ts, detailService.ts, githubProvider.ts, gitlabProvider.ts; continueFailedScan: coordinator.ts:231).
-- Translations for the new string were written by the builder, not from an outside translation source.
-
-BLOCKED: GitNexus impact analysis (plan "Every phase" rule, PLAN.phase-3.md:844) cannot run in this isolated worktree. Root runs it from the main checkout after re-analyzing the stale index, or the owner waives it for Phase 3.
-
-## Next phase
-- After Phase 3 is accepted, the phase-run dry run picks the next wave; eligible by Depends on: 5, 6, 8, 9, 10.
-
-## Found outside scope
-- tests/webview/unit/commit-list-column-resize.test.tsx fails under Node v26.5.0 (global `localStorage` undefined without --localstorage-file); red on 05085924 too.
-- Extract detailOf/flatDetail into a shared module when Phase 17 adds a third provider detail.
-- `bun run test` in the main checkout times out git-heavy tests under load; localization.test.ts:352 (vsce ls) slow with many worktrees.
-- `bun run package` can pack ignored leftovers under `output/`; this run gave 88 entries.
-- A copy without `.git` fails git-backed tests; a copy under $TMPDIR/phase-run fails the fixture socket-path limit unless TMPDIR is short.
-- noRepositoryMode.ts registers a placeholder `refreshBadges`, so a token change there clears no cache.
-- tsconfigCoverage and screenshotComparatorMeta resolve tools at <repo>/node_modules, failing in a worktree without its own.
-- GitNexus index is behind HEAD (last indexed 64d390b).
-- The worktree-isolation guard refuses any command whose text contains "git" in a compound form, including paths under IntelliGit and file names like gitlabDetail; scripts under $TMPDIR/phase-run were used for test runs and copies (no git operations in them).
+## Phase 3 build record, started at bfea91127a0669ea2d1311d7dca28550cf8973f3
+- Commits on feat/397-ci-checks-phase-3: builder bd0477d7, fix round 1 b67e21cf, docs 33c1ec9f (halt record + owner answer), fix round 2 00e2e744, fix round 3 dc255fb6, takeover 1b24388d. Branch base 05085924 (main moved on), so review 05085924..HEAD.
+- Scope built: GitLabProvider getDetail, continueFailedScan, allowNext; capabilities runs, jobs, runHeader true (steps false); gated fetchWithMeta and cooldownEnd for "gitlab"; CiFailedScanCursor gains `listed?` and `runVersion?`; CiDetailFetch gains `sessionOnly?`; CI_DETAIL_CONTRACT_VERSION 3; README, CHANGELOG 0.43.6, Gate L strings "Malformed x-next-page header." and "This pipeline has no update time, so a retry during the scan cannot be ruled out.".
+- Fix rounds 1-3: missing x-total, retry between scan pages, found jobs left in otherChecks; GitLab-only `status:<job id>` drop; no carry without `runVersion`; header read after jobs, a differing header gives `complete: false`; a version-less scan ends stopped.
+- Takeover (review-3-2): a pipeline whose list entry has no `updated_at` and whose jobs took more than one page returns `sessionOnly: true`; detailService then deletes the key from the persistent cache instead of saving, so a possibly mixed-attempt tree (fail, retry, fail again mid-read) is served for the session and read again after a restart.
+- Hand fixes after the takeover halt (owner chose C): e59cf746 keeps job statuses of a pipeline cut at the job bound out of otherChecks by `pipeline_id` (GitLab's Entities::CommitStatus field) and blocks the saved key when a session-only delete fails. Codex ACCEPT on e59cf746. R1 (Fable) then found that any failed save or drop must block the key, and that listed pipeline ids went into request paths unencoded; fixed test-first in 15a47c9d, plus a test pinning that an overflow scan checks the version its jobs were read under. Seven mutations, each red on its own assertion.
 
 ## Owner answer after the Phase 3 halt (2026-11-11): GitNexus
 - Owner's words: "A: use old map"
@@ -71,3 +36,33 @@ BLOCKED: GitNexus impact analysis (plan "Every phase" rule, PLAN.phase-3.md:844)
   - continueFailedScan: coordinator.ts:231-235; tests commitChecksProviders.test.ts:48, 93, 122, gitlabDetail.test.ts:456, 532, 633, githubDetail.test.ts:1082.
   - createCommitChecksProviders: repositoryMode.ts:317; test commitChecksProviders.test.ts.
   - No caller whose behaviour Phase 3 changes is left without a test.
+
+## Decisions and why
+- Detail reads: pipelines list, then per pipeline its jobs, then the single pipeline (header), then commit statuses. Header after jobs gives a before/after identity pair with the list.
+- Mid-read retry seen by status or `updated_at`: `complete: false` (GitHub's `rerun` pattern), re-read on the pending TTL.
+- Version-less multi-page jobs read: `sessionOnly`, not `complete: false`, because the webview polls every incomplete detail (useCommitCiDetail.ts:136) and such a pipeline would be re-read every 30 s forever; not a new coverage reason, because coverage reasons are shown in the UI. Job ids were rejected as a retry identity: a retry's new jobs can land on any page, so only a full re-read could compare them. A single-page read is one response and cannot mix attempts, so it is still saved. The before-version is the list's only, since the header is read after the jobs.
+- The scan cursor's `runVersion` is the list's `updated_at`; no `updated_at`: the scan ends "stopped" with the reason. Refresh rescans (carryScans unchanged).
+- Job order: grouped by stage, stages ordered by lowest job id. `manual` maps to `neutral`. Scan dedup by `listed` ids; budget from the first page's `x-total` kept `?? null`.
+- A GitLab 403 on a scan page stops it; only a 429 with a gate cooldown pauses.
+- detailOf/flatDetail duplicated in gitlabProvider.ts to keep githubProvider.ts out of this phase.
+
+## Open risks
+- A version-less multi-page tree that mixed two attempts stays shown until Refresh or restart in that session (it is never saved).
+- Reviewer probe file review-3-3 on 15a47c9d: 11 of 14 pass (the first halt's retry probes included). Red: its job-bound probe, only because its fake statuses carry no `pipeline_id`; "late pre-session-only settled save" (another window's older settled save lands after this window's session-only delete, so a restart serves the older tree); "failed session-only deletion ... after restart" (the block is in memory only). Both are the existing rule that a settled detail stays cached until Refresh; closing them needs a saved tombstone, a persisted-format change, left for the owner.
+- Pipelines over 1 000 jobs: job statuses past the bound are matched by `pipeline_id` and kept out of Other checks; an external status or trigger (bridge) job of such a cut pipeline is hidden with them. Trigger (bridge) jobs of other pipelines appear only in statuses.
+- `optional: true` is set from `allow_failure` while `optionalJobs` stays false until Phase 9.
+- Translations for the two new strings were written by the builder, not an outside source.
+
+## Next phase
+- Phase 5.
+
+## Found outside scope
+- commit-list-column-resize.test.tsx fails under Node v26.5.0 (no global `localStorage`); red on 05085924 too.
+- GitHub carryScans also treats two missing `runAttempt` values as the same run; a GitHub-scope fix if run_attempt can be absent.
+- Extract detailOf/flatDetail into a shared module when Phase 17 adds a third provider detail.
+- `bun run test` in the main checkout times out git-heavy tests under load; localization.test.ts:352 slow with many worktrees.
+- `bun run package` can pack ignored leftovers under `output/` (88 entries).
+- A copy without `.git` fails git-backed tests; a copy under $TMPDIR/phase-run hits the fixture socket-path limit unless TMPDIR is short.
+- noRepositoryMode.ts registers a placeholder `refreshBadges`, so a token change there clears no cache.
+- tsconfigCoverage and screenshotComparatorMeta resolve tools at <repo>/node_modules, failing in a worktree without its own.
+- GitNexus index is behind HEAD (last indexed 64d390b); the worktree guard refuses compound commands naming git paths.

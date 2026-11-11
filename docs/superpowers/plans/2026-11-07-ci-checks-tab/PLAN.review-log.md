@@ -781,3 +781,41 @@ Phase 3: built, review pending
 - F4 GitNexus: not run; no MCP, and the worktree guard refuses commands naming .gitnexus. Substitute text search of callers recorded in the handoff. HALT for Root or owner.
 - Proof: phase tests (gitlabDetail, detailService, capabilities, commitChecksProviders) 82/82; format, lint, lint:strict, architecture, react-doctor, typecheck, build exit 0; bun run test 7737/7745 (8 = commit-list-column-resize.test.tsx, red on base); build:prod, package exit 0 (88 entries).
 PHASE 3: HALT The plan's 'Every phase' rule (PLAN.phase-3.md:844) requires GitNexus impact analysis on the symbols this phase changed. It cannot run in this isolated worktree: this session has no GitNexus tools, and the worktree guard refuses every command that names .gitnexus or gitnexus. The symbols are GitLabProvider, CiFailedScanCursor, served, carryScans and the commitChecksProviders wiring. As a stand-in, a text search found these callers: served has 6 call sites in detailService.ts, carryScans has 1, continueFailedScan is called from coordinator.ts:231, and CiFailedScanCursor is used in types.ts, detailService.ts, githubProvider.ts and gitlabProvider.ts. Should Root run `node .gitnexus/run.cjs analyze --index-only` and then `node .gitnexus/run.cjs impact <symbol> --direction upstream --repo .` from the main checkout (the index is behind HEAD at 64d390b), or does the owner waive this rule for Phase 3?
+
+### Phase 3 builder rerun after the owner's GitNexus answer (2026-11-11)
+Phase 3: built, review pending
+- Not rebuilt: the handoff already recorded Phase 3 built and review pending with bd0477d7 and b67e21cf on HEAD 33c1ec9f; the GitNexus halt is answered ("A: use old map").
+- Deterministic chain rerun on HEAD 33c1ec9f: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; `bun run test` 7737/7745, the 8 failures all tests/webview/unit/commit-list-column-resize.test.tsx (`localStorage` under Node v26.5.0), red on base 05085924 too; `git diff --stat 05085924 HEAD -- tests/webview src/webview` is empty.
+
+## Phase 3: fix round 2 (review-3-0 findings), 2026-11-11
+- Commit 00e2e744. Finding 1: `served()` matches a found job to `status:<job id>` only for GitLab. Finding 2: carryScans refuses a GitLab cursor with no `runVersion`; continueFailedScan compares `updated_at` unconditionally.
+- Red before the fix: "GitHub status contexts and job ids are separate identities: expected [] to deeply equal [ { id: '1050', ... } ]"; "unknown version must not reuse old-attempt jobs: expected [ { id: '1001', …(8) }, …(49) ] to deeply equal []"; "expected { failed: [ { id: '1', …(8) }, …(2) ] } to deeply equal { runChanged: true, …(1) }". All green after.
+- Mutations (copies mut-3-fix-1..4): each of 4 single mutations turned exactly its named test red.
+- Chain: every step exit 0 except `bun run test`, 7740/7748, the 8 failures all in tests/webview/unit/commit-list-column-resize.test.tsx (`localStorage` under Node v26.5.0), red on base 05085924 too.
+- Phase 3: built, review pending.
+
+### Phase 3 fix round 3 (review-3-1 findings), commit dc255fb6
+- F1 retry during ordinary job pagination: getDetail reads jobs first, then the pipeline header, and compares header status and updated_at with the list entry (a field the list omits is not compared); a difference returns complete: false. Test "a pipeline retried (green | failed again | green, no update time) while its jobs are paged is never a settled tree"; red before: "a tree mixing two attempts is read again, never settled: expected true to be false". Cursor runVersion = list updated_at.
+- F2 missing retry identity: a scan whose cursor has no runVersion ends {failed, error: "This pipeline has no update time, so a retry during the scan cannot be ruled out."} (stopped, found jobs kept). Test "a scan with no update time to compare ends stopped, never done"; red before: "expected { state: 'done', found: 250 } to deeply equal { state: 'stopped', found: 250, …(1) }". Gate L: sync, 11 CSV cells, import, validate, audit 0 missing.
+- F3: test split into "retried before a scan page..." and "retried during a scan page discards the page it read" (asserts scanPages [1] and the retry happened). Reviewer M4 replayed on a copy: RED "the page itself was requested: expected [] to deeply equal [ 1 ]".
+- Added test "a pipeline list entry without status or update time is not taken for a retry" after the reviewer's self-hosted probe went red on the first F1 fix (red: "expected false to be true").
+- Mutations on mut-3-fix-2, each red on its own assertion: drop complete:false (3 cases), drop status clause (no-update-time case), drop version clause (failed-again case), compare a missing list status (list-entry test), done without version (F2 test), M4, drop second runChanged (during test). Reviewer probes (6) replayed on the fixed tree: 6 passed.
+- Proof: format:check (after prettier --write), lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; test 7746/7754, the 8 failures all commit-list-column-resize.test.tsx (localStorage under Node v26.5.0, red on base 05085924). Pre-commit hook passed.
+
+### Phase 3 takeover (review-3-2), commit 1b24388d
+- Finding: a version-less pipeline that fails, is retried and fails again while its jobs are paged was saved as settled with mixed attempts.
+- Fix: GitLab getDetail returns `sessionOnly: true` when the jobs took more than one page and the list entry has no `updated_at`; detailService deletes the saved key instead of saving. In-session the tree stays complete (no 30 s polling); a restart reads it again.
+- Red before the fix: "a tree that may mix two attempts is read again after a restart: expected "vi.fn()" to be called 1 times, but got 0 times". Controls: one-page version-less read and multi-page versioned read are still saved; a session-only read drops an earlier save.
+- Mutations on mut-3-takeover-1: baseline 37/37 green; M1-M5 each red on its own assertion.
+- Reviewer probe file: 7/8 pass unchanged; codexProbe.test.ts:311 asserts the restored tree keeps 100 old-attempt jobs (true only while the bug exists); with it asserting the fresh 150 new jobs, 8/8 pass.
+- Proof: each step of the chain exit 0 except `bun run test` (7750/7758; the 8 failures are commit-list-column-resize.test.tsx, no localStorage under Node v26.5.0, recorded red on base 05085924).
+PHASE 3: HALT review still failing after takeover
+
+### Phase 3 hand fixes after the takeover halt (owner chose C), commits e59cf746 and 15a47c9d
+- Finding 1 (detailService persist): a failed session-only delete now blocks the saved key. Red before: "a failed session-only deletion must block the stale saved copy after eviction: expected "vi.fn()" to be called 1 times, but got 0 times".
+- Finding 2 (gitlabProvider readDetail): job statuses of a pipeline cut at the job bound are matched by `pipeline_id` (Entities::CommitStatus) and kept out of otherChecks. Red before: "statuses of the pipeline's own jobs past the bound must not become other checks: expected [ Array(5) ] to deeply equal []". Opposite direction: statuses of another pipeline, of none, or posted to a fully listed pipeline stay other checks.
+- Codex (gpt-6.1-sol high, fresh session, scratch copy) on e59cf746: VERDICT: ACCEPT, no required findings.
+- R1 (Fable) on 2490ec17..e59cf746: (1) a failed drop on an ordinary forced refresh served the old settled copy after the TTL; fixed, every failed persistent write blocks the key; (2) a mutation preferring the header version for the scan cursor survived; test added; (3) listed pipeline ids went into request paths unencoded; fixed with encodeURIComponent. All in 15a47c9d.
+- Mutations, each red on its own assertion: no block; block only for session-only; job status to otherChecks; external swallowed on a cut pipeline; hide statuses of any listed pipeline; header version first; unencoded jobs URL.
+BLOCKER 2026-11-11: Phase 3 review still failing after takeover (log :812); owner chose C ("Yeah I pick C too"): two findings fixed by hand, Codex ACCEPT on e59cf746 (checklist B).
+PHASE 3: ACCEPTED 15a47c9d
