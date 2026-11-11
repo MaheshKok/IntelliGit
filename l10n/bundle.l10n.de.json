@@ -989,5 +989,6 @@
     "The signed-in account changed during the request.": "Das angemeldete Konto hat sich während der Anfrage geändert.",
     "Commit checks error: {message}": "Fehler bei Commit-Prüfungen: {message}",
     "The provider's next-page link was refused.": "Der Link des Anbieters zur nächsten Seite wurde abgelehnt.",
-    "Malformed Link header.": "Fehlerhafter Link-Header."
+    "Malformed Link header.": "Fehlerhafter Link-Header.",
+    "Malformed x-next-page header.": "Fehlerhafter x-next-page-Header."
 }

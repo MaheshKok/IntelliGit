@@ -989,5 +989,6 @@
     "The signed-in account changed during the request.": "要求期間已登入的帳戶已變更。",
     "Commit checks error: {message}": "提交檢查錯誤：{message}",
     "The provider's next-page link was refused.": "已拒絕提供者的下一頁連結。",
-    "Malformed Link header.": "Link 標頭格式不正確。"
+    "Malformed Link header.": "Link 標頭格式不正確。",
+    "Malformed x-next-page header.": "x-next-page 標頭格式不正確。"
 }

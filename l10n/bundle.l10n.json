@@ -335,6 +335,7 @@
     "Commit checks error: {message}": "Commit checks error: {message}",
     "The provider's next-page link was refused.": "The provider's next-page link was refused.",
     "Malformed Link header.": "Malformed Link header.",
+    "Malformed x-next-page header.": "Malformed x-next-page header.",
     "Sign in with your GitHub account": "Sign in with your GitHub account",
     "Squash Commits is available only for unpushed commits.": "Squash Commits is available only for unpushed commits.",
     "Squash Commits is available only when every commit in the selected range is unpushed.": "Squash Commits is available only when every commit in the selected range is unpushed.",

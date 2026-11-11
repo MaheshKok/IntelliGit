@@ -989,5 +989,6 @@
     "The signed-in account changed during the request.": "요청 중에 로그인한 계정이 변경되었습니다.",
     "Commit checks error: {message}": "커밋 검사 오류: {message}",
     "The provider's next-page link was refused.": "공급자의 다음 페이지 링크가 거부되었습니다.",
-    "Malformed Link header.": "Link 헤더의 형식이 잘못되었습니다."
+    "Malformed Link header.": "Link 헤더의 형식이 잘못되었습니다.",
+    "Malformed x-next-page header.": "x-next-page 헤더의 형식이 잘못되었습니다."
 }

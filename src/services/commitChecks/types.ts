@@ -44,10 +44,13 @@ export interface CiFailedScanCursor {
     /** Jobs read before `url`; the scan stops once they reach the run's own job count. */
     readonly jobsRead?: number;
     /**
-     * The run's job count as first read; fixed for the whole scan, so no later page raises it.
-     * `null` means the first scan page was read and named none, so the scan stays unbudgeted.
+     * The run's job count as first read (GitLab: its failed-job count); fixed for the whole
+     * scan, so no later page raises it. `null` means the first scan page was read and named
+     * none, so the scan stays unbudgeted.
      */
     readonly jobsTotal?: number | null;
+    /** Ids of the jobs the detail already shows; a scan that starts from page one skips them. */
+    readonly listed?: readonly string[];
 }
 
 /**

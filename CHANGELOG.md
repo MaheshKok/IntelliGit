@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.6] - 2026-11-11
+
+### Added
+
+- IntelliGit now reads GitLab pipelines and jobs for a commit, ready for the new Checks tab.
+
 ## [0.43.5] - 2026-11-10
 
 ### Changed
