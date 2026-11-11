@@ -716,4 +716,110 @@ describe("GitLab failed-job overflow scan", () => {
         expect(scanPages(gl.log)).toEqual([1, 2]);
         expect(pages[1]).toMatchObject({ error: REFUSED, next: { jobsTotal: 150 } });
     });
+
+    it("a scan whose pages name no x-total still reads every failed page", async () => {
+        const gl = fakeGitLab(
+            state({
+                pipelines: [FAILED],
+                jobsByPipeline: new Map([
+                    [PIPELINE_ID, [...jobs(1000), ...jobs(101, "failed", 1001)]],
+                ]),
+            }),
+        );
+        // GitLab leaves out x-total on very large collections.
+        const gitlab = provider(gl, async (url, headers) => {
+            const response = await gl.fetchWithMeta(url, headers);
+            const { "x-total": _total, ...rest } = response.headers;
+            return { ...response, headers: rest };
+        });
+        const { get, last } = scanning(gitlab);
+
+        await get();
+        await vi.waitFor(() =>
+            expect(["stopped", "done"]).toContain(last()?.runs[0].failedScan?.state),
+        );
+        expect(last().runs[0].failedScan, "no total header is no next-link refusal").toEqual({
+            state: "done",
+            found: 101,
+        });
+        expect(scanPages(gl.log)).toEqual([1, 2]);
+    });
+
+    it("a pipeline retried and failed again between scan pages never mixes old and new jobs", async () => {
+        const retried = pipeline({ status: "failed" });
+        const st = state({
+            pipelines: [retried],
+            jobsByPipeline: new Map([[PIPELINE_ID, [...jobs(1000), ...jobs(250, "failed", 1001)]]]),
+        });
+        // The retry finishes, failed again, while scan page 2 is in flight: new job ids, the
+        // same status, and a pipeline record GitLab rewrote.
+        st.onRequest = (url) => {
+            if (!isScanPage(url, 2) || retried.updated_at === "2026-11-11T10:00:00.000Z") return;
+            st.jobsByPipeline.set(PIPELINE_ID, [...jobs(1000), ...jobs(250, "failed", 2001)]);
+            retried.updated_at = "2026-11-11T10:00:00.000Z";
+        };
+        const { get, last } = scanning(provider(fakeGitLab(st)));
+
+        await get();
+        await vi.waitFor(() =>
+            expect(["stopped", "done"]).toContain(last()?.runs[0].failedScan?.state),
+        );
+        expect(last().runs[0].failedScan?.state, "the status stayed failed across the retry").toBe(
+            "stopped",
+        );
+        expect(last().runs[0].failedScan?.error).toBe(CHANGED);
+        expect(last().complete).toBe(false);
+
+        // A read from scratch shows only the new attempt's failed jobs.
+        await get(true);
+        await vi.waitFor(() => expect(last()?.runs[0].failedScan?.state).toBe("done"));
+        const shown = last().runs[0].jobs.map((j: CiJob) => Number(j.id));
+        expect(shown.filter((id) => id > 1000 && id < 2000)).toEqual([]);
+        expect(shown.filter((id) => id > 2000)).toHaveLength(250);
+    });
+
+    it("a refresh after the pipeline was retried rescans instead of keeping the old attempt's jobs", async () => {
+        const retried = pipeline({ status: "failed" });
+        const st = state({
+            pipelines: [retried],
+            jobsByPipeline: new Map([[PIPELINE_ID, [...jobs(1000), ...jobs(50, "failed", 1001)]]]),
+        });
+        const { get, last } = scanning(provider(fakeGitLab(st)));
+        await get();
+        await vi.waitFor(() => expect(last()?.runs[0].failedScan?.state).toBe("done"));
+
+        st.jobsByPipeline.set(PIPELINE_ID, [...jobs(1000), ...jobs(50, "failed", 2001)]);
+        retried.updated_at = "2026-11-11T10:00:00.000Z";
+        const refreshed = await get(true);
+        const ids = refreshed.runs[0].jobs.map((j: CiJob) => Number(j.id));
+        expect(
+            ids.filter((id) => id > 1000 && id < 2000),
+            "the old attempt's failed jobs are not carried",
+        ).toEqual([]);
+        await vi.waitFor(() => expect(last()?.runs[0].failedScan?.state).toBe("done"));
+        expect(last().runs[0].jobs.filter((j: CiJob) => Number(j.id) > 2000)).toHaveLength(50);
+    });
+
+    it("a status whose job the scan finds past the bound leaves other checks", async () => {
+        const all = jobs(1200);
+        all[1049] = job(1050, "failed", { name: "unit tests" });
+        const external = { id: 9001, name: "external/ci", status: "success" };
+        const gl = fakeGitLab(
+            state({
+                pipelines: [FAILED],
+                jobsByPipeline: new Map([[PIPELINE_ID, all]]),
+                statuses: [all[1049], external],
+            }),
+        );
+        const { get, last } = scanning(provider(gl));
+
+        const first = await get();
+        expect(first.otherChecks.map((c) => c.id)).toEqual(["1050", "9001"]);
+        await vi.waitFor(() => expect(last()?.runs[0].failedScan?.state).toBe("done"));
+        expect(last().runs[0].jobs.some((j: CiJob) => j.id === "1050")).toBe(true);
+        expect(
+            last().otherChecks.map((c) => c.id),
+            "this status belongs to the job the scan found",
+        ).toEqual(["9001"]);
+    });
 });

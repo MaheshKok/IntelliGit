@@ -36,6 +36,11 @@ export interface ProviderRepoRef {
 export interface CiFailedScanCursor {
     readonly runId: string;
     readonly runAttempt?: number;
+    /**
+     * GitLab: the pipeline's `updated_at` when the scan started. GitLab runs have no attempt, and
+     * a retry rewrites the pipeline even when it fails again, so a different value discards the scan.
+     */
+    readonly runVersion?: string;
     /** The run's workflow name, the scope of a scanned job that does not name its own. */
     readonly runName: string;
     readonly url: string;

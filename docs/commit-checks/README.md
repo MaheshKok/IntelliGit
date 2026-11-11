@@ -154,9 +154,10 @@ statuses, with the same `read_api` token, 100 items per page and at most 10 page
 list. A status that is none of the pipelines' jobs, such as an external CI's, is listed
 under **Other checks**. When a failed pipeline has more than 1,000 jobs, IntelliGit
 then reads the pipeline's failed jobs on their own, one page at a time, and adds the
-ones not already listed; the scan pauses, stops and resumes the same way as GitHub's.
-If the pipeline is retried while the scan is reading, the scan stops and Refresh reads
-it again. A GitLab 403 is treated as a missing permission, never as a rate limit.
+ones not already listed, and their statuses leave **Other checks**; the scan pauses,
+stops and resumes the same way as GitHub's. If the pipeline is retried while the scan is
+reading, even when the retry fails again, the scan stops and Refresh reads it again. A
+GitLab 403 is treated as a missing permission, never as a rate limit.
 Next-page links are followed only on the GitLab host under the project's own API path.
 
 Diagnostic lines for CI requests go to the **IntelliGit CI** output channel. They name

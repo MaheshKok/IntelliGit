@@ -603,7 +603,12 @@ function carryScans(
     for (const cursor of cursors) {
         if (!data.runs.some((run) => run.id === cursor.runId)) continue;
         const carried = previous?.scans?.get(cursor.runId);
-        if (carried && !carried.remoteChanged && carried.cursor.runAttempt === cursor.runAttempt) {
+        if (
+            carried &&
+            !carried.remoteChanged &&
+            carried.cursor.runAttempt === cursor.runAttempt &&
+            carried.cursor.runVersion === cursor.runVersion
+        ) {
             if (carried.state === "stopped") {
                 carried.state = "running";
                 delete carried.error;
@@ -618,19 +623,21 @@ function carryScans(
 
 /**
  * The entry's detail with each scan's found jobs appended and its `failedScan` progress; a
- * found job's own check run leaves the flat checks, so each check-run id is shown once.
+ * found job's own flat check leaves the flat checks, so each job is shown once: its check run
+ * (GitHub), or for a job without one the commit status listed under the job's own id (GitLab).
  */
 function served(entry: DetailEntry): CommitCiDetailData {
     const scans = entry.scans;
     if (!scans) return entry.data;
-    const foundCheckRunIds = new Set(
-        [...scans.values()].flatMap((scan) => scan.found.flatMap((job) => job.checkRunId ?? [])),
+    const foundOwnChecks = new Set(
+        [...scans.values()].flatMap((scan) =>
+            scan.found.map((job) =>
+                job.checkRunId === undefined ? `status:${job.id}` : `check-run:${job.checkRunId}`,
+            ),
+        ),
     );
     const otherChecks = entry.data.otherChecks.filter(
-        (check) =>
-            check.source !== "check-run" ||
-            check.id === undefined ||
-            !foundCheckRunIds.has(check.id),
+        (check) => check.id === undefined || !foundOwnChecks.has(`${check.source}:${check.id}`),
     );
     const runs = entry.data.runs.map((run) => {
         const scan = scans.get(run.id);

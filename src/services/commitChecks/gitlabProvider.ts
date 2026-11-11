@@ -77,6 +77,7 @@ interface GitLabPipeline {
     created_at?: unknown;
     started_at?: unknown;
     finished_at?: unknown;
+    updated_at?: unknown;
 }
 
 /** One entry of a pipeline's job list. */
@@ -367,8 +368,10 @@ export class GitLabProvider implements CommitChecksProvider {
             if (run.state === "failure" && jobsPage.next) {
                 // The failed-only collection is read from its first page; jobs already shown
                 // are skipped by id.
+                const runVersion = optionalString(pipeline.updated_at);
                 scanCursors.push({
                     runId,
+                    ...(runVersion && { runVersion }),
                     runName,
                     url: `${base}/pipelines/${runId}/jobs?scope[]=failed&per_page=${CI_PAGE_SIZE}`,
                     listed: jobs.map((job) => job.id),
@@ -413,12 +416,18 @@ export class GitLabProvider implements CommitChecksProvider {
                 runChanged: true,
                 error: vscode.l10n.t("Remote data changed. Reload and try again."),
             } as const;
-            // A retried pipeline leaves the failed state, and its new jobs replace the old ones.
+            // A retried pipeline leaves the failed state and its new jobs replace the old ones; a
+            // retry that already failed again shows only as a rewritten `updated_at`.
             const runChanged = async () => {
                 const response = await fetch(
                     `${projectApiUrl(gitLabRef)}/pipelines/${encodeURIComponent(cursor.runId)}`,
                 );
-                return readString((response.body as GitLabPipeline | null)?.status) !== "failed";
+                const current = response.body as GitLabPipeline | null;
+                return (
+                    readString(current?.status) !== "failed" ||
+                    (cursor.runVersion !== undefined &&
+                        optionalString(current?.updated_at) !== cursor.runVersion)
+                );
             };
             if (await runChanged()) return changed;
             const response = await fetch(cursor.url);
@@ -435,12 +444,12 @@ export class GitLabProvider implements CommitChecksProvider {
             if (next === undefined) return { failed };
             const jobsRead = (cursor.jobsRead ?? 0) + jobs.length;
             // Page numbers only rise, so a next page cannot loop back; a count reached or an
-            // empty page that links onward makes no progress.
+            // empty page that links onward makes no progress. GitLab leaves out x-total on very
+            // large collections, and then the scan follows the next pages unbudgeted.
             if (
                 !this.allowNext(ref, next) ||
                 jobs.length === 0 ||
-                jobsTotal === null ||
-                jobsRead >= jobsTotal
+                (jobsTotal !== null && jobsRead >= jobsTotal)
             ) {
                 return { failed, error: refused, ...kept() };
             }
