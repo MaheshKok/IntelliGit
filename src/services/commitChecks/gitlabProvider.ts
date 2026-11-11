@@ -342,7 +342,7 @@ export class GitLabProvider implements CommitChecksProvider {
                 CI_MAX_PAGES,
                 (url) => this.allowNext(ref, url),
             );
-            return { ...result, severalPages: current !== firstUrl };
+            return result;
         };
         const base = projectApiUrl(ref);
         const pipelines = await pages(
@@ -377,9 +377,9 @@ export class GitLabProvider implements CommitChecksProvider {
             ) {
                 retriedMidRead = true;
             }
-            // Jobs read over several pages with no listed version to compare: a retry that
-            // failed again in between is invisible, so the tree is never saved for a restart.
-            if (jobsPage.severalPages && !listedVersion) sessionOnly = true;
+            // No listed version to compare: a retry that failed again between the job pages, or
+            // between the jobs and the header, is invisible, so the tree is never saved.
+            if (!listedVersion) sessionOnly = true;
             const runVersion = listedVersion ?? optionalString(pipeline.updated_at);
             const runName = readString(pipeline.name);
             const jobs = inStageOrder(jobsPage.items).map((job) => toJob(job, runName));

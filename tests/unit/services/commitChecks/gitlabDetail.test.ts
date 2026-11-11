@@ -537,18 +537,19 @@ describe("GitLabProvider.getDetail", () => {
         ).toHaveBeenCalledTimes(1);
     });
 
-    it.each([
-        ["one job page and no update time", 50, null],
-        ["several job pages and an update time", 150, "2026-11-10T09:00:00.000Z"],
-    ])("a pipeline read with %s is saved", async (_case, count, updatedAt) => {
-        const gitlab = provider(
-            fakeGitLab(
-                state({
-                    pipelines: [pipeline({ status: "failed", updated_at: updatedAt })],
-                    jobsByPipeline: new Map([[PIPELINE_ID, jobs(count, "failed")]]),
-                }),
-            ),
-        );
+    it("a pipeline with no update time read on one job page is never saved", async () => {
+        // Failed, retried and failed again between the jobs read and the header read: the
+        // header is a second response, and with no update time nothing shows the two differ.
+        const st = state({
+            pipelines: [pipeline({ status: "failed", updated_at: null })],
+            jobsByPipeline: new Map([[PIPELINE_ID, jobs(50, "failed")]]),
+        });
+        st.onRequest = (url) => {
+            if (new URL(url).pathname.endsWith(`/pipelines/${PIPELINE_ID}`)) {
+                st.jobsByPipeline.set(PIPELINE_ID, jobs(50, "failed", 2001));
+            }
+        };
+        const gitlab = provider(fakeGitLab(st));
         const persistent = persistentStore();
         await new CommitCiDetailService({ persistentCache: persistent }).getOrFetch(
             KEY,
@@ -563,9 +564,39 @@ describe("GitLabProvider.getDetail", () => {
         );
         expect(
             freshRead,
-            "a read that cannot mix attempts is served from the store",
-        ).not.toHaveBeenCalled();
+            "a one-page tree with no update time may mix two attempts, so it is read again after a restart",
+        ).toHaveBeenCalledTimes(1);
     });
+
+    it.each([["several job pages and an update time", 150, "2026-11-10T09:00:00.000Z"]])(
+        "a pipeline read with %s is saved",
+        async (_case, count, updatedAt) => {
+            const gitlab = provider(
+                fakeGitLab(
+                    state({
+                        pipelines: [pipeline({ status: "failed", updated_at: updatedAt })],
+                        jobsByPipeline: new Map([[PIPELINE_ID, jobs(count, "failed")]]),
+                    }),
+                ),
+            );
+            const persistent = persistentStore();
+            await new CommitCiDetailService({ persistentCache: persistent }).getOrFetch(
+                KEY,
+                () => gitlab.getDetail(ref, SHA),
+                SERVE,
+            );
+            const freshRead = vi.fn(() => gitlab.getDetail(ref, SHA));
+            await new CommitCiDetailService({ persistentCache: persistent }).getOrFetch(
+                KEY,
+                freshRead,
+                SERVE,
+            );
+            expect(
+                freshRead,
+                "a read that cannot mix attempts is served from the store",
+            ).not.toHaveBeenCalled();
+        },
+    );
 
     it("a session-only read drops the tree saved before it", async () => {
         const saved = await provider(fakeGitLab(state())).getDetail(ref, SHA);

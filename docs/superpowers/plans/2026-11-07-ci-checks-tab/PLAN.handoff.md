@@ -14,10 +14,11 @@
 - Fix rounds 1-3: missing x-total, retry between scan pages, found jobs left in otherChecks; GitLab-only `status:<job id>` drop; no carry without `runVersion`; header read after jobs, a differing header gives `complete: false`; a version-less scan ends stopped.
 - Takeover (review-3-2): a pipeline whose list entry has no `updated_at` and whose jobs took more than one page returns `sessionOnly: true`; detailService then deletes the key from the persistent cache instead of saving, so a possibly mixed-attempt tree (fail, retry, fail again mid-read) is served for the session and read again after a restart.
 - Hand fixes after the takeover halt (owner chose C): e59cf746 keeps job statuses of a pipeline cut at the job bound out of otherChecks by `pipeline_id` (GitLab's Entities::CommitStatus field) and blocks the saved key when a session-only delete fails. Codex ACCEPT on e59cf746. R1 (Fable) then found that any failed save or drop must block the key, and that listed pipeline ids went into request paths unencoded; fixed test-first in 15a47c9d, plus a test pinning that an overflow scan checks the version its jobs were read under. Seven mutations, each red on its own assertion.
+- PR #419 review (cubic): a one-page jobs read with no listed `updated_at` is session-only too, because the header is a second response read after the jobs; README, the `runChanged` doc and the GitNexus citation corrected.
 
 ## Owner answer after the Phase 3 halt (2026-11-11): GitNexus
 - Owner's words: "A: use old map"
-- The plan's Every-phase rule (PLAN.phase-3.md:844) is met for Phase 3 by this stale-index impact run (by the wave session) plus the text search. The owner accepted this. Builders and reviewers must not halt on this rule again. The BLOCKED line above is answered by this section.
+- The plan's Every-phase rule (PLAN.md:844) is met for Phase 3 by this stale-index impact run (by the wave session) plus the text search. The owner accepted this. Builders and reviewers must not halt on this rule again. The BLOCKED line above is answered by this section.
 - index stale, NOT clean. Indexed commit 64d390b0a7b0c4c74be0464890fc1a9ba9c9a23d (main checkout, branch feat/ci-checks-tab), `staleness.commitsBehind` 10. The index predates every Phase 3 commit, so the GitLab detail code (getDetail, continueFailedScan, readDetail) is not in it; the text search below is the real caller evidence.
 - Impact, direction upstream (index stale, NOT clean):
   - GitLabProvider: MEDIUM (shared axes MEDIUM), lower bound; 6 direct: commitChecksProviders.ts (import + createCommitChecksProviders), CommitGraphViewProvider.ts (import + constructor), UndockedViewProvider.ts (import + constructor).
@@ -40,14 +41,14 @@
 ## Decisions and why
 - Detail reads: pipelines list, then per pipeline its jobs, then the single pipeline (header), then commit statuses. Header after jobs gives a before/after identity pair with the list.
 - Mid-read retry seen by status or `updated_at`: `complete: false` (GitHub's `rerun` pattern), re-read on the pending TTL.
-- Version-less multi-page jobs read: `sessionOnly`, not `complete: false`, because the webview polls every incomplete detail (useCommitCiDetail.ts:136) and such a pipeline would be re-read every 30 s forever; not a new coverage reason, because coverage reasons are shown in the UI. Job ids were rejected as a retry identity: a retry's new jobs can land on any page, so only a full re-read could compare them. A single-page read is one response and cannot mix attempts, so it is still saved. The before-version is the list's only, since the header is read after the jobs.
+- Version-less jobs read: `sessionOnly`, not `complete: false`, because the webview polls every incomplete detail (useCommitCiDetail.ts:136) and such a pipeline would be re-read every 30 s forever; not a new coverage reason, because coverage reasons are shown in the UI. Job ids were rejected as a retry identity: a retry's new jobs can land on any page, so only a full re-read could compare them. A single job page is not enough either: the header is a second response read after it (PR #419 review). The before-version is the list's only, since the header is read after the jobs.
 - The scan cursor's `runVersion` is the list's `updated_at`; no `updated_at`: the scan ends "stopped" with the reason. Refresh rescans (carryScans unchanged).
 - Job order: grouped by stage, stages ordered by lowest job id. `manual` maps to `neutral`. Scan dedup by `listed` ids; budget from the first page's `x-total` kept `?? null`.
 - A GitLab 403 on a scan page stops it; only a 429 with a gate cooldown pauses.
 - detailOf/flatDetail duplicated in gitlabProvider.ts to keep githubProvider.ts out of this phase.
 
 ## Open risks
-- A version-less multi-page tree that mixed two attempts stays shown until Refresh or restart in that session (it is never saved).
+- A version-less tree that mixed two attempts stays shown until Refresh or restart in that session (it is never saved).
 - Reviewer probe file review-3-3 on 15a47c9d: 11 of 14 pass (the first halt's retry probes included). Red: its job-bound probe, only because its fake statuses carry no `pipeline_id`; "late pre-session-only settled save" (another window's older settled save lands after this window's session-only delete, so a restart serves the older tree); "failed session-only deletion ... after restart" (the block is in memory only). Both are the existing rule that a settled detail stays cached until Refresh; closing them needs a saved tombstone, a persisted-format change, left for the owner.
 - Pipelines over 1 000 jobs: job statuses past the bound are matched by `pipeline_id` and kept out of Other checks; an external status or trigger (bridge) job of such a cut pipeline is hidden with them. Trigger (bridge) jobs of other pipelines appear only in statuses.
 - `optional: true` is set from `allow_failure` while `optionalJobs` stays false until Phase 9.

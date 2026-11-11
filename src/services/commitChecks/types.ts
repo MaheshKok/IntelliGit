@@ -65,7 +65,8 @@ export interface CiFailedScanCursor {
  * A stop or pause may carry `next`: the same page's cursor with the job budget the request read
  * saved, where Refresh or the resume reads again.
  * `runChanged` means the run, or a job the page read, names another id or attempt than the
- * cursor's: nothing is kept, and the scan stops with `error` until a read from scratch.
+ * cursor's, or (GitLab) the pipeline is no longer `failed` or its `updated_at` no longer
+ * matches `runVersion`: nothing is kept, and the scan stops with `error` until a read from scratch.
  *
  * @public consumed by later CI tab phases.
  */
