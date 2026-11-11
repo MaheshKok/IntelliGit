@@ -328,9 +328,9 @@ export class GitLabProvider implements CommitChecksProvider {
         token: string,
     ): Promise<CiDetailFetch> {
         const fetch = (url: string) => this.fetchWithMeta(url, { "PRIVATE-TOKEN": token });
-        const pages = <T>(firstUrl: string, itemsOf: (body: unknown) => T[]) => {
+        const pages = async <T>(firstUrl: string, itemsOf: (body: unknown) => T[]) => {
             let current = firstUrl;
-            return paginate(
+            const result = await paginate(
                 (url) => {
                     current = url;
                     return fetch(url);
@@ -341,6 +341,7 @@ export class GitLabProvider implements CommitChecksProvider {
                 CI_MAX_PAGES,
                 (url) => this.allowNext(ref, url),
             );
+            return { ...result, severalPages: current !== firstUrl };
         };
         const base = projectApiUrl(ref);
         const pipelines = await pages(
@@ -350,6 +351,7 @@ export class GitLabProvider implements CommitChecksProvider {
         const runs: CiRun[] = [];
         const scanCursors: CiFailedScanCursor[] = [];
         let retriedMidRead = false;
+        let sessionOnly = false;
         for (const listed of pipelines.items) {
             const runId = readId(listed.id);
             if (runId === undefined) continue;
@@ -373,6 +375,9 @@ export class GitLabProvider implements CommitChecksProvider {
             ) {
                 retriedMidRead = true;
             }
+            // Jobs read over several pages with no listed version to compare: a retry that
+            // failed again in between is invisible, so the tree is never saved for a restart.
+            if (jobsPage.severalPages && !listedVersion) sessionOnly = true;
             const runVersion = listedVersion ?? optionalString(pipeline.updated_at);
             const runName = readString(pipeline.name);
             const jobs = inStageOrder(jobsPage.items).map((job) => toJob(job, runName));
@@ -405,6 +410,7 @@ export class GitLabProvider implements CommitChecksProvider {
             ...detailOf(hash, runs, pipelines.coverage, otherChecks, statuses.coverage),
             // A tree that may mix two attempts is read again on the pending schedule.
             ...(retriedMidRead && { complete: false }),
+            ...(sessionOnly && { sessionOnly }),
             ...(scanCursors.length > 0 && { scanCursors }),
         };
     }

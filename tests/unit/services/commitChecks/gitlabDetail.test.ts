@@ -26,6 +26,7 @@ import {
     CommitCiDetailService,
     type CiFailedScanHooks,
 } from "../../../../src/services/commitChecks/detailService";
+import { CiDetailPersistentCache } from "../../../../src/services/commitChecks/detailPersistentCache";
 import { NO_CI_CAPABILITIES } from "../../../../src/shared/ci/capabilities";
 import { logicalCheckId } from "../../../../src/shared/ci/identity";
 
@@ -449,6 +450,99 @@ describe("GitLabProvider.getDetail", () => {
             );
         },
     );
+
+    /** A persistent detail cache over an in-memory store, shared by two service lifetimes. */
+    function persistentStore(): CiDetailPersistentCache {
+        const values = new Map<string, unknown>();
+        return new CiDetailPersistentCache({
+            get: <T>(key: string) => values.get(key) as T | undefined,
+            update: async (key: string, value: unknown) => {
+                values.set(key, value);
+            },
+        });
+    }
+
+    it("a pipeline with no update time read over several job pages is never saved", async () => {
+        // Failed, retried and failed again while job page 2 was in flight: the status did not
+        // change and there is no update time, so nothing shows the tree mixes two attempts.
+        const retried = pipeline({ status: "failed", updated_at: null });
+        const st = state({
+            pipelines: [retried],
+            jobsByPipeline: new Map([[PIPELINE_ID, jobs(150, "failed")]]),
+        });
+        st.onRequest = (url) => {
+            if (jobPages([url])[0] === 2) {
+                st.jobsByPipeline.set(PIPELINE_ID, jobs(150, "failed", 2001));
+            }
+        };
+        const gitlab = provider(fakeGitLab(st));
+        const persistent = persistentStore();
+
+        const first = await new CommitCiDetailService({ persistentCache: persistent }).getOrFetch(
+            KEY,
+            () => gitlab.getDetail(ref, SHA),
+            SERVE,
+        );
+        const restarted = new CommitCiDetailService({ persistentCache: persistent });
+        const freshRead = vi.fn(() => gitlab.getDetail(ref, SHA));
+        await restarted.getOrFetch(KEY, freshRead, SERVE);
+
+        expect(first.complete, "settled for the session, so it is not polled").toBe(true);
+        expect(
+            freshRead,
+            "a tree that may mix two attempts is read again after a restart",
+        ).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        ["one job page and no update time", 50, null],
+        ["several job pages and an update time", 150, "2026-11-10T09:00:00.000Z"],
+    ])("a pipeline read with %s is saved", async (_case, count, updatedAt) => {
+        const gitlab = provider(
+            fakeGitLab(
+                state({
+                    pipelines: [pipeline({ status: "failed", updated_at: updatedAt })],
+                    jobsByPipeline: new Map([[PIPELINE_ID, jobs(count, "failed")]]),
+                }),
+            ),
+        );
+        const persistent = persistentStore();
+        await new CommitCiDetailService({ persistentCache: persistent }).getOrFetch(
+            KEY,
+            () => gitlab.getDetail(ref, SHA),
+            SERVE,
+        );
+        const freshRead = vi.fn(() => gitlab.getDetail(ref, SHA));
+        await new CommitCiDetailService({ persistentCache: persistent }).getOrFetch(
+            KEY,
+            freshRead,
+            SERVE,
+        );
+        expect(
+            freshRead,
+            "a read that cannot mix attempts is served from the store",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("a session-only read drops the tree saved before it", async () => {
+        const saved = await provider(fakeGitLab(state())).getDetail(ref, SHA);
+        const persistent = persistentStore();
+        const service = new CommitCiDetailService({ persistentCache: persistent });
+        await service.getOrFetch(KEY, async () => saved, SERVE);
+        await service.getOrFetch(KEY, async () => ({ ...saved, sessionOnly: true }), SERVE, {
+            force: true,
+        });
+        const freshRead = vi.fn(async () => saved);
+        await new CommitCiDetailService({ persistentCache: persistent }).getOrFetch(
+            KEY,
+            freshRead,
+            SERVE,
+        );
+        expect(
+            freshRead,
+            "the older saved tree is outdated by the newer read",
+        ).toHaveBeenCalledTimes(1);
+    });
 
     it("a pipeline list entry without status or update time is not taken for a retry", async () => {
         const gl = fakeGitLab(state());

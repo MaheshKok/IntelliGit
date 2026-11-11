@@ -227,7 +227,7 @@ export class CommitCiDetailService {
             this.isCurrentGeneration(key, generation) &&
             !this.fenceEndedSince(data.hash, fenceEnds);
         const request = fetchDetail()
-            .then(async ({ scanCursors, ...data }): Promise<ServedDetailData> => {
+            .then(async ({ scanCursors, sessionOnly, ...data }): Promise<ServedDetailData> => {
                 if (isCurrent(data)) {
                     // Ends the fences this detail shows took effect before the save below
                     // is queued (they leave memory synchronously); never rejects. This
@@ -272,6 +272,7 @@ export class CommitCiDetailService {
                         entry.fetchedAt,
                         { generation: generation[2], id: writeId },
                         storageFailed,
+                        sessionOnly,
                     );
                     await this.confirmSaved(key, entry, confirm, writeId, storageFailed);
                     if (isCurrent(data)) {
@@ -415,9 +416,13 @@ export class CommitCiDetailService {
         fetchedAt: number,
         write: PersistentWrite,
         storageFailed: () => void,
+        sessionOnly?: true,
     ): Promise<void> {
         try {
-            await this.persistentCache?.set(key, data, fetchedAt, write);
+            // A detail kept for this session only still outdates an earlier saved one.
+            await (sessionOnly
+                ? this.persistentCache?.delete(key)
+                : this.persistentCache?.set(key, data, fetchedAt, write));
         } catch {
             // A failed persistent write leaves the entry in L1 only.
             storageFailed();

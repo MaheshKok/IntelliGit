@@ -160,7 +160,9 @@ reading, even when the retry fails again, the scan stops and Refresh reads it ag
 pipeline retried while its first 1,000 jobs are read is shown as still settling and read
 again shortly. If GitLab gives the pipeline no update time, a retry that fails again
 cannot be seen while the scan reads, so the scan ends as stopped with that reason instead
-of done, and Refresh reads the failed jobs again from the start. A GitLab 403 is treated
+of done, and Refresh reads the failed jobs again from the start. For the same reason, a
+pipeline with no update time whose jobs take more than one page is kept for the session
+only and read again after a restart, never restored from the saved cache. A GitLab 403 is treated
 as a missing permission, never as a rate limit.
 Next-page links are followed only on the GitLab host under the project's own API path.
 

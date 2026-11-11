@@ -78,9 +78,12 @@ export type CiFailedScanPage =
 /**
  * What `getDetail` returns: the detail plus one scan cursor per failed run whose job list hit
  * the page bound. The detail service keeps the cursors in memory and never caches them.
+ * `sessionOnly` marks a tree the provider cannot vouch for across a restart (it may mix two
+ * attempts of a run): it is served from memory and never saved.
  */
 export type CiDetailFetch = CommitCiDetailData & {
     readonly scanCursors?: readonly CiFailedScanCursor[];
+    readonly sessionOnly?: true;
 };
 
 /** A commit-check host integration: detection plus per-commit fetch. */
