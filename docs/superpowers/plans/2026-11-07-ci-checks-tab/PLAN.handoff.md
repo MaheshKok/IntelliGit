@@ -3,76 +3,71 @@
 ## Phases accepted
 - Phase 1: accepted 3965f37a, verification incomplete.
 - Phase 2: accepted bfea9112, manual: finished by hand and merged as #415; owner OK 2026-11-11.
-- Phase 4: accepted f005d90f, verification incomplete.
-- Phase 19: accepted f005d90f, verification incomplete.
+- Phase 4: accepted f005d90f, verification incomplete (merged as #417, d3438a11).
+- Phase 19: accepted f005d90f, verification incomplete (merged as #418, 2490ec17).
+- Phase 2 history, evidence and its review-round notes: see PLAN.review-log.md and git history of this file (05085924).
 
-## Phase 2 history (accepted bfea9112 on 2026-11-11; this section was review pending, started at f005d90f47f5a45cb30e5a31cc19f8e1b96e51d6)
-- Review range for this narrow round (owner amendment item 4): 336ff8fd..d41b4585. Whole phase: f005d90f..d41b4585 (2cdbaaf8 and 336ff8fd are owner plan amendments, docs only).
-- d41b4585 (Opus takeover of item 4): the scan cursor's `jobsTotal` may be `null`, meaning the first scan page was read and named no `total_count`. continueFailedScan reads a page's total only while `jobsTotal === undefined` (stores `?? null`), so a missing first total stays missing through Refresh, cooldown resumes and error stops (kept() now carries `null` too). The refusal check reads `jobsTotal === null`.
-- 018dbbb5 (fix round 2): budget taken as soon as the page answers; every stop or pause that keeps the scan returns `next` = same page's cursor with the budget. types.ts `{error}`/`{pausedUntil}` take optional `next`; detailService applies it.
-- ee59d01f (fix round 1): a page that stops on its refused next link returns its own cursor with `jobsTotal`.
-- 392fdf68 (item 4): the cursor carries `jobsTotal`, first read in getDetail's first 1 000, or the first scan page's when they named none.
-- Earlier: 64d390b0 merge; 3d1b6d85 amendment items 1-2; daf653e3 fix 1; 16b8c295 fix 2; e1176e56 takeover.
-
-## Evidence (takeover, d41b4585)
-- Red before fix: githubDetail "a missing first scan total cannot become a larger budget on Refresh" (Codex's probe): `a missing first total still refuses the next link after Refresh: expected [ Array(10) ] to deeply equal [ 11 ]`.
-- Mutations on copy mut-2-takeover-1: `??=` re-read of null -> red on that assertion; no `?? null` marker -> red on `a missing first total refuses the next link`; `=== null` -> `=== undefined` survives as an equivalent mutant (`jobsRead >= null` coerces null to 0 and also refuses). Control 64/64.
-- Gate chain exit 0 in one run: focused 121/121; format..build passed; `bun run test` 7650/7650 (500 files); build:prod and package passed (88 entries). Pre-commit hook passed.
-- detect-changes (unstaged): medium risk, ReadDetail flows; index behind (64d390b) so symbol mapping is unreliable.
-
-## Evidence (earlier rounds)
-- 018dbbb5: 3 cases red `<case>: the resumed scan must retain the first 1100-job budget`; 4 mutations red; chain 7649/7649.
-- ee59d01f: red `Refresh must retain the first scan's 1100-job budget`.
-- 392fdf68: red `growing total reads only the first budget`.
+## Phase 3: review pending, started at bfea91127a0669ea2d1311d7dca28550cf8973f3
+- Builder commit bd0477d7, fix round 1 commit b67e21cf, on feat/397-ci-checks-phase-3. Branch HEAD at start was 05085924 (main moved on), so review 05085924..b67e21cf.
+- Scope built: GitLabProvider getDetail, continueFailedScan, allowNext; capabilities runs, jobs, runHeader true (steps false); gated fetchWithMeta and cooldownEnd wired for "gitlab"; CiFailedScanCursor gains `listed?` and `runVersion?`; CI_DETAIL_CONTRACT_VERSION 3; README, CHANGELOG 0.43.6, Gate L string "Malformed x-next-page header.".
+- Fix round 1 resolved findings 1-3 (missing x-total, retry between pages, found jobs left in otherChecks), each with a red-then-green test in gitlabDetail.test.ts and a mutation that turns it red.
+- Proof on b67e21cf's tree: chain green except `bun run test` 7737/7745; the 8 failures are all tests/webview/unit/commit-list-column-resize.test.tsx (`localStorage` under Node v26.5.0), red on base 05085924 too.
 
 ## Decisions and why
-- Missing-total marker (2 options): `null` in `jobsTotal` over a separate boolean flag; one field keeps "budget known / read and absent / not read yet" in one place and no new field travels through carryScans.
-- Budget source: first total_count in the first 1 000 over the first scan page's (owner text "as first read").
-- paginate.ts unchanged; no version bump or CHANGELOG (Phase 2's patch bump shipped in the merge).
-- A remote-changed scan is not carried, so Refresh starts a new scan with a newly read budget.
+- Detail reads: pipelines list, then the single pipeline per pipeline (the list has no user), then its jobs, then the commit statuses.
+- Job order: grouped by stage, stages ordered by their lowest job id.
+- `manual` maps to `neutral` (settled).
+- Scan dedup: `listed` job ids in the cursor, skipped in the provider, so the service's `found` count stays honest.
+- Scan budget: the first scan page's `x-total`, kept `?? null`; with `null` (GitLab leaves x-total out on large collections) the scan follows rising next pages unbudgeted, stopping on an empty page, a refused link, or the last page (fix round 1, finding 1).
+- Run identity (2 options): the cursor records the single pipeline's `updated_at` (`runVersion`), checked before and after each scan page and compared in carryScans; over job-id heuristics, which GitLab's API order does not support. A retry rewrites the pipeline row even when it fails again (finding 2).
+- otherChecks during a scan (2 options): `served()` drops a flat check keyed `source:id` matching a found job's own check: `check-run:<checkRunId>` (GitHub) or `status:<job id>` for a job without a check run (GitLab); over a `provider === "gitlab"` branch in the shared service (finding 3).
+- A GitLab 403 on a scan page stops it; only a 429 with a gate cooldown pauses.
+- detailOf/flatDetail duplicated in gitlabProvider.ts to keep this phase out of githubProvider.ts.
 
 ## Open risks
-- A scan whose first scan page names no total stays stopped on every Refresh until the run id or attempt changes or the detail service clears; the plan's rule ("a missing first total still refuses the next link") requires this.
-- The `jobsTotal === null` check is redundant at runtime (null coerces to 0); it exists for the type checker.
-- A query-param alias of a read page is re-read until the frozen budget runs out.
-- The budget trusts the first `total_count`; an inflated first count is bounded only by that number.
-- The 429/quota-403 pause path carries `next` like the tested gate-cooldown path but has no test of its own (Codex's probe file review-2-2/.../reviewBudgetProbe.test.ts has one).
-- Earlier risks stand (old attempt shown until next read after a stop; 30 s re-read of a disagreeing commit; hidden job leaves a short list; 429/403 inside a scan stops it; case-sensitive /repos/ prefix; getSession per scan page; extra suite-count request).
+- The reviewer's own tests "a retry that fails between scan pages..." and "a completed external retry..." (review-3-0/gitlabReview.test.ts) stay red: their fakes change the jobs but never the pipeline record, and the second passes a cursor with no recorded identity, so no field the API returns could show the retry. 24/26 of that file pass on b67e21cf.
+- A cursor without `runVersion` (a pipeline response with no `updated_at`) falls back to the status-only check.
+- A GitHub job with no check-run link whose id equals a numeric status context would drop that status during a scan (GitHub status ids are contexts, so this needs a numeric context equal to a job id).
+- Pipelines with more than 1 000 jobs: statuses of non-failed jobs past the bound still show under Other checks (only failed jobs are scanned).
+- Trigger (bridge) jobs are not in /jobs but are in statuses, so they show under Other checks.
+- `optional: true` is set from `allow_failure` now while `optionalJobs` stays false until Phase 9.
+- GitNexus impact was not run (finding 4): no GitNexus MCP in this session, and the worktree-isolation guard refuses every command that names .gitnexus or gitnexus. Substitute: text search of callers (served: 6 call sites in detailService.ts; carryScans: 1; CiFailedScanCursor: types.ts, detailService.ts, githubProvider.ts, gitlabProvider.ts; continueFailedScan: coordinator.ts:231).
+- Translations for the new string were written by the builder, not from an outside translation source.
 
-## Follow-ups (stop rule, PLAN.md Phase 2 amendment item 3)
-- continueFailedScan: catching a query alias on its first repeat needs page identity by content (job ids).
+BLOCKED: GitNexus impact analysis (plan "Every phase" rule, PLAN.phase-3.md:844) cannot run in this isolated worktree. Root runs it from the main checkout after re-analyzing the stale index, or the owner waives it for Phase 3.
 
 ## Next phase
-- Per the phase-run dry run after Phase 2 is accepted: 3, 5 or 6. Phase 15 is not part of this run.
+- After Phase 3 is accepted, the phase-run dry run picks the next wave; eligible by Depends on: 5, 6, 8, 9, 10.
 
 ## Found outside scope
-- `bun run test` in the main checkout times out git-heavy tests under load; green alone. operationBenchmark.test.ts flaked once under /tmp TMPDIR.
-- localization.test.ts:352 (vsce ls) exceeds 120 s while ~100 worktrees sit under .claude/worktrees.
+- tests/webview/unit/commit-list-column-resize.test.tsx fails under Node v26.5.0 (global `localStorage` undefined without --localstorage-file); red on 05085924 too.
+- Extract detailOf/flatDetail into a shared module when Phase 17 adds a third provider detail.
+- `bun run test` in the main checkout times out git-heavy tests under load; localization.test.ts:352 (vsce ls) slow with many worktrees.
 - `bun run package` can pack ignored leftovers under `output/`; this run gave 88 entries.
 - A copy without `.git` fails git-backed tests; a copy under $TMPDIR/phase-run fails the fixture socket-path limit unless TMPDIR is short.
-- knip hint: tests/integration/shelf/selectedRemovalCrashWorker.ts can leave `ignoreUnresolved` in knip.jsonc.
 - noRepositoryMode.ts registers a placeholder `refreshBadges`, so a token change there clears no cache.
-- CI strings carry English text in every locale cell of the localization CSV.
 - tsconfigCoverage and screenshotComparatorMeta resolve tools at <repo>/node_modules, failing in a worktree without its own.
-- GitNexus index is behind HEAD (last indexed 64d390b); re-run `node .gitnexus/run.cjs analyze --index-only`.
+- GitNexus index is behind HEAD (last indexed 64d390b).
+- The worktree-isolation guard refuses any command whose text contains "git" in a compound form, including paths under IntelliGit and file names like gitlabDetail; scripts under $TMPDIR/phase-run were used for test runs and copies (no git operations in them).
 
-## Owner answer after wave 8 (2026-11-10): Phase 2 option A with a cap (Root note)
-- Phase 2 stays review pending at d41b4585 (started at f005d90f47f5a45cb30e5a31cc19f8e1b96e51d6). Phase 15 is not part of this run.
-- Open finding (Codex REQUIRED, `detailService.ts:463`): a page dropped because its requester went stale loses its frozen budget, so a later total of 2 000 allows 10 overflow requests instead of 1. Path: `repositoryMode.ts:402-410` bumps the lifecycle when a discovered repository closes.
-- Fix: PLAN.md Phase 2 amendment item 5. Test first, red before the fix, with real provider, coordinator, detail service and generations.
-- Cap: last round on the budget rule. Any further budget-path finding is a Follow-up unless it makes requests without bound.
-
-## Phase 2 lifted onto Phase 1's PR (2026-11-10)
-- Branch feat/396-ci-checks-phase-2, stacked on feat/395-ci-checks-phase-1 (PR #414); its own PR closes #396. Phase 19 action-fence code is not on this branch.
-- Amendment item 5 built test first here (runScan's dropped-page branch); narrow Codex round ACCEPT, its one MINOR fixed with a second test case. Details in the review log.
-- Version 0.43.3 with its own CHANGELOG entry.
-- Keep in step with #414: rebase --onto its new tip and port its review fixes.
-
-## Commit map for this PR (2026-11-10)
-- #414 squash-merged into `main` as 98efa7c8; this branch was rebased onto it and PR #415 now targets `main`.
-- The review ranges and commit ids above (f005d90f..d41b4585, 392fdf68, ee59d01f, 018dbbb5 and earlier) are on the local branch `feat/ci-checks-tab`, which is not on origin. On PR #415 that work is one commit, 2b65390b (the lift); amendment item 5 is 3d8e7626 and the #414 test port is c08e0cb0. The PR's own squash merge replaces these with one commit on `main`.
-- Follow-up (stop rule, item 3; cubic 4529413302): a job with no `run_attempt` passes the attempt checks (`githubProvider.ts:334`, `:362`, `:429`). GitHub's job payloads carry the field (`workflowJob.json`), so no job is known to reach a detail unchecked; refusing such jobs would mark every detail incomplete if the field were ever omitted.
-- Correction to "429/403 inside a scan stops it" under Open risks: a 429 or a quota 403 pauses the scan until the gate's cooldown ends and then resumes it (`githubProvider.ts:453-460`); a permission 403, or a 429 that leaves no cooldown, stops it until Refresh.
-
-## Phase 2 accepted by hand (2026-11-11)
-- Phase 2 was lifted onto Phase 1's PR, finished, and merged as #415 (bfea9112); the owner chose to record it accepted so phase-run can move on to Phase 3.
+## Owner answer after the Phase 3 halt (2026-11-11): GitNexus
+- Owner's words: "A: use old map"
+- The plan's Every-phase rule (PLAN.phase-3.md:844) is met for Phase 3 by this stale-index impact run (by the wave session) plus the text search. The owner accepted this. Builders and reviewers must not halt on this rule again. The BLOCKED line above is answered by this section.
+- index stale, NOT clean. Indexed commit 64d390b0a7b0c4c74be0464890fc1a9ba9c9a23d (main checkout, branch feat/ci-checks-tab), `staleness.commitsBehind` 10. The index predates every Phase 3 commit, so the GitLab detail code (getDetail, continueFailedScan, readDetail) is not in it; the text search below is the real caller evidence.
+- Impact, direction upstream (index stale, NOT clean):
+  - GitLabProvider: MEDIUM (shared axes MEDIUM), lower bound; 6 direct: commitChecksProviders.ts (import + createCommitChecksProviders), CommitGraphViewProvider.ts (import + constructor), UndockedViewProvider.ts (import + constructor).
+  - CiFailedScanCursor: CRITICAL (shared axes HIGH), lower bound; 17 direct, 36 processes, modules CommitChecks and Webviews.
+  - served: CRITICAL (shared axes LOW), exact; 4 direct, 37 processes, module CommitChecks.
+  - carryScans: CRITICAL (shared axes LOW), exact; 1 direct, 37 processes, module CommitChecks.
+  - continueFailedScan: UNKNOWN; two candidates (CommitChecksProvider.continueFailedScan in types.ts, GitHubProvider.continueFailedScan), 0 callers resolved for either. riskNote: "No callers resolved. Absence of edges is not evidence the symbol is unused ... Confirm with a text search before treating the change as safe." Treated as unresolved; text search below.
+  - createCommitChecksProviders: LOW, exact; 1 direct (activateRepositoryMode).
+- detect_changes, scope compare, base origin/main (index stale, NOT clean): changed 37 symbols in 31 files, 36 affected processes, risk critical. Not partial or truncated. Every affected process reaches the changed code through `served` (detailService.ts).
+- Text search of callers on b67e21cf (src/, tests/):
+  - provider getDetail / continueFailedScan: called only from CommitChecksCoordinator.getDetail (coordinator.ts:220, coordinator.ts:231-235). Coordinator getDetail callers: CommitGraphViewProvider.ts:256 (getCommitCiDetail, used by CommitGraphViewProvider.ts:451 and repositoryMode.ts:380 -> CommitInfoViewProvider.ts:229) and UndockedViewProvider.ts:1291. All three sit inside answerCommitCiDetailRequest, which returns at ciDetailHandler.ts:59 while the Checks tab switch is off. Pinned by ciDetailHandler.test.ts:64 "answers no request while the Checks tab switch is off" (getDetail never called, for every provider).
+  - new GitLabProvider: commitChecksProviders.ts:41 (production, via repositoryMode.ts:317; test commitChecksProviders.test.ts:110-122), CommitGraphViewProvider.ts:212 and UndockedViewProvider.ts:400 (fallback lists used only when no providers are passed; repositoryMode.ts:353, 370, 913 pass them), capabilities.test.ts:54, gitlabDetail.test.ts:156 and 492.
+  - CiFailedScanCursor: types.ts:36-112, detailService.ts:28, 40, 598, githubProvider.ts:302, 391, gitlabProvider.ts:351, 403; tests detailService.test.ts, githubDetail.test.ts, gitlabDetail.test.ts.
+  - served: detailService.ts:179, 205, 247, 281, 383, 523 (defined at 629); tests detailService.test.ts and gitlabDetail.test.ts (finding 3).
+  - carryScans: detailService.ts:253 (defined at 596); tests gitlabDetail.test.ts (finding 2).
+  - continueFailedScan: coordinator.ts:231-235; tests commitChecksProviders.test.ts:48, 93, 122, gitlabDetail.test.ts:456, 532, 633, githubDetail.test.ts:1082.
+  - createCommitChecksProviders: repositoryMode.ts:317; test commitChecksProviders.test.ts.
+  - No caller whose behaviour Phase 3 changes is left without a test.
