@@ -155,11 +155,11 @@ export function gatedFetchWithMeta(
     providerId: ProviderId,
     create: typeof createHttpGetJsonWithMeta = createHttpGetJsonWithMeta,
 ): FetchJsonWithMeta {
-    return (url, headers) =>
+    return (url, headers, conditional) =>
         registry.run(providerId, url, (generation) =>
             create((response) => {
                 registry.observeResponse(providerId, response, generation);
-            })(url, headers),
+            })(url, headers, conditional),
         );
 }
 

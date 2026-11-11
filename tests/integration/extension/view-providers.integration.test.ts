@@ -641,6 +641,17 @@ vi.mock("../../../src/services/commitChecks/http", async () => {
     return {
         ...actual,
         createHttpGetJson: createHttpGetJsonSpy,
+        // Conditional polls of running commits take the metadata path; route them through the
+        // same spy so every provider request is counted and none reaches the network.
+        createHttpGetJsonWithMeta:
+            (onResponse?: Parameters<typeof actual.createHttpGetJsonWithMeta>[0]) =>
+            async (url: string, headers: Record<string, string>) => ({
+                statusCode: 200,
+                headers: {},
+                body: await (createHttpGetJsonSpy as unknown as typeof actual.createHttpGetJson)(
+                    onResponse,
+                )(url, headers),
+            }),
         httpGetJson: httpGetJsonSpy,
     };
 });

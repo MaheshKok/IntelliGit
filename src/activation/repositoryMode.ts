@@ -318,6 +318,7 @@ export async function activateRepositoryMode(
         requestGateRegistry,
         credentialStore,
         commitCheckSettings.ciCdPattern,
+        ciGenerations,
     );
 
     let currentBranches: Branch[] = [];

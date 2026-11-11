@@ -36,7 +36,12 @@ import {
 import { CI_MAX_PAGES, CI_PAGE_SIZE, isUnderApiPrefix, paginate } from "./paginate";
 import { RequestGateCooldownError } from "./requestGate";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
-import { hasUnfinishedWork } from "../../shared/ci/completion";
+import {
+    hasUnfinishedWork,
+    isCompleteDetail,
+    isCompleteSnapshot,
+} from "../../shared/ci/completion";
+import type { EtagStore } from "./etagStore";
 import { logicalCheckId } from "../../shared/ci/identity";
 import type {
     CiDetailFetch,
@@ -219,6 +224,8 @@ export class GitLabProvider implements CommitChecksProvider {
      * @param fetchWithMeta - The HTTP boundary for the `x-next-page`-paged detail lists.
      * @param cooldownEnd - The request gate's cooldown end for a URL's bucket (0 when not
      *   cooling down); tells a rate-limited scan page from a failed one.
+     * @param etags - The window's conditional-request store; reads of a commit that was still
+     *   running when last read send `If-None-Match` through `fetchWithMeta`. None: no ETags.
      */
     constructor(
         private readonly fetchJson: FetchJson,
@@ -226,6 +233,7 @@ export class GitLabProvider implements CommitChecksProvider {
         private readonly ciCdPattern?: RegExp,
         private readonly fetchWithMeta: FetchJsonWithMeta = httpGetJsonWithMeta,
         private readonly cooldownEnd: (url: string) => number = () => 0,
+        private readonly etags?: EtagStore,
     ) {}
 
     /**
@@ -282,10 +290,15 @@ export class GitLabProvider implements CommitChecksProvider {
         if (typeof token !== "string") return token;
 
         const url = `${projectApiUrl(gitLabRef)}/repository/commits/${encodeURIComponent(hash)}/statuses?per_page=100`;
+        const commitKey = `${this.keyFor(ref)}@${hash}`;
+        const conditional = this.etags?.forCommit(commitKey);
 
         let raw: unknown;
         try {
-            raw = await this.fetchJson(url, { "PRIVATE-TOKEN": token });
+            const headers = { "PRIVATE-TOKEN": token };
+            raw = conditional
+                ? (await this.fetchWithMeta(url, headers, conditional)).body
+                : await this.fetchJson(url, headers);
         } catch (err) {
             return failedSnapshot(hash, gitLabRef.host, err, token);
         }
@@ -300,12 +313,14 @@ export class GitLabProvider implements CommitChecksProvider {
             .map(toStatusItem)
             .filter((item) => isCiCdCheckItem(item, this.ciCdPattern));
         const state = aggregateState(items);
-        return {
+        const snapshot: CommitChecksSnapshot = {
             hash,
             state,
             summary: summaryForItems(items, state),
             items,
         };
+        this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot));
+        return snapshot;
     }
 
     /**
@@ -316,8 +331,16 @@ export class GitLabProvider implements CommitChecksProvider {
         const gitLabRef = ref as GitLabRepoRef;
         const token = await this.readToken(gitLabRef.host, hash);
         if (typeof token !== "string") return flatDetail(token);
+        const commitKey = `${this.keyFor(ref)}@${hash}#detail`;
         try {
-            return await this.readDetail(gitLabRef, hash, token);
+            const detail = await this.readDetail(
+                gitLabRef,
+                hash,
+                token,
+                this.etags?.forCommit(commitKey),
+            );
+            this.etags?.noteCommit(commitKey, isCompleteDetail(detail));
+            return detail;
         } catch (err) {
             return flatDetail(failedSnapshot(hash, gitLabRef.host, err, token));
         }
@@ -327,8 +350,10 @@ export class GitLabProvider implements CommitChecksProvider {
         ref: GitLabRepoRef,
         hash: string,
         token: string,
+        conditional: EtagStore | undefined,
     ): Promise<CiDetailFetch> {
-        const fetch = (url: string) => this.fetchWithMeta(url, { "PRIVATE-TOKEN": token });
+        const fetch = (url: string) =>
+            this.fetchWithMeta(url, { "PRIVATE-TOKEN": token }, conditional);
         const pages = async <T>(firstUrl: string, itemsOf: (body: unknown) => T[]) => {
             let current = firstUrl;
             const result = await paginate(

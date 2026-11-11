@@ -24,6 +24,7 @@ vi.mock("vscode", () => ({
 }));
 
 import { createCommitChecksProviders } from "../../../src/activation/commitChecksProviders";
+import { CiGenerations } from "../../../src/services/commitChecks/ciGenerations";
 import { GitHubProvider } from "../../../src/services/commitChecks/githubProvider";
 import { GitLabProvider } from "../../../src/services/commitChecks/gitlabProvider";
 import { CommitChecksRequestGateRegistry } from "../../../src/services/commitChecks/requestGate";
@@ -34,9 +35,12 @@ const API = "https://api.github.com";
 describe("createCommitChecksProviders", () => {
     it("sends no GitHub request, detail or scan page, while the gate cools down", async () => {
         const registry = new CommitChecksRequestGateRegistry("cooling down");
-        const github = createCommitChecksProviders(registry, {} as CredentialStore, undefined).find(
-            (provider) => provider instanceof GitHubProvider,
-        ) as GitHubProvider;
+        const github = createCommitChecksProviders(
+            registry,
+            {} as CredentialStore,
+            undefined,
+            new CiGenerations(),
+        ).find((provider) => provider instanceof GitHubProvider) as GitHubProvider;
         expect(github).toBeInstanceOf(GitHubProvider);
         registry.observeResponse("github", {
             url: API,
@@ -62,9 +66,12 @@ describe("createCommitChecksProviders", () => {
 
     it("pauses a scan page the server answers 429, so it resumes when the cooldown ends", async () => {
         const registry = new CommitChecksRequestGateRegistry("cooling down");
-        const github = createCommitChecksProviders(registry, {} as CredentialStore, undefined).find(
-            (provider) => provider instanceof GitHubProvider,
-        ) as GitHubProvider;
+        const github = createCommitChecksProviders(
+            registry,
+            {} as CredentialStore,
+            undefined,
+            new CiGenerations(),
+        ).find((provider) => provider instanceof GitHubProvider) as GitHubProvider;
         const runUrl = `${API}/repos/microsoft/vscode/actions/runs/1`;
         const pageUrl = `${runUrl}/jobs?filter=latest&per_page=100&page=11`;
         mocks.httpsGet.mockImplementation(((
@@ -107,9 +114,12 @@ describe("createCommitChecksProviders", () => {
         mocks.httpsGet.mockClear();
         const registry = new CommitChecksRequestGateRegistry("cooling down");
         const store = { get: async () => "glpat-token" } as unknown as CredentialStore;
-        const gitlab = createCommitChecksProviders(registry, store, undefined).find(
-            (provider) => provider instanceof GitLabProvider,
-        ) as GitLabProvider;
+        const gitlab = createCommitChecksProviders(
+            registry,
+            store,
+            undefined,
+            new CiGenerations(),
+        ).find((provider) => provider instanceof GitLabProvider) as GitLabProvider;
         const gitlabRef = { host: "gitlab.com", owner: "group", repo: "app" } as ProviderRepoRef;
         const project = "https://gitlab.com/api/v4/projects/group%2Fapp";
         registry.observeResponse("gitlab", {
