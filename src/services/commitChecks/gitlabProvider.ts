@@ -417,7 +417,9 @@ export class GitLabProvider implements CommitChecksProvider {
                 error: vscode.l10n.t("Remote data changed. Reload and try again."),
             } as const;
             // A retried pipeline leaves the failed state and its new jobs replace the old ones; a
-            // retry that already failed again shows only as a rewritten `updated_at`.
+            // retry that already failed again shows only as a rewritten `updated_at`. With no
+            // `updated_at` at all, only the status check can see a retry here, and a refresh
+            // rescans instead of carrying the scan (detailService carryScans).
             const runChanged = async () => {
                 const response = await fetch(
                     `${projectApiUrl(gitLabRef)}/pipelines/${encodeURIComponent(cursor.runId)}`,
@@ -425,8 +427,7 @@ export class GitLabProvider implements CommitChecksProvider {
                 const current = response.body as GitLabPipeline | null;
                 return (
                     readString(current?.status) !== "failed" ||
-                    (cursor.runVersion !== undefined &&
-                        optionalString(current?.updated_at) !== cursor.runVersion)
+                    optionalString(current?.updated_at) !== cursor.runVersion
                 );
             };
             if (await runChanged()) return changed;

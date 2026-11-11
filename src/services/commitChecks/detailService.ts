@@ -607,7 +607,10 @@ function carryScans(
             carried &&
             !carried.remoteChanged &&
             carried.cursor.runAttempt === cursor.runAttempt &&
-            carried.cursor.runVersion === cursor.runVersion
+            carried.cursor.runVersion === cursor.runVersion &&
+            // A GitLab pipeline has no attempt, so without its version a retry cannot be told
+            // apart and the scan starts again.
+            (data.provider !== "gitlab" || cursor.runVersion !== undefined)
         ) {
             if (carried.state === "stopped") {
                 carried.state = "running";
@@ -624,16 +627,19 @@ function carryScans(
 /**
  * The entry's detail with each scan's found jobs appended and its `failedScan` progress; a
  * found job's own flat check leaves the flat checks, so each job is shown once: its check run
- * (GitHub), or for a job without one the commit status listed under the job's own id (GitLab).
+ * (GitHub), or the commit status listed under the job's own id (GitLab only: a GitHub status
+ * context that happens to equal a job id is a separate check).
  */
 function served(entry: DetailEntry): CommitCiDetailData {
     const scans = entry.scans;
     if (!scans) return entry.data;
+    const gitlab = entry.data.provider === "gitlab";
     const foundOwnChecks = new Set(
         [...scans.values()].flatMap((scan) =>
-            scan.found.map((job) =>
-                job.checkRunId === undefined ? `status:${job.id}` : `check-run:${job.checkRunId}`,
-            ),
+            scan.found.flatMap((job) => {
+                if (job.checkRunId !== undefined) return [`check-run:${job.checkRunId}`];
+                return gitlab ? [`status:${job.id}`] : [];
+            }),
         ),
     );
     const otherChecks = entry.data.otherChecks.filter(

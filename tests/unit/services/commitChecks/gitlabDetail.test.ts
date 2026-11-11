@@ -620,6 +620,7 @@ describe("GitLab failed-job overflow scan", () => {
     it("a 429 that starts a gate cooldown pauses the scan; a 403 stops it", async () => {
         const cursor: CiFailedScanCursor = {
             runId: PIPELINE_ID,
+            runVersion: pipelineFixture.updated_at,
             runName: "Build pipeline",
             url: `${PROJECT}/pipelines/${PIPELINE_ID}/jobs?scope%5B%5D=failed&per_page=100`,
         };
@@ -652,6 +653,7 @@ describe("GitLab failed-job overflow scan", () => {
     it("a pipeline retried before or during a scan page stops the scan", async () => {
         const cursor: CiFailedScanCursor = {
             runId: PIPELINE_ID,
+            runVersion: pipelineFixture.updated_at,
             runName: "Build pipeline",
             url: `${PROJECT}/pipelines/${PIPELINE_ID}/jobs?scope%5B%5D=failed&per_page=100`,
         };
@@ -704,6 +706,7 @@ describe("GitLab failed-job overflow scan", () => {
         });
         let cursor: CiFailedScanCursor | undefined = {
             runId: PIPELINE_ID,
+            runVersion: pipelineFixture.updated_at,
             runName: "Build pipeline",
             url: `${PROJECT}/pipelines/${PIPELINE_ID}/jobs?scope%5B%5D=failed&per_page=100`,
         };
@@ -798,6 +801,44 @@ describe("GitLab failed-job overflow scan", () => {
         ).toEqual([]);
         await vi.waitFor(() => expect(last()?.runs[0].failedScan?.state).toBe("done"));
         expect(last().runs[0].jobs.filter((j: CiJob) => Number(j.id) > 2000)).toHaveLength(50);
+    });
+
+    it("a refresh of a pipeline with no updated_at rescans instead of keeping the old attempt's jobs", async () => {
+        const st = state({
+            pipelines: [pipeline({ status: "failed", updated_at: null })],
+            jobsByPipeline: new Map([[PIPELINE_ID, [...jobs(1000), ...jobs(50, "failed", 1001)]]]),
+        });
+        const { get, last } = scanning(provider(fakeGitLab(st)));
+        await get();
+        await vi.waitFor(() => expect(last()?.runs[0].failedScan?.state).toBe("done"));
+
+        // A retry that failed again; with no version GitLab gives nothing else to compare.
+        st.jobsByPipeline.set(PIPELINE_ID, [...jobs(1000), ...jobs(50, "failed", 2001)]);
+        const refreshed = await get(true);
+        expect(
+            refreshed.runs[0].jobs.filter((j: CiJob) => Number(j.id) > 1000 && Number(j.id) < 2001),
+            "unknown version must not reuse old-attempt jobs",
+        ).toEqual([]);
+        await vi.waitFor(() => expect(last()?.runs[0].failedScan?.state).toBe("done"));
+        expect(last().runs[0].jobs.filter((j: CiJob) => Number(j.id) > 2000)).toHaveLength(50);
+    });
+
+    it("a scan started with no updated_at stops once the pipeline names one", async () => {
+        const cursor: CiFailedScanCursor = {
+            runId: PIPELINE_ID,
+            runName: "Build pipeline",
+            url: `${PROJECT}/pipelines/${PIPELINE_ID}/jobs?scope%5B%5D=failed&per_page=100`,
+        };
+        const gl = fakeGitLab(
+            state({
+                pipelines: [pipeline({ status: "failed", updated_at: "2026-11-11T10:00:00.000Z" })],
+                jobsByPipeline: new Map([[PIPELINE_ID, jobs(3, "failed")]]),
+            }),
+        );
+        expect(await provider(gl).continueFailedScan(ref, cursor)).toEqual({
+            runChanged: true,
+            error: CHANGED,
+        });
     });
 
     it("a status whose job the scan finds past the bound leaves other checks", async () => {

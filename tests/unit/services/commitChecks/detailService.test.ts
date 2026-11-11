@@ -293,6 +293,34 @@ describe("CommitCiDetailService", () => {
             expect(state.values.has(STORAGE_KEY)).toBe(false);
         });
 
+        it("a GitHub job found by the scan keeps a status context that only shares its number", async () => {
+            const posts: CommitCiDetail[] = [];
+            const status = {
+                id: "1050",
+                name: "1050",
+                description: "external CI",
+                source: "status" as const,
+                state: "failure" as const,
+            };
+            await service().service.getOrFetch(
+                KEY,
+                async () => ({ ...capped(), otherChecks: [status] }),
+                SERVE,
+                {},
+                undefined,
+                {
+                    continueScan: async () => ({ failed: [failed("1050")] }),
+                    isCurrent: () => true,
+                    onUpdate: (served) => posts.push(served),
+                },
+            );
+            await vi.waitFor(() => expect(posts.at(-1)?.runs[0].failedScan?.state).toBe("done"));
+            expect(
+                posts.at(-1)?.otherChecks,
+                "GitHub status contexts and job ids are separate identities",
+            ).toEqual([status]);
+        });
+
         const rerunFence = {
             repoKey: "/repo",
             hash: "abc1234",
