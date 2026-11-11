@@ -11,17 +11,19 @@
 ## Phase 5: review pending, started at 15a47c9d68fbe1646bfe02e50752f00d5d7a2709
 - 15a47c9d is on the pre-squash Phase 3 branch, not an ancestor of HEAD. The build sits on 650a6919, so review 650a6919..HEAD.
 - Built in 20b1c353: `EtagStore` (LRU 500, key `${authGeneration}\0${url}`), conditional `createHttpGetJsonWithMeta`, GitHub and GitLab snapshot and detail reads conditional for incomplete commits. Patch 0.43.7.
-- Fix round 1 (this commit) clears all five Codex findings:
+- Fix round 1 (d83ba4a4) clears all five Codex findings:
   - Each entry records `requestHash`, a SHA-256 of the request headers (token included) it was read with; a request whose headers differ never sends that etag and never gets that body. Covers a request queued under an old token (finding 1) and a token changed by another window (finding 2).
   - The body-less-304 re-request is its own gated request: `gatedFetchWithMeta` = `recoverBodylessNotModified` over a gated `createConditionalRequest`, so the gate admits, counts and cooldown-checks it (finding 3).
   - The re-request strips `If-None-Match` in any letter case (finding 5).
   - Bitbucket Cloud and Server snapshot reads are conditional for incomplete commits (finding 4; plan §3 line 399). Server's commit key is host + hash, the scope of its global build-status endpoint.
+- Fix round 2: the one finding (GitLab `sessionOnly` rule, gitlabProvider.ts:407) is rejected, no code change. That rule and its test came from PR #419's last commit ("a GitLab pipeline with no update time is never saved, even on one job page"), on main as c246d0d4. `git diff 650a6919 HEAD` is empty for gitlabProvider.ts:398-410, gitlabDetail.test.ts and paginate.ts. Codex's scratch test phase5ScopeReview.test.ts is red at 650a6919 with the same assertion line, so a diff against 15a47c9d charges Phase 3's squash to Phase 5. Reviewers: diff 650a6919..HEAD only.
 - GitNexus: the impact run recorded in 650a6919 under the owner's "A: use old map"; do not halt on PLAN.md:844 for Phase 5.
 
 ## Decisions and why
 - Credential binding by a header digest in the entry, not by bumping `CiGenerations.bumpAuth` on a detected token change: bumpAuth also fences the snapshot, detail and action caches, a wider effect than this phase owns. The key stays `${authGeneration}\0${url}` (K12 verbatim); the digest only adds a check.
 - The re-request runs after the first slot is released (two admissions), never nested inside the slot: nesting would deadlock when all four slots retry at once.
 - Codex's scratch test "bodyless-304 retries count against the fallback request budget" expects 300 such reads to succeed, which honest counting cannot allow (each read costs two admissions). Replaced by a test that 150 reads use the 300 budget and read 151 is refused with 429.
+- Round 2 finding rejected, not reverted: the revert would reopen a mixed-attempt GitLab tree being saved for a restart (fixed in #419 with owner OK) and would itself be a non-additive change to Phase 3 behaviour inside Phase 5 (K10).
 - Incomplete-commit memory per provider key and hash (`forCommit` / `noteCommit`) as before; first read unconditional, savings from the third poll.
 
 ## Open risks

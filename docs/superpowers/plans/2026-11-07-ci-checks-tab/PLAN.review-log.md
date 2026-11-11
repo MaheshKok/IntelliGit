@@ -842,3 +842,12 @@ PHASE 3: ACCEPTED 15a47c9d
 - Codex scratch test "bodyless-304 retries count against the fallback request budget" cannot pass with honest counting (expects 300 two-request reads under a 300 budget); replaced by 150 reads OK, read 151 refused with 429.
 - Proof chain: every step exits 0 except `bun run test` (7782 of 7790 pass; the 8 failures are all commit-list-column-resize.test.tsx under Node v26.5.0, pre-existing).
 - GitNexus detect-changes not run: no .gitnexus/run.cjs in this worktree and the index is stale (owner "A: use old map").
+
+## Phase 5: fix round 2 (2026-11-11)
+- One finding (gitlabProvider.ts:407, `if (!listedVersion) sessionOnly = true` and the inverted gitlabDetail test): rejected, no code change.
+  - Origin: PR #419's last commit "fix: a GitLab pipeline with no update time is never saved, even on one job page" (from the PR #419 review), squash-merged to main as c246d0d4 (`git branch -a --contains c246d0d4` -> origin/main).
+  - `git diff 650a6919 HEAD` is empty for gitlabDetail.test.ts and paginate.ts and does not touch the rule; `git diff 15a47c9d 650a6919` is exactly that rule plus the test, so the 15a47c9d base charges Phase 3's squash to Phase 5.
+  - Codex's scratch test run on a copy of 650a6919 (base5-fix-2): red "Phase 5 must preserve completed single-page cache eligibility (K10, additive review gate): expected true not to be true", the same line as at HEAD, so it predates Phase 5.
+  - Reverting would undo an owner-accepted correctness fix (a mixed-attempt tree saved for a restart) and would be a non-additive Phase 3 change inside Phase 5 (K10).
+- Review Phase 5 as 650a6919..HEAD.
+- Proof chain (each step separately): all exit 0 except `bun run test` (7782 of 7790; the 8 failures are all commit-list-column-resize.test.tsx under Node v26.5.0, pre-existing, same as round 1).
