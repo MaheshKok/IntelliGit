@@ -45,9 +45,10 @@ it in a narrower pane.
 - The header shows the overall state, the duration and, when the provider reports it,
   "push by <actor> · <ref> · #<run>". **Refresh** always fetches again; **Open in
   browser** appears when the provider gives a link.
-- Controls appear only for what the provider can do. A provider whose workflow detail
-  this release does not read (GitLab, Bitbucket Cloud and Bitbucket Server / Data
-  Center) shows a flat list with no empty sections.
+- Controls appear only for what the provider can do. GitLab shows pipelines and their
+  jobs, grouped by stage; its API reports no steps, so jobs have none. A provider whose
+  workflow detail this release does not read (Bitbucket Cloud and Bitbucket Server /
+  Data Center) shows a flat list with no empty sections.
 - A very large run shows a note when its list was cut short, with a link to the rest
   in the browser. Failed jobs past that limit are still listed as they are found.
 - The tab shows the same signed-out, error and rate-limit states as the popover, and a
@@ -146,6 +147,25 @@ instead and Refresh reads the run again from the start. Its progress is kept in 
 links are followed only when they stay on `https://api.github.com` under the
 repository's own path; any other link stops paging, is never requested, and the list
 is marked as cut short, so the token is never sent anywhere else.
+
+For GitLab, the detailed view reads the commit's pipelines, each pipeline's own header
+(who started it, when it started and finished) and its latest jobs, plus the commit's
+statuses, with the same `read_api` token, 100 items per page and at most 10 pages per
+list. A status that is none of the pipelines' jobs, such as an external CI's, is listed
+under **Other checks**. When a failed pipeline has more than 1,000 jobs, IntelliGit
+then reads the pipeline's failed jobs on their own, one page at a time, and adds the
+ones not already listed, and their statuses leave **Other checks**; the scan pauses,
+stops and resumes the same way as GitHub's. If the pipeline is retried while the scan is
+reading, even when the retry fails again, the scan stops and Refresh reads it again. A
+pipeline retried while its first 1,000 jobs are read is shown as still settling and read
+again shortly. If GitLab gives the pipeline no update time, a retry that fails again
+cannot be seen while the scan reads, so the scan ends as stopped with that reason instead
+of done, and Refresh reads the failed jobs again from the start. For the same reason, a
+pipeline with no update time is kept for the session only and read again after a
+restart, and the copy saved before it is deleted. If that delete fails, the older copy is
+held back only until VS Code restarts, and may then be shown again until Refresh. A GitLab 403 is treated
+as a missing permission, never as a rate limit.
+Next-page links are followed only on the GitLab host under the project's own API path.
 
 Diagnostic lines for CI requests go to the **IntelliGit CI** output channel. They name
 the operation, provider and short commit hash; they never contain tokens, request

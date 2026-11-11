@@ -145,13 +145,15 @@ test("Checks tab shows the tree in light and dark themes, narrow and wide pane",
     fixtureWorkspace,
 }, testInfo) => {
     test.setTimeout(240_000);
-    await withGitLog(fixtureWorkspace, testInfo, async ({ app, graph, settingsPath }) => {
+    await withGitLog(fixtureWorkspace, testInfo, async ({ app, graph, settingsPath, head }) => {
         // Files stays the default tab.
         await expect(graph.getByRole("tab", { name: "Files" })).toHaveAttribute(
             "aria-selected",
             "true",
         );
-        await graph.getByRole("tab", { name: "Checks" }).click();
+        // The default selection can land on a stash row, so open the head commit's checks.
+        await graph.getByTestId(`commit-checks-button-${head}`).click();
+        await graph.getByRole("button", { name: "Open in Checks" }).click();
         const tab = graph.getByTestId("checks-tab");
         await expect(tab.getByTestId("ci-header-run-line")).toContainText("octocat");
         await expect(tab.getByTestId("ci-job-row").filter({ hasText: "unit-tests" })).toBeVisible();

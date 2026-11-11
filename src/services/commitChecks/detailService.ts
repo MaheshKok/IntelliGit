@@ -227,7 +227,7 @@ export class CommitCiDetailService {
             this.isCurrentGeneration(key, generation) &&
             !this.fenceEndedSince(data.hash, fenceEnds);
         const request = fetchDetail()
-            .then(async ({ scanCursors, ...data }): Promise<ServedDetailData> => {
+            .then(async ({ scanCursors, sessionOnly, ...data }): Promise<ServedDetailData> => {
                 if (isCurrent(data)) {
                     // Ends the fences this detail shows took effect before the save below
                     // is queued (they leave memory synchronously); never rejects. This
@@ -272,6 +272,7 @@ export class CommitCiDetailService {
                         entry.fetchedAt,
                         { generation: generation[2], id: writeId },
                         storageFailed,
+                        sessionOnly,
                     );
                     await this.confirmSaved(key, entry, confirm, writeId, storageFailed);
                     if (isCurrent(data)) {
@@ -415,11 +416,17 @@ export class CommitCiDetailService {
         fetchedAt: number,
         write: PersistentWrite,
         storageFailed: () => void,
+        sessionOnly?: true,
     ): Promise<void> {
         try {
-            await this.persistentCache?.set(key, data, fetchedAt, write);
+            // A detail kept for this session only still outdates an earlier saved one.
+            await (sessionOnly
+                ? this.persistentCache?.delete(key)
+                : this.persistentCache?.set(key, data, fetchedAt, write));
         } catch {
-            // A failed persistent write leaves the entry in L1 only.
+            // A failed persistent write leaves the entry in L1 only. Whatever stayed saved is
+            // older than that entry, so it is never read back.
+            this.undeletedSaves.add(key);
             storageFailed();
         }
     }
@@ -603,7 +610,15 @@ function carryScans(
     for (const cursor of cursors) {
         if (!data.runs.some((run) => run.id === cursor.runId)) continue;
         const carried = previous?.scans?.get(cursor.runId);
-        if (carried && !carried.remoteChanged && carried.cursor.runAttempt === cursor.runAttempt) {
+        if (
+            carried &&
+            !carried.remoteChanged &&
+            carried.cursor.runAttempt === cursor.runAttempt &&
+            carried.cursor.runVersion === cursor.runVersion &&
+            // A GitLab pipeline has no attempt, so without its version a retry cannot be told
+            // apart and the scan starts again.
+            (data.provider !== "gitlab" || cursor.runVersion !== undefined)
+        ) {
             if (carried.state === "stopped") {
                 carried.state = "running";
                 delete carried.error;
@@ -618,19 +633,24 @@ function carryScans(
 
 /**
  * The entry's detail with each scan's found jobs appended and its `failedScan` progress; a
- * found job's own check run leaves the flat checks, so each check-run id is shown once.
+ * found job's own flat check leaves the flat checks, so each job is shown once: its check run
+ * (GitHub), or the commit status listed under the job's own id (GitLab only: a GitHub status
+ * context that happens to equal a job id is a separate check).
  */
 function served(entry: DetailEntry): CommitCiDetailData {
     const scans = entry.scans;
     if (!scans) return entry.data;
-    const foundCheckRunIds = new Set(
-        [...scans.values()].flatMap((scan) => scan.found.flatMap((job) => job.checkRunId ?? [])),
+    const gitlab = entry.data.provider === "gitlab";
+    const foundOwnChecks = new Set(
+        [...scans.values()].flatMap((scan) =>
+            scan.found.flatMap((job) => {
+                if (job.checkRunId !== undefined) return [`check-run:${job.checkRunId}`];
+                return gitlab ? [`status:${job.id}`] : [];
+            }),
+        ),
     );
     const otherChecks = entry.data.otherChecks.filter(
-        (check) =>
-            check.source !== "check-run" ||
-            check.id === undefined ||
-            !foundCheckRunIds.has(check.id),
+        (check) => check.id === undefined || !foundOwnChecks.has(`${check.source}:${check.id}`),
     );
     const runs = entry.data.runs.map((run) => {
         const scan = scans.get(run.id);

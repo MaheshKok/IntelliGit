@@ -25,6 +25,7 @@ vi.mock("vscode", () => ({
 
 import { createCommitChecksProviders } from "../../../src/activation/commitChecksProviders";
 import { GitHubProvider } from "../../../src/services/commitChecks/githubProvider";
+import { GitLabProvider } from "../../../src/services/commitChecks/gitlabProvider";
 import { CommitChecksRequestGateRegistry } from "../../../src/services/commitChecks/requestGate";
 
 const ref = { host: "github.com", owner: "microsoft", repo: "vscode" } as ProviderRepoRef;
@@ -100,5 +101,35 @@ describe("createCommitChecksProviders", () => {
         expect(page, "a rate-limited page pauses the scan, never stops it").toEqual({
             pausedUntil: registry.cooldownEnd("github", API),
         });
+    });
+
+    it("sends no GitLab detail request or scan page while its gate cools down", async () => {
+        mocks.httpsGet.mockClear();
+        const registry = new CommitChecksRequestGateRegistry("cooling down");
+        const store = { get: async () => "glpat-token" } as unknown as CredentialStore;
+        const gitlab = createCommitChecksProviders(registry, store, undefined).find(
+            (provider) => provider instanceof GitLabProvider,
+        ) as GitLabProvider;
+        const gitlabRef = { host: "gitlab.com", owner: "group", repo: "app" } as ProviderRepoRef;
+        const project = "https://gitlab.com/api/v4/projects/group%2Fapp";
+        registry.observeResponse("gitlab", {
+            url: project,
+            statusCode: 429,
+            headers: { "retry-after": "60" },
+        });
+
+        const detail = await gitlab.getDetail(gitlabRef, "abc1234");
+        const page = await gitlab.continueFailedScan(gitlabRef, {
+            runId: "7",
+            runName: "Build",
+            url: `${project}/pipelines/7/jobs?scope[]=failed&per_page=100`,
+        });
+
+        expect(
+            mocks.httpsGet,
+            "no request may leave while the gate cools down",
+        ).not.toHaveBeenCalled();
+        expect(detail).toMatchObject({ outcome: "unavailable", error: "cooling down" });
+        expect(page).toEqual({ pausedUntil: registry.cooldownEnd("gitlab", project) });
     });
 });

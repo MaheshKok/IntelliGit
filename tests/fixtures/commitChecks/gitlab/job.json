@@ -1,0 +1,43 @@
+{
+    "id": 8000012,
+    "status": "success",
+    "stage": "build",
+    "name": "compile",
+    "ref": "main",
+    "tag": false,
+    "coverage": null,
+    "allow_failure": false,
+    "created_at": "2026-11-08T14:40:12.611Z",
+    "started_at": "2026-11-08T14:40:15.044Z",
+    "finished_at": "2026-11-08T14:41:16.270Z",
+    "erased_at": null,
+    "duration": 61.226,
+    "queued_duration": 0.912,
+    "user": {
+        "id": 1,
+        "username": "jdoe",
+        "name": "Jane Doe",
+        "state": "active",
+        "web_url": "https://gitlab.com/jdoe"
+    },
+    "commit": {
+        "id": "e83c5163316f89bfbde7d9ab23ca2e25604af290",
+        "short_id": "e83c5163",
+        "title": "Build runner images",
+        "created_at": "2026-11-08T14:39:02.000Z"
+    },
+    "pipeline": {
+        "id": 1427803,
+        "iid": 312,
+        "project_id": 278964,
+        "ref": "main",
+        "sha": "e83c5163316f89bfbde7d9ab23ca2e25604af290",
+        "status": "failed"
+    },
+    "web_url": "https://gitlab.com/gitlab-org/gitlab-runner/-/jobs/8000012",
+    "project": { "ci_job_token_scope_enabled": false },
+    "artifacts": [],
+    "artifacts_expire_at": null,
+    "runner": null,
+    "tag_list": []
+}

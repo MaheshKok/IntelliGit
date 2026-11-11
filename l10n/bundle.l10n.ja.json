@@ -989,5 +989,7 @@
     "The signed-in account changed during the request.": "要求の処理中にサインイン中のアカウントが変更されました。",
     "Commit checks error: {message}": "コミット チェックのエラー: {message}",
     "The provider's next-page link was refused.": "プロバイダーの次ページへのリンクは拒否されました。",
-    "Malformed Link header.": "Link ヘッダーの形式が正しくありません。"
+    "Malformed Link header.": "Link ヘッダーの形式が正しくありません。",
+    "Malformed x-next-page header.": "x-next-page ヘッダーの形式が正しくありません。",
+    "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "このパイプラインには更新時刻がないため、スキャン中の再試行を否定できません。"
 }

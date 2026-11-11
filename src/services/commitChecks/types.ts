@@ -36,6 +36,11 @@ export interface ProviderRepoRef {
 export interface CiFailedScanCursor {
     readonly runId: string;
     readonly runAttempt?: number;
+    /**
+     * GitLab: the pipeline's `updated_at` when the scan started. GitLab runs have no attempt, and
+     * a retry rewrites the pipeline even when it fails again, so a different value discards the scan.
+     */
+    readonly runVersion?: string;
     /** The run's workflow name, the scope of a scanned job that does not name its own. */
     readonly runName: string;
     readonly url: string;
@@ -44,10 +49,13 @@ export interface CiFailedScanCursor {
     /** Jobs read before `url`; the scan stops once they reach the run's own job count. */
     readonly jobsRead?: number;
     /**
-     * The run's job count as first read; fixed for the whole scan, so no later page raises it.
-     * `null` means the first scan page was read and named none, so the scan stays unbudgeted.
+     * The run's job count as first read (GitLab: its failed-job count); fixed for the whole
+     * scan, so no later page raises it. `null` means the first scan page was read and named
+     * none, so the scan stays unbudgeted.
      */
     readonly jobsTotal?: number | null;
+    /** Ids of the jobs the detail already shows; a scan that starts from page one skips them. */
+    readonly listed?: readonly string[];
 }
 
 /**
@@ -57,7 +65,8 @@ export interface CiFailedScanCursor {
  * A stop or pause may carry `next`: the same page's cursor with the job budget the request read
  * saved, where Refresh or the resume reads again.
  * `runChanged` means the run, or a job the page read, names another id or attempt than the
- * cursor's: nothing is kept, and the scan stops with `error` until a read from scratch.
+ * cursor's, or (GitLab) the pipeline is no longer `failed` or its `updated_at` no longer
+ * matches `runVersion`: nothing is kept, and the scan stops with `error` until a read from scratch.
  *
  * @public consumed by later CI tab phases.
  */
@@ -70,9 +79,12 @@ export type CiFailedScanPage =
 /**
  * What `getDetail` returns: the detail plus one scan cursor per failed run whose job list hit
  * the page bound. The detail service keeps the cursors in memory and never caches them.
+ * `sessionOnly` marks a tree the provider cannot vouch for across a restart (it may mix two
+ * attempts of a run): it is served from memory and never saved.
  */
 export type CiDetailFetch = CommitCiDetailData & {
     readonly scanCursors?: readonly CiFailedScanCursor[];
+    readonly sessionOnly?: true;
 };
 
 /** A commit-check host integration: detection plus per-commit fetch. */

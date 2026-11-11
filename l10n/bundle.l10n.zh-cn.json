@@ -989,5 +989,7 @@
     "The signed-in account changed during the request.": "请求期间已登录的帐户发生了变化。",
     "Commit checks error: {message}": "提交检查错误：{message}",
     "The provider's next-page link was refused.": "已拒绝提供程序的下一页链接。",
-    "Malformed Link header.": "Link 标头格式不正确。"
+    "Malformed Link header.": "Link 标头格式不正确。",
+    "Malformed x-next-page header.": "x-next-page 标头格式不正确。",
+    "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "此流水线没有更新时间，因此无法排除扫描期间发生重试的可能。"
 }

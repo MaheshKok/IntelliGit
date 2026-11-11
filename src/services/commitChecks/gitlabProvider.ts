@@ -1,12 +1,29 @@
 // GitLab commit-check provider. Parses gitlab.com and self-hosted GitLab remotes,
 // authenticates via a stored PRIVATE-TOKEN from CredentialStore, fetches the GitLab
 // commit-statuses endpoint for one commit, and normalizes results into the shared
-// snapshot shape. HTTP is injected (FetchJson) so state-mapping is unit-testable.
+// snapshot shape. The detail reads the commit's pipelines and their jobs. HTTP is
+// injected (FetchJson, FetchJsonWithMeta) so state-mapping is unit-testable.
 
 import * as vscode from "vscode";
-import type { CommitCheckItem, CommitChecksSnapshot, CommitCheckState } from "../../types";
+import type {
+    CiCoverage,
+    CiFlatCheck,
+    CiJob,
+    CiRun,
+    CiState,
+    CommitCheckItem,
+    CommitChecksSnapshot,
+    CommitCheckState,
+    CommitCiDetailData,
+} from "../../types";
 import { getErrorMessage } from "../../utils/errors";
-import type { FetchJson } from "./http";
+import {
+    HttpError,
+    httpGetJsonWithMeta,
+    type FetchJson,
+    type FetchJsonWithMeta,
+    type FetchResponse,
+} from "./http";
 import {
     aggregateState,
     compactText,
@@ -16,8 +33,19 @@ import {
     summaryForItems,
     unavailableSnapshot,
 } from "./normalize";
+import { CI_MAX_PAGES, CI_PAGE_SIZE, isUnderApiPrefix, paginate } from "./paginate";
+import { RequestGateCooldownError } from "./requestGate";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
-import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
+import { hasUnfinishedWork } from "../../shared/ci/completion";
+import { logicalCheckId } from "../../shared/ci/identity";
+import type {
+    CiDetailFetch,
+    CiFailedScanCursor,
+    CiFailedScanPage,
+    CommitChecksProvider,
+    HostMap,
+    ProviderRepoRef,
+} from "./types";
 import { tokenAccountKey, type CredentialStore } from "./credentialStore";
 
 /** Narrows ProviderRepoRef with the owner path and repo name parsed from the remote URL. */
@@ -28,10 +56,40 @@ interface GitLabRepoRef extends ProviderRepoRef {
 
 /** One entry in the GitLab commit-statuses response array. */
 interface GitLabStatus {
+    id?: unknown;
     name?: unknown;
     status?: unknown;
     description?: unknown;
     target_url?: unknown;
+    allow_failure?: unknown;
+    pipeline_id?: unknown;
+}
+
+/** A pipeline as the single-pipeline request returns it; the list omits `user` and `duration`. */
+interface GitLabPipeline {
+    id?: unknown;
+    iid?: unknown;
+    name?: unknown;
+    status?: unknown;
+    source?: unknown;
+    ref?: unknown;
+    web_url?: unknown;
+    user?: { username?: unknown } | null;
+    created_at?: unknown;
+    started_at?: unknown;
+    finished_at?: unknown;
+    updated_at?: unknown;
+}
+
+/** One entry of a pipeline's job list. */
+interface GitLabJob {
+    id?: unknown;
+    name?: unknown;
+    stage?: unknown;
+    status?: unknown;
+    web_url?: unknown;
+    started_at?: unknown;
+    finished_at?: unknown;
     allow_failure?: unknown;
 }
 
@@ -142,8 +200,13 @@ function escapeRegex(str: string): string {
  */
 export class GitLabProvider implements CommitChecksProvider {
     readonly id = "gitlab" as const;
-    /** No CI detail features yet; each flag turns on in the phase that implements it. */
-    readonly capabilities = NO_CI_CAPABILITIES;
+    /** Each flag turns on in the phase that implements it; GitLab's API has no steps. */
+    readonly capabilities = Object.freeze({
+        ...NO_CI_CAPABILITIES,
+        runs: true,
+        jobs: true,
+        runHeader: true,
+    });
 
     /**
      * Creates a GitLabProvider.
@@ -153,11 +216,16 @@ export class GitLabProvider implements CommitChecksProvider {
      * @param ciCdPattern - Optional include pattern from `commitChecks.ciCdFilter`; when
      *   omitted the built-in `CICD_CHECK_PATTERN` is used. The review-bot exclusion always
      *   applies regardless of this override.
+     * @param fetchWithMeta - The HTTP boundary for the `x-next-page`-paged detail lists.
+     * @param cooldownEnd - The request gate's cooldown end for a URL's bucket (0 when not
+     *   cooling down); tells a rate-limited scan page from a failed one.
      */
     constructor(
         private readonly fetchJson: FetchJson,
         private readonly store: CredentialStore,
         private readonly ciCdPattern?: RegExp,
+        private readonly fetchWithMeta: FetchJsonWithMeta = httpGetJsonWithMeta,
+        private readonly cooldownEnd: (url: string) => number = () => 0,
     ) {}
 
     /**
@@ -209,45 +277,17 @@ export class GitLabProvider implements CommitChecksProvider {
      * @returns A CommitChecksSnapshot.
      */
     async getChecks(ref: ProviderRepoRef, hash: string): Promise<CommitChecksSnapshot> {
-        const { host, owner, repo } = ref as GitLabRepoRef;
+        const gitLabRef = ref as GitLabRepoRef;
+        const token = await this.readToken(gitLabRef.host, hash);
+        if (typeof token !== "string") return token;
 
-        let token: string | undefined;
-        try {
-            token = await this.store.get(host);
-        } catch (err) {
-            return unavailableSnapshot(hash, getErrorMessage(err));
-        }
-        if (!token) {
-            // No token: surface an actionable "unavailable" rather than hiding the badge
-            // as "none". The coordinator caches this terminal state, so a successful
-            // sign-in must clear the cache (see intelligit.commitChecks.signIn) for the
-            // badge to recover without a window reload.
-            return unavailableSnapshot(
-                hash,
-                vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
-                host,
-            );
-        }
-
-        const projectPath = encodeURIComponent(`${owner}/${repo}`);
-        const url = `https://${host}/api/v4/projects/${projectPath}/repository/commits/${encodeURIComponent(hash)}/statuses?per_page=100`;
-        const headers = { "PRIVATE-TOKEN": token };
+        const url = `${projectApiUrl(gitLabRef)}/repository/commits/${encodeURIComponent(hash)}/statuses?per_page=100`;
 
         let raw: unknown;
         try {
-            raw = await this.fetchJson(url, headers);
+            raw = await this.fetchJson(url, { "PRIVATE-TOKEN": token });
         } catch (err) {
-            const message = getErrorMessage(err);
-            if (/\bHTTP (401|403)\b/i.test(message)) {
-                return unavailableSnapshot(
-                    hash,
-                    vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
-                    host,
-                );
-            }
-            // getErrorMessage redacts URL-embedded credentials; redactSecret strips the
-            // stored token in case a transport error echoed the PRIVATE-TOKEN header.
-            return unavailableSnapshot(hash, redactSecret(message, token));
+            return failedSnapshot(hash, gitLabRef.host, err, token);
         }
 
         if (!Array.isArray(raw)) {
@@ -267,11 +307,437 @@ export class GitLabProvider implements CommitChecksProvider {
             items,
         };
     }
+
+    /**
+     * Fetches the commit's pipelines, each one's header and jobs, and the commit statuses that
+     * are not jobs. Any page failure yields an `unavailable` detail; never throws.
+     */
+    async getDetail(ref: ProviderRepoRef, hash: string): Promise<CiDetailFetch> {
+        const gitLabRef = ref as GitLabRepoRef;
+        const token = await this.readToken(gitLabRef.host, hash);
+        if (typeof token !== "string") return flatDetail(token);
+        try {
+            return await this.readDetail(gitLabRef, hash, token);
+        } catch (err) {
+            return flatDetail(failedSnapshot(hash, gitLabRef.host, err, token));
+        }
+    }
+
+    private async readDetail(
+        ref: GitLabRepoRef,
+        hash: string,
+        token: string,
+    ): Promise<CiDetailFetch> {
+        const fetch = (url: string) => this.fetchWithMeta(url, { "PRIVATE-TOKEN": token });
+        const pages = async <T>(firstUrl: string, itemsOf: (body: unknown) => T[]) => {
+            let current = firstUrl;
+            const result = await paginate(
+                (url) => {
+                    current = url;
+                    return fetch(url);
+                },
+                firstUrl,
+                (response) => nextPageUrl(response, current),
+                itemsOf,
+                CI_MAX_PAGES,
+                (url) => this.allowNext(ref, url),
+            );
+            return result;
+        };
+        const base = projectApiUrl(ref);
+        const pipelines = await pages(
+            `${base}/pipelines?sha=${encodeURIComponent(hash)}&per_page=${CI_PAGE_SIZE}`,
+            readArray<GitLabPipeline>,
+        );
+        const runs: CiRun[] = [];
+        const cutRuns = new Set<string>();
+        const scanCursors: CiFailedScanCursor[] = [];
+        let retriedMidRead = false;
+        let sessionOnly = false;
+        for (const listed of pipelines.items) {
+            const runId = readId(listed.id);
+            if (runId === undefined) continue;
+            // Serial, so one commit's many pipelines never take every gate slot at once.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            const jobsPage = await pages(
+                `${base}/pipelines/${encodeURIComponent(runId)}/jobs?per_page=${CI_PAGE_SIZE}`,
+                readArray<GitLabJob>,
+            );
+            // The header is read after the jobs, so a retry while they were paged shows as a
+            // record that differs from the list's. With no `updated_at` only the status can; a
+            // field the list left out cannot be compared and is never taken for a retry.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            const pipeline = ((await fetch(`${base}/pipelines/${encodeURIComponent(runId)}`))
+                .body ?? {}) as GitLabPipeline;
+            const listedStatus = readString(listed.status);
+            const listedVersion = optionalString(listed.updated_at);
+            if (
+                (listedStatus && listedStatus !== readString(pipeline.status)) ||
+                (listedVersion && listedVersion !== optionalString(pipeline.updated_at))
+            ) {
+                retriedMidRead = true;
+            }
+            // No listed version to compare: a retry that failed again between the job pages, or
+            // between the jobs and the header, is invisible, so the tree is never saved.
+            if (!listedVersion) sessionOnly = true;
+            const runVersion = listedVersion ?? optionalString(pipeline.updated_at);
+            const runName = readString(pipeline.name);
+            const jobs = inStageOrder(jobsPage.items).map((job) => toJob(job, runName));
+            const run = toRun(pipeline, runId, runName, jobs, jobsPage.coverage);
+            runs.push(run);
+            if (jobsPage.coverage !== "full") cutRuns.add(runId);
+            if (run.state === "failure" && jobsPage.next) {
+                // The failed-only collection is read from its first page; jobs already shown
+                // are skipped by id. The version is the one the jobs were read under, so a
+                // retry mid-read stops the scan at its first check.
+                scanCursors.push({
+                    runId,
+                    ...(runVersion && { runVersion }),
+                    runName,
+                    url: `${base}/pipelines/${encodeURIComponent(runId)}/jobs?scope[]=failed&per_page=${CI_PAGE_SIZE}`,
+                    listed: jobs.map((job) => job.id),
+                });
+            }
+        }
+        const statuses = await pages(
+            `${base}/repository/commits/${encodeURIComponent(hash)}/statuses?per_page=${CI_PAGE_SIZE}`,
+            readArray<GitLabStatus>,
+        );
+        // GitLab lists every job as a commit status under the job's own id. A job past the job
+        // bound is matched by its `pipeline_id` instead (Entities::CommitStatus exposes it);
+        // an external status posted to a cut pipeline is then hidden with it.
+        const jobIds = new Set(runs.flatMap((run) => run.jobs.map((job) => job.id)));
+        const otherChecks = statuses.items
+            .filter((status) => !jobIds.has(readId(status.id) ?? ""))
+            .filter((status) => !cutRuns.has(readId(status.pipeline_id) ?? ""))
+            .map((status) => ({ ...toStatusItem(status), id: readId(status.id) }))
+            .filter((item) => isCiCdCheckItem(item, this.ciCdPattern));
+        return {
+            ...detailOf(hash, runs, pipelines.coverage, otherChecks, statuses.coverage),
+            // A tree that may mix two attempts is read again on the pending schedule.
+            ...(retriedMidRead && { complete: false }),
+            ...(sessionOnly && { sessionOnly }),
+            ...(scanCursors.length > 0 && { scanCursors }),
+        };
+    }
+
+    /**
+     * Reads one page of a failed pipeline's failed jobs and keeps those not already shown.
+     * A request-gate cooldown is reported as `pausedUntil`, never as a failure; never throws.
+     */
+    async continueFailedScan(
+        ref: ProviderRepoRef,
+        cursor: CiFailedScanCursor,
+    ): Promise<CiFailedScanPage> {
+        const gitLabRef = ref as GitLabRepoRef;
+        const refused = vscode.l10n.t("The provider's next-page link was refused.");
+        if (!this.allowNext(ref, cursor.url)) return { error: refused };
+        const token = await this.readToken(gitLabRef.host, "");
+        if (typeof token !== "string") return { error: token.error ?? "" };
+        const fetch = (url: string) => this.fetchWithMeta(url, { "PRIVATE-TOKEN": token });
+        // The budget is the failed-job count first read; a later page's count never replaces it.
+        let jobsTotal = cursor.jobsTotal;
+        const kept = () => (jobsTotal === undefined ? {} : { next: { ...cursor, jobsTotal } });
+        try {
+            const changed = {
+                runChanged: true,
+                error: vscode.l10n.t("Remote data changed. Reload and try again."),
+            } as const;
+            // A retried pipeline leaves the failed state and its new jobs replace the old ones; a
+            // retry that already failed again shows only as a rewritten `updated_at`. With no
+            // `updated_at` at all, only the status check can see a retry here, and a refresh
+            // rescans instead of carrying the scan (detailService carryScans).
+            const runChanged = async () => {
+                const response = await fetch(
+                    `${projectApiUrl(gitLabRef)}/pipelines/${encodeURIComponent(cursor.runId)}`,
+                );
+                const current = response.body as GitLabPipeline | null;
+                return (
+                    readString(current?.status) !== "failed" ||
+                    optionalString(current?.updated_at) !== cursor.runVersion
+                );
+            };
+            if (await runChanged()) return changed;
+            const response = await fetch(cursor.url);
+            // `null` remembers a missing first count, so a later page's count never fills it in.
+            if (jobsTotal === undefined) jobsTotal = totalHeader(response) ?? null;
+            if (await runChanged()) return changed;
+            const jobs = readArray<GitLabJob>(response.body);
+            const listed = new Set(cursor.listed);
+            const failed = jobs
+                .filter((job) => readString(job.status) === "failed")
+                .map((job) => toJob(job, cursor.runName))
+                .filter((job) => !listed.has(job.id));
+            const next = nextPageUrl(response, cursor.url);
+            if (next === undefined) {
+                // Without a version, a retry that failed again mid-scan is invisible, so the
+                // scan says it cannot vouch for its jobs instead of reporting done.
+                if (cursor.runVersion !== undefined) return { failed };
+                return {
+                    failed,
+                    error: vscode.l10n.t(
+                        "This pipeline has no update time, so a retry during the scan cannot be ruled out.",
+                    ),
+                };
+            }
+            const jobsRead = (cursor.jobsRead ?? 0) + jobs.length;
+            // Page numbers only rise, so a next page cannot loop back; a count reached or an
+            // empty page that links onward makes no progress. GitLab leaves out x-total on very
+            // large collections, and then the scan follows the next pages unbudgeted.
+            if (
+                !this.allowNext(ref, next) ||
+                jobs.length === 0 ||
+                (jobsTotal !== null && jobsRead >= jobsTotal)
+            ) {
+                return { failed, error: refused, ...kept() };
+            }
+            return { failed, next: { ...cursor, url: next, jobsRead, jobsTotal } };
+        } catch (err) {
+            if (err instanceof RequestGateCooldownError) {
+                return { pausedUntil: err.until, ...kept() };
+            }
+            // A 429 puts the gate into cooldown. A GitLab 403 is an auth or availability
+            // refusal, never a quota, so it stops the scan.
+            if (err instanceof HttpError && err.statusCode === 429) {
+                const until = this.cooldownEnd(cursor.url);
+                if (until > 0) return { pausedUntil: until, ...kept() };
+            }
+            const failed = failedSnapshot("", gitLabRef.host, err, token);
+            return { error: failed.error ?? "", ...kept() };
+        }
+    }
+
+    /**
+     * Continuation guard (K33): a next link must stay on `https://<host>` under this project's
+     * API path, `/api/v4/projects/<owner%2Frepo>/`.
+     */
+    allowNext(ref: ProviderRepoRef, url: string): boolean {
+        const { host, owner, repo } = ref as GitLabRepoRef;
+        return isUnderApiPrefix(url, `https://${host}`, [
+            `/api/v4/projects/${encodeURIComponent(`${owner}/${repo}`)}/`,
+        ]);
+    }
+
+    /** The stored token, or the snapshot to show when there is none or the store failed. */
+    private async readToken(host: string, hash: string): Promise<string | CommitChecksSnapshot> {
+        try {
+            const token = await this.store.get(host);
+            // No token: surface an actionable "unavailable" rather than hiding the badge
+            // as "none". The coordinator caches this terminal state, so a successful
+            // sign-in must clear the cache (see intelligit.commitChecks.signIn) for the
+            // badge to recover without a window reload.
+            return token || signInSnapshot(hash, host);
+        } catch (err) {
+            return unavailableSnapshot(hash, getErrorMessage(err));
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/** REST API v4 base of the remote's project, addressed by its URL-encoded path. */
+function projectApiUrl(ref: GitLabRepoRef): string {
+    return `https://${ref.host}/api/v4/projects/${encodeURIComponent(`${ref.owner}/${ref.repo}`)}`;
+}
+
+function signInSnapshot(hash: string, host: string): CommitChecksSnapshot {
+    return unavailableSnapshot(
+        hash,
+        vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
+        host,
+    );
+}
+
+/**
+ * The unavailable snapshot for a failed request: a sign-in prompt when the token was refused,
+ * else the error text with the token redacted.
+ */
+function failedSnapshot(
+    hash: string,
+    host: string,
+    reason: unknown,
+    token: string,
+): CommitChecksSnapshot {
+    const message = getErrorMessage(reason);
+    if (/\bHTTP (401|403)\b/i.test(message)) return signInSnapshot(hash, host);
+    // getErrorMessage redacts URL-embedded credentials; redactSecret strips the
+    // stored token in case a transport error echoed the PRIVATE-TOKEN header.
+    return unavailableSnapshot(hash, redactSecret(message, token));
+}
+
+/** The run-less detail for a snapshot that is unavailable; never complete. */
+function flatDetail(snapshot: CommitChecksSnapshot): CommitCiDetailData {
+    return {
+        hash: snapshot.hash,
+        provider: "gitlab",
+        complete: false,
+        outcome: snapshot.state,
+        runs: [],
+        runsCoverage: "full",
+        otherChecks: [],
+        otherChecksCoverage: "full",
+        error: snapshot.error,
+        signInHost: snapshot.signInHost,
+    };
+}
+
+function detailOf(
+    hash: string,
+    runs: CiRun[],
+    runsCoverage: CiCoverage,
+    otherChecks: CiFlatCheck[],
+    otherChecksCoverage: CiCoverage,
+): CommitCiDetailData {
+    const states = [
+        ...runs.flatMap((run) => [run.state, ...run.jobs.map((job) => job.state)]),
+        ...otherChecks.map((check) => check.state),
+    ];
+    const outcome = aggregateState(
+        states.map((state) => ({
+            state: state === "queued" || state === "running" ? "pending" : state,
+        })),
+    );
+    return {
+        hash,
+        provider: "gitlab",
+        complete: outcome !== "none" && !hasUnfinishedWork(runs, otherChecks),
+        outcome,
+        runs,
+        runsCoverage,
+        otherChecks,
+        otherChecksCoverage,
+    };
+}
+
+function toRun(
+    pipeline: GitLabPipeline,
+    id: string,
+    name: string,
+    jobs: CiJob[],
+    jobsCoverage: CiCoverage,
+): CiRun {
+    return {
+        id,
+        name: name || id,
+        url: optionalString(pipeline.web_url),
+        state: mapGitLabCiState(readString(pipeline.status)),
+        event: optionalString(pipeline.source),
+        actor: optionalString(pipeline.user?.username),
+        ref: optionalString(pipeline.ref),
+        runNumber: optionalNumber(pipeline.iid),
+        createdAt: optionalString(pipeline.created_at),
+        startedAt: optionalString(pipeline.started_at),
+        completedAt: optionalString(pipeline.finished_at),
+        jobs,
+        jobsCoverage,
+    };
+}
+
+/** Maps one job; `scope` is the pipeline name (empty when the pipeline has none). */
+function toJob(job: GitLabJob, scope: string): CiJob {
+    const id = readId(job.id) ?? "";
+    const name = readString(job.name) || id;
+    return {
+        id,
+        logicalId: logicalCheckId({ kind: "job", scope, name }),
+        name,
+        checkName: name,
+        state: mapGitLabCiState(readString(job.status)),
+        url: optionalString(job.web_url),
+        startedAt: optionalString(job.started_at),
+        completedAt: optionalString(job.finished_at),
+        steps: [],
+        ...(job.allow_failure === true && { optional: true }),
+    };
+}
+
+/**
+ * Jobs grouped by stage, stages in the order GitLab created them, as its pipeline view shows.
+ * A pipeline creates its jobs stage by stage, so the lowest job id of a stage dates it; a
+ * retried job gets a new, higher id but keeps its stage's place.
+ */
+function inStageOrder(jobs: GitLabJob[]): GitLabJob[] {
+    const byId = [...jobs].sort(
+        (a, b) => (optionalNumber(a.id) ?? 0) - (optionalNumber(b.id) ?? 0),
+    );
+    const stages = new Map<string, GitLabJob[]>();
+    for (const job of byId) {
+        const stage = readString(job.stage);
+        stages.set(stage, [...(stages.get(stage) ?? []), job]);
+    }
+    return [...stages.values()].flat();
+}
+
+/** Maps a GitLab pipeline or job `status` to the shared CI state. */
+function mapGitLabCiState(status: string): CiState {
+    switch (status) {
+        case "created":
+        case "waiting_for_resource":
+        case "preparing":
+        case "pending":
+        case "scheduled":
+        case "waiting_for_callback":
+            return "queued";
+        case "running":
+        case "canceling":
+            return "running";
+        case "success":
+            return "success";
+        case "failed":
+            return "failure";
+        case "canceled":
+            return "cancelled";
+        case "skipped":
+            return "skipped";
+        // A manual job waits for a person, not for CI; the snapshot shows it as settled too.
+        case "manual":
+            return "neutral";
+        default:
+            return "unknown";
+    }
+}
+
+/**
+ * The next page's URL from GitLab's `x-next-page` header: empty or absent on the last page.
+ * A value that is not a later page number throws, so a page whose next page cannot be read
+ * never counts as the last.
+ */
+function nextPageUrl(response: FetchResponse, url: string): string | undefined {
+    const next = String(response.headers["x-next-page"] ?? "").trim();
+    if (!next) return undefined;
+    const target = new URL(url);
+    const page = Number(target.searchParams.get("page") ?? "1");
+    if (!/^\d+$/.test(next) || Number(next) <= page) {
+        throw new Error(vscode.l10n.t("Malformed x-next-page header."));
+    }
+    target.searchParams.set("page", next);
+    return target.href;
+}
+
+/** GitLab's `x-total` item count; absent for very large collections. */
+function totalHeader(response: FetchResponse): number | undefined {
+    const total = String(response.headers["x-total"] ?? "").trim();
+    return /^\d+$/.test(total) ? Number(total) : undefined;
+}
+
+function readArray<T>(body: unknown): T[] {
+    return Array.isArray(body) ? (body as T[]) : [];
+}
+
+function readId(value: unknown): string | undefined {
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    return typeof value === "string" && value ? value : undefined;
+}
+
+function optionalString(value: unknown): string | undefined {
+    return readString(value) || undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
 
 /**
  * Builds a terminal snapshot that reports no checks were found.

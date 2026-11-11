@@ -38,7 +38,13 @@ export function createCommitChecksProviders(
             gatedFetchWithMeta(requestGateRegistry, "github"),
             (url) => requestGateRegistry.cooldownEnd("github", url),
         ),
-        new GitLabProvider(fetchFor("gitlab"), credentialStore, ciCdPattern),
+        new GitLabProvider(
+            fetchFor("gitlab"),
+            credentialStore,
+            ciCdPattern,
+            gatedFetchWithMeta(requestGateRegistry, "gitlab"),
+            (url) => requestGateRegistry.cooldownEnd("gitlab", url),
+        ),
         new BitbucketCloudProvider(fetchFor("bitbucket-cloud"), credentialStore),
         new BitbucketServerProvider(fetchFor("bitbucket-server"), credentialStore),
     ];

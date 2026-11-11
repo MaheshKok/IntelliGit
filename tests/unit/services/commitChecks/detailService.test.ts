@@ -210,12 +210,12 @@ describe("CommitCiDetailService", () => {
         expect(fetchDetail).toHaveBeenCalledTimes(1);
     });
 
-    it("the detail contract version is 2: details carry and accept 2, and a version 1 entry is a miss", async () => {
-        expect(CI_DETAIL_CONTRACT_VERSION).toBe(2);
+    it("the detail contract version is 3: details carry and accept 3, and an older entry is a miss", async () => {
+        expect(CI_DETAIL_CONTRACT_VERSION).toBe(3);
         const state = memento();
         await service(state, () => 1_000).service.getOrFetch(KEY, async () => detail(), SERVE);
         const saved = state.values.get(STORAGE_KEY) as { entries: { contractVersion: number }[] };
-        expect(saved.entries.map((entry) => entry.contractVersion)).toEqual([2]);
+        expect(saved.entries.map((entry) => entry.contractVersion)).toEqual([3]);
 
         const written = (contractVersion: number) => {
             const stored = memento();
@@ -235,12 +235,12 @@ describe("CommitCiDetailService", () => {
         };
         const fetchDetail = vi.fn(async () => detail({ outcome: "success" }));
         await expect(
-            service(written(2), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
+            service(written(3), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
         ).resolves.toMatchObject({ outcome: "failure" });
         expect(fetchDetail).not.toHaveBeenCalled();
-        // Phase 1 entries predate snapshot item ids and job logical ids.
+        // Version 2 entries hold GitLab details as flat lists, before its pipelines were read.
         await expect(
-            service(written(1), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
+            service(written(2), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
         ).resolves.toMatchObject({ outcome: "success" });
         expect(fetchDetail).toHaveBeenCalledTimes(1);
     });
@@ -291,6 +291,34 @@ describe("CommitCiDetailService", () => {
             ]);
             expect(await persistent.get(KEY)).toBeUndefined();
             expect(state.values.has(STORAGE_KEY)).toBe(false);
+        });
+
+        it("a GitHub job found by the scan keeps a status context that only shares its number", async () => {
+            const posts: CommitCiDetail[] = [];
+            const status = {
+                id: "1050",
+                name: "1050",
+                description: "external CI",
+                source: "status" as const,
+                state: "failure" as const,
+            };
+            await service().service.getOrFetch(
+                KEY,
+                async () => ({ ...capped(), otherChecks: [status] }),
+                SERVE,
+                {},
+                undefined,
+                {
+                    continueScan: async () => ({ failed: [failed("1050")] }),
+                    isCurrent: () => true,
+                    onUpdate: (served) => posts.push(served),
+                },
+            );
+            await vi.waitFor(() => expect(posts.at(-1)?.runs[0].failedScan?.state).toBe("done"));
+            expect(
+                posts.at(-1)?.otherChecks,
+                "GitHub status contexts and job ids are separate identities",
+            ).toEqual([status]);
         });
 
         const rerunFence = {
@@ -741,6 +769,25 @@ describe("CommitCiDetailService", () => {
         expect(next).toHaveBeenCalledTimes(1);
     });
 
+    it("a saved copy that a session-only read failed to delete is not served after eviction", async () => {
+        const persistent = new CiDetailPersistentCache(memento());
+        const details = new CommitCiDetailService({ persistentCache: persistent, maxEntries: 1 });
+        await details.getOrFetch(KEY, async () => detail({ outcome: "success" }), SERVE);
+        vi.spyOn(persistent, "delete").mockRejectedValueOnce(new Error("storage down"));
+        await details.getOrFetch(KEY, async () => ({ ...detail(), sessionOnly: true }), SERVE, {
+            force: true,
+        });
+        // Another commit's detail pushes the session-only entry out of memory.
+        await details.getOrFetch(`${KEY}-other`, async () => detail(), SERVE);
+        const next = vi.fn(async () => detail());
+        const again = await details.getOrFetch(KEY, next, SERVE);
+        expect(
+            next,
+            "a failed session-only deletion must block the stale saved copy after eviction",
+        ).toHaveBeenCalledTimes(1);
+        expect(again.outcome).toBe("failure");
+    });
+
     it("an unavailable detail marked complete is retried after its TTL and never saved", async () => {
         let now = 0;
         const { service: details, persistent } = service(memento(), () => now);
@@ -1000,6 +1047,26 @@ describe("CommitCiDetailService", () => {
             { outcome: "pending" },
         );
         expect(refetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("a settled copy a forced refresh failed to drop is not served once the refresh expires", async () => {
+        let now = 1_000;
+        const { service: details, persistent } = service(memento(), () => now);
+        await details.getOrFetch(KEY, async () => detail(), SERVE);
+        vi.spyOn(persistent, "delete").mockRejectedValueOnce(new Error("storage down"));
+        await details.getOrFetch(
+            KEY,
+            async () => detail({ complete: false, outcome: "pending" }),
+            SERVE,
+            { force: true },
+        );
+        now += 31_000;
+        const next = vi.fn(async () => detail({ complete: false, outcome: "pending" }));
+        await details.getOrFetch(KEY, next, SERVE);
+        expect(
+            next,
+            "a settled copy that could not be dropped must not come back after the TTL",
+        ).toHaveBeenCalledTimes(1);
     });
 
     it("invalidate deletes the persisted entry (new service over the same Memento misses)", async () => {

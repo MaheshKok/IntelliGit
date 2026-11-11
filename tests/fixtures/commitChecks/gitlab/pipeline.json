@@ -1,0 +1,41 @@
+{
+    "id": 1427803,
+    "iid": 312,
+    "project_id": 278964,
+    "name": "Build pipeline",
+    "status": "failed",
+    "source": "push",
+    "ref": "main",
+    "sha": "e83c5163316f89bfbde7d9ab23ca2e25604af290",
+    "before_sha": "a91957a858320c0e17f3a0eca7cfacbff50ea29a",
+    "tag": false,
+    "yaml_errors": null,
+    "user": {
+        "id": 1,
+        "username": "jdoe",
+        "name": "Jane Doe",
+        "state": "active",
+        "avatar_url": "https://gitlab.com/uploads/-/system/user/avatar/1/avatar.png",
+        "web_url": "https://gitlab.com/jdoe"
+    },
+    "created_at": "2026-11-08T14:40:12.501Z",
+    "updated_at": "2026-11-08T14:58:41.112Z",
+    "started_at": "2026-11-08T14:40:15.044Z",
+    "finished_at": "2026-11-08T14:58:40.987Z",
+    "committed_at": null,
+    "duration": 1105,
+    "queued_duration": 2,
+    "coverage": null,
+    "web_url": "https://gitlab.com/gitlab-org/gitlab-runner/-/pipelines/1427803",
+    "detailed_status": {
+        "icon": "status_failed",
+        "text": "Failed",
+        "label": "failed",
+        "group": "failed",
+        "tooltip": "failed",
+        "has_details": true,
+        "details_path": "/gitlab-org/gitlab-runner/-/pipelines/1427803",
+        "illustration": null,
+        "favicon": "/assets/ci_favicons/favicon_status_failed.png"
+    }
+}
