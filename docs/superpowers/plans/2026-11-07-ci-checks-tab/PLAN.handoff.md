@@ -54,6 +54,21 @@
 - `optional: true` is set from `allow_failure` while `optionalJobs` stays false until Phase 9.
 - Translations for the two new strings were written by the builder, not an outside source.
 
+## Phase 5: GitNexus
+- index stale, NOT clean. Indexed commit 64d390b0a7b0c4c74be0464890fc1a9ba9c9a23d, `staleness.commitsBehind` 10; run by the Phase 5 session on base c246d0d4 under the owner's Phase 3 answer "A: use old map", which the delivery lead applies to Phase 5. The plan's Every-phase rule (PLAN.md:844) is met for Phase 5 by this run plus the text search below. Builders and reviewers must not halt on PLAN.md:844 for Phase 5. Do not re-index.
+- Impact, direction upstream (index stale, NOT clean):
+  - createHttpGetJsonWithMeta (http.ts:75): HIGH (shared axes LOW), exact; 2 direct, 19 total; modules CommitChecks, Git, Views.
+  - FetchJson (http.ts type): HIGH (shared axes LOW), exact; 1 direct, 13 total.
+  - CommitChecksRequestGateRegistry.observeResponse (requestGate.ts:84): HIGH (shared axes LOW), lower bound (2 call sites dropped); direct: commitChecksProviders.ts fetchJson (fetchFor) and gatedFetchWithMeta.
+  - GitHubProvider.getChecks, GitLabProvider.getChecks: UNKNOWN; 0 resolved, 19 call sites dropped for receiver typing, interface with 4 implementations. Text search of src/: one production caller, coordinator.ts:418 (fetchChecks); coordinator getChecks callers CommitGraphViewProvider.ts:869 and UndockedViewProvider.ts:1877.
+  - GitHubRequestGate.observeResponse (requestGate.ts:212): UNKNOWN, 0 resolved.
+  - createHttpGetJson (http.ts:63): LOW, 19 total (name also matches a test mock).
+  - http.ts (file): MEDIUM, 9 direct.
+  - LOW: createCommitChecksProviders (1 direct, activateRepositoryMode), fetchAllCheckRuns, fetchAllStatuses, GitHubProvider.fetchSnapshot (4 or fewer total, via readDetail), CommitChecksCoordinator.fetchSnapshot (9 total), gatedFetchWithMeta (2 total), ProviderRequestGate.observeResponse (6 total).
+- Badge path reaches every user: the badge snapshot requests are not behind the Checks tab switch (that switch guards only ciDetailHandler.ts:59). Requests that gain If-None-Match: githubProvider.ts:835 and :845 (check-runs), :870 and :880 (statuses), gitlabProvider.ts:288 (statuses). tests/unit/e2e/ciFixture.test.ts:95-96 asserts no HTTP detail and needs no change.
+- Nothing on the badge path knows at call time whether a commit is incomplete (getChecks takes `(ref, hash)`); the incomplete flag has to come from the coordinator (fetchChecks, coordinator.ts:416-418) or the badge cache, from the previous snapshot of that hash. authGeneration (ciGenerations.ts:14, created at repositoryMode.ts:293 before createCommitChecksProviders at :317) can be read live in commitChecksProviders.ts.
+- Delivery lead's limit for Phase 5: do NOT edit coordinator.withAccount or src/services/commitChecks/detailService.ts (queued Phase 18 items attach there). A builder that finds it must edit either one HALTS with the reason instead.
+
 ## Next phase
 - Phase 5.
 
