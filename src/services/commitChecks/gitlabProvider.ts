@@ -349,26 +349,39 @@ export class GitLabProvider implements CommitChecksProvider {
         );
         const runs: CiRun[] = [];
         const scanCursors: CiFailedScanCursor[] = [];
+        let retriedMidRead = false;
         for (const listed of pipelines.items) {
             const runId = readId(listed.id);
             if (runId === undefined) continue;
             // Serial, so one commit's many pipelines never take every gate slot at once.
             // react-doctor-disable-next-line react-doctor/async-await-in-loop
-            const pipeline = ((await fetch(`${base}/pipelines/${runId}`)).body ??
-                {}) as GitLabPipeline;
-            const runName = readString(pipeline.name);
-            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             const jobsPage = await pages(
                 `${base}/pipelines/${runId}/jobs?per_page=${CI_PAGE_SIZE}`,
                 readArray<GitLabJob>,
             );
+            // The header is read after the jobs, so a retry while they were paged shows as a
+            // record that differs from the list's. With no `updated_at` only the status can; a
+            // field the list left out cannot be compared and is never taken for a retry.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            const pipeline = ((await fetch(`${base}/pipelines/${runId}`)).body ??
+                {}) as GitLabPipeline;
+            const listedStatus = readString(listed.status);
+            const listedVersion = optionalString(listed.updated_at);
+            if (
+                (listedStatus && listedStatus !== readString(pipeline.status)) ||
+                (listedVersion && listedVersion !== optionalString(pipeline.updated_at))
+            ) {
+                retriedMidRead = true;
+            }
+            const runVersion = listedVersion ?? optionalString(pipeline.updated_at);
+            const runName = readString(pipeline.name);
             const jobs = inStageOrder(jobsPage.items).map((job) => toJob(job, runName));
             const run = toRun(pipeline, runId, runName, jobs, jobsPage.coverage);
             runs.push(run);
             if (run.state === "failure" && jobsPage.next) {
                 // The failed-only collection is read from its first page; jobs already shown
-                // are skipped by id.
-                const runVersion = optionalString(pipeline.updated_at);
+                // are skipped by id. The version is the one the jobs were read under, so a
+                // retry mid-read stops the scan at its first check.
                 scanCursors.push({
                     runId,
                     ...(runVersion && { runVersion }),
@@ -390,6 +403,8 @@ export class GitLabProvider implements CommitChecksProvider {
             .filter((item) => isCiCdCheckItem(item, this.ciCdPattern));
         return {
             ...detailOf(hash, runs, pipelines.coverage, otherChecks, statuses.coverage),
+            // A tree that may mix two attempts is read again on the pending schedule.
+            ...(retriedMidRead && { complete: false }),
             ...(scanCursors.length > 0 && { scanCursors }),
         };
     }
@@ -442,7 +457,17 @@ export class GitLabProvider implements CommitChecksProvider {
                 .map((job) => toJob(job, cursor.runName))
                 .filter((job) => !listed.has(job.id));
             const next = nextPageUrl(response, cursor.url);
-            if (next === undefined) return { failed };
+            if (next === undefined) {
+                // Without a version, a retry that failed again mid-scan is invisible, so the
+                // scan says it cannot vouch for its jobs instead of reporting done.
+                if (cursor.runVersion !== undefined) return { failed };
+                return {
+                    failed,
+                    error: vscode.l10n.t(
+                        "This pipeline has no update time, so a retry during the scan cannot be ruled out.",
+                    ),
+                };
+            }
             const jobsRead = (cursor.jobsRead ?? 0) + jobs.length;
             // Page numbers only rise, so a next page cannot loop back; a count reached or an
             // empty page that links onward makes no progress. GitLab leaves out x-total on very

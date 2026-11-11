@@ -156,10 +156,12 @@ under **Other checks**. When a failed pipeline has more than 1,000 jobs, Intelli
 then reads the pipeline's failed jobs on their own, one page at a time, and adds the
 ones not already listed, and their statuses leave **Other checks**; the scan pauses,
 stops and resumes the same way as GitHub's. If the pipeline is retried while the scan is
-reading, even when the retry fails again, the scan stops and Refresh reads it again. If
-GitLab gives the pipeline no update time, a retry that fails again cannot be seen while
-the scan reads, so Refresh always reads the failed jobs again from the start. A
-GitLab 403 is treated as a missing permission, never as a rate limit.
+reading, even when the retry fails again, the scan stops and Refresh reads it again. A
+pipeline retried while its first 1,000 jobs are read is shown as still settling and read
+again shortly. If GitLab gives the pipeline no update time, a retry that fails again
+cannot be seen while the scan reads, so the scan ends as stopped with that reason instead
+of done, and Refresh reads the failed jobs again from the start. A GitLab 403 is treated
+as a missing permission, never as a rate limit.
 Next-page links are followed only on the GitLab host under the project's own API path.
 
 Diagnostic lines for CI requests go to the **IntelliGit CI** output channel. They name

@@ -990,5 +990,6 @@
     "Commit checks error: {message}": "Erro nas verificações de commits: {message}",
     "The provider's next-page link was refused.": "A ligação do fornecedor para a página seguinte foi recusada.",
     "Malformed Link header.": "Cabeçalho Link malformado.",
-    "Malformed x-next-page header.": "Cabeçalho x-next-page malformado."
+    "Malformed x-next-page header.": "Cabeçalho x-next-page malformado.",
+    "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "Este pipeline não tem hora de atualização, pelo que não é possível excluir uma nova tentativa durante a análise."
 }

@@ -990,5 +990,6 @@
     "Commit checks error: {message}": "Błąd sprawdzeń commitów: {message}",
     "The provider's next-page link was refused.": "Odrzucono link dostawcy do następnej strony.",
     "Malformed Link header.": "Nieprawidłowy nagłówek Link.",
-    "Malformed x-next-page header.": "Nieprawidłowy nagłówek x-next-page."
+    "Malformed x-next-page header.": "Nieprawidłowy nagłówek x-next-page.",
+    "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "Ten potok nie ma czasu aktualizacji, więc nie można wykluczyć ponowienia podczas skanowania."
 }

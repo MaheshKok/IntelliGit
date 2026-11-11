@@ -990,5 +990,6 @@
     "Commit checks error: {message}": "提交檢查錯誤：{message}",
     "The provider's next-page link was refused.": "已拒絕提供者的下一頁連結。",
     "Malformed Link header.": "Link 標頭格式不正確。",
-    "Malformed x-next-page header.": "x-next-page 標頭格式不正確。"
+    "Malformed x-next-page header.": "x-next-page 標頭格式不正確。",
+    "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "此管線沒有更新時間，因此無法排除掃描期間發生重試的可能。"
 }

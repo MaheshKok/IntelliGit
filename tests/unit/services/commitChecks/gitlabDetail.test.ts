@@ -38,6 +38,8 @@ const KEY = `gitlab:repo@${SHA}:-#detail`;
 const SERVE = { repoKey: "repo", capabilities: NO_CI_CAPABILITIES };
 const REFUSED = "The provider's next-page link was refused.";
 const CHANGED = "Remote data changed. Reload and try again.";
+const UNVERIFIED =
+    "This pipeline has no update time, so a retry during the scan cannot be ruled out.";
 /** The fields GitLab's project pipeline list carries, as recorded; no user, no duration. */
 const LIST_FIELDS = Object.keys(pipelinesFixture[0]);
 
@@ -409,6 +411,58 @@ describe("GitLabProvider.getDetail", () => {
         expect(detail.scanCursors).toBeUndefined();
     });
 
+    it.each([
+        ["green", "success", "2026-11-11T10:00:00.000Z"],
+        // Failed again: only the rewritten record tells the attempts apart.
+        ["failed again", "failed", "2026-11-11T10:00:00.000Z"],
+        // No update time on either read: only the status can.
+        ["green, no update time", "success", null],
+    ])(
+        "a pipeline retried (%s) while its jobs are paged is never a settled tree",
+        async (_case, status, updatedAt) => {
+            const retried = pipeline({
+                status: "failed",
+                ...(updatedAt === null && { updated_at: null }),
+            });
+            const st = state({
+                pipelines: [retried],
+                jobsByPipeline: new Map([[PIPELINE_ID, jobs(150, "failed")]]),
+            });
+            // The retry finishes while job page 2 is in flight: new job ids and a rewritten
+            // pipeline record.
+            st.onRequest = (url) => {
+                if (jobPages([url])[0] !== 2) return;
+                retried.status = status;
+                retried.updated_at = updatedAt;
+                st.jobsByPipeline.set(PIPELINE_ID, jobs(150, status, 2001));
+            };
+            const gl = fakeGitLab(st);
+
+            const detail = await provider(gl).getDetail(ref, SHA);
+
+            expect(jobPages(gl.log)).toEqual([1, 2]);
+            const ids = detail.runs[0].jobs.map((j: CiJob) => Number(j.id));
+            expect(ids.filter((id) => id < 2000)).toHaveLength(100);
+            expect(ids.filter((id) => id > 2000)).toHaveLength(50);
+            expect(detail.complete, "a tree mixing two attempts is read again, never settled").toBe(
+                false,
+            );
+        },
+    );
+
+    it("a pipeline list entry without status or update time is not taken for a retry", async () => {
+        const gl = fakeGitLab(state());
+        // A list that names only the id: nothing to compare the header with.
+        const gitlab = provider(gl, async (url, headers) => {
+            const response = await gl.fetchWithMeta(url, headers);
+            if (!new URL(url).pathname.endsWith("/pipelines")) return response;
+            return { ...response, body: (response.body as Json[]).map(({ id }) => ({ id })) };
+        });
+        const detail = await gitlab.getDetail(ref, SHA);
+        expect(detail.runs[0].state).toBe("success");
+        expect(detail.complete, "a field the list left out is no sign of a retry").toBe(true);
+    });
+
     it("statuses that belong to no pipeline go to other checks with their identity", async () => {
         const pipelineJobs = [job(1, "success", { name: "unit tests" })];
         const external = {
@@ -650,37 +704,50 @@ describe("GitLab failed-job overflow scan", () => {
         ).toEqual({ error: "Sign in to gitlab.com to view commit checks." });
     });
 
-    it("a pipeline retried before or during a scan page stops the scan", async () => {
+    it("a pipeline retried before a scan page stops the scan without reading it", async () => {
         const cursor: CiFailedScanCursor = {
             runId: PIPELINE_ID,
             runVersion: pipelineFixture.updated_at,
             runName: "Build pipeline",
             url: `${PROJECT}/pipelines/${PIPELINE_ID}/jobs?scope%5B%5D=failed&per_page=100`,
         };
-        const failedJobs = new Map([[PIPELINE_ID, jobs(3, "failed")]]);
         const before = fakeGitLab(
-            state({ pipelines: [pipeline({ status: "running" })], jobsByPipeline: failedJobs }),
+            state({
+                pipelines: [pipeline({ status: "running" })],
+                jobsByPipeline: new Map([[PIPELINE_ID, jobs(3, "failed")]]),
+            }),
         );
         expect(await provider(before).continueFailedScan(ref, cursor)).toEqual({
             runChanged: true,
             error: CHANGED,
         });
         expect(scanPages(before.log), "nothing is read of a retried pipeline").toEqual([]);
+    });
 
+    it("a pipeline retried during a scan page discards the page it read", async () => {
+        const cursor: CiFailedScanCursor = {
+            runId: PIPELINE_ID,
+            runVersion: pipelineFixture.updated_at,
+            runName: "Build pipeline",
+            url: `${PROJECT}/pipelines/${PIPELINE_ID}/jobs?scope%5B%5D=failed&per_page=100`,
+        };
         const retried = pipeline({ status: "failed" });
         const during = fakeGitLab(
             state({
                 pipelines: [retried],
-                jobsByPipeline: failedJobs,
+                jobsByPipeline: new Map([[PIPELINE_ID, jobs(3, "failed")]]),
                 onRequest: (url) => {
                     if (url === cursor.url) retried.status = "pending";
                 },
             }),
         );
+        // No `failed` key: the three jobs the page returned are dropped.
         expect(await provider(during).continueFailedScan(ref, cursor)).toEqual({
             runChanged: true,
             error: CHANGED,
         });
+        expect(scanPages(during.log), "the page itself was requested").toEqual([1]);
+        expect(retried.status, "the retry happened while the page was read").toBe("pending");
     });
 
     it("a scan stops once it has read the failed-job count its first page named", async () => {
@@ -810,7 +877,7 @@ describe("GitLab failed-job overflow scan", () => {
         });
         const { get, last } = scanning(provider(fakeGitLab(st)));
         await get();
-        await vi.waitFor(() => expect(last()?.runs[0].failedScan?.state).toBe("done"));
+        await vi.waitFor(() => expect(last()?.runs[0].failedScan?.state).toBe("stopped"));
 
         // A retry that failed again; with no version GitLab gives nothing else to compare.
         st.jobsByPipeline.set(PIPELINE_ID, [...jobs(1000), ...jobs(50, "failed", 2001)]);
@@ -819,8 +886,33 @@ describe("GitLab failed-job overflow scan", () => {
             refreshed.runs[0].jobs.filter((j: CiJob) => Number(j.id) > 1000 && Number(j.id) < 2001),
             "unknown version must not reuse old-attempt jobs",
         ).toEqual([]);
-        await vi.waitFor(() => expect(last()?.runs[0].failedScan?.state).toBe("done"));
+        await vi.waitFor(() => expect(last()?.runs[0].failedScan?.state).toBe("stopped"));
         expect(last().runs[0].jobs.filter((j: CiJob) => Number(j.id) > 2000)).toHaveLength(50);
+    });
+
+    it("a scan with no update time to compare ends stopped, never done", async () => {
+        const st = state({
+            pipelines: [pipeline({ status: "failed", updated_at: null })],
+            jobsByPipeline: new Map([[PIPELINE_ID, [...jobs(1000), ...jobs(250, "failed", 1001)]]]),
+        });
+        // A retry that fails again while scan page 2 is in flight; the record GitLab returns
+        // stays the same, so nothing shows the switch.
+        st.onRequest = (url) => {
+            if (!isScanPage(url, 2)) return;
+            st.jobsByPipeline.set(PIPELINE_ID, [...jobs(1000), ...jobs(250, "failed", 2001)]);
+        };
+        const gl = fakeGitLab(st);
+        const { get, last } = scanning(provider(gl));
+
+        await get();
+        await vi.waitFor(() =>
+            expect(["stopped", "done"]).toContain(last()?.runs[0].failedScan?.state),
+        );
+        expect(scanPages(gl.log)).toEqual([1, 2, 3]);
+        expect(
+            last().runs[0].failedScan,
+            "with no retry identity the scan reports it, keeping the failed jobs it found",
+        ).toEqual({ state: "stopped", found: 250, error: UNVERIFIED });
     });
 
     it("a scan started with no updated_at stops once the pipeline names one", async () => {

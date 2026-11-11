@@ -990,5 +990,6 @@
     "Commit checks error: {message}": "커밋 검사 오류: {message}",
     "The provider's next-page link was refused.": "공급자의 다음 페이지 링크가 거부되었습니다.",
     "Malformed Link header.": "Link 헤더의 형식이 잘못되었습니다.",
-    "Malformed x-next-page header.": "x-next-page 헤더의 형식이 잘못되었습니다."
+    "Malformed x-next-page header.": "x-next-page 헤더의 형식이 잘못되었습니다.",
+    "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "이 파이프라인에는 업데이트 시간이 없으므로 스캔 중 재시도가 있었는지 배제할 수 없습니다."
 }

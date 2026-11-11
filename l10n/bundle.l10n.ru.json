@@ -990,5 +990,6 @@
     "Commit checks error: {message}": "Ошибка проверок коммитов: {message}",
     "The provider's next-page link was refused.": "Ссылка поставщика на следующую страницу отклонена.",
     "Malformed Link header.": "Некорректный заголовок Link.",
-    "Malformed x-next-page header.": "Некорректный заголовок x-next-page."
+    "Malformed x-next-page header.": "Некорректный заголовок x-next-page.",
+    "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "У этого конвейера нет времени обновления, поэтому нельзя исключить повторный запуск во время сканирования."
 }
