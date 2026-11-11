@@ -3,8 +3,9 @@
 
 import { getErrorMessage } from "../../utils/errors";
 import {
-    createHttpGetJsonWithMeta,
+    createConditionalRequest,
     HttpError,
+    recoverBodylessNotModified,
     type FetchJsonWithMeta,
     type HttpResponseMetadata,
 } from "./http";
@@ -144,7 +145,8 @@ export class CommitChecksRequestGateRegistry {
 
 /**
  * A metadata fetch whose every request runs through the registry's bucket for `providerId` and
- * reports its response to that bucket, like activation's gated `FetchJson`.
+ * reports its response to that bucket, like activation's gated `FetchJson`. The re-request after
+ * a body-less 304 is a request of its own: the bucket admits and counts it, cooldown included.
  *
  * @param registry - The request gate registry shared by every provider.
  * @param providerId - Provider whose bucket gates and observes the requests.
@@ -153,14 +155,15 @@ export class CommitChecksRequestGateRegistry {
 export function gatedFetchWithMeta(
     registry: CommitChecksRequestGateRegistry,
     providerId: ProviderId,
-    create: typeof createHttpGetJsonWithMeta = createHttpGetJsonWithMeta,
+    create: typeof createConditionalRequest = createConditionalRequest,
 ): FetchJsonWithMeta {
-    return (url, headers, conditional) =>
+    return recoverBodylessNotModified((url, headers, conditional, revalidate) =>
         registry.run(providerId, url, (generation) =>
             create((response) => {
                 registry.observeResponse(providerId, response, generation);
-            })(url, headers, conditional),
-        );
+            })(url, headers, conditional, revalidate),
+        ),
+    );
 }
 
 /**

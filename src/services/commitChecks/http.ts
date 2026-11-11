@@ -4,6 +4,7 @@
 // Injecting this `FetchJson` boundary keeps provider mapping logic unit-testable
 // without module mocking.
 
+import { createHash } from "crypto";
 import * as https from "https";
 import type { EtagStore } from "./etagStore";
 
@@ -90,12 +91,56 @@ export function createHttpGetJson(
 export function createHttpGetJsonWithMeta(
     onResponse?: (metadata: HttpResponseMetadata) => void,
 ): FetchJsonWithMeta {
+    return recoverBodylessNotModified(createConditionalRequest(onResponse));
+}
+
+/**
+ * One metadata request. With `revalidate` false it names no etag at all, and a 304 rejects as
+ * `HttpError`; with `revalidate` true a 304 no stored body stands for rejects as
+ * `BodylessNotModifiedError`, for `recoverBodylessNotModified` to ask again.
+ */
+type ConditionalRequest = (
+    url: string,
+    headers: Record<string, string>,
+    conditional?: EtagStore,
+    revalidate?: boolean,
+) => Promise<FetchResponse>;
+
+/** A 304 to a request no stored body stands for; it is asked again without `If-None-Match`. */
+class BodylessNotModifiedError extends Error {}
+
+/**
+ * Turns a body-less 304 into one more request without `If-None-Match`, made through `request`
+ * as a request of its own, so a gate admits and counts it like any other.
+ */
+export function recoverBodylessNotModified(request: ConditionalRequest): FetchJsonWithMeta {
     return async (url, headers, conditional) => {
-        // Taken when the request is sent: a 304 answers the etag sent, and a 200 is stored
-        // under the auth generation whose token read it.
+        try {
+            return await request(url, headers, conditional, true);
+        } catch (error) {
+            if (!(error instanceof BodylessNotModifiedError)) throw error;
+            return request(url, headers, conditional, false);
+        }
+    };
+}
+
+/** Creates the single-request core of `createHttpGetJsonWithMeta`. */
+export function createConditionalRequest(
+    onResponse?: (metadata: HttpResponseMetadata) => void,
+): ConditionalRequest {
+    return async (url, headers, conditional, revalidate = true) => {
+        // The entry also records which request headers (the token among them) read its body, so
+        // a body is only ever reused for the same credentials, whichever window changed them.
+        const unconditional = withoutIfNoneMatch(headers);
+        const requestHash = headersHash(unconditional);
         const key = conditional?.keyFor(url);
-        const stored = key === undefined ? undefined : conditional?.get(key);
-        const sentHeaders = stored ? { ...headers, "If-None-Match": stored.etag } : headers;
+        const entry = revalidate && key !== undefined ? conditional?.get(key) : undefined;
+        const stored = entry?.requestHash === requestHash ? entry : undefined;
+        const sentHeaders = stored
+            ? { ...unconditional, "If-None-Match": stored.etag }
+            : revalidate
+              ? headers
+              : unconditional;
         const response = await send(url, sentHeaders, onResponse);
         if (response.statusCode === 304 && conditional && key !== undefined) {
             if (stored) {
@@ -105,11 +150,25 @@ export function createHttpGetJsonWithMeta(
                     body: parseJson(stored.body),
                 };
             }
-            // A 304 to a request that named no etag has no body to stand for: ask once more.
-            return toFetchResponse(await send(url, headers, onResponse), conditional, key);
+            if (revalidate) throw new BodylessNotModifiedError("HTTP 304 without a stored body");
         }
-        return toFetchResponse(response, conditional, key);
+        return toFetchResponse(response, conditional, key, requestHash);
     };
+}
+
+/** `headers` without any `If-None-Match`, whatever its case. */
+function withoutIfNoneMatch(headers: Record<string, string>): Record<string, string> {
+    return Object.fromEntries(
+        Object.entries(headers).filter(([name]) => name.toLowerCase() !== "if-none-match"),
+    );
+}
+
+/** A digest of the request headers, so the store keeps no token. */
+function headersHash(headers: Record<string, string>): string {
+    const entries = Object.entries(headers)
+        .map(([name, value]) => [name.toLowerCase(), value])
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return createHash("sha256").update(JSON.stringify(entries)).digest("hex");
 }
 
 /** One HTTPS GET; the observer sees the response before its status is judged. */
@@ -152,8 +211,9 @@ function send(
  */
 function toFetchResponse(
     response: RawResponse,
-    conditional?: EtagStore,
-    key?: string,
+    conditional: EtagStore | undefined,
+    key: string | undefined,
+    requestHash: string,
 ): FetchResponse {
     const { statusCode, headers, data } = response;
     if (statusCode < 200 || statusCode >= 300) {
@@ -167,7 +227,7 @@ function toFetchResponse(
             const value = headers[name];
             if (value !== undefined) pagination[name] = value;
         }
-        conditional.set(key, { etag, body: data, pagination });
+        conditional.set(key, { etag, body: data, pagination, requestHash });
     }
     return { statusCode, headers, body };
 }

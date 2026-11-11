@@ -33,7 +33,10 @@ import {
     CommitChecksRequestGateRegistry,
     gatedFetchWithMeta,
 } from "../../../../src/services/commitChecks/requestGate";
-import type { ProviderRepoRef } from "../../../../src/services/commitChecks/types";
+import type {
+    CommitChecksProvider,
+    ProviderRepoRef,
+} from "../../../../src/services/commitChecks/types";
 
 type Headers = Record<string, string | string[] | undefined>;
 interface Sent {
@@ -181,6 +184,91 @@ describe("ETag conditional requests on the metadata fetch", () => {
         expect(sent).toHaveLength(2);
     });
 
+    it("the re-request after a body-less 304 drops a caller's If-None-Match in any case", async () => {
+        const sent = stubSequence([{ status: 304 }, { status: 200, body: "{}" }]);
+
+        await createHttpGetJsonWithMeta()(
+            URL_1,
+            { "if-none-match": '"external"', Authorization: "Bearer t" },
+            new EtagStore(() => 0),
+        );
+
+        expect(
+            Object.keys(sent[1].headers).filter((name) => name.toLowerCase() === "if-none-match"),
+            "the re-request must be unconditional",
+        ).toEqual([]);
+        expect(sent[1].headers.Authorization).toBe("Bearer t");
+    });
+
+    it("the re-request after a body-less 304 is refused while that 304 reported a cooldown", async () => {
+        const now = Date.now();
+        const registry = new CommitChecksRequestGateRegistry("cooling down", () => now);
+        const sent = stubSequence([
+            {
+                status: 304,
+                headers: {
+                    "x-ratelimit-limit": "5000",
+                    "x-ratelimit-remaining": "0",
+                    "x-ratelimit-reset": String(Math.floor(now / 1000) + 60),
+                },
+            },
+            { status: 200, body: "{}" },
+        ]);
+
+        const failure = gatedFetchWithMeta(registry, "github")(URL_1, {}, new EtagStore(() => 0));
+
+        await expect(failure).rejects.toMatchObject({ statusCode: 429 });
+        expect(sent, "the re-request waits for the cooldown like any request").toHaveLength(1);
+    });
+
+    it("the re-request after a body-less 304 counts against the gate's request budget", async () => {
+        const registry = new CommitChecksRequestGateRegistry("cooling down");
+        const store = new EtagStore(() => 0);
+        const sent = stubSequence(
+            Array.from({ length: 200 }, (): Reply[] => [
+                { status: 304 },
+                { status: 200, body: "{}" },
+            ]).flat(),
+        );
+        const fetch = gatedFetchWithMeta(registry, "github");
+
+        // The fallback budget is 300 requests an hour; each read here costs two.
+        for (let read = 0; read < 150; read += 1) await fetch(URL_1, {}, store);
+
+        await expect(fetch(URL_1, {}, store)).rejects.toMatchObject({ statusCode: 429 });
+        expect(sent).toHaveLength(300);
+    });
+
+    it("a request queued under an old token never stores a body the new token is answered with", async () => {
+        let generation = 0;
+        const store = new EtagStore(() => generation);
+        const registry = new CommitChecksRequestGateRegistry("cooling down");
+        const releases: Array<() => void> = [];
+        // Fill the bucket's four slots so the next request waits in the queue.
+        const blockers = Array.from({ length: 4 }, () =>
+            registry.run("github", URL_1, () => new Promise<void>((done) => releases.push(done))),
+        );
+        await vi.waitFor(() => expect(releases).toHaveLength(4));
+        const sent = stubSequence([
+            { status: 200, headers: { etag: 'W/"old"' }, body: '{"who":"old"}' },
+            { status: 200, headers: { etag: 'W/"new"' }, body: '{"who":"new"}' },
+        ]);
+        const fetch = gatedFetchWithMeta(registry, "github");
+
+        const queued = fetch(URL_1, { Authorization: "Bearer old" }, store);
+        generation = 1;
+        for (const release of releases) release();
+        await Promise.all(blockers);
+        await queued;
+        const response = await fetch(URL_1, { Authorization: "Bearer new" }, store);
+
+        expect(
+            sent[1].headers["If-None-Match"],
+            "the old token's etag is not sent",
+        ).toBeUndefined();
+        expect(response.body).toEqual({ who: "new" });
+    });
+
     it("without a store nothing is conditional and a 304 still rejects, as before", async () => {
         const sent = stubSequence([
             { status: 200, headers: { etag: 'W/"e1"' }, body: '{"a":1}' },
@@ -299,7 +387,12 @@ describe("ETag conditional requests on the metadata fetch", () => {
 
     it("keeps the 500 most recently used entries", () => {
         const store = new EtagStore(() => 0);
-        const entry = (n: number) => ({ etag: `"${n}"`, body: "{}", pagination: {} });
+        const entry = (n: number) => ({
+            etag: `"${n}"`,
+            body: "{}",
+            pagination: {},
+            requestHash: "",
+        });
         for (let n = 0; n < 500; n += 1) store.set(store.keyFor(`u${n}`), entry(n));
         expect(store.get(store.keyFor("u0")), "u0 is now the most recent").toBeDefined();
 
@@ -317,8 +410,8 @@ const githubRef = { host: "github.com", owner: "o", repo: "r" } as ProviderRepoR
 const GITLAB = "https://gitlab.com/api/v4/projects/group%2Fapp";
 const gitlabRef = { host: "gitlab.com", owner: "group", repo: "app" } as ProviderRepoRef;
 
-function providers(generations = new CiGenerations()) {
-    const store = { get: async () => "glpat-token" } as unknown as CredentialStore;
+function providers(generations = new CiGenerations(), token = () => "glpat-token") {
+    const store = { get: async () => token() } as unknown as CredentialStore;
     const all = createCommitChecksProviders(
         new CommitChecksRequestGateRegistry("cooling down"),
         store,
@@ -328,6 +421,7 @@ function providers(generations = new CiGenerations()) {
     return {
         github: all.find((provider) => provider instanceof GitHubProvider) as GitHubProvider,
         gitlab: all.find((provider) => provider instanceof GitLabProvider) as GitLabProvider,
+        byId: (id: string) => all.find((provider) => provider.id === id) as CommitChecksProvider,
     };
 }
 
@@ -517,4 +611,49 @@ describe("providers use the store only for requests about incomplete commits", (
             sent.slice(details).map((request) => request.url),
         );
     });
+
+    it("a GitLab token changed by another window makes this window's next poll unconditional", async () => {
+        let token = "first";
+        const sent = stubServer(() => ({ body: [{ id: 5, name: "build", status: "running" }] }));
+        const { gitlab } = providers(new CiGenerations(), () => token);
+        for (let poll = 0; poll < 3; poll += 1) await gitlab.getChecks(gitlabRef, SHA);
+        expect(conditionalOf(sent)).not.toEqual([]);
+        const before = sent.length;
+
+        // Another window saved a new token; this window's auth generation never moved.
+        token = "changed-by-another-window";
+        await gitlab.getChecks(gitlabRef, SHA);
+
+        expect(conditionalOf(sent.slice(before))).toEqual([]);
+    });
+
+    it.each([
+        ["bitbucket-cloud", { host: "bitbucket.org", workspace: "w", repo: "r" }],
+        ["bitbucket-server", { host: "bitbucket.example.com", project: "p", repo: "r" }],
+    ])(
+        "a running %s commit's later polls are conditional, a settled one's are not",
+        async (id, ref) => {
+            let state = "INPROGRESS";
+            const sent = stubServer(() => ({
+                body: { values: [{ key: "build", name: "build", state }], isLastPage: true },
+            }));
+            const provider = providers().byId(id);
+            const bitbucketRef = ref as unknown as ProviderRepoRef;
+
+            for (let poll = 0; poll < 2; poll += 1) await provider.getChecks(bitbucketRef, SHA);
+            const before = sent.length;
+            const polled = await provider.getChecks(bitbucketRef, SHA);
+
+            expect(polled.state).toBe("pending");
+            expect(conditionalOf(sent.slice(before)).map((request) => request.url)).toEqual(
+                sent.slice(before).map((request) => request.url),
+            );
+
+            state = "SUCCESSFUL";
+            await provider.getChecks(bitbucketRef, SHA);
+            const settled = sent.length;
+            await provider.getChecks(bitbucketRef, SHA);
+            expect(conditionalOf(sent.slice(settled))).toEqual([]);
+        },
+    );
 });

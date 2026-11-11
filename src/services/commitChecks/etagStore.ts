@@ -11,6 +11,11 @@ export interface EtagEntry {
     readonly body: string;
     /** The response's `Link` and `x-next-page` headers, restored into a 304's headers. */
     readonly pagination: Readonly<Record<string, string | string[]>>;
+    /**
+     * A digest of the request headers the body was read with. A request with other headers (a
+     * changed token, even one this window's auth generation never saw) does not reuse it.
+     */
+    readonly requestHash: string;
 }
 
 /** Entries kept, least recently used dropped first (K12). */

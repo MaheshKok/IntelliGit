@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Watching running CI now uses less of your GitHub request allowance.
+- Watching running CI now uses less of your GitHub request allowance, and asks GitLab and Bitbucket only whether anything changed.
 
 ## [0.43.6] - 2026-11-11
 

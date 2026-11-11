@@ -830,3 +830,15 @@ PHASE 3: ACCEPTED 15a47c9d
 - Pre-existing reds kept out of scope (handoff): commit-list-column-resize.test.tsx (Node v26 localStorage), tsconfigCoverage.test.ts and screenshotComparatorMeta.test.ts (worktree node_modules).
 - Proof chain (each step run on its own): format:check 0 (after prettier --write on 4 files), lint 0, lint:strict 0, architecture:check 0, react-doctor 0, typecheck 0, build 0, test 1 (Test Files 3 failed | 501 passed (504), Tests 10 failed | 7773 passed (7783); all 10 in the three pre-existing files: commit-list-column-resize (localStorage under Node v26.5.0), tsconfigCoverage (worktree node_modules has no typescript CLI; `bun run typecheck:tests` on the same tsconfig is green), screenshotComparatorMeta (worktree node_modules has no @playwright/test)), build:prod 0, package 0. After the format fix: lint, lint:strict, typecheck 0; httpEtag + commitChecksProviders + view-providers 188/188.
 - GitNexus detect_changes not run (index stale, owner's "A: use old map"); impact run recorded in 650a6919.
+
+## Phase 5: fix round 1 (2026-11-11)
+- Cleared all 5 Codex findings test-first in httpEtag.test.ts; each new test was red before the fix and green after:
+  - F1 queued old-token request: red "the old token's etag is not sent: expected 'W/"old"' to be undefined". Fix: entry records `requestHash` (SHA-256 of request headers); a mismatch is a miss.
+  - F2 GitLab token changed by another window: red "expected [ { …(2) } ] to deeply equal []". Same fix.
+  - F3 body-less-304 re-request bypassed the gate: cooldown test and budget test red "promise resolved … instead of rejecting". Fix: `gatedFetchWithMeta` = `recoverBodylessNotModified` over a gated `createConditionalRequest`; the re-request is admitted and counted on its own.
+  - F4 Bitbucket Cloud/Server not conditional: red "expected [] to deeply equal [ Array(1) ]" (both). Fix: both providers take `fetchWithMeta` + `etags`, conditional for incomplete commits.
+  - F5 re-request kept a caller's If-None-Match: red "the re-request must be unconditional: expected [ 'if-none-match' ] to deeply equal []". Fix: strip it case-insensitively.
+- Mutations on a copy (mut-5-fix-1): 5 of 5 red, each naming its finding's test.
+- Codex scratch test "bodyless-304 retries count against the fallback request budget" cannot pass with honest counting (expects 300 two-request reads under a 300 budget); replaced by 150 reads OK, read 151 refused with 429.
+- Proof chain: every step exits 0 except `bun run test` (7782 of 7790 pass; the 8 failures are all commit-list-column-resize.test.tsx under Node v26.5.0, pre-existing).
+- GitNexus detect-changes not run: no .gitnexus/run.cjs in this worktree and the index is stale (owner "A: use old map").

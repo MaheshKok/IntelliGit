@@ -7,7 +7,9 @@
 import * as vscode from "vscode";
 import type { CommitChecksSnapshot } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
-import type { FetchJson } from "./http";
+import { isCompleteSnapshot } from "../../shared/ci/completion";
+import type { EtagStore } from "./etagStore";
+import { httpGetJsonWithMeta, type FetchJson, type FetchJsonWithMeta } from "./http";
 import { aggregateState, redactSecret, summaryForItems, unavailableSnapshot } from "./normalize";
 import { isStatusPage, toStatusItem, type BitbucketStatus } from "./bitbucketShared";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
@@ -111,10 +113,15 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
      *
      * @param fetchJson - The HTTP boundary; pass `httpGetJson` in production.
      * @param store - The credential store used to retrieve access tokens.
+     * @param fetchWithMeta - The HTTP boundary for conditional requests.
+     * @param etags - The window's conditional-request store; reads of a commit that was still
+     *   running when last read send `If-None-Match` through `fetchWithMeta`. None: no ETags.
      */
     constructor(
         private readonly fetchJson: FetchJson,
         private readonly store: CredentialStore,
+        private readonly fetchWithMeta: FetchJsonWithMeta = httpGetJsonWithMeta,
+        private readonly etags?: EtagStore,
     ) {}
 
     /**
@@ -177,10 +184,11 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         // with no username slot, and Atlassian is sunsetting them.
         const headers = { Authorization: `Bearer ${token}` };
         const first = `${API_BASE}/repositories/${encodeURIComponent(workspace)}/${encodeURIComponent(repo)}/commit/${encodeURIComponent(hash)}/statuses?pagelen=100`;
+        const commitKey = `${this.keyFor(ref)}@${hash}`;
 
         let rows: BitbucketStatus[];
         try {
-            rows = await this.fetchAllPages(first, headers);
+            rows = await this.fetchAllPages(first, headers, this.etags?.forCommit(commitKey));
         } catch (err) {
             const message = getErrorMessage(err);
             if (/\bHTTP (401|403)\b/i.test(message)) {
@@ -200,12 +208,14 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         // failures from tools like Jenkins or SonarCloud whose names omit CI/CD keywords.
         const items = rows.map(toStatusItem);
         const state = aggregateState(items);
-        return {
+        const snapshot: CommitChecksSnapshot = {
             hash,
             state,
             summary: summaryForItems(items, state),
             items,
         };
+        this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot));
+        return snapshot;
     }
 
     /**
@@ -216,16 +226,21 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
      *
      * @param firstUrl - The first page URL.
      * @param headers - The auth headers to send on every page request.
+     * @param conditional - The conditional-request store, for a commit still running at its
+     *   last read; the `next` link is in the body, so a 304's stored body keeps it.
      * @returns All status rows gathered across the fetched pages.
      */
     private async fetchAllPages(
         firstUrl: string,
         headers: Record<string, string>,
+        conditional: EtagStore | undefined,
     ): Promise<BitbucketStatus[]> {
         const rows: BitbucketStatus[] = [];
         let url: string | undefined = firstUrl;
         for (let page = 0; url && page < MAX_PAGES; page++) {
-            const raw = await this.fetchJson(url, headers);
+            const raw: unknown = conditional
+                ? (await this.fetchWithMeta(url, headers, conditional)).body
+                : await this.fetchJson(url, headers);
             if (!isStatusPage(raw)) break;
             rows.push(...raw.values);
             url = normalizeBitbucketCloudNextUrl(raw.next);

@@ -53,7 +53,17 @@ export function createCommitChecksProviders(
             (url) => requestGateRegistry.cooldownEnd("gitlab", url),
             etags,
         ),
-        new BitbucketCloudProvider(fetchFor("bitbucket-cloud"), credentialStore),
-        new BitbucketServerProvider(fetchFor("bitbucket-server"), credentialStore),
+        new BitbucketCloudProvider(
+            fetchFor("bitbucket-cloud"),
+            credentialStore,
+            gatedFetchWithMeta(requestGateRegistry, "bitbucket-cloud"),
+            etags,
+        ),
+        new BitbucketServerProvider(
+            fetchFor("bitbucket-server"),
+            credentialStore,
+            gatedFetchWithMeta(requestGateRegistry, "bitbucket-server"),
+            etags,
+        ),
     ];
 }
