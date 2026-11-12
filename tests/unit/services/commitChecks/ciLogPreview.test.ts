@@ -586,12 +586,13 @@ describe("Checks tab log messages", () => {
         // token: the link expired. The API host answering 403 itself is still forbidden.
         const api = "https://api.github.com/repos/o/r/actions/jobs/77/logs";
         const blob = "https://results-receiver.actions.githubusercontent.com/logs/77?sig=abc";
-        const answeredBy = (url: string) => new HttpError(403, "HTTP 403", {}, url, api);
+        const answeredBy = (url: string, credentialSent: boolean) =>
+            new HttpError(403, "HTTP 403", {}, url, credentialSent);
 
         const expired = setup(
             "failure",
             vi.fn(async () => {
-                throw answeredBy(blob);
+                throw answeredBy(blob, false);
             }),
         );
         await expired.send("previewCiLog", 1);
@@ -605,7 +606,7 @@ describe("Checks tab log messages", () => {
         const refused = setup(
             "failure",
             vi.fn(async () => {
-                throw answeredBy(api);
+                throw answeredBy(api, true);
             }),
         );
         await refused.send("previewCiLog", 1);
@@ -614,7 +615,7 @@ describe("Checks tab log messages", () => {
             "the API itself refusing the token is forbidden",
         ).toEqual(["forbidden"]);
 
-        // An answering URL without the requested one cannot show the token was seen.
+        // A download that does not say whether its request carried the token is not blamed on it.
         const unknown = setup(
             "failure",
             vi.fn(async () => {
@@ -624,7 +625,7 @@ describe("Checks tab log messages", () => {
         await unknown.send("previewCiLog", 1);
         expect(
             unknown.replies.map((reply) => reply.outcome),
-            "a refusal not shown to come from the credential's host is not blamed on the token",
+            "a refusal not shown to have carried the token is not blamed on it",
         ).toEqual(["failed"]);
     });
 

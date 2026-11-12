@@ -34,15 +34,15 @@ export class HttpError extends Error {
      * @param message - Token-free display/error message.
      * @param headers - Lower-cased Node response headers.
      * @param url - The URL that answered, when a redirect may have moved it off the requested one.
-     * @param requestUrl - The URL first requested, set together with `url`; credentials stay on
-     *     its origin, so an answer from another origin never saw them.
+     * @param credentialSent - Set together with `url`: whether the request `url` answered still
+     *     carried the credential headers, which a redirect to another origin removes for good.
      */
     constructor(
         readonly statusCode: number,
         message: string,
         readonly headers: Record<string, string | string[] | undefined>,
         readonly url?: string,
-        readonly requestUrl?: string,
+        readonly credentialSent?: boolean,
     ) {
         super(message);
         this.name = "HttpError";
@@ -287,6 +287,8 @@ export interface RedirectedResponse {
     request: http.ClientRequest;
     /** URL that answered with `response`. */
     url: string;
+    /** Whether the request that got `response` still carried the credential headers. */
+    credentialSent: boolean;
 }
 
 /** A downloaded text body and whether it was cut at the byte bound. */
@@ -317,7 +319,9 @@ export async function followRedirects(
     for (let hops = 0; ; hops++) {
         const opened = await openResponse(current.href, sentHeaders, options.signal);
         const status = opened.response.statusCode ?? 0;
-        if (!REDIRECT_STATUSES.has(status)) return { ...opened, url: current.href };
+        if (!REDIRECT_STATUSES.has(status)) {
+            return { ...opened, url: current.href, credentialSent: sentHeaders === headers };
+        }
         opened.response.destroy();
         if (hops >= options.maxHops) throw new Error("Too many redirects");
         const location = opened.response.headers.location;
@@ -357,6 +361,7 @@ export async function downloadToString(
         response,
         request,
         url: answeredBy,
+        credentialSent,
     } = await followRedirects(url, headers, {
         maxHops: 5,
         credentialHeaders,
@@ -365,7 +370,13 @@ export async function downloadToString(
     const status = response.statusCode ?? 0;
     if (status < 200 || status >= 300) {
         response.destroy();
-        throw new HttpError(status, `HTTP ${status}`, response.headers, answeredBy, url);
+        throw new HttpError(
+            status,
+            `HTTP ${status}`,
+            response.headers,
+            answeredBy,
+            credentialSent,
+        );
     }
     return readBounded(response, request, maxBytes, signal);
 }

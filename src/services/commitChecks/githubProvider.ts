@@ -519,14 +519,15 @@ export class GitHubProvider implements CommitChecksProvider {
             }
             const failedJobs = jobs.filter((job) => job.state === "failure");
             // The commit's check-run listing is not read here, so each failed job's text comes
-            // from its own check run.
+            // from its own check run. The text is extra: a read that fails or meets a cooldown
+            // leaves this page's jobs without it rather than hiding them or re-reading the page.
             const summaries = await this.unlistedSummaries(
                 ref as GitHubRepoRef,
                 failedJobs,
                 { checkRunIds: new Set(), summaries: new Map() },
                 session,
                 undefined,
-            );
+            ).catch(() => new Map<string, string>());
             const failed = failedJobs.map((job) => withFailureSummary(job, summaries));
             const next = linkHeaderNext(response);
             if (next === undefined) return { failed };
@@ -605,18 +606,14 @@ export class GitHubProvider implements CommitChecksProvider {
             if (job.state !== "failure" || id === undefined || listed.checkRunIds.has(id)) {
                 continue;
             }
-            // Serial, like the detail's other reads. A check run that is gone has no text to
-            // show; the job itself still is shown as failed. Any other error stays an error.
+            // Serial, like the detail's other reads.
             // react-doctor-disable-next-line react-doctor/async-await-in-loop
             const response = await this.fetchWithMeta(
                 `${repoApiUrl(ref)}/check-runs/${encodeURIComponent(id)}`,
                 githubHeaders(session),
                 conditional,
-            ).catch((err: unknown) => {
-                if (err instanceof HttpError && err.statusCode === 404) return undefined;
-                throw err;
-            });
-            const summary = response && checkRunSummary(response.body ?? {});
+            );
+            const summary = checkRunSummary(response.body ?? {});
             if (summary !== undefined) known.set(id, summary);
         }
         return known;

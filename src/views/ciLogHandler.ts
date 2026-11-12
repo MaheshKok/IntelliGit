@@ -213,9 +213,9 @@ function isAbort(error: unknown): boolean {
 
 /**
  * A refused credential is `forbidden`. A rate limit is a 403 too: a primary one has no
- * requests left, a secondary one carries `Retry-After`. A host on another origin than the
- * request (a signed log link) never saw the credential, so its refusal means the link expired.
- * Signing in again cannot help in these cases, so they are failures with their message.
+ * requests left, a secondary one carries `Retry-After`. A request a redirect stripped of the
+ * credential (a signed log link on another host) never carried it, so its refusal means the link
+ * expired. Signing in again cannot help in these cases, so they are failures with their message.
  */
 function failureOf(error: unknown): Failure {
     if (error instanceof HttpError && (error.statusCode === 401 || error.statusCode === 403)) {
@@ -229,12 +229,10 @@ function failureOf(error: unknown): Failure {
 }
 
 /**
- * Whether the host that refused had the credential: an API request answered where it was sent,
- * or a redirect that stayed on the requested origin. Without the requested URL this cannot be
- * shown, so the refusal is not blamed on the token.
+ * Whether the refused request carried the credential: an API request answered where it was sent,
+ * or a download whose answering request still had it. A download that does not say is not
+ * blamed on the token.
  */
 function sawCredential(error: HttpError): boolean {
-    if (error.url === undefined) return true;
-    if (error.requestUrl === undefined) return false;
-    return new URL(error.url).origin === new URL(error.requestUrl).origin;
+    return error.url === undefined || error.credentialSent === true;
 }

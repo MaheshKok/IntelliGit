@@ -112,9 +112,9 @@ describe("GitHub job log", () => {
         expect(error).toBeInstanceOf(HttpError);
         expect((error as HttpError).statusCode).toBe(410);
         expect(
-            { url: (error as HttpError).url, requestUrl: (error as HttpError).requestUrl },
-            "the error names both the signed link that refused and the API request",
-        ).toEqual({ url: BLOB_URL, requestUrl: LOGS_URL });
+            { url: (error as HttpError).url, credentialSent: (error as HttpError).credentialSent },
+            "the error names the signed link that refused and says it never got the token",
+        ).toEqual({ url: BLOB_URL, credentialSent: false });
         expect(sent.filter((request) => request.url === LOGS_URL)).toHaveLength(2);
     });
 
