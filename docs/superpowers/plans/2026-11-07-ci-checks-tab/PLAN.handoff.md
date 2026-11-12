@@ -10,7 +10,8 @@
 - Earlier build records (Phase 3 and 5 detail, GitNexus answers): git history of this file (650a6919, 6898d332) and PLAN.review-log.md.
 
 ## Phase 6: review pending, started at 86088cab9ee8d07c724da9e13f5aeac980dfbffa
-- Actual base: 86088cab (#420). Review `git diff 86088cab..<HEAD>`. Commits: 4f84ac3b build (0.43.8), 51e21ccb fix 1, 5e7f445a fix 2, b8ef4406 takeover, 75271f63 owner answer, c2df109b fix round 3, then the fix round 4 commit (this round).
+- Actual base: 86088cab (#420). Review `git diff 86088cab..<HEAD>`. Commits: 4f84ac3b build (0.43.8), 51e21ccb fix 1, 5e7f445a fix 2, b8ef4406 takeover, 75271f63 owner answer, c2df109b fix round 3, 819aa68d fix round 4, then the fix round 5 commit (this round, tests only).
+- Fix round 5 (review of 819aa68d, fix round 2): three test gaps closed, no source change. "two pending reads of the same URI are both forgotten when it closes" (K19), "settled document reads release their pending marker and empty URI bucket" (white-box read of `pending`), and "15 s inactivity callback rejects before the response head / mid body" (the stub now records `setTimeout` calls). Each is red under the reviewer's mutation (F7, F5, F6, M12; copy mut-6-fix-5).
 - Built: http.ts `followRedirects` + `downloadToString` (5 hops, 50 MB, marker, UTF-8 cut, abort, idle 15 s, non-2xx = HttpError); `CiLogMemoryStore` (LRU 3, sha256 key, join map, clear() aborts and drops late results, no fs); firstErrorLine.ts + excerpt; `intelligit-ci-log:` provider (K19); store wiring in repositoryMode.ts. 3 strings in 11 locales, CHANGELOG verbatim, README "CI logs" marked Planned.
 - Fix 1: stop at the bound even if the server stalls. Fix 2: 4 surviving mutations closed with tests. Takeover: a stale document read serves the newer same-key entry instead of a stuck error line.
 - HALT after the takeover; owner's answer 2026-11-12, verbatim: "A: follow the plan". PLAN.md unchanged.
@@ -22,6 +23,7 @@
 - Mutations (copy mut-6-fix-3): 6 of 6 red, each naming its assertion (record in PLAN.review-log.md).
 
 ## Decisions and why
+- Fix round 5 findings were missing tests, not wrong code, so "red before" is shown by the reviewer's mutations; the shipped code passed each new test before and after.
 - Pending reads are fenced with a per-read token, not a per-URI closed marker: a tab closed and reopened during one load must still be refreshed by its second read.
 - Fix round 3 was done in the builder step: the handoff already said Phase 6 was built, but the owner's halt answer requires three changes that a "no rebuild, rerun gates" pass would have left undone.
 - The store's `download` in repositoryMode is a rejecting placeholder until Phase 7 adds provider log endpoints; nothing calls `load` yet.
@@ -40,6 +42,7 @@
 
 ## Found outside scope
 - commit-list-column-resize.test.tsx fails under Node v26.5.0 (no global `localStorage`); red on 86088cab too (8 tests).
+- diffBudgets.test.ts "large compute" timing budget failed once inside the full `bun run test` (170 ms vs 59 ms) and passed alone; load-sensitive.
 - GitHub carryScans treats two missing `runAttempt` values as the same run.
 - Extract detailOf/flatDetail into a shared module when Phase 17 adds a third provider detail.
 - `bun run test` in the main checkout times out git-heavy tests under load; `bun run package` can pack ignored `output/` leftovers.

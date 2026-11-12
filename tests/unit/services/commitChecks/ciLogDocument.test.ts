@@ -147,6 +147,42 @@ describe("ciLogDocument", () => {
         ).not.toHaveBeenCalled();
     });
 
+    it("two pending reads of the same URI are both forgotten when it closes", async () => {
+        const { store, provider, downloads, block, unblock } = pendingSetup();
+        await block();
+        const changed = vi.fn();
+        provider.onDidChange?.(changed);
+        const uri = uriFor(`k=${keyFor("a")}`);
+        const reads = [provide(provider, uri), provide(provider, uri)];
+        for (const listener of mocks.closeListeners) listener({ uri });
+        for (const download of downloads) download.reject(new Error("connection lost"));
+        for (const read of reads) await expect(read).resolves.toContain("could not load");
+        unblock();
+        await store.load(keyFor("a"), sourceFor("a"));
+        expect(changed, "neither closed pending read may resurrect the tab").not.toHaveBeenCalled();
+    });
+
+    it("settled document reads release their pending marker and empty URI bucket", async () => {
+        const download = vi.fn(async (source: CiLogSource) => {
+            if (source.jobId === "b") throw new Error("HTTP 500");
+            return { text: `${source.jobId} text`, truncated: false };
+        });
+        const { store, provider } = setup(download);
+        // Record both sources, then empty the store so each read downloads again.
+        await store.load(keyFor("a"), sourceFor("a"));
+        await store.load(keyFor("b"), sourceFor("b")).catch(() => {});
+        store.clear();
+        await expect(provide(provider, uriFor(`k=${keyFor("a")}`))).resolves.toBe("a text");
+        await expect(provide(provider, uriFor(`k=${keyFor("b")}`))).resolves.toContain(
+            "could not load",
+        );
+        // No behaviour shows a leaked marker, so read the pending registry itself.
+        const pending = (provider as unknown as { pending: Map<string, Set<unknown>> }).pending;
+        const markers = [...pending.values()].reduce((count, reads) => count + reads.size, 0);
+        expect(markers, "settled read markers must be released").toBe(0);
+        expect(pending.size, "empty URI buckets must be released").toBe(0);
+    });
+
     it("a tab closed and reopened while a load is pending is still refreshed after it fails", async () => {
         const { store, provider, downloads, block, unblock } = pendingSetup();
         await block();

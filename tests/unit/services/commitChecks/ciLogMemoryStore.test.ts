@@ -326,14 +326,22 @@ interface StreamPlan {
 
 /** Streams `plan.chunks(i)` until it returns undefined, the response is destroyed, or an error. */
 function stubStream(plan: StreamPlan) {
-    const state = { destroyed: false, emitted: 0, requestDestroyed: false };
+    const state = {
+        destroyed: false,
+        emitted: 0,
+        requestDestroyed: false,
+        timeouts: [] as [number, (() => void) | undefined][],
+    };
     vi.mocked(https.get).mockImplementation(((
         _url: string,
         _options: unknown,
         cb: (r: unknown) => void,
     ) => {
         const req = Object.assign(new EventEmitter(), {
-            setTimeout: vi.fn(() => req),
+            setTimeout: vi.fn((ms: number, callback?: () => void) => {
+                state.timeouts.push([ms, callback]);
+                return req;
+            }),
             destroy: vi.fn((error?: Error) => {
                 state.requestDestroyed = true;
                 if (error) queueMicrotask(() => req.emit("error", error));
@@ -584,6 +592,32 @@ describe("downloadToString", () => {
         expect(result.text.startsWith("abcdefghij\n[IntelliGit: log truncated")).toBe(true);
         expect(result.text.split("[IntelliGit: log truncated").length - 1).toBe(1);
         expect(state.destroyed).toBe(true);
+    });
+
+    it.each([
+        ["before the response head", { chunks: () => undefined, noHead: true }],
+        [
+            "mid body",
+            {
+                chunks: (index: number) => (index === 0 ? Buffer.from("partial ") : undefined),
+                stallAfter: 1,
+            },
+        ],
+    ])("15 s inactivity callback rejects %s", async (_label, plan: StreamPlan) => {
+        const state = stubStream(plan);
+        const pending = downloadToString(
+            "https://logs.example.com/job",
+            {},
+            CI_LOG_MAX_BYTES,
+            new AbortController().signal,
+        );
+        await vi.waitFor(() => expect(state.timeouts.length).toBeGreaterThan(0));
+        if (!plan.noHead) await vi.waitFor(() => expect(state.emitted).toBeGreaterThan(0));
+        const [ms, onIdle] = state.timeouts[0];
+        expect(ms, "log requests keep the existing 15 s idle timeout").toBe(15000);
+        onIdle?.();
+        await expect(pending).rejects.toThrow("HTTP request timed out");
+        expect(state.requestDestroyed).toBe(true);
     });
 
     it("follows at most 5 redirects", async () => {
