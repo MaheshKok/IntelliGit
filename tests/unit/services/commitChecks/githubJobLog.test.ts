@@ -282,6 +282,51 @@ describe("GitHub failure summary", () => {
         expect(failed?.failureSummary).toBe("selected failure\ndirect summary");
     });
 
+    it("a failed job found past the job page bound gets its check-run summary", async () => {
+        const page = `${REPO}/actions/runs/5/jobs?per_page=100&page=11`;
+        const routes: Record<string, unknown> = {
+            [`${REPO}/actions/runs/5`]: { id: 5, run_attempt: 1 },
+            [page]: {
+                total_count: 1001,
+                jobs: [
+                    {
+                        id: 900,
+                        name: "unit-tests",
+                        status: "completed",
+                        conclusion: "failure",
+                        run_attempt: 1,
+                        check_run_url: `${REPO}/check-runs/555`,
+                        steps: [],
+                    },
+                ],
+            },
+            [`${REPO}/check-runs/555`]: {
+                id: 555,
+                output: { title: "overflow failure", summary: "expected 3 to be 4" },
+            },
+        };
+        const fetch = vi.fn(async (url: string): Promise<FetchResponse> => {
+            if (!(url in routes)) throw new Error(`unexpected request ${url}`);
+            return { statusCode: 200, headers: {}, body: routes[url] };
+        });
+        const provider = new GitHubProvider(vi.fn(), undefined, fetch);
+
+        const result = await provider.continueFailedScan(ref, {
+            runId: "5",
+            runAttempt: 1,
+            runName: "CI",
+            url: page,
+            jobsRead: 1000,
+            jobsTotal: 1001,
+        });
+
+        expect(result.failed?.[0]?.checkRunId).toBe("555");
+        expect(
+            result.failed?.[0]?.failureSummary,
+            "a failed job the overflow scan finds shows why it failed, like one on the first pages",
+        ).toBe("overflow failure\nexpected 3 to be 4");
+    });
+
     it("the summary is cut to 2 000 characters and stripped of control characters", async () => {
         const api = fakeApi(`\u001b[31mred\u001b[0m ${"x".repeat(5000)}`);
         const provider = new GitHubProvider(async (url) => (await api(url)).body, undefined, api);
