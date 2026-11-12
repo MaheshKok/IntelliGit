@@ -859,8 +859,17 @@ PHASE 3: ACCEPTED 15a47c9d
   - M1 bitbucketCloud commitKey without @hash -> 1 red: bitbucket-cloud two-commit test, "the running commit's next poll is still conditional: expected [] to deeply equal [ Array(1) ]".
   - M2 forCommit returns this when any commit is marked -> 5 red: "another commit is not marked running: expected EtagStore{ ...(3) } to be undefined" and all 4 two-commit tests, "the finished commit's requests do not use the store".
   - M3 store before parse -> 1 red: "the garbled body's etag is not sent: expected 'W/\"bad\"' to be undefined".
-  - M4 withPagination spread swapped / M5 delete loop removed -> 1 red each: "the stored page had no next link: expected '<https://api.github.com/repos/o/r...' to be undefined".
+  - M4 withPagination spread swapped -> GREEN (33/33 for the reviewer; 35/35 again on the hand-fix tree): an equivalent mutation, because the delete loop removes the overlapping keys before the spread (corrected after the post-takeover review; the takeover first logged it as red).
+  - M5 delete loop removed -> 1 red: "the stored page had no next link: expected '<https://api.github.com/repos/o/r...' to be undefined".
   - M6 x-next-page dropped from PAGINATION_HEADERS -> 2 red: "the 304 keeps the stored next page: expected undefined to be '2'" and "the stored page had no next page".
 - Gate chain: format:check (green after prettier --write), lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; test 7790/7798, 8 failures all in commit-list-column-resize.test.tsx (Node v26, recorded before this phase).
 - GitNexus detect-changes not run: no .gitnexus/run.cjs in this worktree and the index is behind HEAD; the diff is one test file.
 PHASE 5: HALT review still failing after takeover
+
+## Phase 5 hand fix after the takeover halt (2026-11-12)
+- Owner answer, verbatim: "A: add 2 tests". Tests and docs only; no change under src/.
+- Added to httpEtag.test.ts: "a GitLab commit that finishes stops using the store" (pins gitlabProvider.ts:322) and "a settled GitLab detail stops using the store" (pins :342). Each polls the running commit until its reads are conditional, serves it settled (a control asserts state success / complete true), reads again and asserts no If-None-Match.
+- Unmutated: httpEtag.test.ts 35/35 pass. Mutations, verbose reporter, in place and restored:
+  - :322 noteCommit(commitKey, false) -> 1 red: "a GitLab commit that finishes stops using the store", AssertionError: the finished GitLab commit's requests do not use the store: expected [ { …(2) } ] to deeply equal [].
+  - :342 noteCommit(commitKey, false) -> 1 red: "a settled GitLab detail stops using the store", AssertionError: the finished GitLab detail requests do not use the store: expected [ { …(2) }, { …(2) }, { …(2) }, …(1) ] to deeply equal [].
+  - M4 receipt corrected above (rerun: 35/35 green).

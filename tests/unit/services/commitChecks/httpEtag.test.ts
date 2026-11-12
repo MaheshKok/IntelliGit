@@ -686,6 +686,63 @@ describe("providers use the store only for requests about incomplete commits", (
         );
     });
 
+    /** GitLab's snapshot and detail endpoints for one pipeline in `status()`. */
+    function gitlabRoute(status: () => string) {
+        return (url: string) => {
+            const path = new URL(url).pathname;
+            if (path.endsWith("/statuses"))
+                return { body: [{ id: 5, name: "build", status: status() }] };
+            if (path.endsWith("/pipelines")) {
+                return { body: [{ id: 7, status: status(), updated_at: "t1" }] };
+            }
+            if (path.endsWith("/pipelines/7/jobs")) {
+                return { body: [{ id: 5, name: "build", status: status(), stage: "test" }] };
+            }
+            if (path.endsWith("/pipelines/7")) {
+                return { body: { id: 7, status: status(), updated_at: "t1", name: "CI" } };
+            }
+            throw new Error(`unrouted ${url}`);
+        };
+    }
+
+    it("a GitLab commit that finishes stops using the store", async () => {
+        let status = "running";
+        const sent = stubServer(gitlabRoute(() => status));
+        const { gitlab } = providers();
+        for (let poll = 0; poll < 3; poll += 1) await gitlab.getChecks(gitlabRef, SHA);
+        expect(conditionalOf(sent), "the running commit's polls are conditional").not.toEqual([]);
+
+        status = "success";
+        const settled = await gitlab.getChecks(gitlabRef, SHA);
+        const before = sent.length;
+        await gitlab.getChecks(gitlabRef, SHA);
+
+        expect(settled.state, "the commit really finished").toBe("success");
+        expect(
+            conditionalOf(sent.slice(before)),
+            "the finished GitLab commit's requests do not use the store",
+        ).toEqual([]);
+    });
+
+    it("a settled GitLab detail stops using the store", async () => {
+        let status = "running";
+        const sent = stubServer(gitlabRoute(() => status));
+        const { gitlab } = providers();
+        for (let read = 0; read < 3; read += 1) await gitlab.getDetail(gitlabRef, SHA);
+        expect(conditionalOf(sent), "the running detail's reads are conditional").not.toEqual([]);
+
+        status = "success";
+        const settled = await gitlab.getDetail(gitlabRef, SHA);
+        const before = sent.length;
+        await gitlab.getDetail(gitlabRef, SHA);
+
+        expect(settled.complete, "the detail really settled").toBe(true);
+        expect(
+            conditionalOf(sent.slice(before)),
+            "the finished GitLab detail requests do not use the store",
+        ).toEqual([]);
+    });
+
     it("a GitLab token changed by another window makes this window's next poll unconditional", async () => {
         let token = "first";
         const sent = stubServer(() => ({ body: [{ id: 5, name: "build", status: "running" }] }));
