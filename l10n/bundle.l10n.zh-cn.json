@@ -991,5 +991,8 @@
     "The provider's next-page link was refused.": "已拒绝提供程序的下一页链接。",
     "Malformed Link header.": "Link 标头格式不正确。",
     "Malformed x-next-page header.": "x-next-page 标头格式不正确。",
-    "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "此流水线没有更新时间，因此无法排除扫描期间发生重试的可能。"
+    "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "此流水线没有更新时间，因此无法排除扫描期间发生重试的可能。",
+    "[IntelliGit: this CI log link is not valid.]": "[IntelliGit：此 CI 日志链接无效。]",
+    "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit：此 CI 日志已不再加载。请从“检查”选项卡重新打开。]",
+    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit：无法加载此 CI 日志：{0}]"
 }

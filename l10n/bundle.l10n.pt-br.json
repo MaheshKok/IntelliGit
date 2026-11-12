@@ -991,5 +991,8 @@
     "The provider's next-page link was refused.": "O link do provedor para a próxima página foi recusado.",
     "Malformed Link header.": "Cabeçalho Link malformado.",
     "Malformed x-next-page header.": "Cabeçalho x-next-page malformado.",
-    "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "Este pipeline não tem horário de atualização, então não é possível descartar uma nova tentativa durante a varredura."
+    "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "Este pipeline não tem horário de atualização, então não é possível descartar uma nova tentativa durante a varredura.",
+    "[IntelliGit: this CI log link is not valid.]": "[IntelliGit: este link para o log de CI não é válido.]",
+    "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: este log de CI não está mais carregado. Abra-o novamente na guia Verificações.]",
+    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: não foi possível carregar este log de CI: {0}]"
 }

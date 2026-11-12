@@ -206,6 +206,26 @@ an hour. It also honors provider-specific response signals:
 A bare HTTP 403 from GitLab or either Bitbucket provider remains an authentication or
 availability result, not a quota cooldown.
 
+## CI logs
+
+> Planned: opening a job's log from the Checks tab is not available yet. The download and
+> the in-memory log store below are in place, but nothing asks for a log yet.
+
+CI logs are held in memory, one store per VS Code window, and are never written to disk.
+A window keeps the three most recently used logs; opening a fourth drops the oldest, and
+asking for a dropped log downloads it again. Two windows never share a downloaded log,
+and a window reload or a VS Code restart empties the store. A log tab that VS Code
+restores after a reload says the log is no longer loaded until you open it again from
+the Checks tab.
+
+Each log keeps at most its first 50 MB. A log that reaches 50 MB ends with the line
+`[IntelliGit: log truncated at 50 MB — open the run in the browser for the rest]`.
+
+Log downloads follow redirects (such as GitHub's short-lived log links) only to `https:`
+addresses and at most five times. When a redirect leads to another host, scheme or port,
+IntelliGit removes the `Authorization`, `Cookie`, `Private-Token` and `Job-Token` headers
+and does not send them again for the rest of that download.
+
 ## Re-run and cancel
 
 > Planned: the Re-run and Cancel actions are not available yet. This section describes

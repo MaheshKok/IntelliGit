@@ -44,6 +44,8 @@ import { CiDetailPersistentCache } from "../services/commitChecks/detailPersiste
 import { CiGenerations } from "../services/commitChecks/ciGenerations";
 import { CiActionFenceStore } from "../services/commitChecks/ciActionFence";
 import { createCiTrace } from "../services/commitChecks/ciTrace";
+import { CiLogMemoryStore } from "../services/commitChecks/ciLogMemoryStore";
+import { registerCiLogDocumentProvider } from "../services/commitChecks/ciLogDocument";
 import { createCommitChecksProviders } from "./commitChecksProviders";
 import { captureWebviewViewProvider } from "../e2e/webviewCapture";
 import { readE2eCiFixture } from "../e2e/ciFixture";
@@ -290,9 +292,17 @@ export async function activateRepositoryMode(
         trace: ciTrace,
         fences: ciActionFences,
     });
+    // CI logs live in this window's memory only (owner path C). Provider downloads arrive with
+    // the log handlers; until then nothing calls `load`, so this transport is never reached.
+    const ciLogStore = new CiLogMemoryStore({
+        download: (source) =>
+            Promise.reject(new Error(`No CI log download for ${source.provider}`)),
+    });
     const ciGenerations = new CiGenerations();
     if (ciActionFences) context.subscriptions.push(ciActionFences);
     context.subscriptions.push(
+        registerCiLogDocumentProvider(ciLogStore),
+        { dispose: () => ciLogStore.dispose() },
         {
             dispose: () => {
                 // In-flight CI work started before the extension closed must not publish.
@@ -308,6 +318,7 @@ export async function activateRepositoryMode(
                 ciGenerations.bumpLifecycle();
                 commitChecksService.clear();
                 commitCiDetailService.clear();
+                ciLogStore.clear();
             }
         }),
     );
@@ -1384,6 +1395,7 @@ export async function activateRepositoryMode(
     const refreshCommitCheckBadges = async (): Promise<void> => {
         requestGateRegistry.reset();
         ciGenerations.bumpAuth();
+        ciLogStore.clear();
         commitGraph.clearChecksCache();
         sidebarGraph.clearChecksCache();
         undocked?.clearChecksCache();
