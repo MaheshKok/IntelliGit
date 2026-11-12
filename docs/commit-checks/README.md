@@ -167,6 +167,21 @@ held back only until VS Code restarts, and may then be shown again until Refresh
 as a missing permission, never as a rate limit.
 Next-page links are followed only on the GitLab host under the project's own API path.
 
+While the last read of a commit was incomplete (checks still pending, none reported yet,
+or the read failed), GitHub, GitLab and Bitbucket (Cloud and Server) requests for it are
+conditional:
+IntelliGit remembers each answer's `ETag` and sends it back as `If-None-Match`, so an
+unchanged list comes back as a body-less `304 Not Modified` (free against GitHub's
+request allowance) and the remembered answer, with its next-page links, is used again.
+A commit's first read is always a full one, and requests for a commit whose last read
+was complete are never conditional. The remembered answers live in memory only, at most 500
+per window, keyed by the request URL and the current sign-in. Each answer also records
+a digest of the request headers it was read with, so a request with another token (a
+sign-in change, or a token saved from another window) is never conditional and never
+gets another token's answer. A `304` with nothing remembered is sent again once without
+`If-None-Match`, as a request of its own: it waits for a rate-limit cooldown and counts
+against the request allowance like any other.
+
 Diagnostic lines for CI requests go to the **IntelliGit CI** output channel. They name
 the operation, provider and short commit hash; they never contain tokens, request
 headers or log text.

@@ -38,8 +38,13 @@ import {
 import { CI_MAX_PAGES, CI_PAGE_SIZE, isUnderApiPrefix, linkHeaderNext, paginate } from "./paginate";
 import { RequestGateCooldownError } from "./requestGate";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
-import { hasUnfinishedWork } from "../../shared/ci/completion";
+import {
+    hasUnfinishedWork,
+    isCompleteDetail,
+    isCompleteSnapshot,
+} from "../../shared/ci/completion";
 import { logicalCheckId } from "../../shared/ci/identity";
+import type { EtagStore } from "./etagStore";
 import type {
     CiDetailFetch,
     CiFailedScanCursor,
@@ -185,12 +190,15 @@ export class GitHubProvider implements CommitChecksProvider {
      * @param fetchWithMeta - The HTTP boundary for the `Link`-paged run and job lists.
      * @param cooldownEnd - The request gate's cooldown end for a URL's bucket (0 when not
      *   cooling down); tells a rate-limit response on a scan page from a permission refusal.
+     * @param etags - The window's conditional-request store; reads of a commit that was still
+     *   running when last read send `If-None-Match` through `fetchWithMeta`. None: no ETags.
      */
     constructor(
         private readonly fetchJson: FetchJson = httpGetJson,
         private readonly ciCdPattern?: RegExp,
         private readonly fetchWithMeta: FetchJsonWithMeta = httpGetJsonWithMeta,
         private readonly cooldownEnd: (url: string) => number = () => 0,
+        private readonly etags?: EtagStore,
     ) {}
 
     /** Matches any github.com remote; the host map is not consulted for GitHub. */
@@ -220,7 +228,16 @@ export class GitHubProvider implements CommitChecksProvider {
     async getChecks(ref: ProviderRepoRef, hash: string): Promise<CommitChecksSnapshot> {
         const session = await openSession(hash);
         if (!isSession(session)) return session;
-        return (await this.fetchSnapshot(ref as GitHubRepoRef, hash, session)).snapshot;
+        const commitKey = `${this.keyFor(ref)}@${hash}`;
+        const { snapshot } = await this.fetchSnapshot(
+            ref as GitHubRepoRef,
+            hash,
+            session,
+            false,
+            this.etags?.forCommit(commitKey),
+        );
+        this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot));
+        return snapshot;
     }
 
     /**
@@ -231,6 +248,8 @@ export class GitHubProvider implements CommitChecksProvider {
         const gitHubRef = ref as GitHubRepoRef;
         const session = await openSession(hash);
         if (!isSession(session)) return flatDetail(session);
+        const commitKey = `${this.keyFor(ref)}@${hash}#detail`;
+        const conditional = this.etags?.forCommit(commitKey);
         try {
             // A re-run during a read restarts it whole, since the snapshot's check runs belong
             // to the old attempt too. The last read keeps what it saw, marked incomplete.
@@ -241,8 +260,12 @@ export class GitHubProvider implements CommitChecksProvider {
                     hash,
                     session,
                     read === DETAIL_MAX_READS,
+                    conditional,
                 );
-                if (detail) return detail;
+                if (detail) {
+                    this.etags?.noteCommit(commitKey, isCompleteDetail(detail));
+                    return detail;
+                }
             }
         } catch (err) {
             return flatDetail(failedSnapshot(hash, gitHubRef.host, err, session.accessToken));
@@ -261,8 +284,9 @@ export class GitHubProvider implements CommitChecksProvider {
         hash: string,
         session: vscode.AuthenticationSession,
         lastRead: boolean,
+        conditional: EtagStore | undefined,
     ): Promise<CiDetailFetch | undefined> {
-        const fetch = (url: string) => this.fetchWithMeta(url, githubHeaders(session));
+        const fetch = (url: string) => this.fetchWithMeta(url, githubHeaders(session), conditional);
         let repositoryId: string | undefined;
         const runsPage = await paginate(
             fetch,
@@ -276,11 +300,17 @@ export class GitHubProvider implements CommitChecksProvider {
             CI_MAX_PAGES,
             (url) => this.allowNext(ref, url, repositoryId),
         );
-        const { snapshot, checkRunIds } = await this.fetchSnapshot(ref, hash, session, true);
+        const { snapshot, checkRunIds } = await this.fetchSnapshot(
+            ref,
+            hash,
+            session,
+            true,
+            conditional,
+        );
         if (snapshot.state === "unavailable") return flatDetail(snapshot);
         // At GitHub's suite limit the snapshot is partial whether or not a job is missing from
         // it: the flat list reports the gap, and a missing job is looked up in its own suite.
-        const refLimited = await this.refAtSuiteLimit(ref, hash, session);
+        const refLimited = await this.refAtSuiteLimit(ref, hash, session, conditional);
         const inOwnSuite = async (run: GitHubWorkflowRun, missing: readonly string[]) => {
             const suiteId = readId(run.check_suite_id);
             if (!refLimited || suiteId === undefined) return false;
@@ -321,7 +351,7 @@ export class GitHubProvider implements CommitChecksProvider {
                 (url) => this.allowNext(ref, url, repositoryId),
             );
             // react-doctor-disable-next-line react-doctor/async-await-in-loop
-            const current = await this.currentRun(ref, runId, session);
+            const current = await this.currentRun(ref, runId, session, conditional);
             const ciRun = toRun(run, runId, runName, jobsPage.items, jobsPage.coverage);
             const missing = ciRun.jobs.flatMap((job) =>
                 job.checkRunId === undefined || checkRunIds.has(job.checkRunId)
@@ -480,10 +510,12 @@ export class GitHubProvider implements CommitChecksProvider {
         ref: GitHubRepoRef,
         hash: string,
         session: vscode.AuthenticationSession,
+        conditional: EtagStore | undefined,
     ): Promise<boolean> {
         const response = await this.fetchWithMeta(
             `${repoApiUrl(ref)}/commits/${encodeURIComponent(hash)}/check-suites?per_page=1`,
             githubHeaders(session),
+            conditional,
         );
         const total = (response.body as { total_count?: unknown } | null)?.total_count;
         return typeof total === "number" && total >= REF_CHECK_SUITE_LIMIT;
@@ -494,10 +526,12 @@ export class GitHubProvider implements CommitChecksProvider {
         ref: GitHubRepoRef,
         runId: string,
         session: vscode.AuthenticationSession,
+        conditional?: EtagStore,
     ): Promise<GitHubWorkflowRun> {
         const response = await this.fetchWithMeta(
             `${repoApiUrl(ref)}/actions/runs/${encodeURIComponent(runId)}`,
             githubHeaders(session),
+            conditional,
         );
         return response.body ?? {};
     }
@@ -511,13 +545,17 @@ export class GitHubProvider implements CommitChecksProvider {
         hash: string,
         session: vscode.AuthenticationSession,
         requireBoth = false,
+        conditional?: EtagStore,
     ): Promise<{ snapshot: CommitChecksSnapshot; checkRunIds: ReadonlySet<string> }> {
         const headers = githubHeaders(session);
         const base = `${repoApiUrl(ref)}/commits/${encodeURIComponent(hash)}`;
+        const fetchJson: FetchJson = conditional
+            ? async (url, sent) => (await this.fetchWithMeta(url, sent, conditional)).body
+            : this.fetchJson;
 
         const [checkRunsResult, statusesResult] = await Promise.allSettled([
-            fetchAllCheckRuns(this.fetchJson, base, headers),
-            fetchAllStatuses(this.fetchJson, base, headers),
+            fetchAllCheckRuns(fetchJson, base, headers),
+            fetchAllStatuses(fetchJson, base, headers),
         ]);
 
         const rejected = [checkRunsResult, statusesResult].flatMap((result) =>

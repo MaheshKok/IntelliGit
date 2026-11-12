@@ -8,7 +8,9 @@
 import * as vscode from "vscode";
 import type { CommitChecksSnapshot } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
-import type { FetchJson } from "./http";
+import { isCompleteSnapshot } from "../../shared/ci/completion";
+import type { EtagStore } from "./etagStore";
+import { httpGetJsonWithMeta, type FetchJson, type FetchJsonWithMeta } from "./http";
 import { aggregateState, redactSecret, summaryForItems, unavailableSnapshot } from "./normalize";
 import { isStatusPage, toStatusItem, type BitbucketStatus } from "./bitbucketShared";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
@@ -125,10 +127,15 @@ export class BitbucketServerProvider implements CommitChecksProvider {
      *
      * @param fetchJson - The HTTP boundary; pass `httpGetJson` in production.
      * @param store - The credential store used to retrieve access tokens.
+     * @param fetchWithMeta - The HTTP boundary for conditional requests.
+     * @param etags - The window's conditional-request store; reads of a commit that was still
+     *   running when last read send `If-None-Match` through `fetchWithMeta`. None: no ETags.
      */
     constructor(
         private readonly fetchJson: FetchJson,
         private readonly store: CredentialStore,
+        private readonly fetchWithMeta: FetchJsonWithMeta = httpGetJsonWithMeta,
+        private readonly etags?: EtagStore,
     ) {}
 
     /**
@@ -193,10 +200,12 @@ export class BitbucketServerProvider implements CommitChecksProvider {
 
         // Bitbucket Server / Data Center uses HTTP access tokens sent as a Bearer header.
         const headers = { Authorization: `Bearer ${token}` };
+        // The build-status endpoint is keyed by host and commit alone, and so is its state.
+        const commitKey = `bitbucket-server:${host.toLowerCase()}@${hash}`;
 
         let rows: BitbucketStatus[];
         try {
-            rows = await this.fetchAllPages(host, hash, headers);
+            rows = await this.fetchAllPages(host, hash, headers, this.etags?.forCommit(commitKey));
         } catch (err) {
             const message = getErrorMessage(err);
             if (/\bHTTP (401|403)\b/i.test(message)) {
@@ -215,12 +224,14 @@ export class BitbucketServerProvider implements CommitChecksProvider {
         // so every value is aggregated; an allowlist would silently hide real failures.
         const items = rows.map(toStatusItem);
         const state = aggregateState(items);
-        return {
+        const snapshot: CommitChecksSnapshot = {
             hash,
             state,
             summary: summaryForItems(items, state),
             items,
         };
+        this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot));
+        return snapshot;
     }
 
     /**
@@ -235,12 +246,15 @@ export class BitbucketServerProvider implements CommitChecksProvider {
      * @param host - The Bitbucket Server host.
      * @param hash - The full commit SHA.
      * @param headers - The auth headers to send on every page request.
+     * @param conditional - The conditional-request store, for a commit still running at its
+     *   last read; `nextPageStart` is in the body, so a 304's stored body keeps it.
      * @returns All status rows gathered across the fetched pages.
      */
     private async fetchAllPages(
         host: string,
         hash: string,
         headers: Record<string, string>,
+        conditional: EtagStore | undefined,
     ): Promise<BitbucketStatus[]> {
         const base = `https://${host}/rest/build-status/1.0/commits/${encodeURIComponent(hash)}`;
         const rows: BitbucketStatus[] = [];
@@ -249,7 +263,9 @@ export class BitbucketServerProvider implements CommitChecksProvider {
             const url = `${base}?limit=${PAGE_LIMIT}&start=${start}`;
             // Pagination is token-driven: each request determines the next page start.
             // react-doctor-disable-next-line react-doctor/async-await-in-loop
-            const raw = await this.fetchJson(url, headers);
+            const raw: unknown = conditional
+                ? (await this.fetchWithMeta(url, headers, conditional)).body
+                : await this.fetchJson(url, headers);
             if (!isStatusPage(raw)) break;
             rows.push(...raw.values);
             start =

@@ -819,3 +819,60 @@ PHASE 3: HALT review still failing after takeover
 - Mutations, each red on its own assertion: no block; block only for session-only; job status to otherChecks; external swallowed on a cut pipeline; hide statuses of any listed pipeline; header version first; unencoded jobs URL.
 BLOCKER 2026-11-11: Phase 3 review still failing after takeover (log :812); owner chose C ("Yeah I pick C too"): two findings fixed by hand, Codex ACCEPT on e59cf746 (checklist B).
 PHASE 3: ACCEPTED 15a47c9d
+
+## Phase 5: built, review pending
+- Builder: Opus (phase-builder lane, no Agent tool), test-first. Planned base 15a47c9d68fbe1646bfe02e50752f00d5d7a2709 (pre-squash Phase 3 branch, not an ancestor); actual base 650a69197efe60b4c2dae7a2b1868e7162ccd58f, so review 650a6919..HEAD.
+- Scope: new src/services/commitChecks/etagStore.ts; http.ts conditional path on createHttpGetJsonWithMeta; requestGate.ts gatedFetchWithMeta forwards the store; githubProvider.ts and gitlabProvider.ts pass it for commits whose last snapshot or detail read was incomplete; commitChecksProviders.ts gains `generations`; repositoryMode.ts passes ciGenerations; 0.43.7, CHANGELOG, README. coordinator.ts and detailService.ts untouched (delivery lead's limit).
+- RED first: 12 of the new httpEtag.test.ts tests failed before the http and provider code existed.
+- Mutations on copies mut-5-build-<n> (httpEtag.test.ts, alarm 60 s, baseline 1 s, 18/18 green), all red:
+  1 304 returns {} -> "304 returns stored body" (+6 more); 2 throw on body-less 304 -> "304 without stored body re-requests", "re-requests a body-less 304 only once"; 3 observer skips 304 -> "304 headers reach the gate"; 4 forCommit always returns the store -> "complete requests do not use the store" (+3); 5 key = URL only -> "a new auth generation does not reuse the body" (+2); 6 pagination not stored -> "multi-page 200 then header-minimal 304 → coverage unchanged"; 7 LRU cap 501 and 8 get() not refreshing LRU -> "keeps the 500 most recently used entries"; 9 shared parsed body -> "a 304 hands out a fresh copy" and "multi-page check runs polled with 304s are never counted twice"; 10 key taken at response time -> "a body read under an old auth generation is never offered under the new one"; 11-14 noteCommit always complete (GitHub snapshot, GitHub detail, GitLab snapshot, GitLab detail) -> the matching provider test; 15 gate drops the store -> 6 tests; 16 noteCommit never complete -> "complete requests do not use the store", "a commit that finishes stops using the store".
+- Full-suite finding fixed: view-providers.integration.test.ts mocked only createHttpGetJson, so conditional polls of "none" snapshots (incomplete by isCompleteSnapshot) went to the real https path and its 28-request count saw 24; the mock now routes createHttpGetJsonWithMeta through the same spy (167/167 green).
+- Pre-existing reds kept out of scope (handoff): commit-list-column-resize.test.tsx (Node v26 localStorage), tsconfigCoverage.test.ts and screenshotComparatorMeta.test.ts (worktree node_modules).
+- Proof chain (each step run on its own): format:check 0 (after prettier --write on 4 files), lint 0, lint:strict 0, architecture:check 0, react-doctor 0, typecheck 0, build 0, test 1 (Test Files 3 failed | 501 passed (504), Tests 10 failed | 7773 passed (7783); all 10 in the three pre-existing files: commit-list-column-resize (localStorage under Node v26.5.0), tsconfigCoverage (worktree node_modules has no typescript CLI; `bun run typecheck:tests` on the same tsconfig is green), screenshotComparatorMeta (worktree node_modules has no @playwright/test)), build:prod 0, package 0. After the format fix: lint, lint:strict, typecheck 0; httpEtag + commitChecksProviders + view-providers 188/188.
+- GitNexus detect_changes not run (index stale, owner's "A: use old map"); impact run recorded in 650a6919.
+
+## Phase 5: fix round 1 (2026-11-11)
+- Cleared all 5 Codex findings test-first in httpEtag.test.ts; each new test was red before the fix and green after:
+  - F1 queued old-token request: red "the old token's etag is not sent: expected 'W/"old"' to be undefined". Fix: entry records `requestHash` (SHA-256 of request headers); a mismatch is a miss.
+  - F2 GitLab token changed by another window: red "expected [ { …(2) } ] to deeply equal []". Same fix.
+  - F3 body-less-304 re-request bypassed the gate: cooldown test and budget test red "promise resolved … instead of rejecting". Fix: `gatedFetchWithMeta` = `recoverBodylessNotModified` over a gated `createConditionalRequest`; the re-request is admitted and counted on its own.
+  - F4 Bitbucket Cloud/Server not conditional: red "expected [] to deeply equal [ Array(1) ]" (both). Fix: both providers take `fetchWithMeta` + `etags`, conditional for incomplete commits.
+  - F5 re-request kept a caller's If-None-Match: red "the re-request must be unconditional: expected [ 'if-none-match' ] to deeply equal []". Fix: strip it case-insensitively.
+- Mutations on a copy (mut-5-fix-1): 5 of 5 red, each naming its finding's test.
+- Codex scratch test "bodyless-304 retries count against the fallback request budget" cannot pass with honest counting (expects 300 two-request reads under a 300 budget); replaced by 150 reads OK, read 151 refused with 429.
+- Proof chain: every step exits 0 except `bun run test` (7782 of 7790 pass; the 8 failures are all commit-list-column-resize.test.tsx under Node v26.5.0, pre-existing).
+- GitNexus detect-changes not run: no .gitnexus/run.cjs in this worktree and the index is stale (owner "A: use old map").
+
+## Phase 5: fix round 2 (2026-11-11)
+- One finding (gitlabProvider.ts:407, `if (!listedVersion) sessionOnly = true` and the inverted gitlabDetail test): rejected, no code change.
+  - Origin: PR #419's last commit "fix: a GitLab pipeline with no update time is never saved, even on one job page" (from the PR #419 review), squash-merged to main as c246d0d4 (`git branch -a --contains c246d0d4` -> origin/main).
+  - `git diff 650a6919 HEAD` is empty for gitlabDetail.test.ts and paginate.ts and does not touch the rule; `git diff 15a47c9d 650a6919` is exactly that rule plus the test, so the 15a47c9d base charges Phase 3's squash to Phase 5.
+  - Codex's scratch test run on a copy of 650a6919 (base5-fix-2): red "Phase 5 must preserve completed single-page cache eligibility (K10, additive review gate): expected true not to be true", the same line as at HEAD, so it predates Phase 5.
+  - Reverting would undo an owner-accepted correctness fix (a mixed-attempt tree saved for a restart) and would be a non-additive Phase 3 change inside Phase 5 (K10).
+- Review Phase 5 as 650a6919..HEAD.
+- Proof chain (each step separately): all exit 0 except `bun run test` (7782 of 7790; the 8 failures are all commit-list-column-resize.test.tsx under Node v26.5.0, pre-existing, same as round 1).
+
+## Phase 5 takeover (claudex-build Step 4), 2026-11-12
+- Findings: 3 test gaps (per-commit store scoping; parse before store; 304 pagination headers). All three are over correct code; tests only, no source change.
+- Added to tests/unit/services/commitChecks/httpEtag.test.ts: "remembers each running commit on its own"; "a finished <provider> commit read between polls of a running one in the same repository leaves both scoped to their own commit" x4 (github, gitlab, bitbucket-cloud, bitbucket-server); "a 200 whose body does not parse is never stored for a later 304"; "a 304 for a stored last page never takes a next link from its own headers"; "a header-minimal 304 keeps GitLab's stored x-next-page". gitlabDetail.test.ts had no 304 case.
+- Mutations, each on its own copy, file run with the verbose reporter (unmutated: 33/33 pass):
+  - M1 bitbucketCloud commitKey without @hash -> 1 red: bitbucket-cloud two-commit test, "the running commit's next poll is still conditional: expected [] to deeply equal [ Array(1) ]".
+  - M2 forCommit returns this when any commit is marked -> 5 red: "another commit is not marked running: expected EtagStore{ ...(3) } to be undefined" and all 4 two-commit tests, "the finished commit's requests do not use the store".
+  - M3 store before parse -> 1 red: "the garbled body's etag is not sent: expected 'W/\"bad\"' to be undefined".
+  - M4 withPagination spread swapped -> GREEN (33/33 for the reviewer; 35/35 again on the hand-fix tree): an equivalent mutation, because the delete loop removes the overlapping keys before the spread (corrected after the post-takeover review; the takeover first logged it as red).
+  - M5 delete loop removed -> 1 red: "the stored page had no next link: expected '<https://api.github.com/repos/o/r...' to be undefined".
+  - M6 x-next-page dropped from PAGINATION_HEADERS -> 2 red: "the 304 keeps the stored next page: expected undefined to be '2'" and "the stored page had no next page".
+- Gate chain: format:check (green after prettier --write), lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; test 7790/7798, 8 failures all in commit-list-column-resize.test.tsx (Node v26, recorded before this phase).
+- GitNexus detect-changes not run: no .gitnexus/run.cjs in this worktree and the index is behind HEAD; the diff is one test file.
+PHASE 5: HALT review still failing after takeover
+
+## Phase 5 hand fix after the takeover halt (2026-11-12)
+- Owner answer, verbatim: "A: add 2 tests". Tests and docs only; no change under src/.
+- Added to httpEtag.test.ts: "a GitLab commit that finishes stops using the store" (pins gitlabProvider.ts:322) and "a settled GitLab detail stops using the store" (pins :342). Each polls the running commit until its reads are conditional, serves it settled (a control asserts state success / complete true), reads again and asserts no If-None-Match.
+- Unmutated: httpEtag.test.ts 35/35 pass. Mutations, verbose reporter, in place and restored:
+  - :322 noteCommit(commitKey, false) -> 1 red: "a GitLab commit that finishes stops using the store", AssertionError: the finished GitLab commit's requests do not use the store: expected [ { …(2) } ] to deeply equal [].
+  - :342 noteCommit(commitKey, false) -> 1 red: "a settled GitLab detail stops using the store", AssertionError: the finished GitLab detail requests do not use the store: expected [ { …(2) }, { …(2) }, { …(2) }, …(1) ] to deeply equal [].
+  - M4 receipt corrected above (rerun: 35/35 green).
+- Codex (gpt-6.1-sol high, fresh session 01a1cd3c-40ea-7c32-ac79-84505a6f4de8, scratch copy) on 78b7041c..6898d332: VERDICT: ACCEPT, no findings. Its own runs: unmutated 35/35; :322 and :342 each 1 red on the new test's assertion, after the settle control passed; spread swap 35/35 (equivalent); commitChecks + commitChecksProviders 774/774; 0 src/ paths in the diff.
+BLOCKER 2026-11-12: Phase 5 review still failing after takeover (log :867); owner chose A ("A: add 2 tests"): two GitLab settle tests added by hand, Codex ACCEPT on 6898d332 (checklist B).
+PHASE 5: ACCEPTED 6898d332
