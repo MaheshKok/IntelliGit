@@ -481,18 +481,30 @@ describe("Checks tab log messages", () => {
     });
 
     it("a run or job id that is not in the commit's detail is refused without a request", async () => {
-        // Two runs with two jobs each, so a lookup that ignores the id finds a real job.
+        // Two runs with two jobs each and no job id in both, so a lookup that ignores the id, or
+        // finds the job in another run, finds a real job.
         const twoRuns = (): CommitCiDetail => {
             const base = detail("failure");
             const first = base.runs[0]!;
             first.jobs = [job("failure"), { ...job("failure"), id: "78", name: "lint" }];
-            base.runs = [first, { ...first, id: "6", name: "Nightly" }];
+            const second = {
+                ...first,
+                id: "6",
+                name: "Nightly",
+                jobs: [
+                    { ...job("failure"), id: "88" },
+                    { ...job("failure"), id: "89", name: "lint" },
+                ],
+            };
+            base.runs = [first, second];
             return base;
         };
         for (const [runId, jobId] of [
             ["999", "77"],
             ["5", "999"],
             ["6", "999"],
+            ["5", "88"],
+            ["6", "77"],
         ]) {
             const { replies, download, target, getDetail } = setup();
             getDetail.mockResolvedValue(twoRuns());
@@ -538,6 +550,20 @@ describe("Checks tab log messages", () => {
             replies.map((reply) => reply.outcome),
             "the run's attempt 1 matches the request's attempt 1",
         ).toEqual(["ready"]);
+
+        const rerun = setup();
+        const newer = detail("failure");
+        delete newer.runs[0]!.jobs[0]!.attempt;
+        newer.runs[0]!.attempt = 2;
+        rerun.getDetail.mockResolvedValue(newer);
+
+        await rerun.send("previewCiLog", 1);
+
+        expect(
+            rerun.replies.map((reply) => reply.outcome),
+            "the run's attempt 2 does not match the request's attempt 1",
+        ).toEqual(["failed"]);
+        expect(rerun.download).not.toHaveBeenCalled();
     });
 
     it("a truncated log tells the webview it was truncated", async () => {
