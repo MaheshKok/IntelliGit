@@ -943,3 +943,52 @@ Phase 6: fix applied, review pending
 - Mutations on copy mut-6-takeover-1 (60 s limit each), 12 of 12 red, each naming its assertion: F1a :178 "the stored entry keeps truncated: expected false to be true"; F1b :139 "the preview keeps truncated: expected false to be true"; F2 :122 "b is the least recently used: expected { text: 'b log #2', …(2) } to be undefined"; F3a :316 "a followed redirect response must be destroyed" and "every followed hop's response must be destroyed"; F3b :357 "an unread error response must release its socket: expected false to be true"; F4 :36 "empty log: expected -1 to be +0"; F5 :119 "a refreshed tab must leave the refresh list: expected "vi.fn()" to be called 1 times, but got 2 times"; F6a :90 "dispose must unsubscribe from the store: expected 1 to be +0"; F6b :92 "dispose must drop onDidChange listeners"; F6c :93 "dispose must drop the placeholder tab"; F7a :264 "status 308 must be followed: expected 308 to be 200"; F7b :468 "expected 'abcdefgh\n' to be 'abcdefghé\n'".
 - Proof chain (to-chain.sh, each step separate): exit 0 for every l10n step, focused vitest (4 files, 83 tests), format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package. `bun run test`: 7876 of 7884 passed; the 8 failures are the known commit-list-column-resize.test.tsx localStorage ones (Node v26.5.0).
 - No contract row or PENDING-OWNER item changed.
+PHASE 6: ACCEPTED 69e809bb, VERIFICATION INCOMPLETE
+PHASE 6 UNVERIFIED: bun run test is red in this environment: 8 failures in tests/webview/unit/commit-list-column-resize.test.tsx, from Node v26.5.0 having no global localStorage. I reproduced the same 8 failures on base commit 86088cab, and this diff touches neither the test nor its code. The full suite therefore cannot be shown green here.; Live VS Code behaviour (reload, tab retention after eviction, cursor placement, progress cancellation) needs the Phase 7 editor flow.; Real socket and TLS behaviour and the real 15 s idle timer: the tests use fakes and call the timeout callback.; Provider endpoints, expired-link renewal and cross-device provider changes: provider wiring is excluded from Phase 6.; Translation quality of the builder-authored l10n strings: only key and placeholder coverage was checked.; Codex capped its extra mutations at 12 and did not mutate every remaining guard variant. My own X1-X10 cover part of the rest.
+REVIEW_MODEL=gpt-6.1-sol (python3 ~/.claude/skills/claudex-build/helpers.py review-model, rc=0). Codex session id 01a1cf91-3805-7651-ac7d-8fb0ddcd2cf8, effort high, run on a copy of HEAD 69e809bb at /var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/review-6-3; codex rc=0, VERDICT: ACCEPT on the first line, no findings, so there was nothing for me to drop or keep.
+
+My commands:
+- `git status --porcelain` before the chain: empty. After the chain: empty (handoff and review-log are committed in HEAD, so the tree lists nothing).
+- `python3 ~/.claude/skills/claudex-build/verify.py gates --base 86088cab9ee8d07c724da9e13f5aeac980dfbffa --stage round`: exit 0, GATES: GREEN warn=0 (format, lint, typecheck, architecture, react-doctor all OK).
+- Proof chain, my copy of the builder's script, one step per log under /var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/chain-6-3. Steps 1-14 exit 0: l10n:sync, l10n:translate --only-missing, l10n:import, localization-csv.js validate, l10n:validate, l10n:audit, `bun vitest run` of the four phase files (4 files, 83/83 passed), format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build. Step 15 `bun run test` exit 1: 507 files passed, 1 failed; 7876 tests passed, 8 failed. All 8 are tests/webview/unit/commit-list-column-resize.test.tsx with "TypeError: Cannot read properties of undefined (reading 'clear')" at the test file's line 92 (`localStorage.clear()`). Node is v26.5.0 and prints "localStorage is not available because --localstorage-file was not provided". Steps 16-17 exit 0: build:prod, package.
+- Check that those 8 are pre-existing: I extracted the base commit 86088cab to /var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/base-6-3 and ran `bun vitest run tests/webview/unit/commit-list-column-resize.test.tsx` there. Node v26.5.0, exit 1, "Tests 8 failed (8)". The diff does not touch that test or the code it uses. I treat these as an environment failure, not a phase defect.
+
+Mutation batch (my script /var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/mutate-6-3.py, run through keep-warm on a scratch copy, each file restored after each mutation). Baseline of the four phase files: rc=0, 83/83, 1.5 s. Cap is perl alarm, 60 s. All 22 mutations went RED; none stayed green and none was cut off.
+R1-R12 are the fix step's mutations, replayed:
+- R1 store:178 `truncated: false`: RED, ciLogMemoryStore.test.ts > "a truncated download is stored and previewed as truncated": "the stored entry keeps truncated: expected false to be true".
+- R2 store:139 preview `truncated: false`: RED, same test: "the preview keeps truncated: expected false to be true".
+- R3 store:122 `this.entries.get(key)`: RED, "a load hit counts as a use": "b is the least recently used: expected { text: 'b log #2', ... } to be undefined".
+- R4 http:316 drop `opened.response.destroy()`: RED, redirects.test.ts > "strips Authorization on origin change": "a followed redirect response must be destroyed: expected "vi.fn()" to be called at least once".
+- R5 http:357 drop `response.destroy()`: RED, "a non-2xx status rejects as HttpError with its status": "an unread error response must release its socket: expected false to be true".
+- R6 firstErrorLine:36 drop `lines.length > 1 &&`: RED, "an empty log opens at line 0": "empty log: expected -1 to be +0".
+- R7 doc:119 drop `this.stale.delete(key)`: RED, "a load that replaces placeholder text fires onDidChange for that URI": "a refreshed tab must leave the refresh list: expected "vi.fn()" to be called 1 times, but got 2 times".
+- R8 doc:90 drop `storeSubscription.dispose()`: RED, "dispose stops listening to the store": "dispose must unsubscribe from the store: expected 1 to be +0".
+- R9 doc:92 drop `changeListeners.clear()`: RED, same test: "dispose must drop onDidChange listeners: expected 1 to be +0".
+- R10 doc:93 drop `stale.clear()`: RED, same test: "dispose must drop the placeholder tab: expected 1 to be +0".
+- R11 http:264 drop 308: RED, "keeps credentials on a same-origin redirect (308)": "status 308 must be followed: expected 308 to be 200".
+- R12 http:468 `byte >= 0xc0 ? 3`: RED, "UTF-8 boundary: a 2-byte character ending exactly at the bound (kept)": "expected 'abcdefgh\n' to be 'abcdefghé\n'".
+X1-X10 are my extra mutations of guards and constants:
+- X1 MAX_CI_LOGS_IN_MEMORY 4: RED, ciLogDocument "miss with a source downloads again".
+- X2 drop the success-handler generation guard: RED, ciLogDocument "a stale document read cannot leave an error tab stuck ... (stale download resolves)": "expected 'stale' to be 'fresh'".
+- X3 drop the post-listener generation guard: RED, "a load listener that calls clear() never hands the cleared log back to the waiter".
+- X4 drop the error-handler generation guard: RED, "stale download settling after clear() does not drop the new in-flight download".
+- X5 clear() no longer aborts: RED, "clear() empties the store and aborts in-flight downloads".
+- X6 maxHops 6: RED, "follows at most 5 redirects".
+- X7 idle timeout 150000: RED, "15 s inactivity callback rejects before the response head".
+- X8 `bytes.length <= room`: RED, "reaching the bound with an announced larger length stops at once even if the server then stalls".
+- X9 CI_LOG_MAX_BYTES 51 MB: RED, "bounds a CI log at 50 MB".
+- X10 cut index+length `>=`: RED, "known-length 300 MB response truncates at 50 MB with one marker".
+
+Codex's own evidence (from its reply; I did not re-run these). It computed git blob hashes and they matched all 30 changed files. It ran the four unit files (83/83), its own phase6Reviewer.test.ts (3/3), and those plus the three touched integration files (340/340). It replayed the same 12 mutations, all red with the same assertions. It ran 12 additional mutations of its own: credential forwarding, hostname-vs-origin, extra hop, HTTPS guard, capacity 4, join map, success-generation guard, abort omission, key regex, 51 MB, exact-room chunk, final-fallback line 0. All were red. It checked 20 interruption scenarios (concurrent same-key loads, eviction while a read is pending, clear before and after completion, a listener calling clear(), tab closed or reopened mid-download, provider disposed mid-download, five redirect statuses, an exact-bound stall, 9 UTF-8 rows, abort and idle timeout, two windows). Its deliverable audit found every deliverable DONE.
+
+Dispositions of the builder's and handoff's risks (from Codex):
+- The seven test gaps and 12 claimed mutations: fixed, reproduced by me and by Codex.
+- Pending-read cleanup and closed/reopened tabs: fixed at ciLogDocument.ts:65, 81, 94, 99.
+- Stale document read after a newer same-key success: fixed at ciLogDocument.ts:73.
+- Generation recheck after load listeners: fixed at ciLogMemoryStore.ts:188.
+- Credential refresh clears logs: fixed at repositoryMode.ts:1398.
+- Allowed per spec: rejecting transport until provider wiring (spec :851), settled-only enforced by Phase 7 (spec :441), English truncation marker (spec :443), sources kept for the window's life (spec :440), stop and mark at 50 MB (spec :444), memory cost of three large logs (spec :458, :906).
+- O2 contract row ("50 MB per log; the log text ends with a truncation line and the detail shows Open in browser", RESOLVED) is pinned by "bounds a CI log at 50 MB", X9 and the `truncated` tests R1/R2.
+- No PENDING-OWNER item bears on this phase.
+
+Codex ran `vitest` with `--no-cache` and wrote its own evidence files only inside its scratch copy. It hit one PreToolUse hook block on a long-output command, with no effect on the result. No repository file was edited by me.

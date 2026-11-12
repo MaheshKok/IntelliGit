@@ -7,9 +7,10 @@
 - Phase 19: accepted f005d90f, verification incomplete (merged as #418, 2490ec17).
 - Phase 3: accepted 15a47c9d, manual; owner OK 2026-11-11 (merged as #419, c246d0d4).
 - Phase 5: accepted 6898d332, manual; owner OK 2026-11-12 (merged as #420, 86088cab).
+- Phase 6: accepted 69e809bb, verification incomplete.
 - Earlier build records (Phase 3 and 5 detail, GitNexus answers): git history of this file (650a6919, 6898d332) and PLAN.review-log.md.
 
-## Phase 6: review pending, started at 86088cab9ee8d07c724da9e13f5aeac980dfbffa
+## Phase 6: accepted 69e809bb, verification incomplete, started at 86088cab9ee8d07c724da9e13f5aeac980dfbffa
 - Actual base: 86088cab (#420). Review `git diff 86088cab..<HEAD>`. Commits: 4f84ac3b build (0.43.8), 51e21ccb fix 1, 5e7f445a fix 2, b8ef4406 takeover, 75271f63 owner answer, c2df109b fix round 3, 819aa68d fix round 4, f35c04fe fix round 5, then the takeover 2 commit (this step, tests only).
 - Takeover 2 (7 open findings after 2 fix rounds, all test gaps, no source change): store keeps and previews `truncated: true` (O2); a `load()` hit refreshes LRU recency (Journey 5); followed redirect responses and a non-2xx final response are destroyed; `findFirstErrorLine("")` is 0; the placeholder-refresh test clears the store so its second load really downloads; dispose test reads the store's listener set and the provider's `changeListeners`/`stale`; redirect test runs over 301/302/303/307/308; UTF-8 row for a 2-byte character ending at the bound. 12 mutations on copy mut-6-takeover-1, 12 red, each naming its assertion.
 - Fix round 5: K19 two-pending-reads test, settled-read marker/bucket release (white-box), 15 s idle timeout pinned in both rows.
