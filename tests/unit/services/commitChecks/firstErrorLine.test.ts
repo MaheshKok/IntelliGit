@@ -45,6 +45,11 @@ describe("findFirstErrorLine", () => {
         expect(findFirstErrorLine(text, { patterns: [/^ERROR: /m] })).toBe(2);
     });
 
+    it("an empty log opens at line 0", () => {
+        expect(findFirstErrorLine("", { patterns: [] }), "empty log").toBe(0);
+        expect(findFirstErrorLine("\n", { patterns: [] }), "a lone newline").toBe(0);
+    });
+
     it("a global pattern does not skip lines through its lastIndex", () => {
         const text = "x ##[error]a\n##[error]b";
         const rules = { patterns: [/##\[error\]/g] };

@@ -105,6 +105,25 @@ describe("CiLogMemoryStore", () => {
         expect(store.get(keyFor("d"))?.text).toBe("d log #4");
     });
 
+    it("a load hit counts as a use", async () => {
+        const store = new CiLogMemoryStore({ download: instantTransport() });
+        for (const job of ["a", "b", "c"]) await store.load(keyFor(job), sourceFor(job));
+        // Loading "a" again (a hit, as the preview and Open full log do) makes "b" the least recent.
+        expect((await store.load(keyFor("a"), sourceFor("a"))).text).toBe("a log #1");
+        await store.load(keyFor("d"), sourceFor("d"));
+        expect(store.get(keyFor("b")), "b is the least recently used").toBeUndefined();
+        expect(store.get(keyFor("a"))?.text, "a load hit must refresh recency").toBe("a log #1");
+    });
+
+    it("a truncated download is stored and previewed as truncated", async () => {
+        const store = new CiLogMemoryStore({
+            download: async () => ({ text: `first 50 MB\n${MARKER}`, truncated: true }),
+        });
+        const preview = await store.preview(keyFor("a"), sourceFor("a"));
+        expect(store.get(keyFor("a"))?.truncated, "the stored entry keeps truncated").toBe(true);
+        expect(preview.truncated, "the preview keeps truncated").toBe(true);
+    });
+
     it("two concurrent opens make one request", async () => {
         const { calls, download } = manualTransport();
         const store = new CiLogMemoryStore({ download });
@@ -455,6 +474,7 @@ describe("downloadToString", () => {
     // € is 3 (E2 82 AC), 😀 is 4 (F0 9F 98 80).
     it.each([
         ["a 2-byte character cut after 1 byte", "abcdefghi", "é", "abcdefghi"],
+        ["a 2-byte character ending exactly at the bound (kept)", "abcdefgh", "é", "abcdefghé"],
         ["a 3-byte character cut after 1 byte", "abcdefghi", "€", "abcdefghi"],
         ["a 3-byte character cut after 2 bytes", "abcdefgh", "€", "abcdefgh"],
         ["a 4-byte character cut after 1 byte", "abcdefghi", "😀", "abcdefghi"],
@@ -507,7 +527,7 @@ describe("downloadToString", () => {
     });
 
     it("a non-2xx status rejects as HttpError with its status", async () => {
-        stubStream({ status: 403, chunks: () => undefined });
+        const state = stubStream({ status: 403, chunks: () => undefined });
         const error = await downloadToString(
             "https://logs.example.com/job",
             { Authorization: "Bearer s" },
@@ -516,6 +536,7 @@ describe("downloadToString", () => {
         ).catch((caught: unknown) => caught);
         expect(error).toBeInstanceOf(HttpError);
         expect((error as HttpError).statusCode).toBe(403);
+        expect(state.destroyed, "an unread error response must release its socket").toBe(true);
     });
 
     it("an abort mid-body rejects with an abort error and destroys the response", async () => {

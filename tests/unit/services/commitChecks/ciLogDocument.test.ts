@@ -289,9 +289,11 @@ describe("ciLogDocument", () => {
         expect(changed).toHaveBeenCalledTimes(1);
         expect(changed).toHaveBeenCalledWith(placeholder);
         await expect(provide(provider, placeholder)).resolves.toBe("a text");
-        // Once the tab shows the log, a later load of the same key fires nothing more.
+        // Once the tab shows the log, a later download of the same key fires nothing more; clear
+        // first so that load downloads and emits a load event instead of hitting the cache.
+        store.clear();
         await store.load(keyFor("a"), sourceFor("a"));
-        expect(changed).toHaveBeenCalledTimes(1);
+        expect(changed, "a refreshed tab must leave the refresh list").toHaveBeenCalledTimes(1);
     });
 
     it("a load after an error line fires onDidChange for that URI", async () => {
@@ -368,6 +370,15 @@ describe("ciLogDocument", () => {
             mocks.closeSubscription.dispose,
             "dispose must stop listening for closed documents",
         ).toHaveBeenCalled();
+        // No behaviour shows a leftover store subscription, so read the store's listeners itself.
+        const listeners = (store as unknown as { listeners: Set<unknown> }).listeners;
+        expect(listeners.size, "dispose must unsubscribe from the store").toBe(0);
+        const inner = provider as unknown as {
+            changeListeners: Set<unknown>;
+            stale: Map<string, unknown>;
+        };
+        expect(inner.changeListeners.size, "dispose must drop onDidChange listeners").toBe(0);
+        expect(inner.stale.size, "dispose must drop the placeholder tab").toBe(0);
         await store.load(keyFor("a"), sourceFor("a"));
         expect(changed).not.toHaveBeenCalled();
     });

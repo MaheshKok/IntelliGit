@@ -10,6 +10,8 @@ import { followRedirects } from "../../../../src/services/commitChecks/http";
 interface Sent {
     url: string;
     headers: Record<string, string>;
+    /** The answering response's `destroy`. */
+    destroy: ReturnType<typeof vi.fn>;
 }
 
 /** A server that answers each URL from `routes`: a redirect target or a final status. */
@@ -20,7 +22,8 @@ function stubRoutes(routes: Record<string, { status: number; location?: string }
         options: { headers: Record<string, string> },
         cb: (r: unknown) => void,
     ) => {
-        sent.push({ url, headers: { ...options.headers } });
+        const destroy = vi.fn();
+        sent.push({ url, headers: { ...options.headers }, destroy });
         const route = routes[url];
         if (!route) throw new Error(`unexpected request ${url}`);
         const req = Object.assign(new EventEmitter(), {
@@ -31,7 +34,7 @@ function stubRoutes(routes: Record<string, { status: number; location?: string }
             statusCode: route.status,
             headers: route.location ? { location: route.location } : {},
             resume: vi.fn(),
-            destroy: vi.fn(),
+            destroy,
         });
         queueMicrotask(() => cb(res));
         return req;
@@ -57,18 +60,23 @@ describe("followRedirects", () => {
         vi.mocked(https.get).mockReset();
     });
 
-    it("keeps credentials on a same-origin redirect", async () => {
-        const sent = stubRoutes({
-            "https://api.example.com/logs": { status: 302, location: "/logs/real" },
-            "https://api.example.com/logs/real": { status: 200 },
-        });
-        const { response, url } = await followRedirects("https://api.example.com/logs", HEADERS, {
-            maxHops: 5,
-        });
-        expect(response.statusCode).toBe(200);
-        expect(url).toBe("https://api.example.com/logs/real");
-        expect(credentialNames(sent[1].headers)).toHaveLength(4);
-    });
+    it.each([301, 302, 303, 307, 308])(
+        "keeps credentials on a same-origin redirect (%i)",
+        async (status) => {
+            const sent = stubRoutes({
+                "https://api.example.com/logs": { status, location: "/logs/real" },
+                "https://api.example.com/logs/real": { status: 200 },
+            });
+            const { response, url } = await followRedirects(
+                "https://api.example.com/logs",
+                HEADERS,
+                { maxHops: 5 },
+            );
+            expect(response.statusCode, `status ${status} must be followed`).toBe(200);
+            expect(url).toBe("https://api.example.com/logs/real");
+            expect(credentialNames(sent[1].headers)).toHaveLength(4);
+        },
+    );
 
     it("strips Authorization on origin change", async () => {
         const sent = stubRoutes({
@@ -82,6 +90,11 @@ describe("followRedirects", () => {
         expect(credentialNames(sent[0].headers)).toHaveLength(4);
         expect(credentialNames(sent[1].headers)).toEqual([]);
         expect(sent[1].headers.Accept).toBe("text/plain");
+        expect(
+            sent[0].destroy,
+            "a followed redirect response must be destroyed",
+        ).toHaveBeenCalled();
+        expect(sent[1].destroy, "the final response is returned unread").not.toHaveBeenCalled();
     });
 
     it("strips the provider's own credential headers in any letter case", async () => {
@@ -157,6 +170,10 @@ describe("followRedirects", () => {
         });
         expect(response.statusCode).toBe(200);
         expect(sent).toHaveLength(6);
+        expect(
+            sent.slice(0, 5).map((request) => request.destroy.mock.calls.length),
+            "every followed hop's response must be destroyed",
+        ).toEqual([1, 1, 1, 1, 1]);
     });
 
     it("stops after 5 hops", async () => {
