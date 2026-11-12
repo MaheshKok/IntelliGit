@@ -4,6 +4,7 @@
 import {
     CI_EXCERPT_MAX_BYTES,
     CI_EXCERPT_MAX_LINES,
+    cleanExcerptText,
     sanitizeExcerpt,
 } from "../../shared/ci/excerpt";
 
@@ -61,8 +62,10 @@ export function buildCiLogExcerpt(text: string, firstErrorLine: number): string 
     let start = Math.max(0, firstErrorLine - EXCERPT_LINES_BEFORE);
     while (
         start < firstErrorLine &&
-        Buffer.byteLength(lines.slice(start, firstErrorLine + 1).join("\n"), "utf8") >
-            CI_EXCERPT_MAX_BYTES
+        Buffer.byteLength(
+            cleanExcerptText(lines.slice(start, firstErrorLine + 1).join("\n")),
+            "utf8",
+        ) > CI_EXCERPT_MAX_BYTES
     ) {
         start++;
     }

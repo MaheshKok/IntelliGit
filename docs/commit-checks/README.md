@@ -218,7 +218,7 @@ and a window reload or a VS Code restart empties the store. A log tab that VS Co
 restores after a reload says the log is no longer loaded until you open it again from
 the Checks tab.
 
-Each log keeps at most its first 50 MB. A longer log ends with the line
+Each log keeps at most its first 50 MB. A log that reaches 50 MB ends with the line
 `[IntelliGit: log truncated at 50 MB — open the run in the browser for the rest]`.
 
 Log downloads follow redirects (such as GitHub's short-lived log links) only to `https:`

@@ -75,4 +75,12 @@ describe("buildCiLogExcerpt", () => {
         expect(Buffer.byteLength(excerpt, "utf8")).toBeLessThanOrEqual(CI_EXCERPT_MAX_BYTES);
         expect(excerpt.startsWith("error here")).toBe(true);
     });
+
+    it("budgets the sanitised context, so control characters cannot push the error line out", () => {
+        // 1-byte control characters become 3-byte U+FFFD: 2 x 2000 raw bytes fit, 2 x 6000 do not.
+        const control = "\u0001".repeat(2000);
+        const excerpt = buildCiLogExcerpt(`${control}\n${control}\nerror here`, 2);
+        expect(Buffer.byteLength(excerpt, "utf8")).toBeLessThanOrEqual(CI_EXCERPT_MAX_BYTES);
+        expect(excerpt, "the error line must stay in the excerpt").toContain("error here");
+    });
 });

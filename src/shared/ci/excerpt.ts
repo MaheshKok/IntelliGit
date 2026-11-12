@@ -22,13 +22,23 @@ const UNSAFE_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u206
  *   and bidi and other control characters (except newline and tab) replaced by U+FFFD.
  */
 export function sanitizeExcerpt(text: string): string {
-    const cleaned = text
+    const lines = cleanExcerptText(text).split("\n").slice(0, CI_EXCERPT_MAX_LINES).join("\n");
+    return cutToUtf8Bytes(lines, CI_EXCERPT_MAX_BYTES);
+}
+
+/**
+ * The cleaning half of `sanitizeExcerpt`, without its bounds: ANSI escapes removed, CRLF made LF,
+ * and bidi and other control characters (except newline and tab) replaced by U+FFFD.
+ *
+ * @param text - Raw log text.
+ * @returns The cleaned text, which may be longer in UTF-8 bytes than `text`.
+ */
+export function cleanExcerptText(text: string): string {
+    return text
         .replace(ANSI_OSC, "")
         .replace(ANSI_CSI, "")
         .replace(/\r\n/g, "\n")
-        .replace(UNSAFE_CHARS, "\ufffd");
-    const lines = cleaned.split("\n").slice(0, CI_EXCERPT_MAX_LINES).join("\n");
-    return cutToUtf8Bytes(lines, CI_EXCERPT_MAX_BYTES);
+        .replace(UNSAFE_CHARS, "�");
 }
 
 /** Keeps whole code points while their UTF-8 length fits in `maxBytes`. */

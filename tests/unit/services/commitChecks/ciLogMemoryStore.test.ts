@@ -269,6 +269,19 @@ describe("CiLogMemoryStore", () => {
         await expect(kept).resolves.toMatchObject({ text: "landed" });
     });
 
+    it("a waiter whose signal is already aborted rejects on a stored log too", async () => {
+        const download = instantTransport();
+        const store = new CiLogMemoryStore({ download });
+        await store.load(keyFor("a"), sourceFor("a"));
+        const controller = new AbortController();
+        controller.abort();
+        await expect(
+            store.load(keyFor("a"), sourceFor("a"), controller.signal),
+            "a pre-aborted waiter must reject even when the log is already stored",
+        ).rejects.toThrow(/abort/i);
+        expect(download).toHaveBeenCalledTimes(1);
+    });
+
     it("cancelling one waiter keeps the shared download for the others", async () => {
         const { calls, download } = manualTransport();
         const store = new CiLogMemoryStore({ download });

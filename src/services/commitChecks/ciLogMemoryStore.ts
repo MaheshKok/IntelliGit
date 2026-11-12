@@ -120,7 +120,7 @@ export class CiLogMemoryStore {
     load(key: string, source: CiLogSource, signal?: AbortSignal): Promise<CiLogEntry> {
         this.sources.set(key, source);
         const stored = this.get(key);
-        if (stored) return Promise.resolve(stored);
+        if (stored) return waitFor(Promise.resolve(stored), signal);
         const shared = this.inflight.get(key) ?? this.startDownload(key, source);
         return waitFor(shared.promise, signal);
     }
