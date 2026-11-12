@@ -275,6 +275,19 @@ describe("CiLogMemoryStore", () => {
         expect(loaded).toHaveBeenCalledTimes(1);
     });
 
+    it("a load listener that calls clear() never hands the cleared log back to the waiter", async () => {
+        const { calls, download } = manualTransport();
+        const store = new CiLogMemoryStore({ download });
+        store.onDidLoad(() => store.clear());
+        const pending = store.load(keyFor("a"), sourceFor("a"));
+        calls[0].deferred.resolve({ text: "cleared by the listener", truncated: false });
+        await expect(
+            pending,
+            "the pending load must reject once a listener cleared the store",
+        ).rejects.toThrow(/abort/i);
+        expect(store.get(keyFor("a"))).toBeUndefined();
+    });
+
     it("store module imports no fs", () => {
         const source = readFileSync(
             resolve(__dirname, "../../../../src/services/commitChecks/ciLogMemoryStore.ts"),
@@ -531,6 +544,7 @@ describe("downloadToString", () => {
     it.each([
         ["an announced larger length", { "content-length": "300" }],
         ["no announced length", {}],
+        ["an announced length of exactly the bound", { "content-length": "10" }],
     ])(
         "reaching the bound with %s stops at once even if the server then stalls",
         async (_label, headers: Record<string, string>) => {
@@ -555,8 +569,8 @@ describe("downloadToString", () => {
         },
     );
 
-    it("a body of exactly the bound, announced at that length, is whole, with no marker", async () => {
-        stubStream({
+    it("a body of exactly the bound, announced at that length, still gets the marker once (O2)", async () => {
+        const state = stubStream({
             headers: { "content-length": "10" },
             chunks: (index) => (index === 0 ? Buffer.from("abcdefghij") : undefined),
         });
@@ -566,7 +580,10 @@ describe("downloadToString", () => {
             10,
             new AbortController().signal,
         );
-        expect(result).toEqual({ text: "abcdefghij", truncated: false });
+        expect(result.truncated, "reaching maxBytes always marks the log truncated").toBe(true);
+        expect(result.text.startsWith("abcdefghij\n[IntelliGit: log truncated")).toBe(true);
+        expect(result.text.split("[IntelliGit: log truncated").length - 1).toBe(1);
+        expect(state.destroyed).toBe(true);
     });
 
     it("follows at most 5 redirects", async () => {

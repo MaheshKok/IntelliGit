@@ -369,6 +369,7 @@ const vscodeMock = {
         })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
         registerTextDocumentContentProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidCloseTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
         onDidChangeTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
         onDidSaveTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
         onDidCreateFiles: vi.fn(() => ({ dispose: vi.fn() })),

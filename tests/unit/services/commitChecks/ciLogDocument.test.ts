@@ -2,10 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
     registerTextDocumentContentProvider: vi.fn(),
+    closeListeners: [] as ((document: { uri: unknown }) => void)[],
+    closeSubscription: { dispose: vi.fn() },
 }));
 
 vi.mock("vscode", () => ({
-    workspace: { registerTextDocumentContentProvider: mocks.registerTextDocumentContentProvider },
+    workspace: {
+        registerTextDocumentContentProvider: mocks.registerTextDocumentContentProvider,
+        onDidCloseTextDocument: (listener: (document: { uri: unknown }) => void) => {
+            mocks.closeListeners.push(listener);
+            return mocks.closeSubscription;
+        },
+    },
     l10n: {
         t: (message: string, ...args: unknown[]) =>
             message.replace(/\{(\d+)\}/g, (_, index: string) => String(args[Number(index)])),
@@ -60,6 +68,42 @@ async function provide(provider: vscode.TextDocumentContentProvider, uri: vscode
 describe("ciLogDocument", () => {
     beforeEach(() => {
         mocks.registerTextDocumentContentProvider.mockReset();
+        mocks.closeListeners.length = 0;
+        mocks.closeSubscription.dispose.mockClear();
+    });
+
+    it("a closed tab never gets onDidChange; a tab still open does", async () => {
+        const { store, provider } = setup();
+        const changed = vi.fn();
+        provider.onDidChange?.(changed);
+        const closed = uriFor(`k=${keyFor("a")}`);
+        const open = uriFor(`k=${keyFor("a")}&tab=2`);
+        await expect(provide(provider, closed)).resolves.toBe(NO_LONGER_LOADED);
+        await expect(provide(provider, open)).resolves.toBe(NO_LONGER_LOADED);
+        // A close for another scheme with the same text must not touch the registry.
+        for (const listener of mocks.closeListeners) {
+            listener({ uri: { ...open, scheme: "file" } });
+            listener({ uri: closed });
+        }
+        await store.load(keyFor("a"), sourceFor("a"));
+        expect(changed, "only the open tab is refreshed").toHaveBeenCalledTimes(1);
+        expect(changed).toHaveBeenCalledWith(open);
+    });
+
+    it("a tab reopened after its close is refreshed again", async () => {
+        const { store, provider } = setup();
+        const changed = vi.fn();
+        provider.onDidChange?.(changed);
+        const uri = uriFor(`k=${keyFor("a")}`);
+        await provide(provider, uri);
+        for (const listener of mocks.closeListeners) listener({ uri });
+        // No behaviour shows an empty bucket, so read the registry itself.
+        const registry = (provider as unknown as { stale: Map<string, unknown> }).stale;
+        expect(registry.has(keyFor("a")), "an empty key bucket must be deleted").toBe(false);
+        await expect(provide(provider, uri)).resolves.toBe(NO_LONGER_LOADED);
+        await store.load(keyFor("a"), sourceFor("a"));
+        expect(changed).toHaveBeenCalledTimes(1);
+        expect(changed).toHaveBeenCalledWith(uri);
     });
 
     it("registers the intelligit-ci-log scheme and unregisters on dispose", () => {
@@ -214,6 +258,10 @@ describe("ciLogDocument", () => {
         provider.onDidChange?.(changed);
         await provide(provider, uriFor(`k=${keyFor("a")}`));
         registration.dispose();
+        expect(
+            mocks.closeSubscription.dispose,
+            "dispose must stop listening for closed documents",
+        ).toHaveBeenCalled();
         await store.load(keyFor("a"), sourceFor("a"));
         expect(changed).not.toHaveBeenCalled();
     });

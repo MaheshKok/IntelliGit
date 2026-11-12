@@ -12,18 +12,23 @@ const KEY_PATTERN = /^[0-9a-f]{64}$/;
 
 /** Serves CI log text from the store and refreshes tabs that showed a placeholder. */
 class CiLogDocumentProvider implements vscode.TextDocumentContentProvider {
-    // Tabs answered with a placeholder or an error line, per key, to refresh once the log loads.
+    // Open tabs answered with a placeholder or an error line, per key, to refresh once the log
+    // loads; a tab leaves when its document closes.
     private readonly stale = new Map<string, Map<string, vscode.Uri>>();
     private readonly changeListeners = new Set<(uri: vscode.Uri) => void>();
     private readonly storeSubscription: { dispose(): void };
+    private readonly closeSubscription: vscode.Disposable;
 
     /**
-     * Starts listening to the store for loads that can replace a placeholder.
+     * Starts listening to the store for loads that can replace a placeholder, and to closed tabs.
      *
      * @param store - The window's log store.
      */
     constructor(private readonly store: CiLogMemoryStore) {
         this.storeSubscription = store.onDidLoad((key) => this.refresh(key));
+        this.closeSubscription = vscode.workspace.onDidCloseTextDocument((document) =>
+            this.forget(document.uri),
+        );
     }
 
     /**
@@ -68,11 +73,22 @@ class CiLogDocumentProvider implements vscode.TextDocumentContentProvider {
         }
     }
 
-    /** Stops listening to the store. */
+    /** Stops listening to the store and to closed tabs. */
     dispose(): void {
         this.storeSubscription.dispose();
+        this.closeSubscription.dispose();
         this.changeListeners.clear();
         this.stale.clear();
+    }
+
+    private forget(uri: vscode.Uri): void {
+        if (uri.scheme !== CI_LOG_SCHEME) return;
+        const key = new URLSearchParams(uri.query).get("k");
+        if (key === null) return;
+        const uris = this.stale.get(key);
+        if (!uris) return;
+        uris.delete(uri.toString());
+        if (uris.size === 0) this.stale.delete(key);
     }
 
     private markStale(key: string, uri: vscode.Uri): void {

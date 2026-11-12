@@ -183,6 +183,8 @@ export class CiLogMemoryStore {
                     this.entries.delete(this.entries.keys().next().value as string);
                 }
                 for (const listener of [...this.listeners]) listener(key);
+                // A listener may have called clear(); its waiters must not get the cleared log.
+                if (generation !== this.generation) throw abortError();
                 return entry;
             },
             (error: unknown) => {

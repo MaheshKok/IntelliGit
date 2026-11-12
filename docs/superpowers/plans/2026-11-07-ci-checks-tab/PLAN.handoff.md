@@ -10,53 +10,38 @@
 - Earlier build records (Phase 3 and 5 detail, GitNexus answers): git history of this file (650a6919, 6898d332) and PLAN.review-log.md.
 
 ## Phase 6: review pending, started at 86088cab9ee8d07c724da9e13f5aeac980dfbffa
-- Actual base: 86088cab (#420, the squash of Phase 5 on main). 6898d332 is the pre-squash Phase 5 head; review `git diff 86088cab..<Phase 6 commit>`.
-- Built test-first, one commit, patch 0.43.8:
-  - http.ts: `followRedirects` (HTTPS only, credential headers stripped on any origin change and never restored) and `downloadToString` (5 hops, 50 MB bound, one English marker line, UTF-8 cut, abort, idle timeout 15 s, non-2xx = HttpError).
-  - ciLogMemoryStore.ts: `CiLogMemoryStore` (LRU 3, sha256 key, join map, settled-only by contract, `clear()` aborts and drops late results, no fs), `ciLogKey`, `preview` returns the excerpt only.
-  - firstErrorLine.ts: provider pattern, then error word after the step start, then last line; `buildCiLogExcerpt` (5 lines before, 40 lines, 8 KB, `sanitizeExcerpt`).
-  - ciLogDocument.ts: `intelligit-ci-log:` provider, key `^[0-9a-f]{64}$` only, miss with source downloads again, miss without one returns the "no longer loaded" line, `onDidChange` for every placeholder or error-line URI when a later load of the key succeeds.
-  - repositoryMode.ts: one store per window, provider registered, both disposed with the window; `clear()` on a commitChecks setting change and on the credential refresh (`refreshCommitCheckBadges`).
-  - 3 strings localised in 11 locales; CHANGELOG entry verbatim; README "CI logs" section marked Planned.
-- Mutations (copy mut-6-build-2): 47 of 47 red, each naming its test; record in PLAN.review-log.md.
-- Fix round 1 (Codex: a body that reaches 50 MB and then stalls was lost to the idle timeout): `readBounded` now stops and destroys the response at the bound, unless the announced length is exactly the bound. Tests "reaching the bound with an announced larger length / no announced length stops at once even if the server then stalls"; 3 of 3 mutations red (copy mut-6-fix-1).
-- Fix round 2 (Codex: 4 surviving mutations, tests only, no source change): stale download settling after `clear()` keeps the new in-flight download (reject and resolve); `ciLogKey` differs per part and per separator shift; UTF-8 cut table for 2-, 3- and 4-byte characters plus kept-at-bound controls; a pre-aborted waiter rejects. 9 of 9 mutations red (copy mut-6-fix-2).
-- HALT after the takeover (run wf_c9b75488-bf2, R1 Fable): 3 findings still open. Owner's answer, 2026-11-12, verbatim: "A: follow the plan". PLAN.md does not change. The next fix round builds on b8ef4406 (no reset) and closes all three, each with a test that fails first:
-  1. ciLogMemoryStore.ts:185 (K16): a synchronous `onDidLoad` listener that calls `clear()` must never get the cleared entry back from the pending `load()`. Check the generation again after the listeners run, and reject before returning the entry.
-  2. ciLogDocument.ts:78 (K19): the refresh registry holds only URIs of tabs that are still open. Drop a URI when its document closes, delete empty key buckets, and dispose the close subscription with the provider. A closed tab never gets `onDidChange`.
-  3. http.ts:432 (PLAN.md:443-444, O2): remove the `Content-Length === maxBytes` (wholeAtBound) exception and its test. Reaching maxBytes always stops the download, destroys the response, appends the marker line once and sets `truncated: true`, even when Content-Length is exactly maxBytes. A test proves that a body of exactly maxBytes with Content-Length = maxBytes gets the marker.
-- Takeover (Codex: a document read whose download a `clear()` aborted settled after a newer same-key load had already fired its refresh, so the tab kept the error line for good, against K19): the read's `catch` in ciLogDocument.ts now serves the store's current entry for the key and marks the tab for refresh only when there is none. Test "a stale document read cannot leave an error tab stuck ... (stale download rejects / resolves)" in ciLogDocument.test.ts, red on the unfixed code in both orderings; the reviewer's own scratch test passes on the fix (copy mut-6-takeover-1).
+- Actual base: 86088cab (#420). Review `git diff 86088cab..<HEAD>`. Commits: 4f84ac3b build (0.43.8), 51e21ccb fix 1, 5e7f445a fix 2, b8ef4406 takeover, 75271f63 owner answer, then the fix round 3 commit (this round).
+- Built: http.ts `followRedirects` + `downloadToString` (5 hops, 50 MB, marker, UTF-8 cut, abort, idle 15 s, non-2xx = HttpError); `CiLogMemoryStore` (LRU 3, sha256 key, join map, clear() aborts and drops late results, no fs); firstErrorLine.ts + excerpt; `intelligit-ci-log:` provider (K19); store wiring in repositoryMode.ts. 3 strings in 11 locales, CHANGELOG verbatim, README "CI logs" marked Planned.
+- Fix 1: stop at the bound even if the server stalls. Fix 2: 4 surviving mutations closed with tests. Takeover: a stale document read serves the newer same-key entry instead of a stuck error line.
+- HALT after the takeover; owner's answer 2026-11-12, verbatim: "A: follow the plan". PLAN.md unchanged.
+- Fix round 3 (this round, on top of 75271f63, no reset) closes the three open R1 findings, each with a test red first:
+  1. K16, ciLogMemoryStore.ts: generation checked again after the `onDidLoad` listeners; a listener's `clear()` rejects the pending load. Test "a load listener that calls clear() never hands the cleared log back to the waiter".
+  2. K19, ciLogDocument.ts: `onDidCloseTextDocument` drops a closed `intelligit-ci-log:` URI from the refresh registry, deletes empty key buckets, and is disposed with the provider. Tests "a closed tab never gets onDidChange; a tab still open does", "a tab reopened after its close is refreshed again" (white-box bucket check), dispose test asserts the close subscription is disposed.
+  3. O2, http.ts: the `Content-Length === maxBytes` exception is gone; reaching maxBytes always stops, destroys, marks once, `truncated: true`. The old "exactly the bound is whole" test is replaced by "... announced at that length, still gets the marker once (O2)" plus a stall row in the bound it.each.
+- Mutations (copy mut-6-fix-3): 6 of 6 red, each naming its assertion (record in PLAN.review-log.md).
 
 ## Decisions and why
-- The store's `download` in repositoryMode is a rejecting placeholder: no provider log endpoint exists until Phase 7, and nothing calls `load` yet. Phase 7 replaces it with the provider transports.
-- Truncation marker stays English inside http.ts (no vscode import there; the line sits inside English log text). Document lines use `l10n.t`.
-- `onDidChange` is a hand-written listener set, not `vscode.EventEmitter`, so existing vscode test mocks without EventEmitter keep working.
-- The body is cut by counted bytes, so a large announced length is never refused (K17). Superseded by the owner's halt answer (2026-11-12, "A: follow the plan"): reaching the bound always stops, destroys and marks, whatever `Content-Length` says; the earlier "equal to the bound = no marker" exception goes.
-- Sources stay recorded after eviction and after `clear()` (K19: a miss with a known source downloads again); a reload empties them.
-- The credential refresh clears the store with the other CI caches, so a log read under an old token is not served after a token change.
+- Fix round 3 was done in the builder step: the handoff already said Phase 6 was built, but the owner's halt answer requires three changes that a "no rebuild, rerun gates" pass would have left undone.
+- The store's `download` in repositoryMode is a rejecting placeholder until Phase 7 adds provider log endpoints; nothing calls `load` yet.
+- Truncation marker stays English inside http.ts (no vscode import; it sits in English log text). Document lines use `l10n.t`.
+- `onDidChange` is a hand-written listener set, so vscode mocks without EventEmitter keep working.
+- Reaching the 50 MB bound always stops and marks the log, whatever `Content-Length` says (owner, "A: follow the plan").
+- Sources stay recorded after eviction and `clear()` (K19: a miss with a known source downloads again); a reload empties them.
+- The credential refresh clears the store with the other CI caches.
 
 ## Open risks
-- Phase 3 (carried over, still open):
-  - A version-less tree that mixed two attempts stays shown until Refresh or restart in that session.
-  - "late pre-session-only settled save" and "failed session-only deletion after restart": closing them needs a saved tombstone, a persisted-format change, left for the owner.
-  - Pipelines over 1 000 jobs: an external status or bridge job of a cut pipeline is hidden with the cut jobs.
-  - `optional: true` is set from `allow_failure` while `optionalJobs` stays false until Phase 9.
-  - Translations (Phase 3 and Phase 6 strings) were written by the builder, not an outside source.
-- Phase 5: the incomplete-commit set is an LRU of 500 per window; any header change makes the next request unconditional once.
-- Phase 6:
-  - Up to 3 logs of 50 MB each sit in the extension host's memory (owner path C), about 150 MB plus string overhead.
-  - GitNexus detect-changes: risk HIGH (activateRepositoryMode, 9 flows), index stale at 64d390b0; the change there is the store wiring the integration test pins.
-  - Settled-only is the callers' contract (Phase 7 handlers); the store does not check job status.
+- Phase 3 (carried over): a version-less tree mixing two attempts stays until Refresh; "late pre-session-only settled save" and "failed session-only deletion after restart" need a saved tombstone (persisted-format change, owner); pipelines over 1 000 jobs hide a cut pipeline's external jobs; `optionalJobs` false until Phase 9; Phase 3 and 6 translations written by the builder.
+- Phase 5: the incomplete-commit set is an LRU of 500 per window; a header change makes the next request unconditional once.
+- Phase 6: up to 3 logs of 50 MB in extension-host memory (owner path C); settled-only is the Phase 7 handlers' contract; GitNexus risk HIGH through activateRepositoryMode (index stale at 64d390b0); the empty-bucket test reads the provider's private registry.
 
 ## Next phase: wave 4 (Phases 7, 8, 9), after Phase 6 is accepted.
 
 ## Found outside scope
-- commit-list-column-resize.test.tsx fails under Node v26.5.0 (no global `localStorage`); red on HEAD 86088cab too (8 tests).
-- GitHub carryScans also treats two missing `runAttempt` values as the same run.
+- commit-list-column-resize.test.tsx fails under Node v26.5.0 (no global `localStorage`); red on 86088cab too (8 tests).
+- GitHub carryScans treats two missing `runAttempt` values as the same run.
 - Extract detailOf/flatDetail into a shared module when Phase 17 adds a third provider detail.
-- `bun run test` in the main checkout times out git-heavy tests under load.
-- `bun run package` can pack ignored leftovers under `output/`.
-- A copy without `.git` fails git-backed tests; a copy under $TMPDIR/phase-run hits the fixture socket-path limit unless TMPDIR is short.
-- noRepositoryMode.ts registers a placeholder `refreshBadges`, so a token change there clears no cache (nor the CI log store, which that mode does not create).
-- GitNexus index is behind HEAD; the registry holds two "IntelliGit" entries, so the CLI needs `--repo <absolute path>`.
+- `bun run test` in the main checkout times out git-heavy tests under load; `bun run package` can pack ignored `output/` leftovers.
+- A copy without `.git` fails git-backed tests; a copy under $TMPDIR/phase-run hits the socket-path limit unless TMPDIR is short. In an isolated worktree session the `git ls-files | tar` copy recipe is refused by the git guard; rsync with an exclude file works.
+- noRepositoryMode.ts registers a placeholder `refreshBadges`, so a token change there clears no cache.
+- GitNexus registry holds two "IntelliGit" entries, so the CLI needs `--repo <absolute path>`.
 - Bitbucket detail reads (Phases 17/18) should pass the ETag store when they add metadata fetches.
