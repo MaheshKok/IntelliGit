@@ -34,7 +34,7 @@ const EXCERPT_LINES_BEFORE = 5;
  */
 export function findFirstErrorLine(text: string, rules: CiLogErrorRules): number {
     const lines = text.split("\n");
-    if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+    while (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
     // `search` ignores `lastIndex`, so a global pattern cannot skip a line.
     const marked = lines.findIndex((line) =>
         rules.patterns.some((pattern) => line.search(pattern) !== -1),

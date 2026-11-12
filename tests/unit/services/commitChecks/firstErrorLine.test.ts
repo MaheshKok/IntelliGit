@@ -50,6 +50,14 @@ describe("findFirstErrorLine", () => {
         expect(findFirstErrorLine("\n", { patterns: [] }), "a lone newline").toBe(0);
     });
 
+    it("a log ending in several blank lines opens on its last line with text", () => {
+        expect(
+            findFirstErrorLine("one\ntwo\n\n\n", { patterns: [] }),
+            "trailing blank lines must not become the fallback line",
+        ).toBe(1);
+        expect(findFirstErrorLine("\n\n", { patterns: [] }), "only blank lines").toBe(0);
+    });
+
     it("a global pattern does not skip lines through its lastIndex", () => {
         const text = "x ##[error]a\n##[error]b";
         const rules = { patterns: [/##\[error\]/g] };
