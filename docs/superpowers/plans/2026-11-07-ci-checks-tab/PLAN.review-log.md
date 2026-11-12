@@ -1029,3 +1029,15 @@ WORKTREE 0 7: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run
 - Mutations on mut-7-takeover-1: A1 (no catch), A2 (showTextDocument outside try), M8, M12 all red, each naming its test.
 - Proof: `bun run test` 10 failed / 7932 passed (the 10 known: 8 column-resize under Node v26, tsconfigCoverage, screenshotComparatorMeta); `bun run typecheck` clean.
 - The editor steps moved into a `showLog` helper (eslint complexity cap 25); re-proved on that shape: B1 (catch drops its reply) and B2 (showTextDocument not awaited) both red on "the webview gets the editor failure".
+WORKTREE 0 7: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/repro-PLAN-3 repro/PLAN-3
+PHASE 7: HALT review still failing after takeover
+
+### Phase 7 finished by hand (owner answer "A: fix by hand"), 2026-11-12
+- Findings 1, 2, 3, 5 pinned by tests in ciLogPreview.test.ts, each red under its mutation: lookup `find(() => true)`, `?? run.attempt` dropped, `truncated: false`, `force: true`, `cancellable: false`.
+- Finding 4 (Shape 2): red tests 3f0c7f96, fix 233b965e, then reworked in ceace184 after the R1 and Codex rounds: `followRedirects` reports whether the answering request still carried the credential (`credentialSent`), `HttpError` carries it, and `failureOf` blames the token only when it was sent. Mutations MC1-MC4 red, each naming its test.
+- Overflow gap: repro/PLAN-1, -2 red at 233b965e; red test 3d71c353, fix 56fdcf09; summaries made best-effort in ceace184 (a failing or cooled-down summary read leaves the page's failed jobs without text). Mutations MO1, MS1-MS3 red.
+- Codex (gpt-6.1-sol high) on 5ba6709e..0aee24d6: REVISE, 3 REQUIRED. 1 fixed (ceace184, same as R1 #2); 2 fixed (6fef8c59, MX1/MX2 red); 3 declined: summaries are best-effort by design, pinned by the "still lists the job as failed" tests.
+- Fable R1: 4 points; redirect round trip and unreadable-summary hiding fixed in ceace184; origin-compare mutant gone with the comparison; 404-widening mutant moot (the 404 catch was removed).
+- tsconfigCoverage and screenshotComparatorMeta: 2/2 pass with packages installed.
+- Proof at 6fef8c59: typecheck 0, lint 0, build 0; `bun run test` 9 failed / 7944 passed (8 column-resize under Node v26; merge-editor-performance ratio 3.07x under load, 3/3 alone).
+PHASE 7: ACCEPTED 6fef8c59
