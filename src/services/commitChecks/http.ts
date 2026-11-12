@@ -427,12 +427,14 @@ function readBounded(
             return;
         }
         signal.addEventListener("abort", onAbort, { once: true });
+        // Only a body announced at exactly `maxBytes` waits at the bound for its end; any other
+        // body stops there, so a server that stalls after the bound cannot lose the kept bytes.
+        const wholeAtBound = Number(response.headers["content-length"]) === maxBytes;
         response.on("data", (chunk: Buffer | string) => {
             if (settled) return;
             const bytes = typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk;
             const room = maxBytes - size;
-            if (bytes.length <= room) {
-                // A body of exactly `maxBytes` is whole; only a byte past the bound truncates.
+            if (bytes.length < room || (bytes.length === room && wholeAtBound)) {
                 chunks.push(bytes);
                 size += bytes.length;
                 return;

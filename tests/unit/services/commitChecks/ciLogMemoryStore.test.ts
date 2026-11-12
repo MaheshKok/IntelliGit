@@ -244,6 +244,8 @@ interface StreamPlan {
     slow?: boolean;
     /** Never answers, as a server that accepted the connection and hangs before the head. */
     noHead?: boolean;
+    /** Sends nothing more from chunk `stallAfter` on, as a server that hangs mid-body. */
+    stallAfter?: number;
 }
 
 /** Streams `plan.chunks(i)` until it returns undefined, the response is destroyed, or an error. */
@@ -288,6 +290,7 @@ function stubStream(plan: StreamPlan) {
                         res.emit("close");
                         return;
                     }
+                    if (plan.stallAfter !== undefined && index === plan.stallAfter) return;
                     const chunk = plan.chunks(index);
                     if (!chunk) {
                         res.emit("end");
@@ -447,8 +450,38 @@ describe("downloadToString", () => {
         expect(state.requestDestroyed).toBe(true);
     });
 
-    it("a body of exactly the bound is whole, with no marker", async () => {
-        stubStream({ chunks: (index) => (index === 0 ? Buffer.from("abcdefghij") : undefined) });
+    it.each([
+        ["an announced larger length", { "content-length": "300" }],
+        ["no announced length", {}],
+    ])(
+        "reaching the bound with %s stops at once even if the server then stalls",
+        async (_label, headers: Record<string, string>) => {
+            const state = stubStream({
+                headers,
+                chunks: (index) => (index === 0 ? Buffer.from("abcdefghij") : undefined),
+                stallAfter: 1,
+            });
+            const pending = downloadToString(
+                "https://logs.example.com/job",
+                {},
+                10,
+                new AbortController().signal,
+            );
+            await vi.waitFor(() =>
+                expect(state.destroyed, "reaching maxBytes must destroy the response").toBe(true),
+            );
+            const result = await pending;
+            expect(result.truncated).toBe(true);
+            expect(result.text.startsWith("abcdefghij\n")).toBe(true);
+            expect(result.text.split("[IntelliGit: log truncated").length - 1).toBe(1);
+        },
+    );
+
+    it("a body of exactly the bound, announced at that length, is whole, with no marker", async () => {
+        stubStream({
+            headers: { "content-length": "10" },
+            chunks: (index) => (index === 0 ? Buffer.from("abcdefghij") : undefined),
+        });
         const result = await downloadToString(
             "https://logs.example.com/job",
             {},

@@ -19,12 +19,13 @@
   - repositoryMode.ts: one store per window, provider registered, both disposed with the window; `clear()` on a commitChecks setting change and on the credential refresh (`refreshCommitCheckBadges`).
   - 3 strings localised in 11 locales; CHANGELOG entry verbatim; README "CI logs" section marked Planned.
 - Mutations (copy mut-6-build-2): 47 of 47 red, each naming its test; record in PLAN.review-log.md.
+- Fix round 1 (Codex: a body that reaches 50 MB and then stalls was lost to the idle timeout): `readBounded` now stops and destroys the response at the bound, unless the announced length is exactly the bound. Tests "reaching the bound with an announced larger length / no announced length stops at once even if the server then stalls"; 3 of 3 mutations red (copy mut-6-fix-1).
 
 ## Decisions and why
 - The store's `download` in repositoryMode is a rejecting placeholder: no provider log endpoint exists until Phase 7, and nothing calls `load` yet. Phase 7 replaces it with the provider transports.
 - Truncation marker stays English inside http.ts (no vscode import there; the line sits inside English log text). Document lines use `l10n.t`.
 - `onDidChange` is a hand-written listener set, not `vscode.EventEmitter`, so existing vscode test mocks without EventEmitter keep working.
-- The `Content-Length` header is never consulted: the body is cut by counted bytes only, so a large announced length is never refused (K17).
+- The body is cut by counted bytes, so a large announced length is never refused (K17). `Content-Length` matters only at the bound: equal to it = wait for the end, no marker; absent or larger = stop at once with the marker (§5 "stops reading at maxBytes by destroying the response"). Cost: an unannounced (chunked) body of exactly 50 MB gets the marker.
 - Sources stay recorded after eviction and after `clear()` (K19: a miss with a known source downloads again); a reload empties them.
 - The credential refresh clears the store with the other CI caches, so a log read under an old token is not served after a token change.
 

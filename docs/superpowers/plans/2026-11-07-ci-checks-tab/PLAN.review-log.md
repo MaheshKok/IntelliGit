@@ -894,3 +894,10 @@ PHASE 5: ACCEPTED 6898d332
   - W1 no clear on settings / W2 no clear on credentials / W3 no registration / W4 no dispose: "registers the CI log document and clears the log store with the CI caches", each on its own assertion.
 - GitNexus (index stale at 64d390b0, old map per owner): impact activateRepositoryMode UNKNOWN (caller extension.ts, unresolved), refreshCommitCheckBadges LOW. detect-changes --scope all: 21 files, 9 symbols, risk HIGH through activateRepositoryMode (9 flows); the change there is the store wiring the integration test pins.
 - Deviations: none from the Phase 6 contract rows. The store's download in repositoryMode is a rejecting placeholder until Phase 7 adds provider log endpoints; nothing calls `load` yet.
+
+### Phase 6 fix round 1 (2026-11-12)
+- Finding (Codex, http.ts:434): a body reaching exactly maxBytes with an announced larger (or no) Content-Length that then stalls was lost to the 15 s idle timeout instead of stored truncated.
+- Fix: `readBounded` stops at the bound (finish(true) + response.destroy()) unless `Content-Length` equals maxBytes; the equal case still waits for `end` and keeps no marker.
+- Tests: `ciLogMemoryStore.test.ts` > "reaching the bound with an announced larger length / no announced length stops at once even if the server then stalls" (red before fix: "reaching maxBytes must destroy the response: expected false to be true"); the exact-bound whole test now announces Content-Length 10.
+- Mutations (copy mut-6-fix-1): `<` -> `<=` red (both stall tests); wholeAtBound=true red (both stall tests); wholeAtBound=false red ("a body of exactly the bound, announced at that length, is whole").
+- Battery: all steps exit 0 except `bun run test` 7844/7852, the 8 known commit-list-column-resize.test.tsx (Node v26 localStorage) failures, red on base too.
