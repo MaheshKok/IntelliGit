@@ -6,9 +6,10 @@
 - Phase 4: accepted f005d90f, verification incomplete (merged as #417, d3438a11).
 - Phase 19: accepted f005d90f, verification incomplete (merged as #418, 2490ec17).
 - Phase 3: accepted 15a47c9d, manual; owner OK 2026-11-11 (merged as #419, c246d0d4).
+- Phase 5: accepted 6898d332, manual: two GitLab settle tests added by hand after the takeover halt, Codex ACCEPT; owner OK 2026-11-12.
 - Earlier build records, the Phase 3 GitNexus answer and the Phase 5 impact run: git history of this file (650a6919) and PLAN.review-log.md.
 
-## Phase 5: review pending, started at 15a47c9d68fbe1646bfe02e50752f00d5d7a2709
+## Phase 5: accepted 6898d332 (record below), started at 15a47c9d68fbe1646bfe02e50752f00d5d7a2709
 - 15a47c9d is on the pre-squash Phase 3 branch, not an ancestor of HEAD. The build sits on 650a6919, so review 650a6919..HEAD.
 - Built in 20b1c353: `EtagStore` (LRU 500, key `${authGeneration}\0${url}`), conditional `createHttpGetJsonWithMeta`, GitHub and GitLab snapshot and detail reads conditional for incomplete commits. Patch 0.43.7.
 - Fix round 1 (d83ba4a4) clears all five Codex findings:
@@ -18,7 +19,7 @@
   - Bitbucket Cloud and Server snapshot reads are conditional for incomplete commits (finding 4; plan §3 line 399). Server's commit key is host + hash, the scope of its global build-status endpoint.
 - Fix round 2: the one finding (GitLab `sessionOnly` rule, gitlabProvider.ts:407) is rejected, no code change. That rule and its test came from PR #419's last commit ("a GitLab pipeline with no update time is never saved, even on one job page"), on main as c246d0d4. `git diff 650a6919 HEAD` is empty for gitlabProvider.ts:398-410, gitlabDetail.test.ts and paginate.ts. Codex's scratch test phase5ScopeReview.test.ts is red at 650a6919 with the same assertion line, so a diff against 15a47c9d charges Phase 3's squash to Phase 5. Reviewers: diff 650a6919..HEAD only.
 - Takeover (after 2 fix rounds): three test gaps closed, tests only, no source change. httpEtag.test.ts now pins per-commit store scoping (an EtagStore unit test, plus a two-commit test on one instance for each of the four providers), parse-before-store (a garbled 200 with an ETag is never stored), and 304 pagination (the 304's own `link`/`x-next-page` never override a stored last page, and GitLab's stored `x-next-page` survives a header-minimal 304). The reviewer mutations were each run on a copy (mut-5-takeover-1..6). Five turn a named assertion red; M4 (the `withPagination` spread swap) is an equivalent mutation and stays green (35/35 rerun on the hand-fix tree), because the `delete merged[name]` loop removes the overlapping keys before the spread. M5 (the delete loop removed) is the one that pins "the stored page had no next link".
-- Hand fix after the takeover halt (owner: "A: add 2 tests"): two GitLab settle-transition tests in httpEtag.test.ts, tests only. "a GitLab commit that finishes stops using the store" pins gitlabProvider.ts:322, and "a settled GitLab detail stops using the store" pins :342. Each went red under its own `noteCommit(commitKey, false)` mutation; see PLAN.review-log.md.
+- Hand fix after the takeover halt (owner: "A: add 2 tests"): two GitLab settle-transition tests in httpEtag.test.ts, tests only. "a GitLab commit that finishes stops using the store" pins gitlabProvider.ts:322, and "a settled GitLab detail stops using the store" pins :342. Each went red under its own `noteCommit(commitKey, false)` mutation; see PLAN.review-log.md. Codex (gpt-6.1-sol high, fresh session) on 6898d332: VERDICT: ACCEPT, no findings.
 - Phase 5: GitNexus. Index stale, NOT clean (indexed 64d390b0, 10 commits behind); the impact run is recorded in 650a6919 under the owner's "A: use old map". HIGH: createHttpGetJsonWithMeta, FetchJson, CommitChecksRequestGateRegistry.observeResponse. UNKNOWN: GitHubProvider.getChecks and GitLabProvider.getChecks (text search: one production caller, coordinator.ts:418), GitHubRequestGate.observeResponse. Do not halt on PLAN.md:844 for Phase 5.
 
 ## Decisions and why

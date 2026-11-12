@@ -873,3 +873,6 @@ PHASE 5: HALT review still failing after takeover
   - :322 noteCommit(commitKey, false) -> 1 red: "a GitLab commit that finishes stops using the store", AssertionError: the finished GitLab commit's requests do not use the store: expected [ { …(2) } ] to deeply equal [].
   - :342 noteCommit(commitKey, false) -> 1 red: "a settled GitLab detail stops using the store", AssertionError: the finished GitLab detail requests do not use the store: expected [ { …(2) }, { …(2) }, { …(2) }, …(1) ] to deeply equal [].
   - M4 receipt corrected above (rerun: 35/35 green).
+- Codex (gpt-6.1-sol high, fresh session 01a1cd3c-40ea-7c32-ac79-84505a6f4de8, scratch copy) on 78b7041c..6898d332: VERDICT: ACCEPT, no findings. Its own runs: unmutated 35/35; :322 and :342 each 1 red on the new test's assertion, after the settle control passed; spread swap 35/35 (equivalent); commitChecks + commitChecksProviders 774/774; 0 src/ paths in the diff.
+BLOCKER 2026-11-12: Phase 5 review still failing after takeover (log :867); owner chose A ("A: add 2 tests"): two GitLab settle tests added by hand, Codex ACCEPT on 6898d332 (checklist B).
+PHASE 5: ACCEPTED 6898d332
