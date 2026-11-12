@@ -851,3 +851,15 @@ PHASE 3: ACCEPTED 15a47c9d
   - Reverting would undo an owner-accepted correctness fix (a mixed-attempt tree saved for a restart) and would be a non-additive Phase 3 change inside Phase 5 (K10).
 - Review Phase 5 as 650a6919..HEAD.
 - Proof chain (each step separately): all exit 0 except `bun run test` (7782 of 7790; the 8 failures are all commit-list-column-resize.test.tsx under Node v26.5.0, pre-existing, same as round 1).
+
+## Phase 5 takeover (claudex-build Step 4), 2026-11-12
+- Findings: 3 test gaps (per-commit store scoping; parse before store; 304 pagination headers). All three are over correct code; tests only, no source change.
+- Added to tests/unit/services/commitChecks/httpEtag.test.ts: "remembers each running commit on its own"; "a finished <provider> commit read between polls of a running one in the same repository leaves both scoped to their own commit" x4 (github, gitlab, bitbucket-cloud, bitbucket-server); "a 200 whose body does not parse is never stored for a later 304"; "a 304 for a stored last page never takes a next link from its own headers"; "a header-minimal 304 keeps GitLab's stored x-next-page". gitlabDetail.test.ts had no 304 case.
+- Mutations, each on its own copy, file run with the verbose reporter (unmutated: 33/33 pass):
+  - M1 bitbucketCloud commitKey without @hash -> 1 red: bitbucket-cloud two-commit test, "the running commit's next poll is still conditional: expected [] to deeply equal [ Array(1) ]".
+  - M2 forCommit returns this when any commit is marked -> 5 red: "another commit is not marked running: expected EtagStore{ ...(3) } to be undefined" and all 4 two-commit tests, "the finished commit's requests do not use the store".
+  - M3 store before parse -> 1 red: "the garbled body's etag is not sent: expected 'W/\"bad\"' to be undefined".
+  - M4 withPagination spread swapped / M5 delete loop removed -> 1 red each: "the stored page had no next link: expected '<https://api.github.com/repos/o/r...' to be undefined".
+  - M6 x-next-page dropped from PAGINATION_HEADERS -> 2 red: "the 304 keeps the stored next page: expected undefined to be '2'" and "the stored page had no next page".
+- Gate chain: format:check (green after prettier --write), lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; test 7790/7798, 8 failures all in commit-list-column-resize.test.tsx (Node v26, recorded before this phase).
+- GitNexus detect-changes not run: no .gitnexus/run.cjs in this worktree and the index is behind HEAD; the diff is one test file.

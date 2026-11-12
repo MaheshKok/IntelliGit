@@ -385,6 +385,79 @@ describe("ETag conditional requests on the metadata fetch", () => {
         ).toEqual(["4998", "4997"]);
     });
 
+    it("a 304 for a stored last page never takes a next link from its own headers", async () => {
+        const store = new EtagStore(() => 0);
+        const ownNext = { link: `<${URL_2}>; rel="next"`, "x-next-page": "2" };
+        const sent = stubSequence([
+            { status: 200, headers: { etag: 'W/"p1"' }, body: '{"items":[1,2]}' },
+            { status: 304, headers: ownNext },
+            { status: 304, headers: ownNext },
+            { status: 200, body: '{"items":[9]}' },
+        ]);
+        const fetch = createHttpGetJsonWithMeta();
+
+        await fetch(URL_1, {}, store);
+        const replayed = await fetch(URL_1, {}, store);
+        const paged = await paginate(
+            (url) => fetch(url, {}, store),
+            URL_1,
+            linkHeaderNext,
+            (body) => (body as { items: number[] }).items,
+            10,
+            () => true,
+        );
+
+        expect(replayed.headers.link, "the stored page had no next link").toBeUndefined();
+        expect(replayed.headers["x-next-page"], "the stored page had no next page").toBeUndefined();
+        expect(paged, "the stored last page ends the read").toEqual({
+            items: [1, 2],
+            coverage: "full",
+        });
+        expect(sent.map((request) => request.url)).toEqual([URL_1, URL_1, URL_1]);
+    });
+
+    it("a header-minimal 304 keeps GitLab's stored x-next-page", async () => {
+        const store = new EtagStore(() => 0);
+        stubSequence([
+            { status: 200, headers: { etag: 'W/"p1"', "x-next-page": "2" }, body: "[]" },
+            { status: 304, headers: { "ratelimit-remaining": "99" } },
+        ]);
+        const fetch = createHttpGetJsonWithMeta();
+
+        await fetch(URL_1, {}, store);
+        const replayed = await fetch(URL_1, {}, store);
+
+        expect(replayed.headers["x-next-page"], "the 304 keeps the stored next page").toBe("2");
+    });
+
+    it("a 200 whose body does not parse is never stored for a later 304", async () => {
+        const store = new EtagStore(() => 0);
+        const sent = stubSequence([
+            { status: 200, headers: { etag: 'W/"bad"' }, body: "not json" },
+            { status: 200, headers: { etag: 'W/"good"' }, body: '{"a":1}' },
+        ]);
+        const fetch = createHttpGetJsonWithMeta();
+
+        await expect(fetch(URL_1, {}, store)).rejects.toThrow("Invalid JSON response");
+        const response = await fetch(URL_1, {}, store);
+
+        expect(
+            sent[1].headers["If-None-Match"],
+            "the garbled body's etag is not sent",
+        ).toBeUndefined();
+        expect(response.body).toEqual({ a: 1 });
+    });
+
+    it("remembers each running commit on its own", () => {
+        const store = new EtagStore(() => 0);
+
+        store.noteCommit("a", false);
+        expect(store.forCommit("b"), "another commit is not marked running").toBeUndefined();
+        store.noteCommit("b", true);
+
+        expect(store.forCommit("a"), "a finished commit leaves the running one marked").toBe(store);
+    });
+
     it("keeps the 500 most recently used entries", () => {
         const store = new EtagStore(() => 0);
         const entry = (n: number) => ({
@@ -405,6 +478,7 @@ describe("ETag conditional requests on the metadata fetch", () => {
 });
 
 const SHA = "a".repeat(40);
+const SHA_B = "b".repeat(40);
 const GITHUB = "https://api.github.com/repos/o/r";
 const githubRef = { host: "github.com", owner: "o", repo: "r" } as ProviderRepoRef;
 const GITLAB = "https://gitlab.com/api/v4/projects/group%2Fapp";
@@ -656,4 +730,63 @@ describe("providers use the store only for requests about incomplete commits", (
             expect(conditionalOf(sent.slice(settled))).toEqual([]);
         },
     );
+
+    it.each<[string, unknown, SnapshotRoute]>([
+        [
+            "github",
+            githubRef,
+            (done) =>
+                githubSnapshotRoute([
+                    done ? checkRun(1, "completed", "success") : checkRun(1, "in_progress"),
+                ]),
+        ],
+        [
+            "gitlab",
+            gitlabRef,
+            (done) => () => ({
+                body: [{ id: 5, name: "build", status: done ? "success" : "running" }],
+            }),
+        ],
+        ["bitbucket-cloud", { host: "bitbucket.org", workspace: "w", repo: "r" }, bitbucketRoute],
+        [
+            "bitbucket-server",
+            { host: "bitbucket.example.com", project: "p", repo: "r" },
+            bitbucketRoute,
+        ],
+    ])(
+        "a finished %s commit read between polls of a running one in the same repository leaves both scoped to their own commit",
+        async (id, ref, route) => {
+            const sent = stubServer((url) => route(url.includes(SHA_B))(url));
+            const provider = providers().byId(id);
+            const repo = ref as ProviderRepoRef;
+
+            for (let poll = 0; poll < 2; poll += 1) await provider.getChecks(repo, SHA);
+            const finished = sent.length;
+            for (let read = 0; read < 2; read += 1) await provider.getChecks(repo, SHA_B);
+            const resumed = sent.length;
+            const polled = await provider.getChecks(repo, SHA);
+
+            expect(polled.state).toBe("pending");
+            expect(
+                conditionalOf(sent.slice(finished, resumed)),
+                "the finished commit's requests do not use the store",
+            ).toEqual([]);
+            expect(
+                conditionalOf(sent.slice(resumed)).map((request) => request.url),
+                "the running commit's next poll is still conditional",
+            ).toEqual(sent.slice(resumed).map((request) => request.url));
+        },
+    );
 });
+
+type SnapshotRoute = (done: boolean) => (url: string) => { body: unknown };
+
+/** Bitbucket Cloud and Server build statuses for one commit, running or finished. */
+function bitbucketRoute(done: boolean) {
+    return () => ({
+        body: {
+            values: [{ key: "build", name: "build", state: done ? "SUCCESSFUL" : "INPROGRESS" }],
+            isLastPage: true,
+        },
+    });
+}

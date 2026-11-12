@@ -17,6 +17,7 @@
   - The re-request strips `If-None-Match` in any letter case (finding 5).
   - Bitbucket Cloud and Server snapshot reads are conditional for incomplete commits (finding 4; plan §3 line 399). Server's commit key is host + hash, the scope of its global build-status endpoint.
 - Fix round 2: the one finding (GitLab `sessionOnly` rule, gitlabProvider.ts:407) is rejected, no code change. That rule and its test came from PR #419's last commit ("a GitLab pipeline with no update time is never saved, even on one job page"), on main as c246d0d4. `git diff 650a6919 HEAD` is empty for gitlabProvider.ts:398-410, gitlabDetail.test.ts and paginate.ts. Codex's scratch test phase5ScopeReview.test.ts is red at 650a6919 with the same assertion line, so a diff against 15a47c9d charges Phase 3's squash to Phase 5. Reviewers: diff 650a6919..HEAD only.
+- Takeover (after 2 fix rounds): three test gaps closed, tests only, no source change. httpEtag.test.ts now pins per-commit store scoping (an EtagStore unit test, plus a two-commit test on one instance for each of the four providers), parse-before-store (a garbled 200 with an ETag is never stored), and 304 pagination (the 304's own `link`/`x-next-page` never override a stored last page, and GitLab's stored `x-next-page` survives a header-minimal 304). The 6 reviewer mutations were each run on a copy (mut-5-takeover-1..6) and each turns a named assertion red.
 - GitNexus: the impact run recorded in 650a6919 under the owner's "A: use old map"; do not halt on PLAN.md:844 for Phase 5.
 
 ## Decisions and why
@@ -24,6 +25,7 @@
 - The re-request runs after the first slot is released (two admissions), never nested inside the slot: nesting would deadlock when all four slots retry at once.
 - Codex's scratch test "bodyless-304 retries count against the fallback request budget" expects 300 such reads to succeed, which honest counting cannot allow (each read costs two admissions). Replaced by a test that 150 reads use the 300 budget and read 151 is refused with 429.
 - Round 2 finding rejected, not reverted: the revert would reopen a mixed-attempt GitLab tree being saved for a restart (fixed in #419 with owner OK) and would itself be a non-additive change to Phase 3 behaviour inside Phase 5 (K10).
+- Takeover findings were test gaps over correct code, so the fix is the tests; "red before" is each test going red under the reviewer's mutation, since the real code was already right.
 - Incomplete-commit memory per provider key and hash (`forCommit` / `noteCommit`) as before; first read unconditional, savings from the third poll.
 
 ## Open risks
