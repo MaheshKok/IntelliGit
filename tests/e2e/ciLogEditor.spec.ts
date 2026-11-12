@@ -111,6 +111,8 @@ async function withChecksTab(
         // The default selection can land on a stash row, so open the head commit's checks.
         await graph.getByTestId(`commit-checks-button-${head}`).click();
         await graph.getByRole("button", { name: "Open in Checks" }).click();
+        // The panel opens a few rows tall, which leaves the Checks body no room to click in.
+        await new Workbench(page).runCommand("View: Toggle Maximized Panel");
         await body({ page, tab: graph.getByTestId("checks-tab") });
     } catch (error) {
         failed = true;
