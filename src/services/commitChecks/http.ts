@@ -34,12 +34,15 @@ export class HttpError extends Error {
      * @param message - Token-free display/error message.
      * @param headers - Lower-cased Node response headers.
      * @param url - The URL that answered, when a redirect may have moved it off the requested one.
+     * @param requestUrl - The URL first requested, set together with `url`; credentials stay on
+     *     its origin, so an answer from another origin never saw them.
      */
     constructor(
         readonly statusCode: number,
         message: string,
         readonly headers: Record<string, string | string[] | undefined>,
         readonly url?: string,
+        readonly requestUrl?: string,
     ) {
         super(message);
         this.name = "HttpError";
@@ -362,7 +365,7 @@ export async function downloadToString(
     const status = response.statusCode ?? 0;
     if (status < 200 || status >= 300) {
         response.destroy();
-        throw new HttpError(status, `HTTP ${status}`, response.headers, answeredBy);
+        throw new HttpError(status, `HTTP ${status}`, response.headers, answeredBy, url);
     }
     return readBounded(response, request, maxBytes, signal);
 }

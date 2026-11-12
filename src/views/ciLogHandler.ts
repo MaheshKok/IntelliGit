@@ -213,8 +213,9 @@ function isAbort(error: unknown): boolean {
 
 /**
  * A refused credential is `forbidden`. A rate limit is a 403 too: a primary one has no
- * requests left, a secondary one carries `Retry-After`. Signing in again cannot help either,
- * so it is reported as a failure with its message.
+ * requests left, a secondary one carries `Retry-After`. A host on another origin than the
+ * request (a signed log link) never saw the credential, so its refusal means the link expired.
+ * Signing in again cannot help in these cases, so they are failures with their message.
  */
 function failureOf(error: unknown): Failure {
     if (error instanceof HttpError && (error.statusCode === 401 || error.statusCode === 403)) {
@@ -222,7 +223,18 @@ function failureOf(error: unknown): Failure {
         const rateLimited =
             (Array.isArray(remaining) ? remaining[0] : remaining) === "0" ||
             error.headers["retry-after"] !== undefined;
-        if (!rateLimited) return { outcome: "forbidden" };
+        if (!rateLimited && sawCredential(error)) return { outcome: "forbidden" };
     }
     return { outcome: "failed", message: getErrorMessage(error) };
+}
+
+/**
+ * Whether the host that refused had the credential: an API request answered where it was sent,
+ * or a redirect that stayed on the requested origin. Without the requested URL this cannot be
+ * shown, so the refusal is not blamed on the token.
+ */
+function sawCredential(error: HttpError): boolean {
+    if (error.url === undefined) return true;
+    if (error.requestUrl === undefined) return false;
+    return new URL(error.url).origin === new URL(error.requestUrl).origin;
 }
