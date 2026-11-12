@@ -170,7 +170,9 @@ test("first tab keeps its text after a fourth log is opened", async ({
     test.setTimeout(240_000);
     await withChecksTab(fixtureWorkspace, testInfo, async ({ page, tab }) => {
         // The window keeps three logs; the fourth evicts the first from the store.
-        for (const name of JOBS) {
+        for (const [index, name] of JOBS.entries()) {
+            // Opening a log in an editor restores the maximized panel, so maximize it again.
+            if (index > 0) await new Workbench(page).runCommand("View: Toggle Maximized Panel");
             await tab.getByTestId("ci-job-row").filter({ hasText: name }).click();
             await expect(tab.getByTestId("ci-log-excerpt")).toContainText(`ERROR: ${name}`);
             await tab.getByRole("button", { name: "Open full log in editor" }).click();
