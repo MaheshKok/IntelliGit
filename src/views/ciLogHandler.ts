@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import { isE2eControlChannelActive } from "../e2e/activationState";
 import type { CiOperationContext } from "../services/commitChecks/ciGenerations";
 import { ciLogUri } from "../services/commitChecks/ciLogDocument";
+import type { CiLogTarget } from "../services/commitChecks/coordinator";
 import { HttpError } from "../services/commitChecks/http";
 import { isValidGitHash } from "../services/gitHelpers";
 import { getErrorMessage } from "../utils/errors";
@@ -97,13 +98,12 @@ export async function answerCiLogMessage(
         return;
     }
     const failedStep = job.steps.find((step) => step.state === "failure")?.name;
-    const target = await logs.target(hash, { runId, jobId, attempt, failedStep }, ctx);
+    const target = await targetOrFailure(() =>
+        logs.target(hash, { runId, jobId, attempt, failedStep }, ctx),
+    );
     if (!isCurrent()) return;
-    if (!target) {
-        reply({
-            outcome: "failed",
-            message: vscode.l10n.t("This provider cannot show CI logs."),
-        });
+    if ("outcome" in target) {
+        reply(target);
         return;
     }
 
@@ -163,6 +163,22 @@ async function showLog(uri: vscode.Uri, line: number, isCurrent: () => boolean):
         selection: new vscode.Range(line, 0, line, 0),
     });
     return true;
+}
+
+/** The job's log target, or why there is none; a lookup that throws is a failure with its message. */
+async function targetOrFailure(
+    lookup: () => Promise<CiLogTarget | undefined>,
+): Promise<CiLogTarget | Failure> {
+    try {
+        return (
+            (await lookup()) ?? {
+                outcome: "failed",
+                message: vscode.l10n.t("This provider cannot show CI logs."),
+            }
+        );
+    } catch (error) {
+        return failureOf(error);
+    }
 }
 
 interface LogRequest {

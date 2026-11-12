@@ -59,6 +59,8 @@ export function useCiLog(
         const selectionToken = ++lastSelectionToken;
         newestToken.current = selectionToken;
         newestPreview.current = requestId;
+        // A job that finished while selected keeps this instance, which started idle.
+        setLog({ status: "loading" });
         getVsCodeApi<PreviewCiLogMessage>().postMessage({
             type: "previewCiLog",
             requestId,

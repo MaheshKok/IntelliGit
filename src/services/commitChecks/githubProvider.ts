@@ -374,6 +374,7 @@ export class GitHubProvider implements CommitChecksProvider {
             return missing.every((id) => ids.has(id));
         };
         let rerun = false;
+        let summaryMissed = false;
         const runs: CiRun[] = [];
         // Every run as read, hidden jobs included, so a hidden job's check run is no flat check.
         const readRuns: CiRun[] = [];
@@ -408,7 +409,8 @@ export class GitHubProvider implements CommitChecksProvider {
                 session,
                 conditional,
             );
-            const jobs = jobsPage.items.map((job) => withFailureSummary(job, known));
+            if (!known.complete) summaryMissed = true;
+            const jobs = jobsPage.items.map((job) => withFailureSummary(job, known.summaries));
             const ciRun = toRun(run, runId, runName, jobs, jobsPage.coverage);
             const missing = ciRun.jobs.flatMap((job) =>
                 job.checkRunId === undefined || checkRunIds.has(job.checkRunId)
@@ -464,7 +466,8 @@ export class GitHubProvider implements CommitChecksProvider {
             ...(refLimited && {
                 otherChecksCoverage: { reason: "pageBound" as const, shown: otherChecks.length },
             }),
-            ...(rerun && { complete: false }),
+            // A missed failure text is read again later rather than saved missing.
+            ...((rerun || summaryMissed) && { complete: false }),
             ...(scanCursors.length > 0 && { scanCursors }),
         };
     }
@@ -519,15 +522,15 @@ export class GitHubProvider implements CommitChecksProvider {
             }
             const failedJobs = jobs.filter((job) => job.state === "failure");
             // The commit's check-run listing is not read here, so each failed job's text comes
-            // from its own check run. The text is extra: a read that fails or meets a cooldown
-            // leaves this page's jobs without it rather than hiding them or re-reading the page.
-            const summaries = await this.unlistedSummaries(
+            // from its own check run. One that cannot be read leaves its job without the text
+            // rather than hiding the job or re-reading the page.
+            const { summaries } = await this.unlistedSummaries(
                 ref as GitHubRepoRef,
                 failedJobs,
                 { checkRunIds: new Set(), summaries: new Map() },
                 session,
                 undefined,
-            ).catch(() => new Map<string, string>());
+            );
             const failed = failedJobs.map((job) => withFailureSummary(job, summaries));
             const next = linkHeaderNext(response);
             if (next === undefined) return { failed };
@@ -591,7 +594,9 @@ export class GitHubProvider implements CommitChecksProvider {
 
     /**
      * The listed check runs' failure texts, plus that of each failed job whose check run the
-     * commit's listing missed (GitHub's suite limit), read from the job's own check run.
+     * commit's listing missed (GitHub's suite limit), read from the job's own check run. The
+     * text is extra: a read that fails or meets a cooldown leaves that job without it and
+     * `complete` false, never the jobs unread. Never throws.
      */
     private async unlistedSummaries(
         ref: GitHubRepoRef,
@@ -599,24 +604,29 @@ export class GitHubProvider implements CommitChecksProvider {
         listed: { checkRunIds: ReadonlySet<string>; summaries: ReadonlyMap<string, string> },
         session: vscode.AuthenticationSession,
         conditional: EtagStore | undefined,
-    ): Promise<ReadonlyMap<string, string>> {
+    ): Promise<{ summaries: ReadonlyMap<string, string>; complete: boolean }> {
         const known = new Map(listed.summaries);
+        let complete = true;
         for (const job of jobs) {
             const id = job.checkRunId;
             if (job.state !== "failure" || id === undefined || listed.checkRunIds.has(id)) {
                 continue;
             }
-            // Serial, like the detail's other reads.
-            // react-doctor-disable-next-line react-doctor/async-await-in-loop
-            const response = await this.fetchWithMeta(
-                `${repoApiUrl(ref)}/check-runs/${encodeURIComponent(id)}`,
-                githubHeaders(session),
-                conditional,
-            );
-            const summary = checkRunSummary(response.body ?? {});
-            if (summary !== undefined) known.set(id, summary);
+            try {
+                // Serial, like the detail's other reads.
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
+                const response = await this.fetchWithMeta(
+                    `${repoApiUrl(ref)}/check-runs/${encodeURIComponent(id)}`,
+                    githubHeaders(session),
+                    conditional,
+                );
+                const summary = checkRunSummary(response.body ?? {});
+                if (summary !== undefined) known.set(id, summary);
+            } catch {
+                complete = false;
+            }
         }
-        return known;
+        return { summaries: known, complete };
     }
 
     /** The workflow run as the API reports it now; an empty run for an empty body. */

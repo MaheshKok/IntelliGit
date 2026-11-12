@@ -64,14 +64,15 @@ export class CommitChecksRequestGateRegistry {
      *   generation captured after acquiring capacity, which response observers use to reject stale
      *   metadata after a reset.
      * @returns The HTTP task result.
-     * @throws HttpError with status 429 while the bucket is cooling down.
+     * @throws HttpError with status 429 while the bucket is cooling down. A refusal another host
+     *   sent (a signed log link a redirect led to) is that host's limit and never cools this bucket.
      */
     run<T>(
         providerId: ProviderId,
         url: string,
         task: (generation: number) => Promise<T>,
     ): Promise<T> {
-        return this.gateFor(providerId, url).run(task);
+        return this.gateFor(providerId, url).run(task, new URL(url).origin.toLowerCase());
     }
 
     /**
@@ -241,6 +242,14 @@ export class RequestGateCooldownError extends HttpError {
     }
 }
 
+/** Whether `error` was sent by `origin`; an error that names no host, or a gate with none, is. */
+function answeredFrom(error: unknown, origin: string | undefined): boolean {
+    if (origin === undefined || !(error instanceof HttpError) || error.url === undefined) {
+        return true;
+    }
+    return new URL(error.url).origin.toLowerCase() === origin;
+}
+
 /** One provider/API-origin bucket with policy-specific response handling. */
 class ProviderRequestGate {
     private active = 0;
@@ -275,7 +284,7 @@ class ProviderRequestGate {
         private readonly now: () => number,
     ) {}
 
-    async run<T>(task: (generation: number) => Promise<T>): Promise<T> {
+    async run<T>(task: (generation: number) => Promise<T>, origin?: string): Promise<T> {
         this.pruneStartedAt();
         this.throwIfCoolingDown();
         this.throwIfRequestBudgetExhausted();
@@ -290,7 +299,9 @@ class ProviderRequestGate {
             this.startedAt.push(this.now());
             return await task(generation);
         } catch (err) {
-            if (taskGeneration === this.generation) this.rememberCooldown(err);
+            if (taskGeneration === this.generation && answeredFrom(err, origin)) {
+                this.rememberCooldown(err);
+            }
             throw err;
         } finally {
             this.release();
