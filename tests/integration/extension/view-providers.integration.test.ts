@@ -607,6 +607,13 @@ vi.mock("../../../src/services/commitChecks/githubProvider", async () => {
                 this.real = new actual.GitHubProvider(...args);
             }
 
+            get firstErrorPatterns() {
+                return this.real.firstErrorPatterns;
+            }
+            get stepStartPrefix() {
+                return this.real.stepStartPrefix;
+            }
+
             match(
                 remoteUrl: string,
                 hostMap: Record<string, string>,
@@ -2768,6 +2775,103 @@ describe("view providers integration", () => {
             );
             expect(replies[0]!.excerpt, "not the generic fallback's bait line").not.toContain(
                 "Test Files",
+            );
+        } finally {
+            setE2eControlChannelActive(false);
+        }
+    });
+
+    it("the generic fallback starts after the failed GitHub step, not at an earlier recovered error", async () => {
+        const { setE2eControlChannelActive } = await import("../../../src/e2e/activationState");
+        const { E2E_CI_FIXTURE_KEY } = await import("../../../src/e2e/ciFixture");
+        const { NO_CI_CAPABILITIES } = await import("../../../src/shared/ci/capabilities");
+        const lines = Array.from({ length: 120 }, (_, index) => `step output ${index}`);
+        lines[0] = "##[group]Run actions/checkout@v4";
+        lines[3] = "Error: fetch timed out, retrying";
+        lines[60] = "##[group]Run npm test";
+        lines[70] = "Assertion failed: expected 3 to be 4";
+        const globalState = createMemento({
+            [E2E_CI_FIXTURE_KEY]: {
+                detail: {
+                    provider: "github",
+                    complete: true,
+                    outcome: "failure",
+                    runs: [
+                        {
+                            id: "5",
+                            name: "CI",
+                            state: "failure",
+                            jobs: [
+                                {
+                                    id: "7",
+                                    logicalId: "CI\0unit",
+                                    name: "unit",
+                                    checkName: "unit",
+                                    state: "failure",
+                                    steps: [
+                                        {
+                                            number: 1,
+                                            name: "Run actions/checkout@v4",
+                                            state: "success",
+                                        },
+                                        { number: 2, name: "Run npm test", state: "failure" },
+                                    ],
+                                },
+                            ],
+                            jobsCoverage: "full",
+                        },
+                    ],
+                    runsCoverage: "full",
+                    otherChecks: [],
+                    otherChecksCoverage: "full",
+                },
+                capabilities: { ...NO_CI_CAPABILITIES, logs: true },
+                logs: { "7": lines.join("\n") },
+            },
+        });
+        try {
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    globalState,
+                    secrets: {},
+                } as never,
+                [{ root: "/workspace", label: "workspace" }],
+            );
+            const commitInfo = vscodeMock.window.registerWebviewViewProvider.mock.calls.find(
+                ([viewType]) => viewType === "intelligit.commitFiles",
+            )?.[1] as {
+                resolveWebviewView: (view: object, context: object, token: object) => void;
+            };
+            const infoView = createWebviewView();
+            const infoPosts = vi.fn(async () => true);
+            (infoView.view.webview as { postMessage: unknown }).postMessage = infoPosts;
+            commitInfo.resolveWebviewView(infoView.view, {}, {});
+            await infoView.send({ type: "ready" });
+            setE2eControlChannelActive(true);
+
+            await infoView.send({
+                type: "previewCiLog",
+                requestId: 3,
+                repoKey: "/workspace",
+                hash: "a".repeat(40),
+                runId: "5",
+                jobId: "7",
+                selectionToken: 4,
+            });
+            const replies = infoPosts.mock.calls
+                .map(([message]) => message as { type?: string; excerpt?: string })
+                .filter((message) => message.type === "ciLogPreview");
+            expect(replies).toEqual([expect.objectContaining({ outcome: "ready" })]);
+            expect(replies[0]!.excerpt, "the excerpt holds the failed step's error").toContain(
+                "Assertion failed",
+            );
+            expect(replies[0]!.excerpt, "not the recovered error before the step").not.toContain(
+                "fetch timed out",
             );
         } finally {
             setE2eControlChannelActive(false);

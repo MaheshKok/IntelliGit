@@ -126,6 +126,8 @@ export interface CommitChecksProvider {
     actionEvidence?(action: CiAction): CiActionEvidence;
     /** How this provider marks the error lines of its logs; the generic fallback when absent. */
     readonly firstErrorPatterns?: readonly RegExp[];
+    /** Text before the step name on a step's start line in this provider's logs. */
+    readonly stepStartPrefix?: string;
     /**
      * Downloads one finished job's log, at most 50 MB (O2). Rejects on failure; an `HttpError`
      * 401 or 403 means the credential cannot read the log.
@@ -138,4 +140,6 @@ export interface CiLogJob {
     readonly runId: string;
     readonly jobId: string;
     readonly attempt?: number;
+    /** Name of the job's first failed step; the error-word fallback searches after it. */
+    readonly failedStep?: string;
 }

@@ -190,6 +190,8 @@ export class GitHubProvider implements CommitChecksProvider {
     });
     /** GitHub Actions prefixes each error annotation line of a log with this marker. */
     readonly firstErrorPatterns = [/##\[error\]/];
+    /** GitHub Actions opens each step's section of a log with this marker and the step name. */
+    readonly stepStartPrefix = "##[group]";
 
     /**
      * Accepts injected HTTP boundaries and an optional CI/CD include override.

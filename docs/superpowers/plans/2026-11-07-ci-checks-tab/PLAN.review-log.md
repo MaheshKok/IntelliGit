@@ -1009,3 +1009,14 @@ Phase 7: built, review pending
   - F5 untested guards: 6 tests added; mutations M1 quota-403-as-forbidden, M2-M6 each host guard, M7 all guards: 7/7 red, each naming its own test (copy mut-7-fix-1).
 - Proof: targeted 930/930 pass; `bun run test` 10 failed / 7923 passed (the known 8 Node v26 + 2 node_modules-less worktree reds); tsc ext/webview/tests clean; eslint clean on changed files.
 - GitNexus detect-changes: not runnable on this worktree (not in the registry).
+WORKTREE 0 7: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/repro-PLAN-1 repro/PLAN-1
+
+## Phase 7 fix round 2 (2026-11-12)
+- Findings 4/4 cleared, each with a regression test red before the fix (F4: red under the mutation, since the guard already existed):
+  - F1 generic fallback ignored the failed step: `view-providers.integration.test.ts` "the generic fallback starts after the failed GitHub step, not at an earlier recovered error" red "the excerpt holds the failed step's error: expected '##[group]Run actions/checkout@v4\nste…' to contain 'Assertion failed'"; plus `ciLogPreview.test.ts` "the job's first failed step reaches the log target" red "expected "vi.fn()" to be called with arguments: [ …(3) ]" and `ciFixture.test.ts` "records the job's failed step with the source, outside the key" red "expected undefined to be 'Run npm test'". Fix: `failedStep` on CiLogJob/CiLogSource, GitHub `stepStartPrefix = "##[group]"`, wiring sets `stepStart`.
+  - F2 already cancelled token: `ciLogPreview.test.ts` "an already cancelled progress token does not open a cached log" red "cancellation must win even on a cache hit: expected "vi.fn()" to not be called at all, but actually been called 1 times". Fix: abort when `token.isCancellationRequested`.
+  - F3 secondary rate limit: `ciLogPreview.test.ts` "a secondary rate-limit 403 with Retry-After is failed, not forbidden" red "a retry-after cooldown is not a token permission error: expected [ 'forbidden', 'forbidden' ] to deeply equal [ 'failed', 'failed' ]". Fix: `Retry-After` marks a rate limit.
+  - F4 selectionToken guard unproven: `commitChecksTab.integration.test.tsx` "the newest requestId does not waive selectionToken equality (K3)"; red under M7 "K3 requires selectionToken === newest: expected <pre …(3)></pre> to be null".
+- Mutations on copy mut-7-fix-2, 7 run, 7 red, each naming its own test: M1 no stepStart, M2 handler drops step, M3 provider source drops step, M4 seeded source drops step, M5 no pre-cancel check, M6 no Retry-After, M7 no selectionToken guard.
+- Proof: touched suites 1120/1120 pass; `bun run test` 10 failed / 7929 passed (the known 8 Node v26 + 2 node_modules-less worktree reds); `bun run typecheck` clean; eslint clean on changed files.
+- GitNexus detect-changes: not runnable on this worktree (not in the registry).

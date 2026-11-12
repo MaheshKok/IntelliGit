@@ -286,7 +286,7 @@ export class CommitChecksCoordinator {
         ctx: CiOperationContext,
     ): Promise<CiLogTarget | undefined> {
         if (!this.enabled) return undefined;
-        const { runId, jobId, attempt } = job;
+        const { runId, jobId, attempt, failedStep } = job;
         const seeded = this.fixture?.(hash);
         if (seeded) {
             if (!seeded.capabilities.logs) return undefined;
@@ -298,6 +298,7 @@ export class CommitChecksCoordinator {
                     runId,
                     jobId,
                     attempt,
+                    failedStep,
                 },
             };
         }
@@ -312,6 +313,7 @@ export class CommitChecksCoordinator {
                 runId,
                 jobId,
                 attempt,
+                failedStep,
             },
         };
     }

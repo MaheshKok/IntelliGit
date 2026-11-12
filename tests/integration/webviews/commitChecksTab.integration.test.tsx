@@ -1192,6 +1192,27 @@ describe("Checks tab log preview and full log", () => {
         expect(container.querySelector('[data-testid="ci-log-excerpt"]')?.textContent).toBe("NEW");
     });
 
+    it("the newest requestId does not waive selectionToken equality (K3)", () => {
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("unit-tests", "failure")]);
+        const request = lastPreview();
+
+        // Every other identity field (requestId, repo, hash, run, job) matches the newest request.
+        previewReply(request, {
+            selectionToken: request.selectionToken + 1000,
+            outcome: "ready",
+            excerpt: "STALE",
+            truncated: false,
+        });
+        expect(
+            container.querySelector('[data-testid="ci-log-excerpt"]'),
+            "K3 requires selectionToken === newest",
+        ).toBeNull();
+
+        previewReply(request, { outcome: "ready", excerpt: "NEW", truncated: false });
+        expect(container.querySelector('[data-testid="ci-log-excerpt"]')?.textContent).toBe("NEW");
+    });
+
     it("running job shows no log button", () => {
         const { container } = mount(pane(HASH_A));
         withLog(container, [job("build", "running"), job("deploy", "queued")]);

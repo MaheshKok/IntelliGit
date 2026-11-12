@@ -308,7 +308,17 @@ export async function activateRepositoryMode(
             }
             return provider.getJobLog(source.ref, source, signal);
         },
-        errorRules: (source) => ({ patterns: providerOf(source)?.firstErrorPatterns ?? [] }),
+        errorRules: (source) => {
+            const provider = providerOf(source);
+            const prefix = provider?.stepStartPrefix;
+            return {
+                patterns: provider?.firstErrorPatterns ?? [],
+                stepStart:
+                    prefix !== undefined && source.failedStep
+                        ? prefix + source.failedStep
+                        : undefined,
+            };
+        },
     });
     const ciGenerations = new CiGenerations();
     if (ciActionFences) context.subscriptions.push(ciActionFences);

@@ -177,6 +177,20 @@ describe("CommitChecksCoordinator.ciLogTarget", () => {
         });
     });
 
+    it("records the job's failed step with the source, outside the key", async () => {
+        const coordinator = providerCoordinator({
+            capabilities: { ...NO_CI_CAPABILITIES, logs: true },
+            getJobLog: vi.fn(),
+        });
+        const target = await coordinator.ciLogTarget(
+            HASH,
+            { ...JOB, failedStep: "Run npm test" },
+            CTX,
+        );
+        expect(target?.source.failedStep).toBe("Run npm test");
+        expect(target?.key).toBe(ciLogKey("github:github.com", "5", "7", 2));
+    });
+
     it("a provider without logs, or turned-off checks, has no log", async () => {
         const getJobLog = vi.fn();
         expect(

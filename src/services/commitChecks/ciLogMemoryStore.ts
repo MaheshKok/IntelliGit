@@ -20,6 +20,8 @@ export interface CiLogSource {
     runId: string;
     jobId: string;
     attempt?: number;
+    /** Name of the job's first failed step, when the detail lists one. */
+    failedStep?: string;
 }
 
 /** A stored log. */

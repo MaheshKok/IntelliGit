@@ -283,6 +283,73 @@ describe("Checks tab log messages", () => {
         ).toEqual(["failed", "failed"]);
     });
 
+    it("a secondary rate-limit 403 with Retry-After is failed, not forbidden", async () => {
+        const limited = setup(
+            "failure",
+            vi.fn(async () => {
+                throw new HttpError(403, "You have exceeded a secondary rate limit", {
+                    "retry-after": "60",
+                    "x-ratelimit-remaining": "4999",
+                });
+            }),
+        );
+        await limited.send("previewCiLog", 1);
+        await limited.send("openCiLog", 2);
+        expect(
+            limited.replies.map((reply) => reply.outcome),
+            "a retry-after cooldown is not a token permission error",
+        ).toEqual(["failed", "failed"]);
+    });
+
+    it("an already cancelled progress token does not open a cached log", async () => {
+        const { replies, send } = setup();
+        await send("previewCiLog", 1);
+        mocks.withProgress.mockImplementationOnce(
+            async (
+                _options: unknown,
+                task: (progress: unknown, token: unknown) => Promise<unknown>,
+            ) =>
+                task(
+                    { report: vi.fn() },
+                    {
+                        isCancellationRequested: true,
+                        onCancellationRequested: () => ({ dispose: vi.fn() }),
+                    },
+                ),
+        );
+
+        await send("openCiLog", 2);
+
+        expect(
+            mocks.showTextDocument,
+            "cancellation must win even on a cache hit",
+        ).not.toHaveBeenCalled();
+        expect(mocks.openTextDocument).not.toHaveBeenCalled();
+        expect(
+            replies.map((reply) => reply.type),
+            "a cancelled open replies nothing",
+        ).toEqual(["ciLogPreview"]);
+    });
+
+    it("the job's first failed step reaches the log target", async () => {
+        const { getDetail, target, send } = setup();
+        const failing = detail("failure");
+        failing.runs[0]!.jobs[0]!.steps = [
+            { number: 1, name: "Set up job", state: "success" },
+            { number: 2, name: "Run npm test", state: "failure" },
+            { number: 3, name: "Post job cleanup", state: "failure" },
+        ];
+        getDetail.mockResolvedValueOnce(failing);
+
+        await send("previewCiLog", 1);
+
+        expect(target).toHaveBeenCalledWith(
+            HASH,
+            { runId: "5", jobId: "77", attempt: 1, failedStep: "Run npm test" },
+            expect.anything(),
+        );
+    });
+
     describe("a sign-out mid-operation drops the stale result", () => {
         it("while the detail loads: no log request and no reply", async () => {
             const { getDetail, generations, target, download, replies, send } = setup();

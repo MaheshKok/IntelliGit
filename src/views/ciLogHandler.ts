@@ -96,7 +96,8 @@ export async function answerCiLogMessage(
         reply({ outcome: "running" });
         return;
     }
-    const target = await logs.target(hash, { runId, jobId, attempt }, ctx);
+    const failedStep = job.steps.find((step) => step.state === "failure")?.name;
+    const target = await logs.target(hash, { runId, jobId, attempt, failedStep }, ctx);
     if (!isCurrent()) return;
     if (!target) {
         reply({
@@ -128,6 +129,8 @@ export async function answerCiLogMessage(
                 // Cancelling stops this waiter only; a download others share goes on.
                 const controller = new AbortController();
                 const cancelled = token.onCancellationRequested(() => controller.abort());
+                // A token cancelled before this callback ran fires no event.
+                if (token.isCancellationRequested) controller.abort();
                 try {
                     return await logs.store.load(target.key, target.source, controller.signal);
                 } finally {
@@ -197,15 +200,17 @@ function isAbort(error: unknown): boolean {
 }
 
 /**
- * A refused credential is `forbidden`. A primary rate limit is a 403 too, with no requests
- * left; signing in again cannot help it, so it is reported as a failure with its message.
+ * A refused credential is `forbidden`. A rate limit is a 403 too: a primary one has no
+ * requests left, a secondary one carries `Retry-After`. Signing in again cannot help either,
+ * so it is reported as a failure with its message.
  */
 function failureOf(error: unknown): Failure {
     if (error instanceof HttpError && (error.statusCode === 401 || error.statusCode === 403)) {
         const remaining = error.headers["x-ratelimit-remaining"];
-        if ((Array.isArray(remaining) ? remaining[0] : remaining) !== "0") {
-            return { outcome: "forbidden" };
-        }
+        const rateLimited =
+            (Array.isArray(remaining) ? remaining[0] : remaining) === "0" ||
+            error.headers["retry-after"] !== undefined;
+        if (!rateLimited) return { outcome: "forbidden" };
     }
     return { outcome: "failed", message: getErrorMessage(error) };
 }
