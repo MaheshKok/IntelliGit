@@ -106,6 +106,76 @@ describe("ciLogDocument", () => {
         expect(changed).toHaveBeenCalledWith(uri);
     });
 
+    // A download that waits for the test, so a tab can close or the provider be disposed mid-read.
+    function pendingSetup() {
+        const downloads: { reject: (error: Error) => void }[] = [];
+        let blocked = false;
+        const download = vi.fn(async (source: CiLogSource) => {
+            if (!blocked) return { text: `${source.jobId} text`, truncated: false };
+            return new Promise<{ text: string; truncated: boolean }>((_, reject) =>
+                downloads.push({ reject }),
+            );
+        });
+        const context = setup(download);
+        const block = async () => {
+            // Record the source, then empty the store so the tab's read downloads again.
+            await context.store.load(keyFor("a"), sourceFor("a"));
+            context.store.clear();
+            blocked = true;
+        };
+        const unblock = () => {
+            blocked = false;
+        };
+        return { ...context, downloads, block, unblock };
+    }
+
+    it("a tab closed while its load is pending is not refreshed when that load fails (K19)", async () => {
+        const { store, provider, downloads, block, unblock } = pendingSetup();
+        await block();
+        const changed = vi.fn();
+        provider.onDidChange?.(changed);
+        const uri = uriFor(`k=${keyFor("a")}`);
+        const read = provide(provider, uri);
+        for (const listener of mocks.closeListeners) listener({ uri });
+        downloads[0].reject(new Error("connection lost"));
+        await expect(read).resolves.toContain("could not load");
+        unblock();
+        await store.load(keyFor("a"), sourceFor("a"));
+        expect(
+            changed,
+            "a tab closed while loading must never be refreshed",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("a tab closed and reopened while a load is pending is still refreshed after it fails", async () => {
+        const { store, provider, downloads, block, unblock } = pendingSetup();
+        await block();
+        const changed = vi.fn();
+        provider.onDidChange?.(changed);
+        const uri = uriFor(`k=${keyFor("a")}`);
+        const closedRead = provide(provider, uri);
+        for (const listener of mocks.closeListeners) listener({ uri });
+        const reopenedRead = provide(provider, uri);
+        downloads[0].reject(new Error("connection lost"));
+        await closedRead;
+        await expect(reopenedRead).resolves.toContain("could not load");
+        unblock();
+        await store.load(keyFor("a"), sourceFor("a"));
+        expect(changed, "the reopened tab must recover").toHaveBeenCalledWith(uri);
+    });
+
+    it("a load that fails after dispose leaves the refresh registry empty", async () => {
+        const { provider, registration, downloads, block } = pendingSetup();
+        await block();
+        const read = provide(provider, uriFor(`k=${keyFor("a")}`));
+        registration.dispose();
+        downloads[0].reject(new Error("late failure"));
+        await read;
+        // No behaviour shows a disposed provider's registry, so read it itself.
+        const registry = (provider as unknown as { stale: Map<string, unknown> }).stale;
+        expect(registry.size, "a disposed provider must keep no tabs").toBe(0);
+    });
+
     it("registers the intelligit-ci-log scheme and unregisters on dispose", () => {
         const { registration } = setup();
         expect(CI_LOG_SCHEME).toBe("intelligit-ci-log");

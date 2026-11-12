@@ -15,6 +15,9 @@ class CiLogDocumentProvider implements vscode.TextDocumentContentProvider {
     // Open tabs answered with a placeholder or an error line, per key, to refresh once the log
     // loads; a tab leaves when its document closes.
     private readonly stale = new Map<string, Map<string, vscode.Uri>>();
+    // Reads still waiting on a load, per URI; a close or dispose marks them so a late failure
+    // cannot put a closed tab back into `stale`.
+    private readonly pending = new Map<string, Set<{ closed: boolean }>>();
     private readonly changeListeners = new Set<(uri: vscode.Uri) => void>();
     private readonly storeSubscription: { dispose(): void };
     private readonly closeSubscription: vscode.Disposable;
@@ -60,6 +63,11 @@ class CiLogDocumentProvider implements vscode.TextDocumentContentProvider {
                 "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]",
             );
         }
+        const id = uri.toString();
+        const read = { closed: false };
+        const reads = this.pending.get(id) ?? new Set();
+        reads.add(read);
+        this.pending.set(id, reads);
         try {
             return (await this.store.load(key, source)).text;
         } catch (error) {
@@ -67,9 +75,13 @@ class CiLogDocumentProvider implements vscode.TextDocumentContentProvider {
             // aborted its download); that load's refresh has already fired, so serve its text.
             const current = this.store.get(key);
             if (current) return current.text;
-            this.markStale(key, uri);
+            if (!read.closed) this.markStale(key, uri);
             const reason = error instanceof Error ? error.message : String(error);
             return vscode.l10n.t("[IntelliGit: could not load this CI log: {0}]", reason);
+        } finally {
+            const left = this.pending.get(id);
+            left?.delete(read);
+            if (left?.size === 0) this.pending.delete(id);
         }
     }
 
@@ -79,10 +91,14 @@ class CiLogDocumentProvider implements vscode.TextDocumentContentProvider {
         this.closeSubscription.dispose();
         this.changeListeners.clear();
         this.stale.clear();
+        for (const reads of this.pending.values()) for (const read of reads) read.closed = true;
+        this.pending.clear();
     }
 
     private forget(uri: vscode.Uri): void {
         if (uri.scheme !== CI_LOG_SCHEME) return;
+        for (const read of this.pending.get(uri.toString()) ?? []) read.closed = true;
+        this.pending.delete(uri.toString());
         const key = new URLSearchParams(uri.query).get("k");
         if (key === null) return;
         const uris = this.stale.get(key);
