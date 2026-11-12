@@ -44,6 +44,19 @@ describe("findFirstErrorLine", () => {
         expect(findFirstErrorLine("one\ntwo\nthree\n", GITHUB)).toBe(2);
     });
 
+    it("never picks the failing step's own start line when its name holds an error word", () => {
+        const text = [
+            "##[group]Set up job",
+            "##[group]Handle failed jobs",
+            "ok 1",
+            "Error: boom",
+        ].join("\n");
+        expect(
+            findFirstErrorLine(text, { patterns: [], stepStart: "##[group]Handle failed jobs" }),
+            "the step's output, not its name",
+        ).toBe(3);
+    });
+
     it("searches the whole log for the error word when the step start is unknown", () => {
         const text = "setup\nERROR in compile\nlater error";
         expect(findFirstErrorLine(text, { patterns: [] })).toBe(1);

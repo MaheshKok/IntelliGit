@@ -331,6 +331,25 @@ describe("Checks tab log messages", () => {
         ).toEqual(["ciLogPreview"]);
     });
 
+    it("an editor that fails to open or show replies failed after the log was stored", async () => {
+        for (const failing of [mocks.openTextDocument, mocks.showTextDocument]) {
+            const { replies, send } = setup();
+            failing.mockRejectedValueOnce(new Error("cannot open editor"));
+
+            // The host logs an escaping rejection; only a reply reaches the webview.
+            await send("openCiLog", 1).catch(() => undefined);
+
+            expect(replies, "the webview gets the editor failure").toEqual([
+                expect.objectContaining({
+                    type: "ciLogResult",
+                    requestId: 1,
+                    outcome: "failed",
+                    message: "cannot open editor",
+                }),
+            ]);
+        }
+    });
+
     it("the job's first failed step reaches the log target", async () => {
         const { getDetail, target, send } = setup();
         const failing = detail("failure");

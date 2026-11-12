@@ -1258,6 +1258,38 @@ describe("Checks tab log preview and full log", () => {
         );
     });
 
+    it("a late reply to an earlier open leaves the newer open's error", () => {
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("unit-tests", "failure")]);
+        act(() => button(container, /Open full log in editor/)!.click());
+        act(() => button(container, /Open full log in editor/)!.click());
+        const [older, newer] = posted<{ requestId: number }>("openCiLog");
+        const result = (requestId: number, message: string): void =>
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "ciLogResult",
+                            requestId,
+                            repoKey: "/repo",
+                            hash: HASH_A,
+                            outcome: "failed",
+                            message,
+                        },
+                    }),
+                );
+            });
+
+        result(newer!.requestId, "newer failure");
+        result(older!.requestId, "older failure");
+
+        expect(
+            jobDetail(container).textContent,
+            "only the newest open request's reply renders",
+        ).toContain("Could not load the log: newer failure");
+        expect(jobDetail(container).textContent).not.toContain("older failure");
+    });
+
     it("excerpt with <img onerror> renders as text", () => {
         const markup = '<img src="x" onerror="window.__pwned = 1">';
         const { container } = mount(pane(HASH_A));

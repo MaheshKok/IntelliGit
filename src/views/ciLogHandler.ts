@@ -143,14 +143,26 @@ export async function answerCiLogMessage(
         return;
     }
     if (!isCurrent()) return;
-    const line = entry.firstErrorLine;
-    const document = await vscode.workspace.openTextDocument(ciLogUri(job.name, target.key));
-    if (!isCurrent()) return;
+    const shown = await showLog(
+        ciLogUri(job.name, target.key),
+        entry.firstErrorLine,
+        isCurrent,
+    ).catch((error: unknown) => {
+        reply(failureOf(error));
+        return false;
+    });
+    if (shown) reply({ outcome: "opened" });
+}
+
+/** Opens the stored log at `line`; false when the context went stale before it was shown. */
+async function showLog(uri: vscode.Uri, line: number, isCurrent: () => boolean): Promise<boolean> {
+    const document = await vscode.workspace.openTextDocument(uri);
+    if (!isCurrent()) return false;
     await vscode.window.showTextDocument(document, {
         preview: false,
         selection: new vscode.Range(line, 0, line, 0),
     });
-    reply({ outcome: "opened" });
+    return true;
 }
 
 interface LogRequest {

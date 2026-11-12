@@ -1020,3 +1020,12 @@ WORKTREE 0 7: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run
 - Mutations on copy mut-7-fix-2, 7 run, 7 red, each naming its own test: M1 no stepStart, M2 handler drops step, M3 provider source drops step, M4 seeded source drops step, M5 no pre-cancel check, M6 no Retry-After, M7 no selectionToken guard.
 - Proof: touched suites 1120/1120 pass; `bun run test` 10 failed / 7929 passed (the known 8 Node v26 + 2 node_modules-less worktree reds); `bun run typecheck` clean; eslint clean on changed files.
 - GitNexus detect-changes: not runnable on this worktree (not in the registry).
+WORKTREE 0 7: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/repro-PLAN-2 repro/PLAN-2
+
+### Phase 7 takeover (after fix round 2), 2026-11-12
+- F1 src/views/ciLogHandler.ts: editor open/show rejections now reply `failed` via failureOf. Test ciLogPreview.test.ts "an editor that fails to open or show replies failed after the log was stored"; red before fix: "AssertionError: the webview gets the editor failure: expected [] to deeply equal [ ObjectContaining{…} ]".
+- F2 firstErrorLine.ts:46 guard: new test "never picks the failing step's own start line when its name holds an error word"; red under M8 (`Math.max(stepStart, 0)`): "the step's output, not its name: expected 1 to be 3".
+- F3 useCiLog.ts:91 guard: new test "a late reply to an earlier open leaves the newer open's error"; red under M12 (requestId check dropped): "only the newest open request's reply renders: expected 'unit-testsStateFailed…' to contain 'Could not load the log: newer failure'".
+- Mutations on mut-7-takeover-1: A1 (no catch), A2 (showTextDocument outside try), M8, M12 all red, each naming its test.
+- Proof: `bun run test` 10 failed / 7932 passed (the 10 known: 8 column-resize under Node v26, tsconfigCoverage, screenshotComparatorMeta); `bun run typecheck` clean.
+- The editor steps moved into a `showLog` helper (eslint complexity cap 25); re-proved on that shape: B1 (catch drops its reply) and B2 (showTextDocument not awaited) both red on "the webview gets the editor failure".
