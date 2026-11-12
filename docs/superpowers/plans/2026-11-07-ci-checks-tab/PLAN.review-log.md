@@ -863,3 +863,4 @@ PHASE 3: ACCEPTED 15a47c9d
   - M6 x-next-page dropped from PAGINATION_HEADERS -> 2 red: "the 304 keeps the stored next page: expected undefined to be '2'" and "the stored page had no next page".
 - Gate chain: format:check (green after prettier --write), lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; test 7790/7798, 8 failures all in commit-list-column-resize.test.tsx (Node v26, recorded before this phase).
 - GitNexus detect-changes not run: no .gitnexus/run.cjs in this worktree and the index is behind HEAD; the diff is one test file.
+PHASE 5: HALT review still failing after takeover
