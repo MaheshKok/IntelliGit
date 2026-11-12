@@ -17,11 +17,15 @@ import type {
 } from "../../git/interactiveRebase/types";
 import type {
     CancelCommitCiDetailMessage,
+    CiLogPreviewMessage,
+    CiLogResultMessage,
     CommitCiDetailInvalidatedMessage,
     CommitCiDetailMessage,
+    OpenCiLogMessage,
     OpenCommitChecksSettingsMessage,
     OpenChecksTabMessage,
     OpenCommitInChecksMessage,
+    PreviewCiLogMessage,
     RequestCommitCiDetailMessage,
 } from "./commitCiMessages";
 
@@ -249,6 +253,8 @@ export type CommitGraphOutbound =
       }
     | RequestCommitCiDetailMessage
     | CancelCommitCiDetailMessage
+    | PreviewCiLogMessage
+    | OpenCiLogMessage
     | OpenCommitChecksSettingsMessage
     | OpenCommitInChecksMessage;
 
@@ -414,4 +420,6 @@ export type CommitGraphInbound =
       }
     | CommitCiDetailMessage
     | CommitCiDetailInvalidatedMessage
+    | CiLogPreviewMessage
+    | CiLogResultMessage
     | OpenChecksTabMessage;

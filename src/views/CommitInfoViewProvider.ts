@@ -14,6 +14,7 @@ import {
     openCommitChecksSettings,
     type CommitCiDetailSource,
 } from "./ciDetailHandler";
+import { answerCiLogMessage } from "./ciLogHandler";
 
 /** What the Changed Files view needs to serve its Checks tab. */
 export interface CommitInfoCiSource extends CommitCiDetailSource {
@@ -139,6 +140,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                 case "openCommitChecksSettings":
                 case "openCommitCheckUrl":
                 case "signInForCommitChecks":
+                case "previewCiLog":
+                case "openCiLog":
                     try {
                         await this.handleChecksMessage(msg, webviewView);
                     } catch (err) {
@@ -217,12 +220,21 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     | "cancelCommitCiDetail"
                     | "openCommitChecksSettings"
                     | "openCommitCheckUrl"
-                    | "signInForCommitChecks";
+                    | "signInForCommitChecks"
+                    | "previewCiLog"
+                    | "openCiLog";
             }
         >,
         view: vscode.WebviewView,
     ): Promise<void> {
         switch (msg.type) {
+            case "previewCiLog":
+            case "openCiLog":
+                if (!this.ciSource || this.view !== view) return;
+                await answerCiLogMessage(this.ciSource, { ...msg }, (reply) => {
+                    if (this.view === view) this.postToWebview(reply);
+                });
+                return;
             case "requestCommitCiDetail":
                 // A late message from a replaced webview must not touch its successor's loop.
                 if (!this.ciSource || this.view !== view) return;

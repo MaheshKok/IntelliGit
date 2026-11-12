@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.9] - 2026-11-12
+
+### Added
+
+- Groundwork for the coming Checks tab: IntelliGit can now find why a GitHub or GitLab CI job failed, show a short safe excerpt, and open the full log in an editor. Nothing changes in the extension yet.
+
 ## [0.43.8] - 2026-11-12
 
 ### Added

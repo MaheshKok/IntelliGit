@@ -522,5 +522,13 @@
     "commit.checks.state.unknown": "未知",
     "commitInfo.tabs": "提交部分",
     "commitInfo.tab.files": "文件",
-    "commitInfo.tab.checks": "检查"
+    "commitInfo.tab.checks": "检查",
+    "commit.checks.tab.failureSummary": "作业失败的原因",
+    "commit.checks.tab.loadingExcerpt": "正在加载摘录…",
+    "commit.checks.tab.logExcerpt": "日志摘录",
+    "commit.checks.tab.openFullLog": "在编辑器中打开完整日志",
+    "commit.checks.tab.logWhenFinished": "作业完成后可查看日志",
+    "commit.checks.tab.logForbidden": "你的令牌无法读取此日志",
+    "commit.checks.tab.logFailed": "无法加载日志：{error}",
+    "commit.checks.tab.logTruncated": "此日志已在 50 MB 处截断——请在浏览器中打开以查看其余部分"
 }

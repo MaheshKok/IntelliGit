@@ -542,5 +542,13 @@
     "commit.checks.state.unknown": "Desconhecido",
     "commitInfo.tabs": "Secções do commit",
     "commitInfo.tab.files": "Ficheiros",
-    "commitInfo.tab.checks": "Verificações"
+    "commitInfo.tab.checks": "Verificações",
+    "commit.checks.tab.failureSummary": "Porque é que o job falhou",
+    "commit.checks.tab.loadingExcerpt": "A carregar excerto…",
+    "commit.checks.tab.logExcerpt": "Excerto do registo",
+    "commit.checks.tab.openFullLog": "Abrir registo completo no editor",
+    "commit.checks.tab.logWhenFinished": "Registo disponível quando o job terminar",
+    "commit.checks.tab.logForbidden": "O seu token não pode ler este registo",
+    "commit.checks.tab.logFailed": "Não foi possível carregar o registo: {error}",
+    "commit.checks.tab.logTruncated": "Este registo foi cortado a 50 MB — abra-o no navegador para ver o resto"
 }

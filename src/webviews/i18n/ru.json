@@ -552,5 +552,13 @@
     "commit.checks.state.unknown": "Неизвестно",
     "commitInfo.tabs": "Разделы коммита",
     "commitInfo.tab.files": "Файлы",
-    "commitInfo.tab.checks": "Проверки"
+    "commitInfo.tab.checks": "Проверки",
+    "commit.checks.tab.failureSummary": "Почему задание завершилось ошибкой",
+    "commit.checks.tab.loadingExcerpt": "Загрузка фрагмента…",
+    "commit.checks.tab.logExcerpt": "Фрагмент журнала",
+    "commit.checks.tab.openFullLog": "Открыть полный журнал в редакторе",
+    "commit.checks.tab.logWhenFinished": "Журнал будет доступен после завершения задания",
+    "commit.checks.tab.logForbidden": "Ваш токен не может прочитать этот журнал",
+    "commit.checks.tab.logFailed": "Не удалось загрузить журнал: {error}",
+    "commit.checks.tab.logTruncated": "Этот журнал обрезан на 50 МБ — откройте его в браузере, чтобы увидеть остальное"
 }

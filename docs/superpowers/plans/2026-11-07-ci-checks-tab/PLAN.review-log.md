@@ -992,3 +992,52 @@ Dispositions of the builder's and handoff's risks (from Codex):
 - No PENDING-OWNER item bears on this phase.
 
 Codex ran `vitest` with `--no-cache` and wrote its own evidence files only inside its scratch copy. It hit one PreToolUse hook block on a long-output command, with no effect on the result. No repository file was edited by me.
+
+Phase 7: built, review pending
+- Build commit 49b1bb44 (0.43.9). Given BASE_HEAD 69e809bb was squash-merged as 51b0c3ab (#422); actual base df6b6c64 (docs commit after it). Review `git diff df6b6c64..49b1bb44`.
+- Gates: L OK (sync, translate --only-missing, import, csv validate, validate, audit); U OK (impeccable detect on 4 UI files); G static OK (`verify.py gates --base df6b6c64 --stage round` GREEN); build, build:prod, package OK; pre-commit hook (gitleaks, prettier, eslint, knip, depcruise, l10n, typecheck, build, package) OK. E: tests/e2e/ciLogEditor.spec.ts listed in `test:e2e`, runs on CI, not run locally.
+- `bun run test` (worktree): 10 failed / 7915 passed of 7925. 8 = commit-list-column-resize under Node v26.5.0 (red on base, known). 2 = tsconfigCoverage and screenshotComparatorMeta, which need node_modules inside the checkout; both pass in a copy with node_modules (`copyrun.sh env ...` -> 2 passed). `verify.py --stage accept` RED on that test gate only.
+- Mutations on copies mut-7-build-1..11, 11 run, 11 red, each naming its assertion: selectionToken guard; dangerouslySetInnerHTML; preview takes the open path; running check; summary keyed by job.id; empty ##[error] pattern; UNSAFE_CHARS replace (excerpt.test.ts); fixture log ignores channel; credential strip on redirect; expired-link retry; ANSI strip in summary.
+- GitNexus detect-changes (index stale at 64d390b): 60 files, 100 symbols, 39 flows, risk critical (activateRepositoryMode, CommitChecksCoordinator, ensureUndockedPanel); all changes additive.
+
+## Phase 7 fix round 1 (2026-11-12)
+- Findings 5/5 cleared, each with a regression test red before the fix:
+  - F1 sign-out during openTextDocument: `ciLogPreview.test.ts` "sign-out while openTextDocument waits prevents showing the old log" red "a stale operation must not publish an editor: expected "vi.fn()" to not be called"; fix: `isCurrent()` recheck before `showTextDocument`.
+  - F2 ignored fixtures: `firstErrorLine.test.ts` "first error line from GitHub and GitLab fixtures" red ENOENT in a `git archive HEAD` export of 49b1bb44; fix: `.gitignore` negation, fixtures tracked.
+  - F3 GitHub summary for a job absent from the listing: `githubJobLog.test.ts` "a failed job absent from the summary listing gets its selected check-run summary" red "expected undefined to be 'selected failure\ndirect summary'"; fix: `unlistedSummaries` reads `GET check-runs/{id}`.
+  - F4 K3 requestId: `commitChecksTab.integration.test.tsx` "the current selection token does not waive requestId equality (K3)" red "K3 requires requestId === newest: expected <pre …(3)></pre> to be null"; fix: `newestPreview` ref.
+  - F5 untested guards: 6 tests added; mutations M1 quota-403-as-forbidden, M2-M6 each host guard, M7 all guards: 7/7 red, each naming its own test (copy mut-7-fix-1).
+- Proof: targeted 930/930 pass; `bun run test` 10 failed / 7923 passed (the known 8 Node v26 + 2 node_modules-less worktree reds); tsc ext/webview/tests clean; eslint clean on changed files.
+- GitNexus detect-changes: not runnable on this worktree (not in the registry).
+WORKTREE 0 7: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/repro-PLAN-1 repro/PLAN-1
+
+## Phase 7 fix round 2 (2026-11-12)
+- Findings 4/4 cleared, each with a regression test red before the fix (F4: red under the mutation, since the guard already existed):
+  - F1 generic fallback ignored the failed step: `view-providers.integration.test.ts` "the generic fallback starts after the failed GitHub step, not at an earlier recovered error" red "the excerpt holds the failed step's error: expected '##[group]Run actions/checkout@v4\nste…' to contain 'Assertion failed'"; plus `ciLogPreview.test.ts` "the job's first failed step reaches the log target" red "expected "vi.fn()" to be called with arguments: [ …(3) ]" and `ciFixture.test.ts` "records the job's failed step with the source, outside the key" red "expected undefined to be 'Run npm test'". Fix: `failedStep` on CiLogJob/CiLogSource, GitHub `stepStartPrefix = "##[group]"`, wiring sets `stepStart`.
+  - F2 already cancelled token: `ciLogPreview.test.ts` "an already cancelled progress token does not open a cached log" red "cancellation must win even on a cache hit: expected "vi.fn()" to not be called at all, but actually been called 1 times". Fix: abort when `token.isCancellationRequested`.
+  - F3 secondary rate limit: `ciLogPreview.test.ts` "a secondary rate-limit 403 with Retry-After is failed, not forbidden" red "a retry-after cooldown is not a token permission error: expected [ 'forbidden', 'forbidden' ] to deeply equal [ 'failed', 'failed' ]". Fix: `Retry-After` marks a rate limit.
+  - F4 selectionToken guard unproven: `commitChecksTab.integration.test.tsx` "the newest requestId does not waive selectionToken equality (K3)"; red under M7 "K3 requires selectionToken === newest: expected <pre …(3)></pre> to be null".
+- Mutations on copy mut-7-fix-2, 7 run, 7 red, each naming its own test: M1 no stepStart, M2 handler drops step, M3 provider source drops step, M4 seeded source drops step, M5 no pre-cancel check, M6 no Retry-After, M7 no selectionToken guard.
+- Proof: touched suites 1120/1120 pass; `bun run test` 10 failed / 7929 passed (the known 8 Node v26 + 2 node_modules-less worktree reds); `bun run typecheck` clean; eslint clean on changed files.
+- GitNexus detect-changes: not runnable on this worktree (not in the registry).
+WORKTREE 0 7: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/repro-PLAN-2 repro/PLAN-2
+
+### Phase 7 takeover (after fix round 2), 2026-11-12
+- F1 src/views/ciLogHandler.ts: editor open/show rejections now reply `failed` via failureOf. Test ciLogPreview.test.ts "an editor that fails to open or show replies failed after the log was stored"; red before fix: "AssertionError: the webview gets the editor failure: expected [] to deeply equal [ ObjectContaining{…} ]".
+- F2 firstErrorLine.ts:46 guard: new test "never picks the failing step's own start line when its name holds an error word"; red under M8 (`Math.max(stepStart, 0)`): "the step's output, not its name: expected 1 to be 3".
+- F3 useCiLog.ts:91 guard: new test "a late reply to an earlier open leaves the newer open's error"; red under M12 (requestId check dropped): "only the newest open request's reply renders: expected 'unit-testsStateFailed…' to contain 'Could not load the log: newer failure'".
+- Mutations on mut-7-takeover-1: A1 (no catch), A2 (showTextDocument outside try), M8, M12 all red, each naming its test.
+- Proof: `bun run test` 10 failed / 7932 passed (the 10 known: 8 column-resize under Node v26, tsconfigCoverage, screenshotComparatorMeta); `bun run typecheck` clean.
+- The editor steps moved into a `showLog` helper (eslint complexity cap 25); re-proved on that shape: B1 (catch drops its reply) and B2 (showTextDocument not awaited) both red on "the webview gets the editor failure".
+WORKTREE 0 7: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/repro-PLAN-3 repro/PLAN-3
+PHASE 7: HALT review still failing after takeover
+
+### Phase 7 finished by hand (owner answer "A: fix by hand"), 2026-11-12
+- Findings 1, 2, 3, 5 pinned by tests in ciLogPreview.test.ts, each red under its mutation: lookup `find(() => true)`, `?? run.attempt` dropped, `truncated: false`, `force: true`, `cancellable: false`.
+- Finding 4 (Shape 2): red tests 3f0c7f96, fix 233b965e, then reworked in ceace184 after the R1 and Codex rounds: `followRedirects` reports whether the answering request still carried the credential (`credentialSent`), `HttpError` carries it, and `failureOf` blames the token only when it was sent. Mutations MC1-MC4 red, each naming its test.
+- Overflow gap: repro/PLAN-1, -2 red at 233b965e; red test 3d71c353, fix 56fdcf09; summaries made best-effort in ceace184 (a failing or cooled-down summary read leaves the page's failed jobs without text). Mutations MO1, MS1-MS3 red.
+- Codex (gpt-6.1-sol high) on 5ba6709e..0aee24d6: REVISE, 3 REQUIRED. 1 fixed (ceace184, same as R1 #2); 2 fixed (6fef8c59, MX1/MX2 red); 3 declined: summaries are best-effort by design, pinned by the "still lists the job as failed" tests.
+- Fable R1: 4 points; redirect round trip and unreadable-summary hiding fixed in ceace184; origin-compare mutant gone with the comparison; 404-widening mutant moot (the 404 catch was removed).
+- tsconfigCoverage and screenshotComparatorMeta: 2/2 pass with packages installed.
+- Proof at 6fef8c59: typecheck 0, lint 0, build 0; `bun run test` 9 failed / 7944 passed (8 column-resize under Node v26; merge-editor-performance ratio 3.07x under load, 3/3 alone).
+PHASE 7: ACCEPTED 6fef8c59

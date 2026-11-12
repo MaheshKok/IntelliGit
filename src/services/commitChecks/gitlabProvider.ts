@@ -18,8 +18,11 @@ import type {
 } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import {
+    downloadCiLog,
     HttpError,
     httpGetJsonWithMeta,
+    type DownloadCiLog,
+    type DownloadedText,
     type FetchJson,
     type FetchJsonWithMeta,
     type FetchResponse,
@@ -42,11 +45,13 @@ import {
     isCompleteSnapshot,
 } from "../../shared/ci/completion";
 import type { EtagStore } from "./etagStore";
+import { cleanFailureSummary } from "../../shared/ci/excerpt";
 import { logicalCheckId } from "../../shared/ci/identity";
 import type {
     CiDetailFetch,
     CiFailedScanCursor,
     CiFailedScanPage,
+    CiLogJob,
     CommitChecksProvider,
     HostMap,
     ProviderRepoRef,
@@ -96,6 +101,8 @@ interface GitLabJob {
     started_at?: unknown;
     finished_at?: unknown;
     allow_failure?: unknown;
+    /** Why a failed job failed, as a code such as `script_failure`. */
+    failure_reason?: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +218,14 @@ export class GitLabProvider implements CommitChecksProvider {
         runs: true,
         jobs: true,
         runHeader: true,
+        logs: true,
+        failureSummary: true,
     });
+    /**
+     * GitLab's runner writes a job's verdict as "ERROR: ...", often after a section marker and a
+     * colour code on the same line, so the marker may follow a carriage return or an escape code.
+     */
+    readonly firstErrorPatterns = [/(?:^|\r|\u001b\[[0-9;]*[A-Za-z])ERROR: /];
 
     /**
      * Creates a GitLabProvider.
@@ -226,6 +240,7 @@ export class GitLabProvider implements CommitChecksProvider {
      *   cooling down); tells a rate-limited scan page from a failed one.
      * @param etags - The window's conditional-request store; reads of a commit that was still
      *   running when last read send `If-None-Match` through `fetchWithMeta`. None: no ETags.
+     * @param downloadLog - The job log (trace) download.
      */
     constructor(
         private readonly fetchJson: FetchJson,
@@ -234,7 +249,27 @@ export class GitLabProvider implements CommitChecksProvider {
         private readonly fetchWithMeta: FetchJsonWithMeta = httpGetJsonWithMeta,
         private readonly cooldownEnd: (url: string) => number = () => 0,
         private readonly etags?: EtagStore,
+        private readonly downloadLog: DownloadCiLog = downloadCiLog,
     ) {}
+
+    /**
+     * Downloads a job's trace with the stored token.
+     *
+     * @param ref - The repository.
+     * @param job - The job; GitLab's job id names one attempt.
+     * @param signal - Aborts the download.
+     */
+    async getJobLog(
+        ref: ProviderRepoRef,
+        job: CiLogJob,
+        signal: AbortSignal,
+    ): Promise<DownloadedText> {
+        const gitLabRef = ref as GitLabRepoRef;
+        const token = await this.readToken(gitLabRef.host, "");
+        if (typeof token !== "string") throw new Error(token.error ?? token.summary);
+        const url = `${projectApiUrl(gitLabRef)}/jobs/${encodeURIComponent(job.jobId)}/trace`;
+        return this.downloadLog(url, { "PRIVATE-TOKEN": token }, signal);
+    }
 
     /**
      * Returns a repo reference when the remote URL belongs to a GitLab host.
@@ -664,17 +699,24 @@ function toRun(
 function toJob(job: GitLabJob, scope: string): CiJob {
     const id = readId(job.id) ?? "";
     const name = readString(job.name) || id;
+    const state = mapGitLabCiState(readString(job.status));
+    // GitLab sends the reason as a code ("script_failure"); its own UI shows it with spaces.
+    const failureSummary =
+        state === "failure"
+            ? cleanFailureSummary(readString(job.failure_reason).replace(/_/g, " "))
+            : undefined;
     return {
         id,
         logicalId: logicalCheckId({ kind: "job", scope, name }),
         name,
         checkName: name,
-        state: mapGitLabCiState(readString(job.status)),
+        state,
         url: optionalString(job.web_url),
         startedAt: optionalString(job.started_at),
         completedAt: optionalString(job.finished_at),
         steps: [],
         ...(job.allow_failure === true && { optional: true }),
+        ...(failureSummary !== undefined && { failureSummary }),
     };
 }
 

@@ -195,3 +195,7 @@ graphify-out/
 .mcp.json
 
 .github/agents/
+
+# CI log fixtures the Checks tab tests read (the `logs` and `*.log` rules above hide them)
+!tests/fixtures/commitChecks/logs/
+!tests/fixtures/commitChecks/logs/*.log

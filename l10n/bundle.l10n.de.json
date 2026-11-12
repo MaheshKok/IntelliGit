@@ -994,5 +994,7 @@
     "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "Diese Pipeline hat keine Aktualisierungszeit, daher lässt sich ein erneuter Lauf während des Scans nicht ausschließen.",
     "[IntelliGit: this CI log link is not valid.]": "[IntelliGit: Dieser CI-Protokolllink ist ungültig.]",
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: Dieses CI-Protokoll ist nicht mehr geladen. Öffnen Sie es erneut über den Tab „Prüfungen“.]",
-    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: Dieses CI-Protokoll konnte nicht geladen werden: {0}]"
+    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: Dieses CI-Protokoll konnte nicht geladen werden: {0}]",
+    "This provider cannot show CI logs.": "Dieser Anbieter kann keine CI-Protokolle anzeigen.",
+    "Loading the log of {0}…": "Protokoll von {0} wird geladen…"
 }

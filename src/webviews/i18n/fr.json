@@ -542,5 +542,13 @@
     "commit.checks.state.unknown": "Inconnu",
     "commitInfo.tabs": "Sections du commit",
     "commitInfo.tab.files": "Fichiers",
-    "commitInfo.tab.checks": "Vérifications"
+    "commitInfo.tab.checks": "Vérifications",
+    "commit.checks.tab.failureSummary": "Pourquoi le job a échoué",
+    "commit.checks.tab.loadingExcerpt": "Chargement de l'extrait…",
+    "commit.checks.tab.logExcerpt": "Extrait du journal",
+    "commit.checks.tab.openFullLog": "Ouvrir le journal complet dans l'éditeur",
+    "commit.checks.tab.logWhenFinished": "Journal disponible à la fin du job",
+    "commit.checks.tab.logForbidden": "Votre jeton ne peut pas lire ce journal",
+    "commit.checks.tab.logFailed": "Impossible de charger le journal : {error}",
+    "commit.checks.tab.logTruncated": "Ce journal a été coupé à 50 Mo — ouvrez-le dans le navigateur pour voir la suite"
 }

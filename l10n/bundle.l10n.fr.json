@@ -994,5 +994,7 @@
     "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "Ce pipeline n'a pas d'heure de mise à jour : une relance pendant l'analyse ne peut donc pas être exclue.",
     "[IntelliGit: this CI log link is not valid.]": "[IntelliGit : ce lien vers le journal CI n'est pas valide.]",
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit : ce journal CI n'est plus chargé. Rouvrez-le depuis l'onglet Vérifications.]",
-    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit : impossible de charger ce journal CI : {0}]"
+    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit : impossible de charger ce journal CI : {0}]",
+    "This provider cannot show CI logs.": "Ce fournisseur ne peut pas afficher les journaux CI.",
+    "Loading the log of {0}…": "Chargement du journal de {0}…"
 }

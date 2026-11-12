@@ -55,3 +55,26 @@ export function readE2eCiFixture(
         capabilities: seededFlags as unknown as ProviderCiCapabilities,
     };
 }
+
+/**
+ * The seeded log text of a job (`logs`, job id to text, beside the detail), or undefined
+ * outside an E2E run or when that job has no seeded log.
+ *
+ * @param memento - The extension's globalState.
+ * @param jobId - The job whose log is asked for.
+ * @throws When the seeded logs are not job ids mapped to text.
+ */
+export function readE2eCiFixtureLog(
+    memento: Pick<vscode.Memento, "get">,
+    jobId: string,
+): string | undefined {
+    if (!isE2eControlChannelActive()) return undefined;
+    const logs = (memento.get<unknown>(E2E_CI_FIXTURE_KEY) as { logs?: unknown } | undefined)?.logs;
+    if (logs === undefined) return undefined;
+    const text =
+        typeof logs === "object" && logs !== null ? (logs as Record<string, unknown>)[jobId] : 0;
+    if (text !== undefined && typeof text !== "string") {
+        throw new Error(`The seeded ${E2E_CI_FIXTURE_KEY} logs are not job ids mapped to text.`);
+    }
+    return text;
+}

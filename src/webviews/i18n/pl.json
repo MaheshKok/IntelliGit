@@ -552,5 +552,13 @@
     "commit.checks.state.unknown": "Nieznane",
     "commitInfo.tabs": "Sekcje commita",
     "commitInfo.tab.files": "Pliki",
-    "commitInfo.tab.checks": "Sprawdzenia"
+    "commitInfo.tab.checks": "Sprawdzenia",
+    "commit.checks.tab.failureSummary": "Dlaczego zadanie się nie powiodło",
+    "commit.checks.tab.loadingExcerpt": "Wczytywanie fragmentu…",
+    "commit.checks.tab.logExcerpt": "Fragment dziennika",
+    "commit.checks.tab.openFullLog": "Otwórz pełny dziennik w edytorze",
+    "commit.checks.tab.logWhenFinished": "Dziennik będzie dostępny po zakończeniu zadania",
+    "commit.checks.tab.logForbidden": "Twój token nie może odczytać tego dziennika",
+    "commit.checks.tab.logFailed": "Nie można wczytać dziennika: {error}",
+    "commit.checks.tab.logTruncated": "Ten dziennik obcięto przy 50 MB — otwórz go w przeglądarce, aby zobaczyć resztę"
 }

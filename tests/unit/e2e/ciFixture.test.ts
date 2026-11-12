@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setE2eControlChannelActive } from "../../../src/e2e/activationState";
-import { E2E_CI_FIXTURE_KEY, readE2eCiFixture } from "../../../src/e2e/ciFixture";
+import {
+    E2E_CI_FIXTURE_KEY,
+    readE2eCiFixture,
+    readE2eCiFixtureLog,
+} from "../../../src/e2e/ciFixture";
 import type { GitOps } from "../../../src/git/operations";
+import { ciLogKey } from "../../../src/services/commitChecks/ciLogMemoryStore";
 import { CommitChecksCoordinator } from "../../../src/services/commitChecks/coordinator";
 import type {
     CommitChecksProvider,
@@ -74,6 +79,141 @@ describe("readE2eCiFixture", () => {
         expect(() => readE2eCiFixture(memento({ detail: { outcome: 3 } }), HASH)).toThrow(
             E2E_CI_FIXTURE_KEY,
         );
+    });
+});
+
+describe("readE2eCiFixtureLog", () => {
+    it("serves nothing while the E2E control channel is off, even when seeded", () => {
+        const store = memento({ detail: seededDetail(), logs: { "7": "log" } });
+        expect(readE2eCiFixtureLog(store, "7")).toBeUndefined();
+        expect(store.get).not.toHaveBeenCalled();
+    });
+
+    it("serves the seeded text of the asked job only", () => {
+        setE2eControlChannelActive(true);
+        const store = memento({ detail: seededDetail(), logs: { "7": "line 1\nERROR" } });
+        expect(readE2eCiFixtureLog(store, "7")).toBe("line 1\nERROR");
+        expect(readE2eCiFixtureLog(store, "8")).toBeUndefined();
+        expect(readE2eCiFixtureLog(memento({ detail: seededDetail() }), "7")).toBeUndefined();
+        expect(readE2eCiFixtureLog(memento(undefined), "7")).toBeUndefined();
+    });
+
+    it("fails loudly when a seeded log is not text", () => {
+        setE2eControlChannelActive(true);
+        expect(() =>
+            readE2eCiFixtureLog(memento({ detail: seededDetail(), logs: { "7": 3 } }), "7"),
+        ).toThrow(E2E_CI_FIXTURE_KEY);
+        expect(() =>
+            readE2eCiFixtureLog(memento({ detail: seededDetail(), logs: "text" }), "7"),
+        ).toThrow(E2E_CI_FIXTURE_KEY);
+    });
+});
+
+describe("CommitChecksCoordinator.ciLogTarget", () => {
+    const JOB = { runId: "5", jobId: "7", attempt: 2 };
+    const CTX = { repoKey: "/repo", authGeneration: 0, lifecycleGeneration: 0 };
+    const REMOTE = "git@github.com:owner/repo.git";
+
+    function providerCoordinator(provider: Partial<CommitChecksProvider>, enabled = true) {
+        const full: CommitChecksProvider = {
+            id: "github",
+            match: (url) => (url === REMOTE ? { host: "github.com" } : null),
+            keyFor: (ref) => `github:${ref.host}`,
+            getChecks: vi.fn(),
+            ...provider,
+        };
+        const gitOps = {
+            getRemotes: vi.fn(async () => ["origin"]),
+            getRemoteUrl: vi.fn(async () => REMOTE),
+        } as unknown as GitOps;
+        return new CommitChecksCoordinator(gitOps, [full], {}, { enabled });
+    }
+
+    it("keys a seeded log by the repository and records no provider repository", async () => {
+        setE2eControlChannelActive(true);
+        const store = memento({
+            detail: seededDetail(),
+            capabilities: { ...NO_CI_CAPABILITIES, logs: true },
+        });
+        const coordinator = new CommitChecksCoordinator(
+            {} as GitOps,
+            [],
+            {},
+            { fixture: (hash) => readE2eCiFixture(store, hash) },
+        );
+        expect(await coordinator.ciLogTarget(HASH, JOB, CTX)).toEqual({
+            key: ciLogKey("e2e:/repo", "5", "7", 2),
+            source: { repoKey: "/repo", provider: "github", runId: "5", jobId: "7", attempt: 2 },
+        });
+    });
+
+    it("a seeded detail without the logs capability has no log", async () => {
+        setE2eControlChannelActive(true);
+        const store = memento({ detail: seededDetail(), capabilities: NO_CI_CAPABILITIES });
+        const coordinator = new CommitChecksCoordinator(
+            {} as GitOps,
+            [],
+            {},
+            { fixture: (hash) => readE2eCiFixture(store, hash) },
+        );
+        expect(await coordinator.ciLogTarget(HASH, JOB, CTX)).toBeUndefined();
+    });
+
+    it("keys a provider's log by its repository key and records its repository", async () => {
+        const coordinator = providerCoordinator({
+            capabilities: { ...NO_CI_CAPABILITIES, logs: true },
+            getJobLog: vi.fn(),
+        });
+        expect(await coordinator.ciLogTarget(HASH, JOB, CTX)).toEqual({
+            key: ciLogKey("github:github.com", "5", "7", 2),
+            source: {
+                repoKey: "/repo",
+                provider: "github",
+                ref: { host: "github.com" },
+                runId: "5",
+                jobId: "7",
+                attempt: 2,
+            },
+        });
+    });
+
+    it("records the job's failed step with the source, outside the key", async () => {
+        const coordinator = providerCoordinator({
+            capabilities: { ...NO_CI_CAPABILITIES, logs: true },
+            getJobLog: vi.fn(),
+        });
+        const target = await coordinator.ciLogTarget(
+            HASH,
+            { ...JOB, failedStep: "Run npm test" },
+            CTX,
+        );
+        expect(target?.source.failedStep).toBe("Run npm test");
+        expect(target?.key).toBe(ciLogKey("github:github.com", "5", "7", 2));
+    });
+
+    it("a provider without logs, or turned-off checks, has no log", async () => {
+        const getJobLog = vi.fn();
+        expect(
+            await providerCoordinator({ capabilities: NO_CI_CAPABILITIES, getJobLog }).ciLogTarget(
+                HASH,
+                JOB,
+                CTX,
+            ),
+            "the logs capability is off",
+        ).toBeUndefined();
+        expect(
+            await providerCoordinator({
+                capabilities: { ...NO_CI_CAPABILITIES, logs: true },
+            }).ciLogTarget(HASH, JOB, CTX),
+            "the provider cannot download a log",
+        ).toBeUndefined();
+        expect(
+            await providerCoordinator(
+                { capabilities: { ...NO_CI_CAPABILITIES, logs: true }, getJobLog },
+                false,
+            ).ciLogTarget(HASH, JOB, CTX),
+            "commit checks are turned off",
+        ).toBeUndefined();
     });
 });
 

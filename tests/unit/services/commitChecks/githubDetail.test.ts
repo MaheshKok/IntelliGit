@@ -1790,8 +1790,9 @@ describe("failed-job overflow scan", () => {
             jobsByRun: new Map([[String(runFixture.id), failedRunJobs()]]),
             onRequest: (url) => {
                 page11Read ||= isJobsPage(url, 11);
-                // While page 11's run check holds a slot, fill the bucket so page 12's must queue.
-                if (!page11Read || url !== runCheck || blockers.length > 0) return;
+                // While page 11's failed job's check-run read holds a slot (after page 11's run
+                // check), fill the bucket so page 12's run check must queue.
+                if (!page11Read || !url.includes("/check-runs/") || blockers.length > 0) return;
                 for (let i = 0; i < 4; i++) {
                     blocked.push(
                         registry

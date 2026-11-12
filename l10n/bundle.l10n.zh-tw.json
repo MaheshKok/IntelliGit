@@ -994,5 +994,7 @@
     "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "此管線沒有更新時間，因此無法排除掃描期間發生重試的可能。",
     "[IntelliGit: this CI log link is not valid.]": "[IntelliGit：此 CI 記錄連結無效。]",
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit：此 CI 記錄已不再載入。請從「檢查」索引標籤重新開啟。]",
-    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit：無法載入此 CI 記錄：{0}]"
+    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit：無法載入此 CI 記錄：{0}]",
+    "This provider cannot show CI logs.": "此提供者無法顯示 CI 記錄。",
+    "Loading the log of {0}…": "正在載入 {0} 的記錄…"
 }

@@ -542,5 +542,13 @@
     "commit.checks.state.unknown": "Desconocido",
     "commitInfo.tabs": "Secciones del commit",
     "commitInfo.tab.files": "Archivos",
-    "commitInfo.tab.checks": "Comprobaciones"
+    "commitInfo.tab.checks": "Comprobaciones",
+    "commit.checks.tab.failureSummary": "Por qué falló el trabajo",
+    "commit.checks.tab.loadingExcerpt": "Cargando extracto…",
+    "commit.checks.tab.logExcerpt": "Extracto del registro",
+    "commit.checks.tab.openFullLog": "Abrir el registro completo en el editor",
+    "commit.checks.tab.logWhenFinished": "Registro disponible cuando termine el trabajo",
+    "commit.checks.tab.logForbidden": "Su token no puede leer este registro",
+    "commit.checks.tab.logFailed": "No se pudo cargar el registro: {error}",
+    "commit.checks.tab.logTruncated": "Este registro se cortó en 50 MB: ábralo en el navegador para ver el resto"
 }

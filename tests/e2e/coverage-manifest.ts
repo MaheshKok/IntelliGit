@@ -635,6 +635,8 @@ const WEBVIEW_ENTRIES = [
     { kind: "webview", id: "cancelCommitCiDetail", mutating: false },
     { kind: "webview", id: "openCommitChecksSettings", mutating: false },
     { kind: "webview", id: "openCommitInChecks", mutating: false },
+    { kind: "webview", id: "previewCiLog", mutating: false },
+    { kind: "webview", id: "openCiLog", mutating: false },
     {
         kind: "webview",
         id: "signInForCommitChecks",

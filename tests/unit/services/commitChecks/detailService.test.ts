@@ -210,12 +210,12 @@ describe("CommitCiDetailService", () => {
         expect(fetchDetail).toHaveBeenCalledTimes(1);
     });
 
-    it("the detail contract version is 3: details carry and accept 3, and an older entry is a miss", async () => {
-        expect(CI_DETAIL_CONTRACT_VERSION).toBe(3);
+    it("the detail contract version is 4: details carry and accept 4, and an older entry is a miss", async () => {
+        expect(CI_DETAIL_CONTRACT_VERSION).toBe(4);
         const state = memento();
         await service(state, () => 1_000).service.getOrFetch(KEY, async () => detail(), SERVE);
         const saved = state.values.get(STORAGE_KEY) as { entries: { contractVersion: number }[] };
-        expect(saved.entries.map((entry) => entry.contractVersion)).toEqual([3]);
+        expect(saved.entries.map((entry) => entry.contractVersion)).toEqual([4]);
 
         const written = (contractVersion: number) => {
             const stored = memento();
@@ -235,12 +235,12 @@ describe("CommitCiDetailService", () => {
         };
         const fetchDetail = vi.fn(async () => detail({ outcome: "success" }));
         await expect(
-            service(written(3), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
+            service(written(4), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
         ).resolves.toMatchObject({ outcome: "failure" });
         expect(fetchDetail).not.toHaveBeenCalled();
-        // Version 2 entries hold GitLab details as flat lists, before its pipelines were read.
+        // Version 3 entries were read before jobs carried their failure summary.
         await expect(
-            service(written(2), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
+            service(written(3), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
         ).resolves.toMatchObject({ outcome: "success" });
         expect(fetchDetail).toHaveBeenCalledTimes(1);
     });

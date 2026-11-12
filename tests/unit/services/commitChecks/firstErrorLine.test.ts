@@ -1,10 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("vscode", () => ({ l10n: { t: (message: string) => message } }));
 
 import { CI_EXCERPT_MAX_BYTES, CI_EXCERPT_MAX_LINES } from "../../../../src/shared/ci/excerpt";
 import {
     buildCiLogExcerpt,
     findFirstErrorLine,
 } from "../../../../src/services/commitChecks/firstErrorLine";
+import { GitHubProvider } from "../../../../src/services/commitChecks/githubProvider";
+import { GitLabProvider } from "../../../../src/services/commitChecks/gitlabProvider";
+import type { CredentialStore } from "../../../../src/services/commitChecks/credentialStore";
+
+const LOGS = join(__dirname, "../../../fixtures/commitChecks/logs");
 
 const GITHUB = { patterns: [/##\[error\]/], stepStart: "##[group]Run tests" };
 
@@ -35,6 +44,19 @@ describe("findFirstErrorLine", () => {
         expect(findFirstErrorLine("one\ntwo\nthree\n", GITHUB)).toBe(2);
     });
 
+    it("never picks the failing step's own start line when its name holds an error word", () => {
+        const text = [
+            "##[group]Set up job",
+            "##[group]Handle failed jobs",
+            "ok 1",
+            "Error: boom",
+        ].join("\n");
+        expect(
+            findFirstErrorLine(text, { patterns: [], stepStart: "##[group]Handle failed jobs" }),
+            "the step's output, not its name",
+        ).toBe(3);
+    });
+
     it("searches the whole log for the error word when the step start is unknown", () => {
         const text = "setup\nERROR in compile\nlater error";
         expect(findFirstErrorLine(text, { patterns: [] })).toBe(1);
@@ -63,6 +85,24 @@ describe("findFirstErrorLine", () => {
         const rules = { patterns: [/##\[error\]/g] };
         expect(findFirstErrorLine(text, rules)).toBe(0);
         expect(findFirstErrorLine(text, rules)).toBe(0);
+    });
+});
+
+describe("provider error markers", () => {
+    it("first error line from GitHub and GitLab fixtures", () => {
+        // Each fixture has an earlier "failed" line the generic fallback would pick instead.
+        const github = readFileSync(join(LOGS, "github-job.log"), "utf8");
+        const githubRules = { patterns: new GitHubProvider().firstErrorPatterns };
+        expect(github.split("\n")[13]).toContain("##[error]Process completed with exit code 1.");
+        expect(findFirstErrorLine(github, githubRules), "GitHub ##[error] line").toBe(13);
+
+        // GitLab writes the job's verdict after a section marker and a colour code on one line.
+        const gitlab = readFileSync(join(LOGS, "gitlab-trace.log"), "utf8");
+        const gitlabRules = {
+            patterns: new GitLabProvider(vi.fn(), {} as CredentialStore).firstErrorPatterns,
+        };
+        expect(gitlab.split("\n")[13]).toContain("ERROR: Job failed: exit code 1");
+        expect(findFirstErrorLine(gitlab, gitlabRules), "GitLab ERROR: line").toBe(13);
     });
 });
 

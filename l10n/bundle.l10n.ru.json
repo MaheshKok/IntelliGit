@@ -994,5 +994,7 @@
     "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "У этого конвейера нет времени обновления, поэтому нельзя исключить повторный запуск во время сканирования.",
     "[IntelliGit: this CI log link is not valid.]": "[IntelliGit: эта ссылка на журнал CI недействительна.]",
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: этот журнал CI больше не загружен. Откройте его снова на вкладке «Проверки».]",
-    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: не удалось загрузить этот журнал CI: {0}]"
+    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: не удалось загрузить этот журнал CI: {0}]",
+    "This provider cannot show CI logs.": "Этот поставщик не может показывать журналы CI.",
+    "Loading the log of {0}…": "Загрузка журнала {0}…"
 }

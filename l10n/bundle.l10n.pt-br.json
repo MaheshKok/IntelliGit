@@ -994,5 +994,7 @@
     "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "Este pipeline não tem horário de atualização, então não é possível descartar uma nova tentativa durante a varredura.",
     "[IntelliGit: this CI log link is not valid.]": "[IntelliGit: este link para o log de CI não é válido.]",
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: este log de CI não está mais carregado. Abra-o novamente na guia Verificações.]",
-    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: não foi possível carregar este log de CI: {0}]"
+    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: não foi possível carregar este log de CI: {0}]",
+    "This provider cannot show CI logs.": "Este provedor não pode mostrar logs de CI.",
+    "Loading the log of {0}…": "Carregando o log de {0}…"
 }

@@ -522,5 +522,13 @@
     "commit.checks.state.unknown": "未知",
     "commitInfo.tabs": "提交區段",
     "commitInfo.tab.files": "檔案",
-    "commitInfo.tab.checks": "檢查"
+    "commitInfo.tab.checks": "檢查",
+    "commit.checks.tab.failureSummary": "作業失敗的原因",
+    "commit.checks.tab.loadingExcerpt": "正在載入摘錄…",
+    "commit.checks.tab.logExcerpt": "記錄摘錄",
+    "commit.checks.tab.openFullLog": "在編輯器中開啟完整記錄",
+    "commit.checks.tab.logWhenFinished": "作業完成後可檢視記錄",
+    "commit.checks.tab.logForbidden": "你的權杖無法讀取此記錄",
+    "commit.checks.tab.logFailed": "無法載入記錄：{error}",
+    "commit.checks.tab.logTruncated": "此記錄已在 50 MB 處截斷——請在瀏覽器中開啟以檢視其餘部分"
 }

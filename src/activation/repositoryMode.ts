@@ -44,11 +44,11 @@ import { CiDetailPersistentCache } from "../services/commitChecks/detailPersiste
 import { CiGenerations } from "../services/commitChecks/ciGenerations";
 import { CiActionFenceStore } from "../services/commitChecks/ciActionFence";
 import { createCiTrace } from "../services/commitChecks/ciTrace";
-import { CiLogMemoryStore } from "../services/commitChecks/ciLogMemoryStore";
+import { CiLogMemoryStore, type CiLogSource } from "../services/commitChecks/ciLogMemoryStore";
 import { registerCiLogDocumentProvider } from "../services/commitChecks/ciLogDocument";
 import { createCommitChecksProviders } from "./commitChecksProviders";
 import { captureWebviewViewProvider } from "../e2e/webviewCapture";
-import { readE2eCiFixture } from "../e2e/ciFixture";
+import { readE2eCiFixture, readE2eCiFixtureLog } from "../e2e/ciFixture";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { compactCommitGraphViewOptions } from "../views/commitGraphHostOptions";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
@@ -292,11 +292,33 @@ export async function activateRepositoryMode(
         trace: ciTrace,
         fences: ciActionFences,
     });
-    // CI logs live in this window's memory only (owner path C). Provider downloads arrive with
-    // the log handlers; until then nothing calls `load`, so this transport is never reached.
+    // CI logs live in this window's memory only (owner path C). An E2E run serves the logs it
+    // seeded; otherwise the job's provider downloads it through its request gate.
+    const providerOf = (source: CiLogSource) =>
+        commitChecksProviders.find((provider) => provider.id === source.provider);
     const ciLogStore = new CiLogMemoryStore({
-        download: (source) =>
-            Promise.reject(new Error(`No CI log download for ${source.provider}`)),
+        download: (source, signal) => {
+            const seeded = readE2eCiFixtureLog(context.globalState, source.jobId);
+            if (seeded !== undefined) return Promise.resolve({ text: seeded, truncated: false });
+            const provider = providerOf(source);
+            if (!provider?.getJobLog || !source.ref) {
+                return Promise.reject(
+                    new Error(vscode.l10n.t("This provider cannot show CI logs.")),
+                );
+            }
+            return provider.getJobLog(source.ref, source, signal);
+        },
+        errorRules: (source) => {
+            const provider = providerOf(source);
+            const prefix = provider?.stepStartPrefix;
+            return {
+                patterns: provider?.firstErrorPatterns ?? [],
+                stepStart:
+                    prefix !== undefined && source.failedStep
+                        ? prefix + source.failedStep
+                        : undefined,
+            };
+        },
     });
     const ciGenerations = new CiGenerations();
     if (ciActionFences) context.subscriptions.push(ciActionFences);
@@ -365,6 +387,7 @@ export async function activateRepositoryMode(
         commitChecksProviders,
         ciRepoKey: () => repoRoot,
         ciFixture,
+        ciLogStore,
     });
     const sidebarGraph = new CommitGraphViewProvider(
         context.extensionUri,
@@ -381,15 +404,13 @@ export async function activateRepositoryMode(
             ciTrace,
             commitChecksProviders,
             ciFixture,
+            ciLogStore,
         },
     );
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
     commitInfo.setCiSource({
-        repoKey: () => repoRoot,
-        generations: ciGenerations,
+        ...commitGraph.ciDetailSource(() => repoRoot),
         enabled: commitCheckSettings.enabled,
-        getDetail: (hash, options, ctx, onScanUpdate) =>
-            commitGraph.getCommitCiDetail(hash, options, ctx, onScanUpdate),
     });
     sidebarGraph.onOpenCommitInChecks((hash) => commitInfo.openChecksTab(hash));
     const commitPanel = new CommitPanelViewProvider(
@@ -922,6 +943,7 @@ export async function activateRepositoryMode(
                 ciGenerations,
                 ciTrace,
                 ciFixture,
+                ciLogStore,
                 commitChecksProviders,
                 commitMessageGenerationCoordinator,
                 onSelectedRepositoryRootChanged: async (root) => {

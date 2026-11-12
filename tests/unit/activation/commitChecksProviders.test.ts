@@ -142,4 +142,60 @@ describe("createCommitChecksProviders", () => {
         expect(detail).toMatchObject({ outcome: "unavailable", error: "cooling down" });
         expect(page).toEqual({ pausedUntil: registry.cooldownEnd("gitlab", project) });
     });
+
+    it("a busy signed log host does not cool the GitHub API down; a busy API does", async () => {
+        const logsUrl = `${API}/repos/microsoft/vscode/actions/jobs/77/logs`;
+        const blobUrl = "https://results-receiver.actions.githubusercontent.com/logs/77?sig=abc";
+        type Answer = { statusCode: number; headers: Record<string, string> };
+        const busy: Answer = { statusCode: 429, headers: { "retry-after": "60" } };
+        const readLog = async (answers: Record<string, Answer>) => {
+            mocks.httpsGet.mockImplementation(((
+                url: string,
+                _options: unknown,
+                cb: (response: unknown) => void,
+            ) => {
+                const answer = answers[url];
+                if (!answer) throw new Error(`unexpected request ${url}`);
+                const request = Object.assign(new EventEmitter(), {
+                    setTimeout: vi.fn(),
+                    destroy: vi.fn(),
+                });
+                const response = Object.assign(new EventEmitter(), {
+                    ...answer,
+                    resume: vi.fn(),
+                    destroy: vi.fn(),
+                });
+                queueMicrotask(() => cb(response));
+                return request;
+            }) as never);
+            const registry = new CommitChecksRequestGateRegistry("cooling down");
+            const github = createCommitChecksProviders(
+                registry,
+                {} as CredentialStore,
+                undefined,
+                new CiGenerations(),
+            ).find((provider) => provider instanceof GitHubProvider) as GitHubProvider;
+            const error = await github
+                .getJobLog(
+                    ref,
+                    { runId: "5", jobId: "77", attempt: 1 },
+                    new AbortController().signal,
+                )
+                .catch((reason: unknown) => reason);
+            expect(error).toMatchObject({ statusCode: 429 });
+            return registry.cooldownEnd("github", API);
+        };
+
+        expect(
+            await readLog({
+                [logsUrl]: { statusCode: 302, headers: { location: blobUrl } },
+                [blobUrl]: busy,
+            }),
+            "the signed log host's limit is not the API's",
+        ).toBe(0);
+        expect(
+            await readLog({ [logsUrl]: busy }),
+            "the API's own limit cools it down",
+        ).toBeGreaterThan(0);
+    });
 });

@@ -1029,3 +1029,357 @@ describe("Commit details Checks tab", () => {
         expect(container.textContent).toContain("new-account");
     });
 });
+
+const LOG_CAPABILITIES = { ...TREE_CAPABILITIES, logs: true, failureSummary: true };
+
+interface PreviewRequest {
+    type: "previewCiLog";
+    requestId: number;
+    repoKey: string;
+    hash: string;
+    runId: string;
+    jobId: string;
+    attempt?: number;
+    selectionToken: number;
+}
+
+function posted<T>(type: string): T[] {
+    return mockVscodeApi.postMessage.mock.calls
+        .map(([message]) => message as T & { type: string })
+        .filter((message) => message.type === type);
+}
+
+function previews(): PreviewRequest[] {
+    return posted<PreviewRequest>("previewCiLog");
+}
+
+function lastPreview(): PreviewRequest {
+    const requests = previews();
+    expect(requests.length, "a log preview was asked for").toBeGreaterThan(0);
+    return requests[requests.length - 1]!;
+}
+
+function previewReply(request: PreviewRequest, fields: Record<string, unknown>): void {
+    const { requestId, repoKey, hash, runId, jobId, selectionToken } = request;
+    act(() => {
+        window.dispatchEvent(
+            new MessageEvent("message", {
+                data: {
+                    type: "ciLogPreview",
+                    requestId,
+                    repoKey,
+                    hash,
+                    runId,
+                    jobId,
+                    selectionToken,
+                    ...fields,
+                },
+            }),
+        );
+    });
+}
+
+/** A commit whose failed job (and optionally others) has a log. */
+function withLog(container: HTMLElement, jobs: CiJob[], runOverrides: Partial<CiRun> = {}) {
+    reply(
+        lastRequest(),
+        ciDetail(HASH_A, {
+            outcome: "failure",
+            runs: [run(jobs, runOverrides)],
+            capabilities: LOG_CAPABILITIES,
+        }),
+    );
+    return checksTab(container);
+}
+
+function jobDetail(container: HTMLElement): HTMLElement {
+    const detail = container.querySelector<HTMLElement>('[data-testid="ci-job-detail"]');
+    expect(detail, "the job detail").not.toBeNull();
+    return detail!;
+}
+
+describe("Checks tab log preview and full log", () => {
+    it("selecting a failed job shows the excerpt without opening an editor", () => {
+        const { container } = mount(pane(HASH_A));
+        withLog(
+            container,
+            [
+                job("lint", "success"),
+                job("unit-tests", "failure", { failureSummary: "2 tests failed" }),
+            ],
+            { attempt: 2 },
+        );
+
+        expect(previews(), "the failed job's excerpt is asked for once").toHaveLength(1);
+        expect(lastPreview()).toMatchObject({
+            repoKey: "/repo",
+            hash: HASH_A,
+            runId: "1",
+            jobId: "unit-tests",
+            attempt: 2,
+        });
+        expect(posted("openCiLog"), "no editor is asked for").toHaveLength(0);
+        expect(jobDetail(container).textContent).toContain("Loading excerpt…");
+        expect(container.querySelector('[data-testid="ci-failure-summary"]')?.textContent).toBe(
+            "2 tests failed",
+        );
+
+        previewReply(lastPreview(), {
+            outcome: "ready",
+            excerpt: "FAIL sum.test.ts\nexpected 3 to be 4",
+            truncated: false,
+        });
+        expect(container.querySelector('[data-testid="ci-log-excerpt"]')?.textContent).toBe(
+            "FAIL sum.test.ts\nexpected 3 to be 4",
+        );
+        expect(posted("openCiLog"), "the excerpt opened no editor").toHaveLength(0);
+
+        act(() => button(container, /Open full log in editor/)!.click());
+        expect(posted("openCiLog")).toEqual([
+            expect.objectContaining({
+                repoKey: "/repo",
+                hash: HASH_A,
+                runId: "1",
+                jobId: "unit-tests",
+                attempt: 2,
+            }),
+        ]);
+        expect(previews(), "opening asks for no second preview").toHaveLength(1);
+    });
+
+    it("a preview reply for a job no longer selected is dropped", () => {
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("job-a", "failure"), job("job-b", "failure")]);
+        const firstA = lastPreview();
+        expect(firstA.jobId).toBe("job-a");
+        act(() => jobRow(container, "job-b").click());
+        const b = lastPreview();
+        act(() => jobRow(container, "job-a").click());
+        const secondA = lastPreview();
+        expect(new Set([firstA, b, secondA].map((p) => p.selectionToken)).size).toBe(3);
+
+        previewReply(firstA, { outcome: "ready", excerpt: "OLD A", truncated: false });
+        previewReply(b, { outcome: "ready", excerpt: "B", truncated: false });
+        expect(jobDetail(container).textContent, "an earlier pick's replies").not.toMatch(
+            /OLD A|^B$/,
+        );
+        expect(container.querySelector('[data-testid="ci-log-excerpt"]')).toBeNull();
+        expect(jobDetail(container).textContent).toContain("Loading excerpt…");
+
+        previewReply(secondA, { outcome: "ready", excerpt: "NEW A", truncated: false });
+        expect(container.querySelector('[data-testid="ci-log-excerpt"]')?.textContent).toBe(
+            "NEW A",
+        );
+    });
+
+    it("the current selection token does not waive requestId equality (K3)", () => {
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("unit-tests", "failure")]);
+        const request = lastPreview();
+
+        previewReply(request, {
+            requestId: request.requestId + 1000,
+            outcome: "ready",
+            excerpt: "STALE",
+            truncated: false,
+        });
+        expect(
+            container.querySelector('[data-testid="ci-log-excerpt"]'),
+            "K3 requires requestId === newest",
+        ).toBeNull();
+
+        previewReply(request, { outcome: "ready", excerpt: "NEW", truncated: false });
+        expect(container.querySelector('[data-testid="ci-log-excerpt"]')?.textContent).toBe("NEW");
+    });
+
+    it("the newest requestId does not waive selectionToken equality (K3)", () => {
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("unit-tests", "failure")]);
+        const request = lastPreview();
+
+        // Every other identity field (requestId, repo, hash, run, job) matches the newest request.
+        previewReply(request, {
+            selectionToken: request.selectionToken + 1000,
+            outcome: "ready",
+            excerpt: "STALE",
+            truncated: false,
+        });
+        expect(
+            container.querySelector('[data-testid="ci-log-excerpt"]'),
+            "K3 requires selectionToken === newest",
+        ).toBeNull();
+
+        previewReply(request, { outcome: "ready", excerpt: "NEW", truncated: false });
+        expect(container.querySelector('[data-testid="ci-log-excerpt"]')?.textContent).toBe("NEW");
+    });
+
+    it("running job shows no log button", () => {
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("build", "running"), job("deploy", "queued")]);
+        for (const name of ["build", "deploy"]) {
+            act(() => jobRow(container, name).click());
+            expect(jobDetail(container).textContent).toContain(
+                "Log available when the job finishes",
+            );
+            expect(button(container, /Open full log in editor/), name).toBeUndefined();
+        }
+        expect(previews(), "no preview for an unfinished job").toHaveLength(0);
+    });
+
+    it("a selected job that finishes as failed shows its excerpt loading", () => {
+        vi.useFakeTimers();
+        try {
+            const { container } = mount(pane(HASH_A));
+            reply(
+                lastRequest(),
+                ciDetail(HASH_A, {
+                    complete: false,
+                    outcome: "pending",
+                    runs: [run([job("build", "running")])],
+                    capabilities: LOG_CAPABILITIES,
+                }),
+            );
+            act(() => jobRow(container, "build").click());
+            expect(previews(), "no preview while the job runs").toHaveLength(0);
+
+            act(() => vi.advanceTimersByTime(PENDING_CHECK_RETRY_DELAYS_MS[0]));
+            reply(
+                lastRequest(),
+                ciDetail(HASH_A, {
+                    outcome: "failure",
+                    runs: [run([job("build", "failure")])],
+                    capabilities: LOG_CAPABILITIES,
+                }),
+            );
+
+            expect(previews(), "the finished job's excerpt is asked for").toHaveLength(1);
+            expect(
+                jobDetail(container).textContent,
+                "the excerpt shows as loading while it is read",
+            ).toContain("Loading excerpt…");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("403 shows cannot-read message", () => {
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("unit-tests", "failure")]);
+        previewReply(lastPreview(), { outcome: "forbidden" });
+        expect(jobDetail(container).textContent).toContain("Your token cannot read this log");
+        expect(container.querySelector('[data-testid="ci-log-excerpt"]')).toBeNull();
+    });
+
+    it("an open that fails says why", () => {
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("unit-tests", "failure")]);
+        act(() => button(container, /Open full log in editor/)!.click());
+        const [open] = posted<{ requestId: number }>("openCiLog");
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "ciLogResult",
+                        requestId: open!.requestId,
+                        repoKey: "/repo",
+                        hash: HASH_A,
+                        outcome: "failed",
+                        message: "socket hang up",
+                    },
+                }),
+            );
+        });
+        expect(jobDetail(container).textContent).toContain(
+            "Could not load the log: socket hang up",
+        );
+    });
+
+    it("a late reply to an earlier open leaves the newer open's error", () => {
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("unit-tests", "failure")]);
+        act(() => button(container, /Open full log in editor/)!.click());
+        act(() => button(container, /Open full log in editor/)!.click());
+        const [older, newer] = posted<{ requestId: number }>("openCiLog");
+        const result = (requestId: number, message: string): void =>
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "ciLogResult",
+                            requestId,
+                            repoKey: "/repo",
+                            hash: HASH_A,
+                            outcome: "failed",
+                            message,
+                        },
+                    }),
+                );
+            });
+
+        result(newer!.requestId, "newer failure");
+        result(older!.requestId, "older failure");
+
+        expect(
+            jobDetail(container).textContent,
+            "only the newest open request's reply renders",
+        ).toContain("Could not load the log: newer failure");
+        expect(jobDetail(container).textContent).not.toContain("older failure");
+    });
+
+    it("excerpt with <img onerror> renders as text", () => {
+        const markup = '<img src="x" onerror="window.__pwned = 1">';
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("unit-tests", "failure", { failureSummary: markup })]);
+        previewReply(lastPreview(), { outcome: "ready", excerpt: markup, truncated: false });
+
+        expect(container.querySelector('[data-testid="ci-log-excerpt"]')?.textContent).toBe(markup);
+        expect(container.querySelector('[data-testid="ci-failure-summary"]')?.textContent).toBe(
+            markup,
+        );
+        expect(container.querySelector("img"), "no element was made from the log").toBeNull();
+    });
+
+    it("excerpt is not written to webview state", () => {
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("unit-tests", "failure")]);
+        previewReply(lastPreview(), {
+            outcome: "ready",
+            excerpt: "SECRET-LOOKING LINE",
+            truncated: false,
+        });
+        expect(container.textContent).toContain("SECRET-LOOKING LINE");
+        act(() => tabButton(container, "Files").click());
+        act(() => tabButton(container, "Checks").click());
+        expect(mockVscodeApi.setState, "the tab choice is saved").toHaveBeenCalled();
+        for (const [state] of mockVscodeApi.setState.mock.calls) {
+            expect(JSON.stringify(state)).not.toContain("SECRET-LOOKING LINE");
+        }
+    });
+
+    it("truncated log shows Open in browser", () => {
+        const url = "https://github.com/o/r/actions/runs/1/job/7";
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("unit-tests", "failure", { url })]);
+        previewReply(lastPreview(), { outcome: "ready", excerpt: "tail", truncated: false });
+        expect(container.querySelector('[data-testid="ci-log-truncated"]')).toBeNull();
+
+        previewReply(lastPreview(), { outcome: "ready", excerpt: "tail", truncated: true });
+        const note = container.querySelector<HTMLElement>('[data-testid="ci-log-truncated"]');
+        expect(note?.textContent).toContain("cut at 50 MB");
+        act(() => button(note!, /Open in browser/)!.click());
+        expect(posted("openCommitCheckUrl")).toEqual([{ type: "openCommitCheckUrl", url }]);
+    });
+
+    it("a provider without logs or failure summaries shows neither", () => {
+        const { container } = mount(pane(HASH_A));
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, {
+                runs: [run([job("unit-tests", "failure", { failureSummary: "2 tests failed" })])],
+            }),
+        );
+        expect(previews()).toHaveLength(0);
+        expect(button(container, /Open full log in editor/)).toBeUndefined();
+        expect(container.querySelector('[data-testid="ci-failure-summary"]')).toBeNull();
+    });
+});

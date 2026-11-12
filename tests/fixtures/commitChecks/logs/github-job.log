@@ -1,0 +1,16 @@
+2026-11-07T12:00:01.0000000Z ##[group]Run actions/checkout@v4
+2026-11-07T12:00:01.1000000Z with:
+2026-11-07T12:00:01.2000000Z   repository: octo/app
+2026-11-07T12:00:02.0000000Z ##[endgroup]
+2026-11-07T12:00:03.0000000Z Syncing repository: octo/app
+2026-11-07T12:00:04.0000000Z ##[group]Run npm test
+2026-11-07T12:00:04.1000000Z npm test
+2026-11-07T12:00:04.2000000Z ##[endgroup]
+2026-11-07T12:00:05.0000000Z > app@1.0.0 test
+2026-11-07T12:00:05.1000000Z > vitest run
+2026-11-07T12:00:08.0000000Z  FAIL  src/sum.test.ts > adds numbers
+2026-11-07T12:00:08.1000000Z AssertionError: expected 3 to be 4
+2026-11-07T12:00:08.2000000Z  Test Files  1 failed (1)
+2026-11-07T12:00:09.0000000Z ##[error]Process completed with exit code 1.
+2026-11-07T12:00:09.5000000Z Post job cleanup.
+2026-11-07T12:00:10.0000000Z Cleaning up orphan processes

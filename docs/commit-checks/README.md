@@ -208,8 +208,23 @@ availability result, not a quota cooldown.
 
 ## CI logs
 
-> Planned: opening a job's log from the Checks tab is not available yet. The download and
-> the in-memory log store below are in place, but nothing asks for a log yet.
+> Planned: like the Checks tab itself, the log view below stays hidden in released versions
+> until the tab is finished. GitHub and GitLab logs work today; Bitbucket logs come later.
+
+In the Checks tab, a finished failed job shows why it failed when the provider says so
+(GitHub: the check run's title and summary; GitLab: the job's failure reason), and a short
+excerpt of its log around the first error line: GitHub's `##[error]` line, GitLab's
+`ERROR:` line, else the first line that says error or failed. The summary and the
+excerpt are shown as plain text, at most 2 000 characters for the summary and 40 lines or
+8 KB for the excerpt, with colour codes and control characters removed. Only the excerpt
+reaches the tab; the full log stays in the extension.
+
+**Open full log in editor** opens the whole log in a read-only editor tab at the first
+error line, with a progress notification you can cancel. The log is downloaded once: the
+excerpt and the editor share it. A job that is still queued or running shows "Log
+available when the job finishes" and downloads nothing. A token that may not read logs
+shows "Your token cannot read this log". A log cut at 50 MB shows a note with **Open in
+browser** for the rest.
 
 CI logs are held in memory, one store per VS Code window, and are never written to disk.
 A window keeps the three most recently used logs; opening a fourth drops the oldest, and
