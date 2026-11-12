@@ -21,6 +21,7 @@
 - Mutations (copy mut-6-build-2): 47 of 47 red, each naming its test; record in PLAN.review-log.md.
 - Fix round 1 (Codex: a body that reaches 50 MB and then stalls was lost to the idle timeout): `readBounded` now stops and destroys the response at the bound, unless the announced length is exactly the bound. Tests "reaching the bound with an announced larger length / no announced length stops at once even if the server then stalls"; 3 of 3 mutations red (copy mut-6-fix-1).
 - Fix round 2 (Codex: 4 surviving mutations, tests only, no source change): stale download settling after `clear()` keeps the new in-flight download (reject and resolve); `ciLogKey` differs per part and per separator shift; UTF-8 cut table for 2-, 3- and 4-byte characters plus kept-at-bound controls; a pre-aborted waiter rejects. 9 of 9 mutations red (copy mut-6-fix-2).
+- Takeover (Codex: a document read whose download a `clear()` aborted settled after a newer same-key load had already fired its refresh, so the tab kept the error line for good, against K19): the read's `catch` in ciLogDocument.ts now serves the store's current entry for the key and marks the tab for refresh only when there is none. Test "a stale document read cannot leave an error tab stuck ... (stale download rejects / resolves)" in ciLogDocument.test.ts, red on the unfixed code in both orderings; the reviewer's own scratch test passes on the fix (copy mut-6-takeover-1).
 
 ## Decisions and why
 - The store's `download` in repositoryMode is a rejecting placeholder: no provider log endpoint exists until Phase 7, and nothing calls `load` yet. Phase 7 replaces it with the provider transports.
@@ -43,8 +44,7 @@
   - GitNexus detect-changes: risk HIGH (activateRepositoryMode, 9 flows), index stale at 64d390b0; the change there is the store wiring the integration test pins.
   - Settled-only is the callers' contract (Phase 7 handlers); the store does not check job status.
 
-## Next phase
-- Wave 4: Phases 7, 8, 9.
+## Next phase: wave 4 (Phases 7, 8, 9), after Phase 6 is accepted.
 
 ## Found outside scope
 - commit-list-column-resize.test.tsx fails under Node v26.5.0 (no global `localStorage`); red on HEAD 86088cab too (8 tests).

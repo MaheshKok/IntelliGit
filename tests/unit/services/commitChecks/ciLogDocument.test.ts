@@ -161,6 +161,53 @@ describe("ciLogDocument", () => {
         expect(changed).toHaveBeenCalledWith(uri);
     });
 
+    it.each(["reject", "resolve"])(
+        "a stale document read cannot leave an error tab stuck after a newer same-key load succeeds (stale download %ss)",
+        async (settle) => {
+            const downloads: {
+                resolve: (value: { text: string; truncated: boolean }) => void;
+                reject: (error: Error) => void;
+            }[] = [];
+            const download = vi.fn(
+                () =>
+                    new Promise<{ text: string; truncated: boolean }>((resolve, reject) =>
+                        downloads.push({ resolve, reject }),
+                    ),
+            );
+            const { store, provider } = setup(download);
+            // Record the source, then empty the store so the tab's read downloads again.
+            const seeded = store.load(keyFor("a"), sourceFor("a"));
+            downloads[0].resolve({ text: "seed", truncated: false });
+            await seeded;
+            store.clear();
+            const changed = vi.fn();
+            provider.onDidChange?.(changed);
+            const uri = uriFor(`k=${keyFor("a")}`);
+            const staleRead = provide(provider, uri);
+            // A clear (settings or token change) aborts that read's download; a newer load wins.
+            store.clear();
+            const freshLoad = store.load(keyFor("a"), sourceFor("a"));
+            downloads[2].resolve({ text: "fresh", truncated: false });
+            await freshLoad;
+            if (settle === "reject") {
+                const abort = new Error("aborted");
+                abort.name = "AbortError";
+                downloads[1].reject(abort);
+            } else {
+                downloads[1].resolve({ text: "stale", truncated: false });
+            }
+            const staleText = await staleRead;
+            // A later Checks-tab click is a cache hit and emits no load event, so the tab must
+            // already show the log, or have been told to refresh after the read settled.
+            changed.mockClear();
+            expect((await store.load(keyFor("a"), sourceFor("a"))).text).toBe("fresh");
+            expect(
+                staleText === "fresh" || changed.mock.calls.some(([target]) => target === uri),
+                `the error tab must recover on the later successful load (tab shows ${JSON.stringify(staleText)})`,
+            ).toBe(true);
+        },
+    );
+
     it("dispose stops listening to the store", async () => {
         const { store, provider, registration } = setup();
         const changed = vi.fn();

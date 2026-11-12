@@ -58,6 +58,10 @@ class CiLogDocumentProvider implements vscode.TextDocumentContentProvider {
         try {
             return (await this.store.load(key, source)).text;
         } catch (error) {
+            // A newer load of this key may have finished while this read waited (after a clear()
+            // aborted its download); that load's refresh has already fired, so serve its text.
+            const current = this.store.get(key);
+            if (current) return current.text;
             this.markStale(key, uri);
             const reason = error instanceof Error ? error.message : String(error);
             return vscode.l10n.t("[IntelliGit: could not load this CI log: {0}]", reason);
