@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- IntelliGit can now download CI logs safely and keep the most recent ones ready to open in an editor.
+- Groundwork for the coming Checks tab: IntelliGit can now download CI logs safely and keep the latest few ready for the log viewer. Nothing changes in the extension yet.
 
 ## [0.43.7] - 2026-11-11
 
