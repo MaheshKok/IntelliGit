@@ -18,6 +18,7 @@ vi.mock("vscode", () => ({
 
 import { HttpError, type FetchResponse } from "../../../../src/services/commitChecks/http";
 import { GitHubProvider } from "../../../../src/services/commitChecks/githubProvider";
+import { RequestGateCooldownError } from "../../../../src/services/commitChecks/requestGate";
 import type { ProviderRepoRef } from "../../../../src/services/commitChecks/types";
 
 const ref = { host: "github.com", owner: "octo", repo: "app" } as ProviderRepoRef;
@@ -121,7 +122,26 @@ describe("GitHub job log", () => {
         const sent = stubServer({ [LOGS_URL]: [{ status: 403 }] });
         const error = await readLog().catch((reason: unknown) => reason);
         expect((error as HttpError).statusCode).toBe(403);
+        expect(error, "the API request carried the token").toMatchObject({ credentialSent: true });
         expect(sent).toHaveLength(1);
+    });
+
+    it("a refusal after a redirect chain returns to the API host is not one the token saw", async () => {
+        // The token is dropped on leaving the API origin and never put back, so a 401 from the
+        // API host at the end of the chain was answered to a request without it.
+        const back = `${REPO}/actions/jobs/77/raw`;
+        const sent = stubServer({
+            [LOGS_URL]: [{ status: 302, location: BLOB_URL }],
+            [BLOB_URL]: [{ status: 302, location: back }],
+            [back]: [{ status: 401 }],
+        });
+        const error = await readLog().catch((reason: unknown) => reason);
+        expect((error as HttpError).statusCode).toBe(401);
+        expect(hasAuthorization(sent[2]!.headers)).toBe(false);
+        expect(
+            error,
+            "the error says the request that was refused carried no token",
+        ).toMatchObject({ credentialSent: false });
     });
 
     it("declares logs and the ##[error] marker", () => {
@@ -282,7 +302,8 @@ describe("GitHub failure summary", () => {
         expect(failed?.failureSummary).toBe("selected failure\ndirect summary");
     });
 
-    it("a failed job found past the job page bound gets its check-run summary", async () => {
+    /** Reads page 11 of a run whose one job there failed; its check run 555 answers `checkRun`. */
+    function scanOverflowPage(checkRun: () => FetchResponse) {
         const page = `${REPO}/actions/runs/5/jobs?per_page=100&page=11`;
         const routes: Record<string, unknown> = {
             [`${REPO}/actions/runs/5`]: { id: 5, run_attempt: 1 },
@@ -300,18 +321,14 @@ describe("GitHub failure summary", () => {
                     },
                 ],
             },
-            [`${REPO}/check-runs/555`]: {
-                id: 555,
-                output: { title: "overflow failure", summary: "expected 3 to be 4" },
-            },
         };
         const fetch = vi.fn(async (url: string): Promise<FetchResponse> => {
+            if (url === `${REPO}/check-runs/555`) return checkRun();
             if (!(url in routes)) throw new Error(`unexpected request ${url}`);
             return { statusCode: 200, headers: {}, body: routes[url] };
         });
         const provider = new GitHubProvider(vi.fn(), undefined, fetch);
-
-        const result = await provider.continueFailedScan(ref, {
+        return provider.continueFailedScan(ref, {
             runId: "5",
             runAttempt: 1,
             runName: "CI",
@@ -319,6 +336,30 @@ describe("GitHub failure summary", () => {
             jobsRead: 1000,
             jobsTotal: 1001,
         });
+    }
+
+    it.each([
+        ["a server error", () => new HttpError(500, "HTTP 500", {})],
+        ["a gate cooldown", () => new RequestGateCooldownError("cooling down", Date.now() + 30_000)],
+    ])("%s on an overflow job's check run still lists the job as failed", async (_name, error) => {
+        const result = await scanOverflowPage(() => {
+            throw error();
+        });
+
+        expect(
+            result.failed?.map((job) => job.id),
+            "a summary that cannot be read never hides the failed job",
+        ).toEqual(["900"]);
+        expect(result.failed?.[0]?.failureSummary).toBeUndefined();
+        expect(result.pausedUntil).toBeUndefined();
+    });
+
+    it("a failed job found past the job page bound gets its check-run summary", async () => {
+        const result = await scanOverflowPage(() => ({
+            statusCode: 200,
+            headers: {},
+            body: { id: 555, output: { title: "overflow failure", summary: "expected 3 to be 4" } },
+        }));
 
         expect(result.failed?.[0]?.checkRunId).toBe("555");
         expect(
