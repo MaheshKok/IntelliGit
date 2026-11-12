@@ -19,9 +19,12 @@ import type {
 } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import {
+    downloadCiLog,
     HttpError,
     httpGetJson,
     httpGetJsonWithMeta,
+    type DownloadCiLog,
+    type DownloadedText,
     type FetchJson,
     type FetchJsonWithMeta,
 } from "./http";
@@ -43,12 +46,14 @@ import {
     isCompleteDetail,
     isCompleteSnapshot,
 } from "../../shared/ci/completion";
+import { cleanFailureSummary } from "../../shared/ci/excerpt";
 import { logicalCheckId } from "../../shared/ci/identity";
 import type { EtagStore } from "./etagStore";
 import type {
     CiDetailFetch,
     CiFailedScanCursor,
     CiFailedScanPage,
+    CiLogJob,
     CommitChecksProvider,
     HostMap,
     ProviderRepoRef,
@@ -130,6 +135,8 @@ const DETAIL_MAX_READS = 3;
  * past the limit, and a job missing from the snapshot is looked up in its own suite.
  */
 const REF_CHECK_SUITE_LIMIT = 1000;
+/** Statuses of an expired signed log link; the logs endpoint then hands out a fresh one. */
+const EXPIRED_LOG_LINK = new Set([403, 404, 410]);
 
 /** Parses GitHub.com remote URLs from HTTPS, SSH, and scp-like Git remotes. */
 export function parseGithubRemoteUrl(remoteUrl: string): GitHubRepoRef | null {
@@ -178,7 +185,11 @@ export class GitHubProvider implements CommitChecksProvider {
         jobs: true,
         steps: true,
         runHeader: true,
+        logs: true,
+        failureSummary: true,
     });
+    /** GitHub Actions prefixes each error annotation line of a log with this marker. */
+    readonly firstErrorPatterns = [/##\[error\]/];
 
     /**
      * Accepts injected HTTP boundaries and an optional CI/CD include override.
@@ -192,6 +203,7 @@ export class GitHubProvider implements CommitChecksProvider {
      *   cooling down); tells a rate-limit response on a scan page from a permission refusal.
      * @param etags - The window's conditional-request store; reads of a commit that was still
      *   running when last read send `If-None-Match` through `fetchWithMeta`. None: no ETags.
+     * @param downloadLog - The job log download; follows the logs endpoint's redirect.
      */
     constructor(
         private readonly fetchJson: FetchJson = httpGetJson,
@@ -199,7 +211,41 @@ export class GitHubProvider implements CommitChecksProvider {
         private readonly fetchWithMeta: FetchJsonWithMeta = httpGetJsonWithMeta,
         private readonly cooldownEnd: (url: string) => number = () => 0,
         private readonly etags?: EtagStore,
+        private readonly downloadLog: DownloadCiLog = downloadCiLog,
     ) {}
+
+    /**
+     * Downloads a job's log. The logs endpoint redirects to a short-lived signed URL on another
+     * host, which the download follows without the token; a 403, 404 or 410 from that URL
+     * means the link expired, so the endpoint is asked once more for a fresh one.
+     *
+     * @param ref - The repository.
+     * @param job - The job; GitHub's job id names one attempt.
+     * @param signal - Aborts the download.
+     */
+    async getJobLog(
+        ref: ProviderRepoRef,
+        job: CiLogJob,
+        signal: AbortSignal,
+    ): Promise<DownloadedText> {
+        const session = await openSession("");
+        if (!isSession(session)) {
+            throw new Error(session.error ?? summaryForState(session.state));
+        }
+        const url = `${repoApiUrl(ref as GitHubRepoRef)}/actions/jobs/${encodeURIComponent(job.jobId)}/logs`;
+        const headers = githubHeaders(session);
+        try {
+            return await this.downloadLog(url, headers, signal);
+        } catch (err) {
+            const fromSignedLink =
+                err instanceof HttpError &&
+                EXPIRED_LOG_LINK.has(err.statusCode) &&
+                err.url !== undefined &&
+                err.url !== new URL(url).href;
+            if (!fromSignedLink) throw err;
+            return this.downloadLog(url, headers, signal);
+        }
+    }
 
     /** Matches any github.com remote; the host map is not consulted for GitHub. */
     match(remoteUrl: string, _hostMap: HostMap): ProviderRepoRef | null {
@@ -300,7 +346,7 @@ export class GitHubProvider implements CommitChecksProvider {
             CI_MAX_PAGES,
             (url) => this.allowNext(ref, url, repositoryId),
         );
-        const { snapshot, checkRunIds } = await this.fetchSnapshot(
+        const { snapshot, checkRunIds, summaries } = await this.fetchSnapshot(
             ref,
             hash,
             session,
@@ -352,7 +398,8 @@ export class GitHubProvider implements CommitChecksProvider {
             );
             // react-doctor-disable-next-line react-doctor/async-await-in-loop
             const current = await this.currentRun(ref, runId, session, conditional);
-            const ciRun = toRun(run, runId, runName, jobsPage.items, jobsPage.coverage);
+            const jobs = jobsPage.items.map((job) => withFailureSummary(job, summaries));
+            const ciRun = toRun(run, runId, runName, jobs, jobsPage.coverage);
             const missing = ciRun.jobs.flatMap((job) =>
                 job.checkRunId === undefined || checkRunIds.has(job.checkRunId)
                     ? []
@@ -538,7 +585,8 @@ export class GitHubProvider implements CommitChecksProvider {
 
     /**
      * The snapshot, plus the id of every check run read, before the CI/CD filter drops any:
-     * the detail checks each job's check run against them.
+     * the detail checks each job's check run against them. `summaries` holds each check run's
+     * output title and summary by check-run id, the failure text of the job it belongs to.
      */
     private async fetchSnapshot(
         ref: GitHubRepoRef,
@@ -546,7 +594,11 @@ export class GitHubProvider implements CommitChecksProvider {
         session: vscode.AuthenticationSession,
         requireBoth = false,
         conditional?: EtagStore,
-    ): Promise<{ snapshot: CommitChecksSnapshot; checkRunIds: ReadonlySet<string> }> {
+    ): Promise<{
+        snapshot: CommitChecksSnapshot;
+        checkRunIds: ReadonlySet<string>;
+        summaries: ReadonlyMap<string, string>;
+    }> {
         const headers = githubHeaders(session);
         const base = `${repoApiUrl(ref)}/commits/${encodeURIComponent(hash)}`;
         const fetchJson: FetchJson = conditional
@@ -569,6 +621,7 @@ export class GitHubProvider implements CommitChecksProvider {
             return {
                 snapshot: failedSnapshot(hash, ref.host, reason, session.accessToken),
                 checkRunIds: new Set(),
+                summaries: new Map(),
             };
         }
 
@@ -582,6 +635,15 @@ export class GitHubProvider implements CommitChecksProvider {
                 this.ciCdPattern,
             ),
             checkRunIds: new Set(readCheckRuns(checkRuns).flatMap((run) => readId(run.id) ?? [])),
+            summaries: new Map(
+                readCheckRuns(checkRuns).flatMap((run) => {
+                    const id = readId(run.id);
+                    const summary = id === undefined ? undefined : checkRunSummary(run);
+                    return id === undefined || summary === undefined
+                        ? []
+                        : [[id, summary] as const];
+                }),
+            ),
         };
     }
 }
@@ -772,6 +834,26 @@ function toJob(job: GitHubWorkflowJob, scope: string): CiJob {
         attempt: optionalNumber(job.run_attempt),
         steps: (Array.isArray(job.steps) ? (job.steps as GitHubWorkflowStep[]) : []).map(toStep),
     };
+}
+
+/**
+ * A failed job with its check run's failure text. Matched by the check-run id from the job's
+ * `check_run_url`: the Actions job id names another object and may equal an unrelated check run's.
+ */
+function withFailureSummary(job: CiJob, summaries: ReadonlyMap<string, string>): CiJob {
+    if (job.state !== "failure" || job.checkRunId === undefined) return job;
+    const failureSummary = summaries.get(job.checkRunId);
+    return failureSummary === undefined ? job : { ...job, failureSummary };
+}
+
+/** A check run's output title and summary, cleaned and cut; undefined when it has neither. */
+function checkRunSummary(run: GitHubCheckRun): string | undefined {
+    const output = (run.output && typeof run.output === "object" ? run.output : {}) as {
+        title?: unknown;
+        summary?: unknown;
+    };
+    const parts = [readString(output.title), readString(output.summary)].filter(Boolean);
+    return cleanFailureSummary(parts.join("\n"));
 }
 
 function toStep(step: GitHubWorkflowStep): CiStep {

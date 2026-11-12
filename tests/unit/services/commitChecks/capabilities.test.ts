@@ -44,10 +44,11 @@ describe("provider capabilities", () => {
         const fetch: FetchJson = vi.fn();
         const store = {} as CredentialStore;
         // Phase 2: GitHub reads runs, jobs, steps and the run header. Phase 3: GitLab reads
-        // pipelines, jobs and the pipeline header; its API has no steps.
+        // pipelines, jobs and the pipeline header; its API has no steps. Phase 7: both read
+        // job logs and failure summaries.
         const landed: Record<string, readonly (keyof ProviderCiCapabilities)[]> = {
-            github: ["runs", "jobs", "steps", "runHeader"],
-            gitlab: ["runs", "jobs", "runHeader"],
+            github: ["runs", "jobs", "steps", "runHeader", "logs", "failureSummary"],
+            gitlab: ["runs", "jobs", "runHeader", "logs", "failureSummary"],
         };
         const providers: CommitChecksProvider[] = [
             new GitHubProvider(fetch),

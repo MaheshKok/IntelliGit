@@ -522,5 +522,13 @@
     "commit.checks.state.unknown": "不明",
     "commitInfo.tabs": "コミットのセクション",
     "commitInfo.tab.files": "ファイル",
-    "commitInfo.tab.checks": "チェック"
+    "commitInfo.tab.checks": "チェック",
+    "commit.checks.tab.failureSummary": "ジョブが失敗した理由",
+    "commit.checks.tab.loadingExcerpt": "抜粋を読み込んでいます…",
+    "commit.checks.tab.logExcerpt": "ログの抜粋",
+    "commit.checks.tab.openFullLog": "完全なログをエディターで開く",
+    "commit.checks.tab.logWhenFinished": "ジョブの完了後にログを表示できます",
+    "commit.checks.tab.logForbidden": "このトークンではこのログを読み取れません",
+    "commit.checks.tab.logFailed": "ログを読み込めませんでした: {error}",
+    "commit.checks.tab.logTruncated": "このログは 50 MB で切り詰められました。残りはブラウザーで開いてください"
 }

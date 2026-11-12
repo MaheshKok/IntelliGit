@@ -6,6 +6,7 @@ import { createHash } from "crypto";
 import type { ProviderId } from "../../types";
 import { buildCiLogExcerpt, findFirstErrorLine, type CiLogErrorRules } from "./firstErrorLine";
 import type { DownloadedText } from "./http";
+import type { ProviderRepoRef } from "./types";
 
 /** Logs one window keeps in memory (a design constant; each log is at most 50 MB). */
 export const MAX_CI_LOGS_IN_MEMORY = 3;
@@ -14,6 +15,8 @@ export const MAX_CI_LOGS_IN_MEMORY = 3;
 export interface CiLogSource {
     repoKey: string;
     provider: ProviderId;
+    /** The provider's repository; absent for a log an E2E fixture seeds. */
+    ref?: ProviderRepoRef;
     runId: string;
     jobId: string;
     attempt?: number;

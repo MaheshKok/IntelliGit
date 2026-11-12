@@ -5,7 +5,10 @@
 import * as vscode from "vscode";
 import { isE2eControlChannelActive } from "../e2e/activationState";
 import type { CiGenerations, CiOperationContext } from "../services/commitChecks/ciGenerations";
+import type { CiLogMemoryStore } from "../services/commitChecks/ciLogMemoryStore";
+import type { CiLogTarget } from "../services/commitChecks/coordinator";
 import type { CommitChecksFetchOptions } from "../services/commitChecks/service";
+import type { CiLogJob } from "../services/commitChecks/types";
 import { isValidGitHash } from "../services/gitHelpers";
 import { PENDING_CHECK_RETRY_DELAYS_MS } from "../shared/ci/pollSchedule";
 import type { CommitCiDetail } from "../types";
@@ -22,6 +25,15 @@ export interface CommitCiDetailSource {
         ctx: CiOperationContext,
         onScanUpdate?: (detail: CommitCiDetail) => void,
     ): Promise<CommitCiDetail | undefined>;
+    /** The window's CI logs; absent = the host answers no log message. */
+    logs?: CiLogAccess;
+}
+
+/** A host's way to the window's log store for the repository it shows. */
+interface CiLogAccess {
+    store: CiLogMemoryStore;
+    /** The store key and download record of a job's log; undefined when no provider has logs. */
+    target(hash: string, job: CiLogJob, ctx: CiOperationContext): Promise<CiLogTarget | undefined>;
 }
 
 /**

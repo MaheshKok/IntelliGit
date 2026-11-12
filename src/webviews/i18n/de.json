@@ -532,5 +532,13 @@
     "commit.checks.state.unknown": "Unbekannt",
     "commitInfo.tabs": "Commit-Bereiche",
     "commitInfo.tab.files": "Dateien",
-    "commitInfo.tab.checks": "Prüfungen"
+    "commitInfo.tab.checks": "Prüfungen",
+    "commit.checks.tab.failureSummary": "Warum der Job fehlgeschlagen ist",
+    "commit.checks.tab.loadingExcerpt": "Auszug wird geladen…",
+    "commit.checks.tab.logExcerpt": "Protokollauszug",
+    "commit.checks.tab.openFullLog": "Vollständiges Protokoll im Editor öffnen",
+    "commit.checks.tab.logWhenFinished": "Protokoll verfügbar, sobald der Job abgeschlossen ist",
+    "commit.checks.tab.logForbidden": "Ihr Token kann dieses Protokoll nicht lesen",
+    "commit.checks.tab.logFailed": "Das Protokoll konnte nicht geladen werden: {error}",
+    "commit.checks.tab.logTruncated": "Dieses Protokoll wurde bei 50 MB abgeschnitten – öffnen Sie es im Browser, um den Rest zu sehen"
 }

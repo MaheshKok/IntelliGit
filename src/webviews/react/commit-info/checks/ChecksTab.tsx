@@ -78,6 +78,17 @@ export function ChecksTab({
         loaded &&
         (loaded.runs.flatMap((run) => run.jobs).find((job) => job.id === selectedJobId) ??
             firstFailedJob(loaded));
+    const selectedRun = selectedJob && loaded?.runs.find((run) => run.jobs.includes(selectedJob));
+    const logJob =
+        selectedJob && selectedRun && loaded?.capabilities.logs
+            ? {
+                  repoKey,
+                  hash,
+                  runId: selectedRun.id,
+                  jobId: selectedJob.id,
+                  attempt: selectedJob.attempt ?? selectedRun.attempt,
+              }
+            : null;
 
     return (
         <div
@@ -108,6 +119,8 @@ export function ChecksTab({
                             <CheckJobDetail
                                 job={selectedJob}
                                 showSteps={loaded.capabilities.steps}
+                                showFailureSummary={loaded.capabilities.failureSummary}
+                                logJob={logJob}
                                 onOpenUrl={openUrl}
                             />
                         ) : null}

@@ -26,6 +26,38 @@ export interface OpenChecksTabMessage {
 }
 
 /**
+ * Host's reply to {@link PreviewCiLogMessage}: the sanitised excerpt around the first error
+ * line, never the log. `running` = the job has not finished, so there is no log yet;
+ * `forbidden` = the credential cannot read the log.
+ */
+export interface CiLogPreviewMessage {
+    type: "ciLogPreview";
+    requestId: number;
+    repoKey: string;
+    hash: string;
+    runId: string;
+    jobId: string;
+    selectionToken: number;
+    outcome: "ready" | "running" | "forbidden" | "failed";
+    excerpt?: string;
+    /** The log was cut at 50 MB; the rest is only in the browser. */
+    truncated?: boolean;
+    /** Why a `failed` preview failed. */
+    message?: string;
+}
+
+/** Host's reply to {@link OpenCiLogMessage}; a cancelled open gets none. */
+export interface CiLogResultMessage {
+    type: "ciLogResult";
+    requestId: number;
+    repoKey: string;
+    hash: string;
+    outcome: "opened" | "running" | "forbidden" | "failed";
+    /** Why a `failed` open failed. */
+    message?: string;
+}
+
+/**
  * Checks tab messages a webview sends to its host. Declared inline so the E2E coverage
  * manifest test, which reads outbound unions from source, sees every discriminant.
  */
@@ -54,6 +86,29 @@ type CommitCiOutbound =
           /** Sidebar graph asks its host to show a commit in the Changed Files view's Checks tab. */
           type: "openCommitInChecks";
           hash: string;
+      }
+    | {
+          /** Checks tab asks for the excerpt of a selected failed job's log; opens no editor. */
+          type: "previewCiLog";
+          /** Monotonic per webview; only the reply to the newest one renders. */
+          requestId: number;
+          repoKey: string;
+          hash: string;
+          runId: string;
+          jobId: string;
+          attempt?: number;
+          /** New on every job selection; a reply for an earlier selection is dropped. */
+          selectionToken: number;
+      }
+    | {
+          /** Checks tab asks its host to open a job's full log in a read-only editor. */
+          type: "openCiLog";
+          requestId: number;
+          repoKey: string;
+          hash: string;
+          runId: string;
+          jobId: string;
+          attempt?: number;
       };
 
 /** Checks tab asks its host for a commit's CI detail. */
@@ -73,3 +128,7 @@ export type OpenCommitChecksSettingsMessage = Extract<
 >;
 /** Sidebar graph asks its host to show a commit in the Checks tab. */
 export type OpenCommitInChecksMessage = Extract<CommitCiOutbound, { type: "openCommitInChecks" }>;
+/** Checks tab asks for a failed job's log excerpt. */
+export type PreviewCiLogMessage = Extract<CommitCiOutbound, { type: "previewCiLog" }>;
+/** Checks tab asks to open a job's full log in an editor. */
+export type OpenCiLogMessage = Extract<CommitCiOutbound, { type: "openCiLog" }>;

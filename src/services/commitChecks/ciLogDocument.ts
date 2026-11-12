@@ -124,6 +124,21 @@ class CiLogDocumentProvider implements vscode.TextDocumentContentProvider {
 }
 
 /**
+ * The document URI of one stored log: the job name for the tab title, the store key for the text.
+ *
+ * @param jobName - Job name as the provider reports it; reduced to a safe file name.
+ * @param key - Key from `ciLogKey`.
+ */
+export function ciLogUri(jobName: string, key: string): vscode.Uri {
+    const name =
+        jobName
+            .replace(/[^\w.-]+/g, "-")
+            .replace(/^[-.]+|-+$/g, "")
+            .slice(0, 80) || "job";
+    return vscode.Uri.from({ scheme: CI_LOG_SCHEME, path: `/${name}.log`, query: `k=${key}` });
+}
+
+/**
  * Registers the `intelligit-ci-log:` document provider over the window's log store.
  *
  * @param store - The window's log store.

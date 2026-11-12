@@ -380,6 +380,10 @@ class MockCommitGraphViewProvider {
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     onOpenCommitInChecks = this.openCommitInChecksEmitter.event;
     getCommitCiDetail = vi.fn(async () => undefined);
+    ciDetailSource = vi.fn((repoKey: () => string) => ({
+        repoKey,
+        getDetail: (...args: unknown[]) => this.getCommitCiDetail(...(args as [])),
+    }));
     setBranches = vi.fn();
     refresh = vi.fn(async () => undefined);
     clearChecksCache = vi.fn();

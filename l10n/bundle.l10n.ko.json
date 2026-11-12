@@ -994,5 +994,7 @@
     "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "이 파이프라인에는 업데이트 시간이 없으므로 스캔 중 재시도가 있었는지 배제할 수 없습니다.",
     "[IntelliGit: this CI log link is not valid.]": "[IntelliGit: 이 CI 로그 링크가 올바르지 않습니다.]",
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: 이 CI 로그는 더 이상 로드되어 있지 않습니다. 검사 탭에서 다시 여세요.]",
-    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: 이 CI 로그를 로드할 수 없습니다: {0}]"
+    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: 이 CI 로그를 로드할 수 없습니다: {0}]",
+    "This provider cannot show CI logs.": "이 공급자는 CI 로그를 표시할 수 없습니다.",
+    "Loading the log of {0}…": "{0}의 로그를 불러오는 중…"
 }

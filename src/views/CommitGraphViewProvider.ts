@@ -56,11 +56,14 @@ import type { CommitCiDetailService } from "../services/commitChecks/detailServi
 import type { CiGenerations, CiOperationContext } from "../services/commitChecks/ciGenerations";
 import type { CiTrace } from "../services/commitChecks/ciTrace";
 import type { CommitChecksFetchOptions } from "../services/commitChecks/service";
+import type { CiLogMemoryStore } from "../services/commitChecks/ciLogMemoryStore";
 import {
     answerCommitCiDetailRequest,
     CommitCiDetailLoops,
     openCommitChecksSettings,
+    type CommitCiDetailSource,
 } from "./ciDetailHandler";
+import { answerCiLogMessage } from "./ciLogHandler";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
@@ -200,6 +203,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             /** Repository the Checks tab asks about; absent hides the Checks tab. */
             ciRepoKey?: () => string;
             ciFixture?: CommitChecksCoordinatorOptions["fixture"];
+            /** The window's CI log store; absent = the Checks tab gets no log. */
+            ciLogStore?: CiLogMemoryStore;
         } = {},
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
@@ -254,6 +259,28 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         onScanUpdate?: (detail: CommitCiDetail) => void,
     ): Promise<CommitCiDetail | undefined> {
         return this.commitChecks.getDetail(hash, options, ctx, onScanUpdate);
+    }
+
+    /**
+     * What this view's Checks tab, or another view showing the same repository, answers CI
+     * messages with.
+     *
+     * @param repoKey - The repository the Checks tab asks about.
+     */
+    ciDetailSource(repoKey: () => string): CommitCiDetailSource {
+        const store = this.options.ciLogStore;
+        return {
+            repoKey,
+            generations: this.options.ciGenerations,
+            getDetail: (hash, options, ctx, onScanUpdate) =>
+                this.getCommitCiDetail(hash, options, ctx, onScanUpdate),
+            ...(store && {
+                logs: {
+                    store,
+                    target: (hash, job, ctx) => this.commitChecks.ciLogTarget(hash, job, ctx),
+                },
+            }),
+        };
     }
 
     /**
@@ -449,18 +476,27 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         if (!repoKey || this.view !== webviewView) break;
                         const view = webviewView;
                         await answerCommitCiDetailRequest(
-                            {
-                                repoKey,
-                                generations: this.options.ciGenerations,
-                                getDetail: (hash, options, ctx, onScanUpdate) =>
-                                    this.getCommitCiDetail(hash, options, ctx, onScanUpdate),
-                            },
+                            this.ciDetailSource(repoKey),
                             { ...msg },
                             (reply) => {
                                 // Reply to the webview that asked, never one resolved since.
                                 if (this.view === view) this.postToWebview(reply);
                             },
                             this.ciDetailLoops,
+                        );
+                        break;
+                    }
+                    case "previewCiLog":
+                    case "openCiLog": {
+                        const repoKey = this.options.ciRepoKey;
+                        if (!repoKey || this.view !== webviewView) break;
+                        const view = webviewView;
+                        await answerCiLogMessage(
+                            this.ciDetailSource(repoKey),
+                            { ...msg },
+                            (reply) => {
+                                if (this.view === view) this.postToWebview(reply);
+                            },
                         );
                         break;
                     }

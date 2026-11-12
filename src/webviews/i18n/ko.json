@@ -522,5 +522,13 @@
     "commit.checks.state.unknown": "알 수 없음",
     "commitInfo.tabs": "커밋 섹션",
     "commitInfo.tab.files": "파일",
-    "commitInfo.tab.checks": "검사"
+    "commitInfo.tab.checks": "검사",
+    "commit.checks.tab.failureSummary": "작업이 실패한 이유",
+    "commit.checks.tab.loadingExcerpt": "발췌를 불러오는 중…",
+    "commit.checks.tab.logExcerpt": "로그 발췌",
+    "commit.checks.tab.openFullLog": "편집기에서 전체 로그 열기",
+    "commit.checks.tab.logWhenFinished": "작업이 끝나면 로그를 볼 수 있습니다",
+    "commit.checks.tab.logForbidden": "토큰으로 이 로그를 읽을 수 없습니다",
+    "commit.checks.tab.logFailed": "로그를 불러올 수 없습니다: {error}",
+    "commit.checks.tab.logTruncated": "이 로그는 50MB에서 잘렸습니다. 나머지는 브라우저에서 여세요"
 }

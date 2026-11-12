@@ -171,6 +171,10 @@ vi.mock("../../../src/views/CommitGraphViewProvider", () => ({
         refresh = vi.fn(async () => undefined);
         onOpenCommitInChecks = event();
         getCommitCiDetail = vi.fn(async () => undefined);
+        ciDetailSource = vi.fn((repoKey: () => string) => ({
+            repoKey,
+            getDetail: (...args: unknown[]) => this.getCommitCiDetail(...(args as [])),
+        }));
         dispose = vi.fn();
         constructor(..._args: unknown[]) {}
     },

@@ -5,7 +5,12 @@ import type { CredentialStore } from "../services/commitChecks/credentialStore";
 import { EtagStore } from "../services/commitChecks/etagStore";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
-import { createHttpGetJson, type FetchJson } from "../services/commitChecks/http";
+import {
+    createHttpGetJson,
+    downloadCiLog,
+    type DownloadCiLog,
+    type FetchJson,
+} from "../services/commitChecks/http";
 import {
     type CommitChecksRequestGateRegistry,
     gatedFetchWithMeta,
@@ -37,6 +42,10 @@ export function createCommitChecksProviders(
                 });
                 return fetchJson(url, headers);
             });
+    const downloadFor =
+        (providerId: ProviderId): DownloadCiLog =>
+        (url, headers, signal) =>
+            requestGateRegistry.run(providerId, url, () => downloadCiLog(url, headers, signal));
     return [
         new GitHubProvider(
             fetchFor("github"),
@@ -44,6 +53,7 @@ export function createCommitChecksProviders(
             gatedFetchWithMeta(requestGateRegistry, "github"),
             (url) => requestGateRegistry.cooldownEnd("github", url),
             etags,
+            downloadFor("github"),
         ),
         new GitLabProvider(
             fetchFor("gitlab"),
@@ -52,6 +62,7 @@ export function createCommitChecksProviders(
             gatedFetchWithMeta(requestGateRegistry, "gitlab"),
             (url) => requestGateRegistry.cooldownEnd("gitlab", url),
             etags,
+            downloadFor("gitlab"),
         ),
         new BitbucketCloudProvider(
             fetchFor("bitbucket-cloud"),

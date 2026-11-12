@@ -32,7 +32,9 @@ import {
     answerCommitCiDetailRequest,
     CommitCiDetailLoops,
     openCommitChecksSettings,
+    type CommitCiDetailSource,
 } from "./ciDetailHandler";
+import { answerCiLogMessage } from "./ciLogHandler";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
 import { postWebviewMessage } from "./webviewDelivery";
@@ -76,6 +78,7 @@ import {
 import type { CommitChecksService } from "../services/commitChecks/service";
 import type { CommitCiDetailService } from "../services/commitChecks/detailService";
 import type { CiGenerations } from "../services/commitChecks/ciGenerations";
+import type { CiLogMemoryStore } from "../services/commitChecks/ciLogMemoryStore";
 import type { CiTrace } from "../services/commitChecks/ciTrace";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
@@ -153,6 +156,8 @@ interface UndockedViewProviderOptions {
     ciGenerations?: CiGenerations;
     ciTrace?: CiTrace;
     ciFixture?: CommitChecksCoordinatorOptions["fixture"];
+    /** The window's CI log store; absent = the Checks tab gets no log. */
+    ciLogStore?: CiLogMemoryStore;
     commitChecksProviders?: readonly CommitChecksProvider[];
     /** Shared activation-owned coordinator; undocked providers never construct their own. */
     commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator;
@@ -249,6 +254,7 @@ export class UndockedViewProvider {
     private commitDetailLoading = false;
     private readonly commitChecks: CommitChecksCoordinator;
     private readonly ciGenerations?: CiGenerations;
+    private readonly ciLogStore?: CiLogMemoryStore;
     private commitChecksGeneration = 0;
     private commitCheckDemandSeq = 0;
     private readonly ciDetailLoops = new CommitCiDetailLoops();
@@ -393,6 +399,7 @@ export class UndockedViewProvider {
             }),
         });
         this.ciGenerations = options.ciGenerations;
+        this.ciLogStore = options.ciLogStore;
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
             options.commitChecksProviders ?? [
@@ -429,6 +436,23 @@ export class UndockedViewProvider {
         this.commitChecksGeneration += 1;
         this.commitChecks.clear();
         this.postToWebview({ type: "commitCiDetailInvalidated" });
+    }
+
+    /** What the panel's Checks tab messages are answered with. */
+    private ciDetailSource(): CommitCiDetailSource {
+        const store = this.ciLogStore;
+        return {
+            repoKey: () => this.selectedRepositoryRoot,
+            generations: this.ciGenerations,
+            getDetail: (hash, options, ctx, onScanUpdate) =>
+                this.commitChecks.getDetail(hash, options, ctx, onScanUpdate),
+            ...(store && {
+                logs: {
+                    store,
+                    target: (hash, job, ctx) => this.commitChecks.ciLogTarget(hash, job, ctx),
+                },
+            }),
+        };
     }
     /**
      * Updates the panel title fragment used when the active repository label changes.
@@ -798,7 +822,10 @@ export class UndockedViewProvider {
             // Request ids restart in each panel, so a closed panel's late Checks tab message
             // could restart or cancel its successor's loop.
             const ciMessage =
-                msg.type === "requestCommitCiDetail" || msg.type === "cancelCommitCiDetail";
+                msg.type === "requestCommitCiDetail" ||
+                msg.type === "cancelCommitCiDetail" ||
+                msg.type === "previewCiLog" ||
+                msg.type === "openCiLog";
             if (ciMessage && this.panel !== panel) return;
             // A window reload sends ready without reopening the panel and ends the old scan loop.
             if (msg.type === "ready" && this.panel === panel) this.ciDetailLoops.dispose();
@@ -1284,12 +1311,7 @@ export class UndockedViewProvider {
             case "requestCommitCiDetail": {
                 const panel = this.panel;
                 await answerCommitCiDetailRequest(
-                    {
-                        repoKey: () => this.selectedRepositoryRoot,
-                        generations: this.ciGenerations,
-                        getDetail: (hash, options, ctx, onScanUpdate) =>
-                            this.commitChecks.getDetail(hash, options, ctx, onScanUpdate),
-                    },
+                    this.ciDetailSource(),
                     { ...msg },
                     (reply) => {
                         // Reply to the panel that asked, never one opened since.
@@ -1297,6 +1319,14 @@ export class UndockedViewProvider {
                     },
                     this.ciDetailLoops,
                 );
+                break;
+            }
+            case "previewCiLog":
+            case "openCiLog": {
+                const panel = this.panel;
+                await answerCiLogMessage(this.ciDetailSource(), { ...msg }, (reply) => {
+                    if (this.panel === panel) this.postToWebview(reply);
+                });
                 break;
             }
             case "cancelCommitCiDetail":

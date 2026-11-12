@@ -41,6 +41,21 @@ export function cleanExcerptText(text: string): string {
         .replace(UNSAFE_CHARS, "�");
 }
 
+/** Maximum characters of a provider's failure summary. */
+const CI_FAILURE_SUMMARY_MAX_CHARS = 2000;
+
+/**
+ * A provider's failure text, cleaned like an excerpt and cut to 2 000 characters.
+ *
+ * @param text - Raw failure text from the provider.
+ * @returns The cleaned text, or undefined when nothing is left.
+ */
+export function cleanFailureSummary(text: string): string | undefined {
+    const cleaned = cleanExcerptText(text).trim();
+    if (!cleaned) return undefined;
+    return [...cleaned].slice(0, CI_FAILURE_SUMMARY_MAX_CHARS).join("");
+}
+
 /** Keeps whole code points while their UTF-8 length fits in `maxBytes`. */
 function cutToUtf8Bytes(text: string, maxBytes: number): string {
     let bytes = 0;

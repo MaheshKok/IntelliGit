@@ -15,15 +15,28 @@ import type {
 } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import type { CiGenerations, CiOperationContext } from "./ciGenerations";
+import { ciLogKey, type CiLogSource } from "./ciLogMemoryStore";
 import type { CiTrace } from "./ciTrace";
 import { attach, CommitCiDetailService, type CiFailedScanHooks } from "./detailService";
 import { summaryForState, unavailableSnapshot } from "./normalize";
 import { CommitChecksService, type CommitChecksFetchOptions } from "./service";
-import type { CiDetailFetch, CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
+import type {
+    CiDetailFetch,
+    CiLogJob,
+    CommitChecksProvider,
+    HostMap,
+    ProviderRepoRef,
+} from "./types";
 
 interface ProviderMatch {
     provider: CommitChecksProvider;
     ref: ProviderRepoRef;
+}
+
+/** Where one job's log lives in the window's store and how to download it again. */
+export interface CiLogTarget {
+    key: string;
+    source: CiLogSource;
 }
 
 /**
@@ -256,6 +269,51 @@ export class CommitChecksCoordinator {
         );
         if (!this.isCurrent(ctx, providerGeneration)) return this.discard(ctx, hash, provider.id);
         return detail;
+    }
+
+    /**
+     * The store key and download record of one job's log in this repository. An E2E fixture's
+     * log is keyed by the repository and served from the seeded text.
+     *
+     * @param hash - The commit the job ran for.
+     * @param job - The job, with its run and attempt as the detail names them.
+     * @param ctx - The operation's context; its repository is recorded with the source.
+     * @returns Undefined when no enabled provider with logs serves the repository.
+     */
+    async ciLogTarget(
+        hash: string,
+        job: CiLogJob,
+        ctx: CiOperationContext,
+    ): Promise<CiLogTarget | undefined> {
+        if (!this.enabled) return undefined;
+        const { runId, jobId, attempt } = job;
+        const seeded = this.fixture?.(hash);
+        if (seeded) {
+            if (!seeded.capabilities.logs) return undefined;
+            return {
+                key: ciLogKey(`e2e:${ctx.repoKey}`, runId, jobId, attempt),
+                source: {
+                    repoKey: ctx.repoKey,
+                    provider: seeded.detail.provider,
+                    runId,
+                    jobId,
+                    attempt,
+                },
+            };
+        }
+        const match = await this.resolveEnabledMatch();
+        if (!match?.provider.getJobLog || !match.provider.capabilities.logs) return undefined;
+        return {
+            key: ciLogKey(match.provider.keyFor(match.ref), runId, jobId, attempt),
+            source: {
+                repoKey: ctx.repoKey,
+                provider: match.provider.id,
+                ref: match.ref,
+                runId,
+                jobId,
+                attempt,
+            },
+        };
     }
 
     /**

@@ -33,11 +33,13 @@ export class HttpError extends Error {
      * @param statusCode - Numeric HTTP status code from the response.
      * @param message - Token-free display/error message.
      * @param headers - Lower-cased Node response headers.
+     * @param url - The URL that answered, when a redirect may have moved it off the requested one.
      */
     constructor(
         readonly statusCode: number,
         message: string,
         readonly headers: Record<string, string | string[] | undefined>,
+        readonly url?: string,
     ) {
         super(message);
         this.name = "HttpError";
@@ -330,7 +332,8 @@ export async function followRedirects(
  *
  * Bytes are counted as chunks arrive; at the bound the response is destroyed, the kept bytes are
  * cut back to a UTF-8 boundary and the truncation line is appended once. A larger announced
- * `Content-Length` is not refused. A non-2xx final status rejects as `HttpError`; a stream error,
+ * `Content-Length` is not refused. A non-2xx final status rejects as `HttpError` carrying the URL
+ * that answered; a stream error,
  * a response that closes before it ends and an idle timeout reject; an abort rejects with an
  * `AbortError`.
  *
@@ -347,7 +350,11 @@ export async function downloadToString(
     signal: AbortSignal,
     credentialHeaders?: readonly string[],
 ): Promise<DownloadedText> {
-    const { response, request } = await followRedirects(url, headers, {
+    const {
+        response,
+        request,
+        url: answeredBy,
+    } = await followRedirects(url, headers, {
         maxHops: 5,
         credentialHeaders,
         signal,
@@ -355,10 +362,27 @@ export async function downloadToString(
     const status = response.statusCode ?? 0;
     if (status < 200 || status >= 300) {
         response.destroy();
-        throw new HttpError(status, `HTTP ${status}`, response.headers);
+        throw new HttpError(status, `HTTP ${status}`, response.headers, answeredBy);
     }
     return readBounded(response, request, maxBytes, signal);
 }
+
+/** Downloads one CI job log: a URL and its request headers in, the bounded text out. */
+export type DownloadCiLog = (
+    url: string,
+    headers: Record<string, string>,
+    signal: AbortSignal,
+) => Promise<DownloadedText>;
+
+/**
+ * `downloadToString` at the per-log bound (O2), with the shared credential headers.
+ *
+ * @param url - Log URL; must be `https:`.
+ * @param headers - Request headers, credentials included.
+ * @param signal - Aborts the download.
+ */
+export const downloadCiLog: DownloadCiLog = (url, headers, signal) =>
+    downloadToString(url, headers, CI_LOG_MAX_BYTES, signal);
 
 /** One HTTPS GET resolved at its response head; the idle timeout stays armed for the body. */
 function openResponse(

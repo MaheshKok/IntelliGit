@@ -994,5 +994,7 @@
     "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "Ten potok nie ma czasu aktualizacji, więc nie można wykluczyć ponowienia podczas skanowania.",
     "[IntelliGit: this CI log link is not valid.]": "[IntelliGit: ten link do dziennika CI jest nieprawidłowy.]",
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: ten dziennik CI nie jest już wczytany. Otwórz go ponownie na karcie Sprawdzenia.]",
-    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: nie można wczytać tego dziennika CI: {0}]"
+    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: nie można wczytać tego dziennika CI: {0}]",
+    "This provider cannot show CI logs.": "Ten dostawca nie może wyświetlać dzienników CI.",
+    "Loading the log of {0}…": "Wczytywanie dziennika {0}…"
 }

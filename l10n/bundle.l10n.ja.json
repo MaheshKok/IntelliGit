@@ -994,5 +994,7 @@
     "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "このパイプラインには更新時刻がないため、スキャン中の再試行を否定できません。",
     "[IntelliGit: this CI log link is not valid.]": "[IntelliGit: この CI ログのリンクは無効です。]",
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: この CI ログは読み込まれていません。「チェック」タブからもう一度開いてください。]",
-    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: この CI ログを読み込めませんでした: {0}]"
+    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: この CI ログを読み込めませんでした: {0}]",
+    "This provider cannot show CI logs.": "このプロバイダーは CI ログを表示できません。",
+    "Loading the log of {0}…": "{0} のログを読み込んでいます…"
 }
