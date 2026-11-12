@@ -46,6 +46,7 @@ vi.mock("vscode", () => ({
 }));
 
 import type * as vscode from "vscode";
+import { CiGenerations } from "../../../../src/services/commitChecks/ciGenerations";
 import { registerCiLogDocumentProvider } from "../../../../src/services/commitChecks/ciLogDocument";
 import {
     CiLogMemoryStore,
@@ -61,6 +62,13 @@ import { answerCiLogMessage } from "../../../../src/views/ciLogHandler";
 const HASH = "a".repeat(40);
 const KEY = ciLogKey("github:github.com:o/r", "5", "77", 1);
 const LOG = ["setup", "build", "##[error]tests failed", "cleanup"].join("\n");
+const SOURCE: CiLogSource = {
+    repoKey: "/repo",
+    provider: "github",
+    runId: "5",
+    jobId: "77",
+    attempt: 1,
+};
 
 function job(state: CiJob["state"]): CiJob {
     return {
@@ -106,17 +114,14 @@ function setup(
         download,
         errorRules: () => ({ patterns: [/##\[error\]/] }),
     });
-    const source: CiLogSource = {
-        repoKey: "/repo",
-        provider: "github",
-        runId: "5",
-        jobId: "77",
-        attempt: 1,
-    };
+    const source = SOURCE;
     const target = vi.fn(async () => ({ key: KEY, source }));
+    const getDetail = vi.fn(async () => detail(state));
+    const generations = new CiGenerations();
     const host: CommitCiDetailSource = {
         repoKey: () => "/repo",
-        getDetail: vi.fn(async () => detail(state)),
+        generations,
+        getDetail,
         logs: { store, target },
     };
     const replies: Record<string, unknown>[] = [];
@@ -135,7 +140,7 @@ function setup(
             },
             (reply) => replies.push(reply as unknown as Record<string, unknown>),
         );
-    return { store, download, target, replies, send };
+    return { store, download, target, getDetail, generations, replies, send };
 }
 
 beforeEach(() => {
@@ -259,6 +264,87 @@ describe("Checks tab log messages", () => {
         );
         await broken.send("previewCiLog", 1);
         expect(broken.replies[0]).toMatchObject({ outcome: "failed", message: "socket hang up" });
+    });
+
+    it("a rate-limit 403 is a failure with its message, not forbidden", async () => {
+        const limited = setup(
+            "failure",
+            vi.fn(async () => {
+                throw new HttpError(403, "API rate limit exceeded", {
+                    "x-ratelimit-remaining": "0",
+                });
+            }),
+        );
+        await limited.send("previewCiLog", 1);
+        await limited.send("openCiLog", 2);
+        expect(
+            limited.replies.map((reply) => reply.outcome),
+            "signing in again cannot fix a quota",
+        ).toEqual(["failed", "failed"]);
+    });
+
+    describe("a sign-out mid-operation drops the stale result", () => {
+        it("while the detail loads: no log request and no reply", async () => {
+            const { getDetail, generations, target, download, replies, send } = setup();
+            getDetail.mockImplementationOnce(async () => {
+                generations.bumpAuth();
+                return detail("failure");
+            });
+            await send("previewCiLog", 1);
+            expect(target, "guard after the detail fetch").not.toHaveBeenCalled();
+            expect(download).not.toHaveBeenCalled();
+            expect(replies).toEqual([]);
+        });
+
+        it("while the log target resolves: no download and no reply", async () => {
+            const { target, generations, download, replies, send } = setup();
+            target.mockImplementationOnce(async () => {
+                generations.bumpAuth();
+                return { key: KEY, source: { ...SOURCE } };
+            });
+            await send("openCiLog", 1);
+            expect(download, "guard after the log target").not.toHaveBeenCalled();
+            expect(mocks.withProgress).not.toHaveBeenCalled();
+            expect(replies).toEqual([]);
+        });
+
+        it("while the preview downloads: no excerpt reply", async () => {
+            const download = vi.fn(async () => {
+                generations.bumpAuth();
+                return { text: LOG, truncated: false };
+            });
+            const { generations, replies, send } = setup("failure", download);
+            await send("previewCiLog", 1);
+            expect(download).toHaveBeenCalledTimes(1);
+            expect(replies, "guard after the preview fetch").toEqual([]);
+        });
+
+        it("while the full log loads: no editor and no reply", async () => {
+            const download = vi.fn(async () => {
+                generations.bumpAuth();
+                return { text: LOG, truncated: false };
+            });
+            const { generations, replies, send } = setup("failure", download);
+            await send("openCiLog", 1);
+            expect(mocks.openTextDocument, "guard after the open fetch").not.toHaveBeenCalled();
+            expect(mocks.showTextDocument).not.toHaveBeenCalled();
+            expect(replies).toEqual([]);
+        });
+
+        it("sign-out while openTextDocument waits prevents showing the old log", async () => {
+            const { generations, replies, send } = setup();
+            mocks.openTextDocument.mockImplementationOnce(async (uri: unknown) => {
+                generations.bumpAuth();
+                return { uri };
+            });
+            await send("openCiLog", 1);
+            expect(mocks.openTextDocument).toHaveBeenCalledTimes(1);
+            expect(
+                mocks.showTextDocument,
+                "a stale operation must not publish an editor",
+            ).not.toHaveBeenCalled();
+            expect(replies).toEqual([]);
+        });
     });
 
     it("cancelling Open full log stops this waiter only", async () => {

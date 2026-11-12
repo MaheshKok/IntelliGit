@@ -142,6 +142,7 @@ export async function answerCiLogMessage(
     if (!isCurrent()) return;
     const line = entry.firstErrorLine;
     const document = await vscode.workspace.openTextDocument(ciLogUri(job.name, target.key));
+    if (!isCurrent()) return;
     await vscode.window.showTextDocument(document, {
         preview: false,
         selection: new vscode.Range(line, 0, line, 0),

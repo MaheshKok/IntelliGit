@@ -31,9 +31,10 @@ let lastSelectionToken = 0;
 
 /**
  * Asks the host for the excerpt of `job`'s log when `preview` is set, and offers opening the
- * full log in an editor. A preview reply renders only when it carries the selection token of
- * the newest selection and names the job still shown, so a late reply for an earlier pick,
- * even of the same job, is dropped. An open reply renders only for the newest open request.
+ * full log in an editor. A preview reply renders only when it carries the selection token and
+ * request id of the newest preview and names the job still shown, so a late reply for an
+ * earlier pick, even of the same job, is dropped. An open reply renders only for the newest
+ * open request.
  *
  * The caller mounts a new instance per selected job (a React `key`), so nothing of the last
  * job's log is ever shown for the next one.
@@ -48,6 +49,7 @@ export function useCiLog(
     const [log, setLog] = useState<CiLogView>({ status: preview ? "loading" : "idle" });
     const [openError, setOpenError] = useState<CiLogView>({ status: "idle" });
     const newestToken = useRef<number | null>(null);
+    const newestPreview = useRef<number | null>(null);
     const newestOpen = useRef<number | null>(null);
     const { repoKey, hash, runId, jobId, attempt } = job;
 
@@ -56,6 +58,7 @@ export function useCiLog(
         const requestId = ++lastRequestId;
         const selectionToken = ++lastSelectionToken;
         newestToken.current = selectionToken;
+        newestPreview.current = requestId;
         getVsCodeApi<PreviewCiLogMessage>().postMessage({
             type: "previewCiLog",
             requestId,
@@ -77,6 +80,7 @@ export function useCiLog(
                 if (
                     newestToken.current === null ||
                     data.selectionToken !== newestToken.current ||
+                    data.requestId !== newestPreview.current ||
                     data.runId !== runId ||
                     data.jobId !== jobId
                 ) {

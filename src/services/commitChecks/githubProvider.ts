@@ -398,7 +398,15 @@ export class GitHubProvider implements CommitChecksProvider {
             );
             // react-doctor-disable-next-line react-doctor/async-await-in-loop
             const current = await this.currentRun(ref, runId, session, conditional);
-            const jobs = jobsPage.items.map((job) => withFailureSummary(job, summaries));
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            const known = await this.unlistedSummaries(
+                ref,
+                jobsPage.items,
+                { checkRunIds, summaries },
+                session,
+                conditional,
+            );
+            const jobs = jobsPage.items.map((job) => withFailureSummary(job, known));
             const ciRun = toRun(run, runId, runName, jobs, jobsPage.coverage);
             const missing = ciRun.jobs.flatMap((job) =>
                 job.checkRunId === undefined || checkRunIds.has(job.checkRunId)
@@ -566,6 +574,36 @@ export class GitHubProvider implements CommitChecksProvider {
         );
         const total = (response.body as { total_count?: unknown } | null)?.total_count;
         return typeof total === "number" && total >= REF_CHECK_SUITE_LIMIT;
+    }
+
+    /**
+     * The listed check runs' failure texts, plus that of each failed job whose check run the
+     * commit's listing missed (GitHub's suite limit), read from the job's own check run.
+     */
+    private async unlistedSummaries(
+        ref: GitHubRepoRef,
+        jobs: readonly CiJob[],
+        listed: { checkRunIds: ReadonlySet<string>; summaries: ReadonlyMap<string, string> },
+        session: vscode.AuthenticationSession,
+        conditional: EtagStore | undefined,
+    ): Promise<ReadonlyMap<string, string>> {
+        const known = new Map(listed.summaries);
+        for (const job of jobs) {
+            const id = job.checkRunId;
+            if (job.state !== "failure" || id === undefined || listed.checkRunIds.has(id)) {
+                continue;
+            }
+            // Serial, like the detail's other reads.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            const response = await this.fetchWithMeta(
+                `${repoApiUrl(ref)}/check-runs/${encodeURIComponent(id)}`,
+                githubHeaders(session),
+                conditional,
+            );
+            const summary = checkRunSummary(response.body ?? {});
+            if (summary !== undefined) known.set(id, summary);
+        }
+        return known;
     }
 
     /** The workflow run as the API reports it now; an empty run for an empty body. */

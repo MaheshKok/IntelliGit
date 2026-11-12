@@ -1,0 +1,15 @@
+[0KRunning with gitlab-runner 17.5.0 (8ec04662)[0;m
+[0K  on shared-runner-1 abcdefgh, system ID: s_0123456789ab[0;m
+section_start:1731000000:prepare_executor[0K[0K[36;1mPreparing the "docker" executor[0;m[0;m
+[0KUsing Docker executor with image node:22 ...[0;m
+section_end:1731000005:prepare_executor[0Ksection_start:1731000005:step_script[0K[0K[36;1mExecuting "step_script" stage of the job script[0;m[0;m
+[32;1m$ npm ci[0;m
+added 312 packages in 9s
+[32;1m$ npm test[0;m
+> app@1.0.0 test
+ FAIL  src/sum.test.ts > adds numbers
+AssertionError: expected 3 to be 4
+ Test Files  1 failed (1)
+section_end:1731000020:step_script[0Ksection_start:1731000020:cleanup_file_variables[0K[0K[36;1mCleaning up project directory and file based variables[0;m[0;m
+section_end:1731000021:cleanup_file_variables[0K[31;1mERROR: Job failed: exit code 1
+[0;m

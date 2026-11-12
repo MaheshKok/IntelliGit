@@ -992,3 +992,20 @@ Dispositions of the builder's and handoff's risks (from Codex):
 - No PENDING-OWNER item bears on this phase.
 
 Codex ran `vitest` with `--no-cache` and wrote its own evidence files only inside its scratch copy. It hit one PreToolUse hook block on a long-output command, with no effect on the result. No repository file was edited by me.
+
+Phase 7: built, review pending
+- Build commit 49b1bb44 (0.43.9). Given BASE_HEAD 69e809bb was squash-merged as 51b0c3ab (#422); actual base df6b6c64 (docs commit after it). Review `git diff df6b6c64..49b1bb44`.
+- Gates: L OK (sync, translate --only-missing, import, csv validate, validate, audit); U OK (impeccable detect on 4 UI files); G static OK (`verify.py gates --base df6b6c64 --stage round` GREEN); build, build:prod, package OK; pre-commit hook (gitleaks, prettier, eslint, knip, depcruise, l10n, typecheck, build, package) OK. E: tests/e2e/ciLogEditor.spec.ts listed in `test:e2e`, runs on CI, not run locally.
+- `bun run test` (worktree): 10 failed / 7915 passed of 7925. 8 = commit-list-column-resize under Node v26.5.0 (red on base, known). 2 = tsconfigCoverage and screenshotComparatorMeta, which need node_modules inside the checkout; both pass in a copy with node_modules (`copyrun.sh env ...` -> 2 passed). `verify.py --stage accept` RED on that test gate only.
+- Mutations on copies mut-7-build-1..11, 11 run, 11 red, each naming its assertion: selectionToken guard; dangerouslySetInnerHTML; preview takes the open path; running check; summary keyed by job.id; empty ##[error] pattern; UNSAFE_CHARS replace (excerpt.test.ts); fixture log ignores channel; credential strip on redirect; expired-link retry; ANSI strip in summary.
+- GitNexus detect-changes (index stale at 64d390b): 60 files, 100 symbols, 39 flows, risk critical (activateRepositoryMode, CommitChecksCoordinator, ensureUndockedPanel); all changes additive.
+
+## Phase 7 fix round 1 (2026-11-12)
+- Findings 5/5 cleared, each with a regression test red before the fix:
+  - F1 sign-out during openTextDocument: `ciLogPreview.test.ts` "sign-out while openTextDocument waits prevents showing the old log" red "a stale operation must not publish an editor: expected "vi.fn()" to not be called"; fix: `isCurrent()` recheck before `showTextDocument`.
+  - F2 ignored fixtures: `firstErrorLine.test.ts` "first error line from GitHub and GitLab fixtures" red ENOENT in a `git archive HEAD` export of 49b1bb44; fix: `.gitignore` negation, fixtures tracked.
+  - F3 GitHub summary for a job absent from the listing: `githubJobLog.test.ts` "a failed job absent from the summary listing gets its selected check-run summary" red "expected undefined to be 'selected failure\ndirect summary'"; fix: `unlistedSummaries` reads `GET check-runs/{id}`.
+  - F4 K3 requestId: `commitChecksTab.integration.test.tsx` "the current selection token does not waive requestId equality (K3)" red "K3 requires requestId === newest: expected <pre …(3)></pre> to be null"; fix: `newestPreview` ref.
+  - F5 untested guards: 6 tests added; mutations M1 quota-403-as-forbidden, M2-M6 each host guard, M7 all guards: 7/7 red, each naming its own test (copy mut-7-fix-1).
+- Proof: targeted 930/930 pass; `bun run test` 10 failed / 7923 passed (the known 8 Node v26 + 2 node_modules-less worktree reds); tsc ext/webview/tests clean; eslint clean on changed files.
+- GitNexus detect-changes: not runnable on this worktree (not in the registry).

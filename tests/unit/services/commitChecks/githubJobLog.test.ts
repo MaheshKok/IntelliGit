@@ -134,7 +134,10 @@ describe("GitHub failure summary", () => {
     const HASH = "c".repeat(40);
 
     /** One failed and one passed job; check run 555 is the failed job's, 900 is a decoy. */
-    function fakeApi(summary: string): (url: string) => Promise<FetchResponse> {
+    function fakeApi(
+        summary: string,
+        overrides: Record<string, unknown> = {},
+    ): (url: string) => Promise<FetchResponse> {
         const routes: Record<string, unknown> = {
             [`${REPO}/actions/runs`]: {
                 workflow_runs: [
@@ -201,6 +204,7 @@ describe("GitHub failure summary", () => {
                 ],
             },
             [`${REPO}/commits/${HASH}/status`]: { statuses: [] },
+            ...overrides,
         };
         return async (url) => {
             const body = routes[new URL(url).origin + new URL(url).pathname];
@@ -225,6 +229,53 @@ describe("GitHub failure summary", () => {
             jobs.find((job) => job.id === "901")?.failureSummary,
             "a passed job gets no summary",
         ).toBeUndefined();
+    });
+
+    it("a failed job absent from the summary listing gets its selected check-run summary", async () => {
+        // At GitHub's suite limit the commit's check-run listing misses check run 557; the job
+        // is found in its own suite, and its summary is read from its own check run.
+        const api = fakeApi("unused", {
+            [`${REPO}/actions/runs`]: {
+                workflow_runs: [
+                    {
+                        id: 5,
+                        name: "CI",
+                        status: "completed",
+                        conclusion: "failure",
+                        run_attempt: 1,
+                        check_suite_id: 77,
+                        repository: { id: 1 },
+                    },
+                ],
+            },
+            [`${REPO}/actions/runs/5/jobs`]: {
+                total_count: 1,
+                jobs: [
+                    {
+                        id: 900,
+                        name: "unit-tests",
+                        status: "completed",
+                        conclusion: "failure",
+                        run_attempt: 1,
+                        check_run_url: `${REPO}/check-runs/557`,
+                        steps: [],
+                    },
+                ],
+            },
+            [`${REPO}/commits/${HASH}/check-suites`]: { total_count: 1000 },
+            [`${REPO}/check-suites/77/check-runs`]: { check_runs: [{ id: 557 }] },
+            [`${REPO}/check-runs/557`]: {
+                id: 557,
+                output: { title: "selected failure", summary: "direct summary" },
+            },
+        });
+        const provider = new GitHubProvider(async (url) => (await api(url)).body, undefined, api);
+
+        const detail = await provider.getDetail(ref, HASH);
+
+        const failed = detail.runs.flatMap((run) => run.jobs).find((job) => job.id === "900");
+        expect(failed?.checkRunId).toBe("557");
+        expect(failed?.failureSummary).toBe("selected failure\ndirect summary");
     });
 
     it("the summary is cut to 2 000 characters and stripped of control characters", async () => {

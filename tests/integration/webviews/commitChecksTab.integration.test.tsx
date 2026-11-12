@@ -1172,6 +1172,26 @@ describe("Checks tab log preview and full log", () => {
         );
     });
 
+    it("the current selection token does not waive requestId equality (K3)", () => {
+        const { container } = mount(pane(HASH_A));
+        withLog(container, [job("unit-tests", "failure")]);
+        const request = lastPreview();
+
+        previewReply(request, {
+            requestId: request.requestId + 1000,
+            outcome: "ready",
+            excerpt: "STALE",
+            truncated: false,
+        });
+        expect(
+            container.querySelector('[data-testid="ci-log-excerpt"]'),
+            "K3 requires requestId === newest",
+        ).toBeNull();
+
+        previewReply(request, { outcome: "ready", excerpt: "NEW", truncated: false });
+        expect(container.querySelector('[data-testid="ci-log-excerpt"]')?.textContent).toBe("NEW");
+    });
+
     it("running job shows no log button", () => {
         const { container } = mount(pane(HASH_A));
         withLog(container, [job("build", "running"), job("deploy", "queued")]);
