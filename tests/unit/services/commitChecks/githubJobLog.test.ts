@@ -138,10 +138,9 @@ describe("GitHub job log", () => {
         const error = await readLog().catch((reason: unknown) => reason);
         expect((error as HttpError).statusCode).toBe(401);
         expect(hasAuthorization(sent[2]!.headers)).toBe(false);
-        expect(
-            error,
-            "the error says the request that was refused carried no token",
-        ).toMatchObject({ credentialSent: false });
+        expect(error, "the error says the request that was refused carried no token").toMatchObject(
+            { credentialSent: false },
+        );
     });
 
     it("declares logs and the ##[error] marker", () => {
@@ -340,7 +339,10 @@ describe("GitHub failure summary", () => {
 
     it.each([
         ["a server error", () => new HttpError(500, "HTTP 500", {})],
-        ["a gate cooldown", () => new RequestGateCooldownError("cooling down", Date.now() + 30_000)],
+        [
+            "a gate cooldown",
+            () => new RequestGateCooldownError("cooling down", Date.now() + 30_000),
+        ],
     ])("%s on an overflow job's check run still lists the job as failed", async (_name, error) => {
         const result = await scanOverflowPage(() => {
             throw error();

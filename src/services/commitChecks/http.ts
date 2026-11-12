@@ -370,13 +370,7 @@ export async function downloadToString(
     const status = response.statusCode ?? 0;
     if (status < 200 || status >= 300) {
         response.destroy();
-        throw new HttpError(
-            status,
-            `HTTP ${status}`,
-            response.headers,
-            answeredBy,
-            credentialSent,
-        );
+        throw new HttpError(status, `HTTP ${status}`, response.headers, answeredBy, credentialSent);
     }
     return readBounded(response, request, maxBytes, signal);
 }
