@@ -254,44 +254,46 @@ describe("GitHub failure summary", () => {
         ).toBeUndefined();
     });
 
+    // At GitHub's suite limit the commit's check-run listing misses check run 557; the job is
+    // found in its own suite, and its summary is read from its own check run.
+    const PAST_SUITE_LIMIT = {
+        [`${REPO}/actions/runs`]: {
+            workflow_runs: [
+                {
+                    id: 5,
+                    name: "CI",
+                    status: "completed",
+                    conclusion: "failure",
+                    run_attempt: 1,
+                    check_suite_id: 77,
+                    repository: { id: 1 },
+                },
+            ],
+        },
+        [`${REPO}/actions/runs/5/jobs`]: {
+            total_count: 1,
+            jobs: [
+                {
+                    id: 900,
+                    name: "unit-tests",
+                    status: "completed",
+                    conclusion: "failure",
+                    run_attempt: 1,
+                    check_run_url: `${REPO}/check-runs/557`,
+                    steps: [],
+                },
+            ],
+        },
+        [`${REPO}/commits/${HASH}/check-suites`]: { total_count: 1000 },
+        [`${REPO}/check-suites/77/check-runs`]: { check_runs: [{ id: 557 }] },
+        [`${REPO}/check-runs/557`]: {
+            id: 557,
+            output: { title: "selected failure", summary: "direct summary" },
+        },
+    };
+
     it("a failed job absent from the summary listing gets its selected check-run summary", async () => {
-        // At GitHub's suite limit the commit's check-run listing misses check run 557; the job
-        // is found in its own suite, and its summary is read from its own check run.
-        const api = fakeApi("unused", {
-            [`${REPO}/actions/runs`]: {
-                workflow_runs: [
-                    {
-                        id: 5,
-                        name: "CI",
-                        status: "completed",
-                        conclusion: "failure",
-                        run_attempt: 1,
-                        check_suite_id: 77,
-                        repository: { id: 1 },
-                    },
-                ],
-            },
-            [`${REPO}/actions/runs/5/jobs`]: {
-                total_count: 1,
-                jobs: [
-                    {
-                        id: 900,
-                        name: "unit-tests",
-                        status: "completed",
-                        conclusion: "failure",
-                        run_attempt: 1,
-                        check_run_url: `${REPO}/check-runs/557`,
-                        steps: [],
-                    },
-                ],
-            },
-            [`${REPO}/commits/${HASH}/check-suites`]: { total_count: 1000 },
-            [`${REPO}/check-suites/77/check-runs`]: { check_runs: [{ id: 557 }] },
-            [`${REPO}/check-runs/557`]: {
-                id: 557,
-                output: { title: "selected failure", summary: "direct summary" },
-            },
-        });
+        const api = fakeApi("unused", PAST_SUITE_LIMIT);
         const provider = new GitHubProvider(async (url) => (await api(url)).body, undefined, api);
 
         const detail = await provider.getDetail(ref, HASH);
@@ -299,6 +301,32 @@ describe("GitHub failure summary", () => {
         const failed = detail.runs.flatMap((run) => run.jobs).find((job) => job.id === "900");
         expect(failed?.checkRunId).toBe("557");
         expect(failed?.failureSummary).toBe("selected failure\ndirect summary");
+    });
+
+    it("a check-run summary that cannot be read keeps the jobs and reads the detail again later", async () => {
+        const api = fakeApi("unused", PAST_SUITE_LIMIT);
+        const fetch: typeof api = async (url) => {
+            if (url.includes("/check-runs/557")) throw new HttpError(500, "HTTP 500", {});
+            return api(url);
+        };
+        const provider = new GitHubProvider(
+            async (url) => (await fetch(url)).body,
+            undefined,
+            fetch,
+        );
+
+        const detail = await provider.getDetail(ref, HASH);
+
+        const failed = detail.runs.flatMap((run) => run.jobs).find((job) => job.id === "900");
+        expect(detail.outcome, "a missing summary never hides the jobs already read").not.toBe(
+            "unavailable",
+        );
+        expect(failed?.state).toBe("failure");
+        expect(failed?.failureSummary).toBeUndefined();
+        expect(
+            detail.complete,
+            "the detail is read again rather than saved without the summary",
+        ).toBe(false);
     });
 
     /** Reads page 11 of a run whose one job there failed; its check run 555 answers `checkRun`. */

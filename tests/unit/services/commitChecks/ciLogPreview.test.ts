@@ -266,6 +266,23 @@ describe("Checks tab log messages", () => {
         expect(broken.replies[0]).toMatchObject({ outcome: "failed", message: "socket hang up" });
     });
 
+    it("a log target lookup that throws still answers the preview and the open", async () => {
+        const { replies, send, target, download } = setup();
+        target.mockRejectedValue(new Error("cannot read remotes"));
+
+        await send("previewCiLog", 1).catch(() => undefined);
+        await send("openCiLog", 2).catch(() => undefined);
+
+        expect(download).not.toHaveBeenCalled();
+        expect(
+            replies.map((reply) => [reply.type, reply.outcome, reply.message]),
+            "every log request gets an answer, even when the remotes cannot be read",
+        ).toEqual([
+            ["ciLogPreview", "failed", "cannot read remotes"],
+            ["ciLogResult", "failed", "cannot read remotes"],
+        ]);
+    });
+
     it("a rate-limit 403 is a failure with its message, not forbidden", async () => {
         const limited = setup(
             "failure",

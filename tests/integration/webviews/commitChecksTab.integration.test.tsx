@@ -1226,6 +1226,42 @@ describe("Checks tab log preview and full log", () => {
         expect(previews(), "no preview for an unfinished job").toHaveLength(0);
     });
 
+    it("a selected job that finishes as failed shows its excerpt loading", () => {
+        vi.useFakeTimers();
+        try {
+            const { container } = mount(pane(HASH_A));
+            reply(
+                lastRequest(),
+                ciDetail(HASH_A, {
+                    complete: false,
+                    outcome: "pending",
+                    runs: [run([job("build", "running")])],
+                    capabilities: LOG_CAPABILITIES,
+                }),
+            );
+            act(() => jobRow(container, "build").click());
+            expect(previews(), "no preview while the job runs").toHaveLength(0);
+
+            act(() => vi.advanceTimersByTime(PENDING_CHECK_RETRY_DELAYS_MS[0]));
+            reply(
+                lastRequest(),
+                ciDetail(HASH_A, {
+                    outcome: "failure",
+                    runs: [run([job("build", "failure")])],
+                    capabilities: LOG_CAPABILITIES,
+                }),
+            );
+
+            expect(previews(), "the finished job's excerpt is asked for").toHaveLength(1);
+            expect(
+                jobDetail(container).textContent,
+                "the excerpt shows as loading while it is read",
+            ).toContain("Loading excerpt…");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("403 shows cannot-read message", () => {
         const { container } = mount(pane(HASH_A));
         withLog(container, [job("unit-tests", "failure")]);
