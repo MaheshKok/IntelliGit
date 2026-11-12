@@ -119,6 +119,8 @@ export class CiLogMemoryStore {
      */
     load(key: string, source: CiLogSource, signal?: AbortSignal): Promise<CiLogEntry> {
         this.sources.set(key, source);
+        // Before any download starts: one nobody waits for could later reject unhandled.
+        if (signal?.aborted) return Promise.reject(abortError());
         const stored = this.get(key);
         if (stored) return waitFor(Promise.resolve(stored), signal);
         const shared = this.inflight.get(key) ?? this.startDownload(key, source);

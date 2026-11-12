@@ -380,6 +380,12 @@ function openResponse(
             signal?.removeEventListener("abort", onAbort);
             reject(error);
         });
+        // A 101 skips the response callback: with no `upgrade` listener Node destroys the socket
+        // and emits only `close`, no error. Rejecting after a resolve is a no-op.
+        request.on("close", () => {
+            signal?.removeEventListener("abort", onAbort);
+            reject(new Error("The log request closed before a response arrived"));
+        });
         request.setTimeout(REQUEST_IDLE_TIMEOUT_MS, () => {
             request.destroy(new Error("HTTP request timed out"));
         });

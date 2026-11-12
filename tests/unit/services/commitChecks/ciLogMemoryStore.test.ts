@@ -282,6 +282,20 @@ describe("CiLogMemoryStore", () => {
         expect(download).toHaveBeenCalledTimes(1);
     });
 
+    it("a sole waiter whose signal is already aborted starts no download on a miss", async () => {
+        const { download } = manualTransport();
+        const store = new CiLogMemoryStore({ download });
+        const controller = new AbortController();
+        controller.abort();
+        await expect(store.load(keyFor("a"), sourceFor("a"), controller.signal)).rejects.toThrow(
+            /abort/i,
+        );
+        expect(
+            download,
+            "a download nobody waits for could later reject with no handler",
+        ).not.toHaveBeenCalled();
+    });
+
     it("cancelling one waiter keeps the shared download for the others", async () => {
         const { calls, download } = manualTransport();
         const store = new CiLogMemoryStore({ download });
@@ -354,6 +368,10 @@ interface StreamPlan {
     noHead?: boolean;
     /** Sends nothing more from chunk `stallAfter` on, as a server that hangs mid-body. */
     stallAfter?: number;
+    /** The request closes with no response head and no error, as a dropped socket can. */
+    closeBeforeHead?: boolean;
+    /** Answers `101 Switching Protocols`, which Node hands to `upgrade` instead of the callback. */
+    upgrade?: boolean;
 }
 
 /** Streams `plan.chunks(i)` until it returns undefined, the response is destroyed, or an error. */
@@ -362,6 +380,7 @@ function stubStream(plan: StreamPlan) {
         destroyed: false,
         emitted: 0,
         requestDestroyed: false,
+        upgradeSocketDestroyed: false,
         timeouts: [] as [number, (() => void) | undefined][],
     };
     vi.mocked(https.get).mockImplementation(((
@@ -390,6 +409,27 @@ function stubStream(plan: StreamPlan) {
             }),
         });
         if (plan.noHead) return req;
+        if (plan.closeBeforeHead) {
+            queueMicrotask(() => req.emit("close"));
+            return req;
+        }
+        if (plan.upgrade) {
+            const socket = {
+                destroy: vi.fn(() => {
+                    state.upgradeSocketDestroyed = true;
+                }),
+            };
+            queueMicrotask(() => {
+                // Node emits `upgrade` only to a listener; without one it destroys the socket.
+                if (req.listenerCount("upgrade") > 0) {
+                    req.emit("upgrade", { ...res, statusCode: 101 }, socket, Buffer.alloc(0));
+                } else {
+                    socket.destroy();
+                }
+                req.emit("close");
+            });
+            return req;
+        }
         queueMicrotask(() => {
             cb(res);
             void (async () => {
@@ -566,6 +606,31 @@ describe("downloadToString", () => {
         controller.abort();
         await expect(pending).rejects.toMatchObject({ name: "AbortError" });
         expect(state.destroyed).toBe(true);
+    });
+
+    it.each([
+        ["closes with no response head", { closeBeforeHead: true }],
+        ["answers with a protocol upgrade", { upgrade: true }],
+    ])("a request that %s rejects instead of hanging", async (_label, extra) => {
+        const state = stubStream({ chunks: () => undefined, ...extra });
+        const pending = downloadToString(
+            "https://logs.example.com/job",
+            {},
+            CI_LOG_MAX_BYTES,
+            new AbortController().signal,
+        );
+        // A hung promise never settles, so race it against a short timer to fail by name.
+        const outcome = await Promise.race([
+            pending.then(
+                () => "resolved",
+                (error: unknown) => error,
+            ),
+            new Promise((r) => setTimeout(() => r("still pending"), 200)),
+        ]);
+        expect(outcome, "the download must reject when no response can arrive").toBeInstanceOf(
+            Error,
+        );
+        if (extra.upgrade) expect(state.upgradeSocketDestroyed).toBe(true);
     });
 
     it("an abort before the response head rejects and destroys the request", async () => {
