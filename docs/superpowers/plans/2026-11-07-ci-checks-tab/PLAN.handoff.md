@@ -9,7 +9,7 @@
 - Phase 5: accepted 6898d332, manual; owner OK 2026-11-12 (merged as #420, 86088cab).
 - Earlier build records (Phase 3 and 5 detail, GitNexus answers): git history of this file (650a6919, 6898d332) and PLAN.review-log.md.
 
-## Phase 6: review pending, started at 6898d332f2ac955da00ef7e985265b249d01e0f1
+## Phase 6: review pending, started at 86088cab9ee8d07c724da9e13f5aeac980dfbffa
 - Actual base: 86088cab (#420, the squash of Phase 5 on main). 6898d332 is the pre-squash Phase 5 head; review `git diff 86088cab..<Phase 6 commit>`.
 - Built test-first, one commit, patch 0.43.8:
   - http.ts: `followRedirects` (HTTPS only, credential headers stripped on any origin change and never restored) and `downloadToString` (5 hops, 50 MB bound, one English marker line, UTF-8 cut, abort, idle timeout 15 s, non-2xx = HttpError).
@@ -21,13 +21,17 @@
 - Mutations (copy mut-6-build-2): 47 of 47 red, each naming its test; record in PLAN.review-log.md.
 - Fix round 1 (Codex: a body that reaches 50 MB and then stalls was lost to the idle timeout): `readBounded` now stops and destroys the response at the bound, unless the announced length is exactly the bound. Tests "reaching the bound with an announced larger length / no announced length stops at once even if the server then stalls"; 3 of 3 mutations red (copy mut-6-fix-1).
 - Fix round 2 (Codex: 4 surviving mutations, tests only, no source change): stale download settling after `clear()` keeps the new in-flight download (reject and resolve); `ciLogKey` differs per part and per separator shift; UTF-8 cut table for 2-, 3- and 4-byte characters plus kept-at-bound controls; a pre-aborted waiter rejects. 9 of 9 mutations red (copy mut-6-fix-2).
+- HALT after the takeover (run wf_c9b75488-bf2, R1 Fable): 3 findings still open. Owner's answer, 2026-11-12, verbatim: "A: follow the plan". PLAN.md does not change. The next fix round builds on b8ef4406 (no reset) and closes all three, each with a test that fails first:
+  1. ciLogMemoryStore.ts:185 (K16): a synchronous `onDidLoad` listener that calls `clear()` must never get the cleared entry back from the pending `load()`. Check the generation again after the listeners run, and reject before returning the entry.
+  2. ciLogDocument.ts:78 (K19): the refresh registry holds only URIs of tabs that are still open. Drop a URI when its document closes, delete empty key buckets, and dispose the close subscription with the provider. A closed tab never gets `onDidChange`.
+  3. http.ts:432 (PLAN.md:443-444, O2): remove the `Content-Length === maxBytes` (wholeAtBound) exception and its test. Reaching maxBytes always stops the download, destroys the response, appends the marker line once and sets `truncated: true`, even when Content-Length is exactly maxBytes. A test proves that a body of exactly maxBytes with Content-Length = maxBytes gets the marker.
 - Takeover (Codex: a document read whose download a `clear()` aborted settled after a newer same-key load had already fired its refresh, so the tab kept the error line for good, against K19): the read's `catch` in ciLogDocument.ts now serves the store's current entry for the key and marks the tab for refresh only when there is none. Test "a stale document read cannot leave an error tab stuck ... (stale download rejects / resolves)" in ciLogDocument.test.ts, red on the unfixed code in both orderings; the reviewer's own scratch test passes on the fix (copy mut-6-takeover-1).
 
 ## Decisions and why
 - The store's `download` in repositoryMode is a rejecting placeholder: no provider log endpoint exists until Phase 7, and nothing calls `load` yet. Phase 7 replaces it with the provider transports.
 - Truncation marker stays English inside http.ts (no vscode import there; the line sits inside English log text). Document lines use `l10n.t`.
 - `onDidChange` is a hand-written listener set, not `vscode.EventEmitter`, so existing vscode test mocks without EventEmitter keep working.
-- The body is cut by counted bytes, so a large announced length is never refused (K17). `Content-Length` matters only at the bound: equal to it = wait for the end, no marker; absent or larger = stop at once with the marker (§5 "stops reading at maxBytes by destroying the response"). Cost: an unannounced (chunked) body of exactly 50 MB gets the marker.
+- The body is cut by counted bytes, so a large announced length is never refused (K17). Superseded by the owner's halt answer (2026-11-12, "A: follow the plan"): reaching the bound always stops, destroys and marks, whatever `Content-Length` says; the earlier "equal to the bound = no marker" exception goes.
 - Sources stay recorded after eviction and after `clear()` (K19: a miss with a known source downloads again); a reload empties them.
 - The credential refresh clears the store with the other CI caches, so a log read under an old token is not served after a token change.
 

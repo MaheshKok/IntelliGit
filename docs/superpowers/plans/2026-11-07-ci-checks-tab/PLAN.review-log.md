@@ -913,3 +913,4 @@ PHASE 5: ACCEPTED 6898d332
 - Fix: the read's catch serves the store's current entry for the key; it marks the tab stale only when there is none (the check and the mark are synchronous, so no later load can slip between them).
 - Test: ciLogDocument.test.ts "a stale document read cannot leave an error tab stuck after a newer same-key load succeeds (stale download rejects|resolves)". Red before the fix, both orderings: "the error tab must recover on the later successful load (tab shows \"[IntelliGit: could not load this CI log: The log download was aborted]\"): expected false to be true". Green after; the reviewer's ciLogReviewer.test.ts also passes on the fix (copy mut-6-takeover-1, 18 of 18).
 - Battery: every step exit 0 except bun run test, 7857 of 7865; the 8 failures are commit-list-column-resize.test.tsx (no global localStorage under Node v26), red on base 86088cab too.
+PHASE 6: HALT review still failing after takeover
