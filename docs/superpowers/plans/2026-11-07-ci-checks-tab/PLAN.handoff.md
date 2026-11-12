@@ -31,8 +31,15 @@
 - Incomplete-commit memory per provider key and hash (`forCommit` / `noteCommit`) as before; first read unconditional, savings from the third poll.
 
 ## Open risks
-- The incomplete-commit set is an LRU of 500 per window; a commit pushed out reads unconditionally once.
-- A token change that keeps identical headers is impossible by construction; any header change (Accept included) makes the next request unconditional once.
+- Phase 3 (carried over, still open):
+  - A version-less tree that mixed two attempts stays shown until Refresh or restart in that session (it is never saved).
+  - Reviewer probe file review-3-3 on 15a47c9d: 11 of 14 pass (the first halt's retry probes included). Red: its job-bound probe, only because its fake statuses carry no `pipeline_id`; "late pre-session-only settled save" (another window's older settled save lands after this window's session-only delete, so a restart serves the older tree); "failed session-only deletion ... after restart" (the block is in memory only). Both are the existing rule that a settled detail stays cached until Refresh; closing them needs a saved tombstone, a persisted-format change, left for the owner.
+  - Pipelines over 1 000 jobs: job statuses past the bound are matched by `pipeline_id` and kept out of Other checks; an external status or trigger (bridge) job of such a cut pipeline is hidden with them. Trigger (bridge) jobs of other pipelines appear only in statuses.
+  - `optional: true` is set from `allow_failure` while `optionalJobs` stays false until Phase 9.
+  - Translations for the two new strings were written by the builder, not an outside source.
+- Phase 5:
+  - The incomplete-commit set is an LRU of 500 per window; a commit pushed out reads unconditionally once.
+  - A token change that keeps identical headers is impossible by construction; any header change (Accept included) makes the next request unconditional once.
 
 ## Next phase
 - Phase 6 (wave 3: 3, 5, 6).

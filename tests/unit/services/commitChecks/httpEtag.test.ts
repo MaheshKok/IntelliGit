@@ -639,6 +639,7 @@ describe("providers use the store only for requests about incomplete commits", (
         await github.getDetail(githubRef, SHA);
 
         expect(first.complete).toBe(false);
+        expect(sent.slice(before), "the running detail's read sends requests").not.toEqual([]);
         expect(conditionalOf(sent.slice(before)).map((request) => request.url)).toEqual(
             sent.slice(before).map((request) => request.url),
         );
@@ -681,6 +682,9 @@ describe("providers use the store only for requests about incomplete commits", (
             `${GITLAB}/repository/commits/${SHA}/statuses?per_page=100`,
         ]);
         expect(detail.complete).toBe(false);
+        expect(sent.slice(details), "the running GitLab detail read sends requests").not.toEqual(
+            [],
+        );
         expect(conditionalOf(sent.slice(details)).map((request) => request.url)).toEqual(
             sent.slice(details).map((request) => request.url),
         );
@@ -776,6 +780,7 @@ describe("providers use the store only for requests about incomplete commits", (
             const polled = await provider.getChecks(bitbucketRef, SHA);
 
             expect(polled.state).toBe("pending");
+            expect(sent.slice(before), "the running poll sends requests").not.toEqual([]);
             expect(conditionalOf(sent.slice(before)).map((request) => request.url)).toEqual(
                 sent.slice(before).map((request) => request.url),
             );

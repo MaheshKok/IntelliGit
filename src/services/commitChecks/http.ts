@@ -43,7 +43,10 @@ export class HttpError extends Error {
     }
 }
 
-/** A parsed 2xx response with its headers, for callers that page by `Link` or similar headers. */
+/**
+ * A parsed 2xx response with its headers, for callers that page by `Link` or similar headers.
+ * A conditional request answered 304 resolves with `statusCode` 304 and the stored body.
+ */
 export interface FetchResponse {
     statusCode: number;
     headers: Record<string, string | string[] | undefined>;
