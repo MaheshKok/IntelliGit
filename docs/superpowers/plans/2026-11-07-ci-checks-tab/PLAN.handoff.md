@@ -20,6 +20,7 @@
   - 3 strings localised in 11 locales; CHANGELOG entry verbatim; README "CI logs" section marked Planned.
 - Mutations (copy mut-6-build-2): 47 of 47 red, each naming its test; record in PLAN.review-log.md.
 - Fix round 1 (Codex: a body that reaches 50 MB and then stalls was lost to the idle timeout): `readBounded` now stops and destroys the response at the bound, unless the announced length is exactly the bound. Tests "reaching the bound with an announced larger length / no announced length stops at once even if the server then stalls"; 3 of 3 mutations red (copy mut-6-fix-1).
+- Fix round 2 (Codex: 4 surviving mutations, tests only, no source change): stale download settling after `clear()` keeps the new in-flight download (reject and resolve); `ciLogKey` differs per part and per separator shift; UTF-8 cut table for 2-, 3- and 4-byte characters plus kept-at-bound controls; a pre-aborted waiter rejects. 9 of 9 mutations red (copy mut-6-fix-2).
 
 ## Decisions and why
 - The store's `download` in repositoryMode is a rejecting placeholder: no provider log endpoint exists until Phase 7, and nothing calls `load` yet. Phase 7 replaces it with the provider transports.

@@ -69,6 +69,23 @@ describe("ciLogKey", () => {
         expect(ciLogKey("github:o/r", "run-1", "job-1", 2)).not.toBe(first);
         expect(ciLogKey("github:o/r", "run-1", "job-1", 1)).toBe(first);
     });
+
+    it("differs when any one part differs, and the separator tells shifted parts apart", () => {
+        const base = ciLogKey("github:o/r", "run-1", "job-1", 1);
+        expect(ciLogKey("gitlab:o/r", "run-1", "job-1", 1), "providerKey").not.toBe(base);
+        expect(ciLogKey("github:o/r", "run-2", "job-1", 1), "runId").not.toBe(base);
+        expect(ciLogKey("github:o/r", "run-1", "job-2", 1), "jobId").not.toBe(base);
+        expect(ciLogKey("github:o/r", "run-1", "job-1", undefined), "attempt").not.toBe(base);
+        expect(ciLogKey("a", "bc", "j", 1), "providerKey|runId shift").not.toBe(
+            ciLogKey("ab", "c", "j", 1),
+        );
+        expect(ciLogKey("p", "a", "bc", 1), "runId|jobId shift").not.toBe(
+            ciLogKey("p", "ab", "c", 1),
+        );
+        expect(ciLogKey("p", "r", "j1", undefined), "jobId|attempt shift").not.toBe(
+            ciLogKey("p", "r", "j", 1),
+        );
+    });
 });
 
 describe("CiLogMemoryStore", () => {
@@ -185,6 +202,52 @@ describe("CiLogMemoryStore", () => {
         expect(download).toHaveBeenCalledTimes(3);
         calls[2].deferred.resolve({ text: "fresh", truncated: false });
         await expect(again).resolves.toMatchObject({ text: "fresh" });
+    });
+
+    it.each([
+        ["rejects with an abort error", "reject"],
+        ["resolves anyway", "resolve"],
+    ] as const)(
+        "stale download settling after clear() does not drop the new in-flight download (stale %s)",
+        async (_label, settle) => {
+            const { calls, download } = manualTransport();
+            const store = new CiLogMemoryStore({ download });
+            const stale = store.load(keyFor("b"), sourceFor("b"));
+            store.clear();
+            const second = store.load(keyFor("b"), sourceFor("b"));
+            expect(download).toHaveBeenCalledTimes(2);
+            if (settle === "reject") {
+                const abort = new Error("aborted");
+                abort.name = "AbortError";
+                calls[0].deferred.reject(abort);
+            } else {
+                calls[0].deferred.resolve({ text: "late", truncated: false });
+            }
+            await expect(stale).rejects.toThrow(/abort/i);
+            const third = store.load(keyFor("b"), sourceFor("b"));
+            expect(
+                download,
+                "the third request must join the second download",
+            ).toHaveBeenCalledTimes(2);
+            calls[1].deferred.resolve({ text: "fresh", truncated: false });
+            const [two, three] = await Promise.all([second, third]);
+            expect(two.text).toBe("fresh");
+            expect(three).toBe(two);
+        },
+    );
+
+    it("a waiter whose signal is already aborted rejects while the others still get the log", async () => {
+        const { calls, download } = manualTransport();
+        const store = new CiLogMemoryStore({ download });
+        const kept = store.load(keyFor("a"), sourceFor("a"));
+        const controller = new AbortController();
+        controller.abort();
+        const cancelled = store.load(keyFor("a"), sourceFor("a"), controller.signal);
+        expect(download).toHaveBeenCalledTimes(1);
+        // Settle first, so a waiter that wrongly joins resolves instead of hanging.
+        calls[0].deferred.resolve({ text: "landed", truncated: false });
+        await expect(cancelled, "a pre-aborted waiter must reject").rejects.toThrow(/abort/i);
+        await expect(kept).resolves.toMatchObject({ text: "landed" });
     });
 
     it("cancelling one waiter keeps the shared download for the others", async () => {
@@ -367,10 +430,21 @@ describe("downloadToString", () => {
         expect(result).toEqual({ text: "line 1\nline 2\n", truncated: false });
     });
 
-    it("cuts back to a UTF-8 boundary before the marker", async () => {
-        // "é" is two bytes; a 10-byte bound falls in its middle.
+    // A 10-byte bound against an ASCII prefix plus one multi-byte character: é is 2 bytes,
+    // € is 3 (E2 82 AC), 😀 is 4 (F0 9F 98 80).
+    it.each([
+        ["a 2-byte character cut after 1 byte", "abcdefghi", "é", "abcdefghi"],
+        ["a 3-byte character cut after 1 byte", "abcdefghi", "€", "abcdefghi"],
+        ["a 3-byte character cut after 2 bytes", "abcdefgh", "€", "abcdefgh"],
+        ["a 4-byte character cut after 1 byte", "abcdefghi", "😀", "abcdefghi"],
+        ["a 4-byte character cut after 2 bytes", "abcdefgh", "😀", "abcdefgh"],
+        ["a 4-byte character cut after 3 bytes", "abcdefg", "😀", "abcdefg"],
+        ["a 3-byte character ending exactly at the bound (kept)", "abcdefg", "€", "abcdefg€"],
+        ["a 4-byte character ending exactly at the bound (kept)", "abcdef", "😀", "abcdef😀"],
+    ])("UTF-8 boundary: %s", async (_label, prefix, character, kept) => {
         stubStream({
-            chunks: (index) => (index === 0 ? Buffer.from("abcdefghié tail") : undefined),
+            chunks: (index) =>
+                index === 0 ? Buffer.from(`${prefix}${character} tail`) : undefined,
         });
         const result = await downloadToString(
             "https://logs.example.com/job",
@@ -379,7 +453,11 @@ describe("downloadToString", () => {
             new AbortController().signal,
         );
         expect(result.truncated).toBe(true);
-        expect(result.text.startsWith("abcdefghi\n")).toBe(true);
+        const beforeMarker = result.text.slice(
+            0,
+            result.text.indexOf("[IntelliGit: log truncated"),
+        );
+        expect(beforeMarker).toBe(`${kept}\n`);
         expect(result.text).not.toContain("�");
     });
 
