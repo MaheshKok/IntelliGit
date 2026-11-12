@@ -480,6 +480,122 @@ describe("Checks tab log messages", () => {
         expect(download).not.toHaveBeenCalled();
     });
 
+    it("a run or job id that is not in the commit's detail is refused without a request", async () => {
+        // Two runs with two jobs each, so a lookup that ignores the id finds a real job.
+        const twoRuns = (): CommitCiDetail => {
+            const base = detail("failure");
+            const first = base.runs[0]!;
+            first.jobs = [job("failure"), { ...job("failure"), id: "78", name: "lint" }];
+            base.runs = [first, { ...first, id: "6", name: "Nightly" }];
+            return base;
+        };
+        for (const [runId, jobId] of [
+            ["999", "77"],
+            ["5", "999"],
+            ["6", "999"],
+        ]) {
+            const { replies, download, target, getDetail } = setup();
+            getDetail.mockResolvedValue(twoRuns());
+            const host: CommitCiDetailSource = {
+                repoKey: () => "/repo",
+                getDetail,
+                logs: { store: new CiLogMemoryStore({ download }), target },
+            };
+            for (const type of ["previewCiLog", "openCiLog"] as const) {
+                await answerCiLogMessage(
+                    host,
+                    {
+                        type,
+                        requestId: 1,
+                        repoKey: "/repo",
+                        hash: HASH,
+                        runId,
+                        jobId,
+                        attempt: 1,
+                        ...(type === "previewCiLog" && { selectionToken: 9 }),
+                    },
+                    (reply) => replies.push(reply as unknown as Record<string, unknown>),
+                );
+            }
+            expect(
+                replies.map((reply) => reply.outcome),
+                `run ${runId} job ${jobId} is not in the detail, so it is refused`,
+            ).toEqual(["failed", "failed"]);
+            expect(target, `no log target for run ${runId} job ${jobId}`).not.toHaveBeenCalled();
+            expect(download).not.toHaveBeenCalled();
+        }
+    });
+
+    it("a job without its own attempt takes its run's attempt", async () => {
+        const { replies, send, getDetail } = setup();
+        const noAttempt = detail("failure");
+        delete noAttempt.runs[0]!.jobs[0]!.attempt;
+        getDetail.mockResolvedValue(noAttempt);
+
+        await send("previewCiLog", 1);
+
+        expect(
+            replies.map((reply) => reply.outcome),
+            "the run's attempt 1 matches the request's attempt 1",
+        ).toEqual(["ready"]);
+    });
+
+    it("a truncated log tells the webview it was truncated", async () => {
+        const { replies, send } = setup(
+            "failure",
+            vi.fn(async () => ({ text: LOG, truncated: true })),
+        );
+
+        await send("previewCiLog", 1);
+
+        expect(replies[0], "the preview reply carries the store's truncated flag").toMatchObject({
+            outcome: "ready",
+            truncated: true,
+        });
+    });
+
+    it("selecting or opening a job reads the detail from the cache, not by force", async () => {
+        const { getDetail, send } = setup();
+
+        await send("previewCiLog", 1);
+        await send("openCiLog", 2);
+
+        expect(getDetail).toHaveBeenCalledTimes(2);
+        for (const call of getDetail.mock.calls as unknown[][]) {
+            expect(call.slice(0, 2), "a job selection never bypasses the caches").toEqual([
+                HASH,
+                { force: false },
+            ]);
+        }
+    });
+
+    it("Open full log shows a cancellable notification", async () => {
+        const { send } = setup();
+
+        await send("openCiLog", 1);
+
+        expect(mocks.withProgress).toHaveBeenCalledTimes(1);
+        expect(
+            mocks.withProgress.mock.calls[0]![0],
+            "the notification offers Cancel",
+        ).toMatchObject({ cancellable: true, location: 15 });
+    });
+
+    it("a 401 is forbidden", async () => {
+        const refused = setup(
+            "failure",
+            vi.fn(async () => {
+                throw new HttpError(401, "HTTP 401", {});
+            }),
+        );
+        await refused.send("previewCiLog", 1);
+        await refused.send("openCiLog", 2);
+        expect(
+            refused.replies.map((reply) => reply.outcome),
+            "a refused sign-in asks the user to sign in again",
+        ).toEqual(["forbidden", "forbidden"]);
+    });
+
     it("rejects malformed messages and ignores them outside the E2E switch", async () => {
         const { send, replies, download } = setup();
         const host: CommitCiDetailSource = {
