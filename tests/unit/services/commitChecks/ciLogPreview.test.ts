@@ -581,6 +581,41 @@ describe("Checks tab log messages", () => {
         ).toMatchObject({ cancellable: true, location: 15 });
     });
 
+    it("a 403 from the signed log link after its retry is a failure, not forbidden", async () => {
+        // The token never reaches the signed link's host, so its refusal says nothing about the
+        // token: the link expired. The API host answering 403 itself is still forbidden.
+        const api = "https://api.github.com/repos/o/r/actions/jobs/77/logs";
+        const blob = "https://results-receiver.actions.githubusercontent.com/logs/77?sig=abc";
+        const answeredBy = (url: string) =>
+            Object.assign(new HttpError(403, "HTTP 403", {}, url), { requestUrl: api });
+
+        const expired = setup(
+            "failure",
+            vi.fn(async () => {
+                throw answeredBy(blob);
+            }),
+        );
+        await expired.send("previewCiLog", 1);
+        await expired.send("openCiLog", 2);
+        expect(
+            expired.replies.map((reply) => reply.outcome),
+            "an expired signed link is not a token refusal",
+        ).toEqual(["failed", "failed"]);
+        expect(expired.replies[0]).toMatchObject({ message: "HTTP 403" });
+
+        const refused = setup(
+            "failure",
+            vi.fn(async () => {
+                throw answeredBy(api);
+            }),
+        );
+        await refused.send("previewCiLog", 1);
+        expect(
+            refused.replies.map((reply) => reply.outcome),
+            "the API itself refusing the token is forbidden",
+        ).toEqual(["forbidden"]);
+    });
+
     it("a 401 is forbidden", async () => {
         const refused = setup(
             "failure",

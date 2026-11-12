@@ -110,6 +110,10 @@ describe("GitHub job log", () => {
         const error = await readLog().catch((reason: unknown) => reason);
         expect(error).toBeInstanceOf(HttpError);
         expect((error as HttpError).statusCode).toBe(410);
+        expect(
+            { url: (error as HttpError).url, requestUrl: (error as { requestUrl?: string }).requestUrl },
+            "the error names both the signed link that refused and the API request",
+        ).toEqual({ url: BLOB_URL, requestUrl: LOGS_URL });
         expect(sent.filter((request) => request.url === LOGS_URL)).toHaveLength(2);
     });
 
