@@ -3281,7 +3281,10 @@ describe("extension integration", () => {
         expect(leftUri.scheme).toBe("intelligit-diff");
         expect(rightUri.scheme).toBe("intelligit-diff");
 
-        const provider = registerTextDocumentContentProvider.mock.calls.at(-1)?.[1] as {
+        const diffRegistration = (
+            registerTextDocumentContentProvider.mock.calls as unknown as [string, unknown][]
+        ).findLast(([scheme]) => scheme === "intelligit-diff");
+        const provider = diffRegistration?.[1] as {
             provideTextDocumentContent: (uri: unknown) => string;
             dispose: () => void;
         };

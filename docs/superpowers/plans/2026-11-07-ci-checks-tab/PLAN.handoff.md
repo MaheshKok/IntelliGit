@@ -6,52 +6,51 @@
 - Phase 4: accepted f005d90f, verification incomplete (merged as #417, d3438a11).
 - Phase 19: accepted f005d90f, verification incomplete (merged as #418, 2490ec17).
 - Phase 3: accepted 15a47c9d, manual; owner OK 2026-11-11 (merged as #419, c246d0d4).
-- Phase 5: accepted 6898d332, manual: two GitLab settle tests added by hand after the takeover halt, Codex ACCEPT; owner OK 2026-11-12.
-- Earlier build records, the Phase 3 GitNexus answer and the Phase 5 impact run: git history of this file (650a6919) and PLAN.review-log.md.
+- Phase 5: accepted 6898d332, manual; owner OK 2026-11-12 (merged as #420, 86088cab).
+- Earlier build records (Phase 3 and 5 detail, GitNexus answers): git history of this file (650a6919, 6898d332) and PLAN.review-log.md.
 
-## Phase 5: accepted 6898d332 (record below), started at 15a47c9d68fbe1646bfe02e50752f00d5d7a2709
-- 15a47c9d is on the pre-squash Phase 3 branch, not an ancestor of HEAD. The build sits on 650a6919, so review 650a6919..HEAD.
-- Built in 20b1c353: `EtagStore` (LRU 500, key `${authGeneration}\0${url}`), conditional `createHttpGetJsonWithMeta`, GitHub and GitLab snapshot and detail reads conditional for incomplete commits. Patch 0.43.7.
-- Fix round 1 (d83ba4a4) clears all five Codex findings:
-  - Each entry records `requestHash`, a SHA-256 of the request headers (token included) it was read with; a request whose headers differ never sends that etag and never gets that body. Covers a request queued under an old token (finding 1) and a token changed by another window (finding 2).
-  - The body-less-304 re-request is its own gated request: `gatedFetchWithMeta` = `recoverBodylessNotModified` over a gated `createConditionalRequest`, so the gate admits, counts and cooldown-checks it (finding 3).
-  - The re-request strips `If-None-Match` in any letter case (finding 5).
-  - Bitbucket Cloud and Server snapshot reads are conditional for incomplete commits (finding 4; plan §3 line 399). Server's commit key is host + hash, the scope of its global build-status endpoint.
-- Fix round 2: the one finding (GitLab `sessionOnly` rule, gitlabProvider.ts:407) is rejected, no code change. That rule and its test came from PR #419's last commit ("a GitLab pipeline with no update time is never saved, even on one job page"), on main as c246d0d4. `git diff 650a6919 HEAD` is empty for gitlabProvider.ts:398-410, gitlabDetail.test.ts and paginate.ts. Codex's scratch test phase5ScopeReview.test.ts is red at 650a6919 with the same assertion line, so a diff against 15a47c9d charges Phase 3's squash to Phase 5. Reviewers: diff 650a6919..HEAD only.
-- Takeover (after 2 fix rounds): three test gaps closed, tests only, no source change. httpEtag.test.ts now pins per-commit store scoping (an EtagStore unit test, plus a two-commit test on one instance for each of the four providers), parse-before-store (a garbled 200 with an ETag is never stored), and 304 pagination (the 304's own `link`/`x-next-page` never override a stored last page, and GitLab's stored `x-next-page` survives a header-minimal 304). The reviewer mutations were each run on a copy (mut-5-takeover-1..6). Five turn a named assertion red; M4 (the `withPagination` spread swap) is an equivalent mutation and stays green (35/35 rerun on the hand-fix tree), because the `delete merged[name]` loop removes the overlapping keys before the spread. M5 (the delete loop removed) is the one that pins "the stored page had no next link".
-- Hand fix after the takeover halt (owner: "A: add 2 tests"): two GitLab settle-transition tests in httpEtag.test.ts, tests only. "a GitLab commit that finishes stops using the store" pins gitlabProvider.ts:322, and "a settled GitLab detail stops using the store" pins :342. Each went red under its own `noteCommit(commitKey, false)` mutation; see PLAN.review-log.md. Codex (gpt-6.1-sol high, fresh session) on 6898d332: VERDICT: ACCEPT, no findings.
-- Phase 5: GitNexus. Index stale, NOT clean (indexed 64d390b0, 10 commits behind); the impact run is recorded in 650a6919 under the owner's "A: use old map". HIGH: createHttpGetJsonWithMeta, FetchJson, CommitChecksRequestGateRegistry.observeResponse. UNKNOWN: GitHubProvider.getChecks and GitLabProvider.getChecks (text search: one production caller, coordinator.ts:418), GitHubRequestGate.observeResponse. Do not halt on PLAN.md:844 for Phase 5.
+## Phase 6: review pending, started at 6898d332f2ac955da00ef7e985265b249d01e0f1
+- Actual base: 86088cab (#420, the squash of Phase 5 on main). 6898d332 is the pre-squash Phase 5 head; review `git diff 86088cab..<Phase 6 commit>`.
+- Built test-first, one commit, patch 0.43.8:
+  - http.ts: `followRedirects` (HTTPS only, credential headers stripped on any origin change and never restored) and `downloadToString` (5 hops, 50 MB bound, one English marker line, UTF-8 cut, abort, idle timeout 15 s, non-2xx = HttpError).
+  - ciLogMemoryStore.ts: `CiLogMemoryStore` (LRU 3, sha256 key, join map, settled-only by contract, `clear()` aborts and drops late results, no fs), `ciLogKey`, `preview` returns the excerpt only.
+  - firstErrorLine.ts: provider pattern, then error word after the step start, then last line; `buildCiLogExcerpt` (5 lines before, 40 lines, 8 KB, `sanitizeExcerpt`).
+  - ciLogDocument.ts: `intelligit-ci-log:` provider, key `^[0-9a-f]{64}$` only, miss with source downloads again, miss without one returns the "no longer loaded" line, `onDidChange` for every placeholder or error-line URI when a later load of the key succeeds.
+  - repositoryMode.ts: one store per window, provider registered, both disposed with the window; `clear()` on a commitChecks setting change and on the credential refresh (`refreshCommitCheckBadges`).
+  - 3 strings localised in 11 locales; CHANGELOG entry verbatim; README "CI logs" section marked Planned.
+- Mutations (copy mut-6-build-2): 47 of 47 red, each naming its test; record in PLAN.review-log.md.
 
 ## Decisions and why
-- Credential binding by a header digest in the entry, not by bumping `CiGenerations.bumpAuth` on a detected token change: bumpAuth also fences the snapshot, detail and action caches, a wider effect than this phase owns. The key stays `${authGeneration}\0${url}` (K12 verbatim); the digest only adds a check.
-- The re-request runs after the first slot is released (two admissions), never nested inside the slot: nesting would deadlock when all four slots retry at once.
-- Codex's scratch test "bodyless-304 retries count against the fallback request budget" expects 300 such reads to succeed, which honest counting cannot allow (each read costs two admissions). Replaced by a test that 150 reads use the 300 budget and read 151 is refused with 429.
-- Round 2 finding rejected, not reverted: the revert would reopen a mixed-attempt GitLab tree being saved for a restart (fixed in #419 with owner OK) and would itself be a non-additive change to Phase 3 behaviour inside Phase 5 (K10).
-- Takeover findings were test gaps over correct code, so the fix is the tests; "red before" is each test going red under the reviewer's mutation, since the real code was already right.
-- Incomplete-commit memory per provider key and hash (`forCommit` / `noteCommit`) as before; first read unconditional, savings from the third poll.
+- The store's `download` in repositoryMode is a rejecting placeholder: no provider log endpoint exists until Phase 7, and nothing calls `load` yet. Phase 7 replaces it with the provider transports.
+- Truncation marker stays English inside http.ts (no vscode import there; the line sits inside English log text). Document lines use `l10n.t`.
+- `onDidChange` is a hand-written listener set, not `vscode.EventEmitter`, so existing vscode test mocks without EventEmitter keep working.
+- The `Content-Length` header is never consulted: the body is cut by counted bytes only, so a large announced length is never refused (K17).
+- Sources stay recorded after eviction and after `clear()` (K19: a miss with a known source downloads again); a reload empties them.
+- The credential refresh clears the store with the other CI caches, so a log read under an old token is not served after a token change.
 
 ## Open risks
 - Phase 3 (carried over, still open):
-  - A version-less tree that mixed two attempts stays shown until Refresh or restart in that session (it is never saved).
-  - Reviewer probe file review-3-3 on 15a47c9d: 11 of 14 pass (the first halt's retry probes included). Red: its job-bound probe, only because its fake statuses carry no `pipeline_id`; "late pre-session-only settled save" (another window's older settled save lands after this window's session-only delete, so a restart serves the older tree); "failed session-only deletion ... after restart" (the block is in memory only). Both are the existing rule that a settled detail stays cached until Refresh; closing them needs a saved tombstone, a persisted-format change, left for the owner.
-  - Pipelines over 1 000 jobs: job statuses past the bound are matched by `pipeline_id` and kept out of Other checks; an external status or trigger (bridge) job of such a cut pipeline is hidden with them. Trigger (bridge) jobs of other pipelines appear only in statuses.
+  - A version-less tree that mixed two attempts stays shown until Refresh or restart in that session.
+  - "late pre-session-only settled save" and "failed session-only deletion after restart": closing them needs a saved tombstone, a persisted-format change, left for the owner.
+  - Pipelines over 1 000 jobs: an external status or bridge job of a cut pipeline is hidden with the cut jobs.
   - `optional: true` is set from `allow_failure` while `optionalJobs` stays false until Phase 9.
-  - Translations for the two new strings were written by the builder, not an outside source.
-- Phase 5:
-  - The incomplete-commit set is an LRU of 500 per window; a commit pushed out reads unconditionally once.
-  - A token change that keeps identical headers is impossible by construction; any header change (Accept included) makes the next request unconditional once.
+  - Translations (Phase 3 and Phase 6 strings) were written by the builder, not an outside source.
+- Phase 5: the incomplete-commit set is an LRU of 500 per window; any header change makes the next request unconditional once.
+- Phase 6:
+  - Up to 3 logs of 50 MB each sit in the extension host's memory (owner path C), about 150 MB plus string overhead.
+  - GitNexus detect-changes: risk HIGH (activateRepositoryMode, 9 flows), index stale at 64d390b0; the change there is the store wiring the integration test pins.
+  - Settled-only is the callers' contract (Phase 7 handlers); the store does not check job status.
 
 ## Next phase
-- Phase 6 (wave 3: 3, 5, 6).
+- Wave 4: Phases 7, 8, 9.
 
 ## Found outside scope
-- commit-list-column-resize.test.tsx fails under Node v26.5.0 (no global `localStorage`); red on 05085924 too.
-- GitHub carryScans also treats two missing `runAttempt` values as the same run; a GitHub-scope fix if run_attempt can be absent.
+- commit-list-column-resize.test.tsx fails under Node v26.5.0 (no global `localStorage`); red on HEAD 86088cab too (8 tests).
+- GitHub carryScans also treats two missing `runAttempt` values as the same run.
 - Extract detailOf/flatDetail into a shared module when Phase 17 adds a third provider detail.
-- `bun run test` in the main checkout times out git-heavy tests under load; localization.test.ts:352 slow with many worktrees.
-- `bun run package` can pack ignored leftovers under `output/` (88 entries).
+- `bun run test` in the main checkout times out git-heavy tests under load.
+- `bun run package` can pack ignored leftovers under `output/`.
 - A copy without `.git` fails git-backed tests; a copy under $TMPDIR/phase-run hits the fixture socket-path limit unless TMPDIR is short.
-- noRepositoryMode.ts registers a placeholder `refreshBadges`, so a token change there clears no cache.
-- tsconfigCoverage and screenshotComparatorMeta resolve tools at <repo>/node_modules; they pass once the worktree has its own install (`bun install --frozen-lockfile`).
-- GitNexus index is behind HEAD (last indexed 64d390b); the worktree guard refuses compound commands naming git paths.
-- Bitbucket detail reads (Phases 17/18) should pass the same store when they add metadata fetches.
+- noRepositoryMode.ts registers a placeholder `refreshBadges`, so a token change there clears no cache (nor the CI log store, which that mode does not create).
+- GitNexus index is behind HEAD; the registry holds two "IntelliGit" entries, so the CLI needs `--repo <absolute path>`.
+- Bitbucket detail reads (Phases 17/18) should pass the ETag store when they add metadata fetches.

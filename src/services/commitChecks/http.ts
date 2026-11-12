@@ -5,6 +5,7 @@
 // without module mocking.
 
 import { createHash } from "crypto";
+import type * as http from "http";
 import * as https from "https";
 import type { EtagStore } from "./etagStore";
 
@@ -251,6 +252,246 @@ function withPagination(
     const merged = { ...headers };
     for (const name of PAGINATION_HEADERS) delete merged[name];
     return { ...merged, ...pagination };
+}
+
+/** Per-log download bound (owner decision O2): a longer log keeps its first 50 MB. */
+export const CI_LOG_MAX_BYTES = 50 * 1024 * 1024;
+
+/** Inactivity timeout of every request: `setTimeout` on a request measures socket idle time. */
+const REQUEST_IDLE_TIMEOUT_MS = 15000;
+
+/** Statuses `followRedirects` follows; any other 3xx is a final response. */
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/** Headers that carry credentials for every provider; stripped when a redirect changes origin. */
+const CREDENTIAL_HEADERS = ["authorization", "cookie", "private-token", "job-token"];
+
+/** Options of `followRedirects`. */
+export interface RedirectOptions {
+    /** Most redirects followed; one more is an error. */
+    maxHops: number;
+    /** Extra credential headers of the provider, stripped with the shared ones. */
+    credentialHeaders?: readonly string[];
+    /** Aborts the request in flight and rejects with an `AbortError`. */
+    signal?: AbortSignal;
+}
+
+/** The final, non-redirect response of a redirect chain, with its body not yet read. */
+export interface RedirectedResponse {
+    response: http.IncomingMessage;
+    request: http.ClientRequest;
+    /** URL that answered with `response`. */
+    url: string;
+}
+
+/** A downloaded text body and whether it was cut at the byte bound. */
+export interface DownloadedText {
+    text: string;
+    truncated: boolean;
+}
+
+/**
+ * GETs `url`, following 301/302/303/307/308 redirects to `https:` targets only.
+ *
+ * On any change of origin (scheme, host or port) the credential headers are removed and never
+ * restored on a later hop, even when the chain returns to the first origin. More than `maxHops`
+ * redirects, a non-HTTPS target or a redirect with no `Location` rejects.
+ *
+ * @param url - First URL; must be `https:`.
+ * @param headers - Request headers, credentials included.
+ * @param options - Hop limit, extra credential headers and abort signal.
+ * @returns The final response, unread, with the request that carries it.
+ */
+export async function followRedirects(
+    url: string,
+    headers: Record<string, string>,
+    options: RedirectOptions,
+): Promise<RedirectedResponse> {
+    let current = parseHttpsUrl(url);
+    let sentHeaders = headers;
+    for (let hops = 0; ; hops++) {
+        const opened = await openResponse(current.href, sentHeaders, options.signal);
+        const status = opened.response.statusCode ?? 0;
+        if (!REDIRECT_STATUSES.has(status)) return { ...opened, url: current.href };
+        opened.response.destroy();
+        if (hops >= options.maxHops) throw new Error("Too many redirects");
+        const location = opened.response.headers.location;
+        if (!location) throw new Error("Redirect without a Location header");
+        const next = parseHttpsUrl(new URL(location, current).href);
+        if (next.origin !== current.origin) {
+            sentHeaders = withoutCredentials(sentHeaders, options.credentialHeaders ?? []);
+        }
+        current = next;
+    }
+}
+
+/**
+ * Downloads a text body through `followRedirects` (at most 5 hops), keeping at most `maxBytes`.
+ *
+ * Bytes are counted as chunks arrive; at the bound the response is destroyed, the kept bytes are
+ * cut back to a UTF-8 boundary and the truncation line is appended once. A larger announced
+ * `Content-Length` is not refused. A non-2xx final status rejects as `HttpError`; a stream error,
+ * a response that closes before it ends and an idle timeout reject; an abort rejects with an
+ * `AbortError`.
+ *
+ * @param url - Download URL; must be `https:`.
+ * @param headers - Request headers, credentials included.
+ * @param maxBytes - Byte bound of the kept body.
+ * @param signal - Aborts the download.
+ * @param credentialHeaders - Extra credential headers of the provider for redirects.
+ */
+export async function downloadToString(
+    url: string,
+    headers: Record<string, string>,
+    maxBytes: number,
+    signal: AbortSignal,
+    credentialHeaders?: readonly string[],
+): Promise<DownloadedText> {
+    const { response, request } = await followRedirects(url, headers, {
+        maxHops: 5,
+        credentialHeaders,
+        signal,
+    });
+    const status = response.statusCode ?? 0;
+    if (status < 200 || status >= 300) {
+        response.destroy();
+        throw new HttpError(status, `HTTP ${status}`, response.headers);
+    }
+    return readBounded(response, request, maxBytes, signal);
+}
+
+/** One HTTPS GET resolved at its response head; the idle timeout stays armed for the body. */
+function openResponse(
+    url: string,
+    headers: Record<string, string>,
+    signal: AbortSignal | undefined,
+): Promise<{ response: http.IncomingMessage; request: http.ClientRequest }> {
+    return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+            reject(abortError());
+            return;
+        }
+        const onAbort = () => request.destroy(abortError());
+        const request = https.get(url, { headers }, (response) => {
+            signal?.removeEventListener("abort", onAbort);
+            resolve({ response, request });
+        });
+        request.on("error", (error) => {
+            signal?.removeEventListener("abort", onAbort);
+            reject(error);
+        });
+        request.setTimeout(REQUEST_IDLE_TIMEOUT_MS, () => {
+            request.destroy(new Error("HTTP request timed out"));
+        });
+        signal?.addEventListener("abort", onAbort, { once: true });
+    });
+}
+
+/** Reads `response` into a string of at most `maxBytes` bytes plus the truncation line. */
+function readBounded(
+    response: http.IncomingMessage,
+    request: http.ClientRequest,
+    maxBytes: number,
+    signal: AbortSignal,
+): Promise<DownloadedText> {
+    return new Promise((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        let settled = false;
+        const settle = (outcome: () => void) => {
+            if (settled) return;
+            settled = true;
+            signal.removeEventListener("abort", onAbort);
+            request.setTimeout(0);
+            outcome();
+        };
+        const fail = (error: Error) => settle(() => reject(error));
+        const finish = (truncated: boolean) =>
+            settle(() => {
+                const kept = Buffer.concat(chunks);
+                if (!truncated) {
+                    resolve({ text: kept.toString("utf8"), truncated });
+                    return;
+                }
+                const body = cutToUtf8Boundary(kept).toString("utf8");
+                const separator = body.endsWith("\n") ? "" : "\n";
+                resolve({ text: `${body}${separator}${truncationLine(maxBytes)}`, truncated });
+            });
+        function onAbort() {
+            fail(abortError());
+            response.destroy();
+            request.destroy();
+        }
+        if (signal.aborted) {
+            onAbort();
+            return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
+        response.on("data", (chunk: Buffer | string) => {
+            if (settled) return;
+            const bytes = typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk;
+            const room = maxBytes - size;
+            if (bytes.length <= room) {
+                // A body of exactly `maxBytes` is whole; only a byte past the bound truncates.
+                chunks.push(bytes);
+                size += bytes.length;
+                return;
+            }
+            chunks.push(bytes.subarray(0, room));
+            size = maxBytes;
+            finish(true);
+            response.destroy();
+        });
+        response.on("end", () => finish(false));
+        response.on("error", fail);
+        request.on("error", fail);
+        response.on("close", () => fail(new Error("The log download closed before it ended")));
+    });
+}
+
+/**
+ * The last line of a cut log. English on purpose: the transport has no `vscode` import, and the
+ * line is part of the log text the user reads next to other English log output.
+ */
+function truncationLine(maxBytes: number): string {
+    const megabytes = Math.round(maxBytes / (1024 * 1024));
+    return `[IntelliGit: log truncated at ${megabytes} MB — open the run in the browser for the rest]`;
+}
+
+/** `bytes` without a trailing incomplete UTF-8 sequence. */
+function cutToUtf8Boundary(bytes: Buffer): Buffer {
+    // The last lead byte sits at most 3 bytes back; continuation bytes look like 10xxxxxx.
+    for (let index = bytes.length - 1; index >= Math.max(0, bytes.length - 4); index--) {
+        const byte = bytes[index];
+        if ((byte & 0xc0) === 0x80) continue;
+        const length = byte < 0x80 ? 1 : byte >= 0xf0 ? 4 : byte >= 0xe0 ? 3 : byte >= 0xc0 ? 2 : 1;
+        return index + length > bytes.length ? bytes.subarray(0, index) : bytes;
+    }
+    return bytes;
+}
+
+/** `url` parsed, or an error when it is not `https:`. */
+function parseHttpsUrl(url: string): URL {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") throw new Error("Refusing a non-HTTPS URL");
+    return parsed;
+}
+
+/** `headers` without the shared and the provider's credential headers, in any letter case. */
+function withoutCredentials(
+    headers: Record<string, string>,
+    extra: readonly string[],
+): Record<string, string> {
+    const names = new Set([...CREDENTIAL_HEADERS, ...extra.map((name) => name.toLowerCase())]);
+    return Object.fromEntries(
+        Object.entries(headers).filter(([name]) => !names.has(name.toLowerCase())),
+    );
+}
+
+function abortError(): Error {
+    const error = new Error("The log download was aborted");
+    error.name = "AbortError";
+    return error;
 }
 
 /** Default provider-agnostic HTTPS JSON getter. */

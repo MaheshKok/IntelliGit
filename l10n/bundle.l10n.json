@@ -991,5 +991,8 @@
     "Selected removal completed. Shelf {shelfId} is retained. Refresh failed; do not repeat removal. {reason}": "Selected removal completed. Shelf {shelfId} is retained. Refresh failed; do not repeat removal. {reason}",
     "Selected changes removed. Recovery shelf {shelfId} is retained.": "Selected changes removed. Recovery shelf {shelfId} is retained.",
     "Shelf {shelfId} was saved. Local changes are unchanged.": "Shelf {shelfId} was saved. Local changes are unchanged.",
-    "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features."
+    "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.": "IntelliGit needs Git {0} or later for merge resolution, partial commits and shelf restore, but found Git {1}. Update Git to use these features.",
+    "[IntelliGit: this CI log link is not valid.]": "[IntelliGit: this CI log link is not valid.]",
+    "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]",
+    "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: could not load this CI log: {0}]"
 }

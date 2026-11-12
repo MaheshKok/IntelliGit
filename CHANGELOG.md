@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.8] - 2026-11-12
+
+### Added
+
+- IntelliGit can now download CI logs safely and keep the most recent ones ready to open in an editor.
+
 ## [0.43.7] - 2026-11-11
 
 ### Changed

@@ -368,6 +368,7 @@ const vscodeMock = {
             }),
         })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+        registerTextDocumentContentProvider: vi.fn(() => ({ dispose: vi.fn() })),
         onDidChangeTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
         onDidSaveTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
         onDidCreateFiles: vi.fn(() => ({ dispose: vi.fn() })),
@@ -2627,6 +2628,57 @@ describe("view providers integration", () => {
         } finally {
             snapshotClear.mockRestore();
             detailClear.mockRestore();
+        }
+    });
+
+    it("registers the CI log document and clears the log store with the CI caches", async () => {
+        const { CiLogMemoryStore } =
+            await import("../../../src/services/commitChecks/ciLogMemoryStore");
+        const logClear = vi.spyOn(CiLogMemoryStore.prototype, "clear");
+        const logDispose = vi.spyOn(CiLogMemoryStore.prototype, "dispose");
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const subscriptions: { dispose(): void }[] = [];
+        try {
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions,
+                    workspaceState: createMemento(),
+                    secrets: {},
+                } as never,
+                [{ root: "/workspace", label: "workspace" }],
+            );
+            expect(vscodeMock.workspace.registerTextDocumentContentProvider).toHaveBeenCalledWith(
+                "intelligit-ci-log",
+                expect.objectContaining({ provideTextDocumentContent: expect.any(Function) }),
+            );
+            const configListeners = (
+                vscodeMock.workspace.onDidChangeConfiguration.mock.calls as unknown as [
+                    (event: { affectsConfiguration(section: string): boolean }) => void,
+                ][]
+            ).map(([listener]) => listener);
+            logClear.mockClear();
+
+            for (const listener of configListeners) {
+                listener({ affectsConfiguration: (section) => section === "intelligit.shelf" });
+            }
+            expect(logClear).not.toHaveBeenCalled();
+            for (const listener of configListeners) {
+                listener({
+                    affectsConfiguration: (section) => section === "intelligit.commitChecks",
+                });
+            }
+            expect(logClear).toHaveBeenCalledTimes(1);
+
+            // A credential change (sign-in or sign-out) empties the store too.
+            await registeredCommands.get("intelligit.commitChecks.refreshBadges")!();
+            expect(logClear).toHaveBeenCalledTimes(2);
+
+            for (const subscription of subscriptions) subscription.dispose();
+            expect(logDispose).toHaveBeenCalledTimes(1);
+        } finally {
+            logClear.mockRestore();
+            logDispose.mockRestore();
         }
     });
 
