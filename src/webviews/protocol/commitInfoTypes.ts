@@ -4,12 +4,14 @@
 import type { CommitDetail, ThemeFolderIconMap, ThemeIconFont, ThemeTreeIcon } from "../../types";
 import type {
     CancelCommitCiDetailMessage,
+    CiActionResultMessage,
     CiLogPreviewMessage,
     CiLogResultMessage,
     CommitCiDetailInvalidatedMessage,
     CommitCiDetailMessage,
     OpenChecksTabMessage,
     OpenCiLogMessage,
+    RunCiActionMessage,
     OpenCommitChecksSettingsMessage,
     PreviewCiLogMessage,
     RequestCommitCiDetailMessage,
@@ -39,6 +41,7 @@ export type CommitInfoOutbound =
     | CancelCommitCiDetailMessage
     | PreviewCiLogMessage
     | OpenCiLogMessage
+    | RunCiActionMessage
     | OpenCommitChecksSettingsMessage
     | {
           /** Request to open a CI run, job or check URL outside the webview. */
@@ -89,4 +92,5 @@ export type CommitInfoInbound =
     | CommitCiDetailInvalidatedMessage
     | CiLogPreviewMessage
     | CiLogResultMessage
+    | CiActionResultMessage
     | OpenChecksTabMessage;

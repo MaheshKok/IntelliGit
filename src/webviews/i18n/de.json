@@ -540,5 +540,19 @@
     "commit.checks.tab.logWhenFinished": "Protokoll verfügbar, sobald der Job abgeschlossen ist",
     "commit.checks.tab.logForbidden": "Ihr Token kann dieses Protokoll nicht lesen",
     "commit.checks.tab.logFailed": "Das Protokoll konnte nicht geladen werden: {error}",
-    "commit.checks.tab.logTruncated": "Dieses Protokoll wurde bei 50 MB abgeschnitten – öffnen Sie es im Browser, um den Rest zu sehen"
+    "commit.checks.tab.logTruncated": "Dieses Protokoll wurde bei 50 MB abgeschnitten – öffnen Sie es im Browser, um den Rest zu sehen",
+    "commit.checks.tab.rerunFailed": "Fehlgeschlagene erneut ausführen",
+    "commit.checks.tab.rerunJob": "Job erneut ausführen",
+    "commit.checks.tab.cancelRun": "Lauf abbrechen",
+    "commit.checks.tab.confirmCancel": "Abbruch bestätigen",
+    "commit.checks.tab.keepRunning": "Weiterlaufen lassen",
+    "commit.checks.tab.waitingRerun": "Warten auf den Start des erneuten Laufs",
+    "commit.checks.tab.waitingCancel": "Warten, bis der Abbruch wirkt",
+    "commit.checks.tab.rerunNotSeen": "Erneuter Lauf noch nicht sichtbar — Aktualisieren",
+    "commit.checks.tab.cancelNotSeen": "Abbruch noch nicht sichtbar — Aktualisieren",
+    "commit.checks.tab.actionFailed": "Die Aktion konnte nicht gestartet werden: {error}",
+    "commit.checks.tab.actionUncertain": "Die Anfrage wurde möglicherweise gesendet; wird aktualisiert",
+    "commit.checks.tab.writeScopeHelpGithub": "Sie haben keine Berechtigung, Workflows in diesem Repository erneut auszuführen oder abzubrechen.",
+    "commit.checks.tab.writeScopeHelpGitlab": "Ihr GitLab-Token ist schreibgeschützt. Erstellen Sie eines mit dem Bereich api, um erneut auszuführen oder abzubrechen.",
+    "commit.checks.tab.writeActionsHelp": "So erhalten Sie ein Token, das das darf"
 }

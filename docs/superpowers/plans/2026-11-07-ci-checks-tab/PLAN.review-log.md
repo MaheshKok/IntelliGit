@@ -1041,3 +1041,4 @@ PHASE 7: HALT review still failing after takeover
 - tsconfigCoverage and screenshotComparatorMeta: 2/2 pass with packages installed.
 - Proof at 6fef8c59: typecheck 0, lint 0, build 0; `bun run test` 9 failed / 7944 passed (8 column-resize under Node v26; merge-editor-performance ratio 3.07x under load, 3/3 alone).
 PHASE 7: ACCEPTED 6fef8c59
+Phase 8: built, review pending

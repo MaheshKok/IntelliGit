@@ -996,5 +996,6 @@
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: 이 CI 로그는 더 이상 로드되어 있지 않습니다. 검사 탭에서 다시 여세요.]",
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: 이 CI 로그를 로드할 수 없습니다: {0}]",
     "This provider cannot show CI logs.": "이 공급자는 CI 로그를 표시할 수 없습니다.",
-    "Loading the log of {0}…": "{0}의 로그를 불러오는 중…"
+    "Loading the log of {0}…": "{0}의 로그를 불러오는 중…",
+    "This provider cannot re-run or cancel CI runs.": "이 공급자는 CI 실행을 다시 실행하거나 취소할 수 없습니다."
 }

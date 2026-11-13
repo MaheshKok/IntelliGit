@@ -124,6 +124,18 @@ export interface CommitChecksProvider {
      * starts. Absent = `cancelled` for cancel; re-run actions need it.
      */
     actionEvidence?(action: CiAction): CiActionEvidence;
+    /**
+     * Sends one write action. Refuses with `RequestGateCooldownError` while the request's
+     * bucket cools down and with an `HttpError` 401 when signed out, both before `beforeSend`;
+     * then awaits `beforeSend` (the action fence; a rejection sends nothing) and sends one
+     * request, never retried. Rejects with the response's `HttpError`, or another error when
+     * the request may have reached the provider.
+     */
+    runAction?(
+        ref: ProviderRepoRef,
+        request: CiActionRequest,
+        beforeSend: () => Promise<void>,
+    ): Promise<void>;
     /** How this provider marks the error lines of its logs; the generic fallback when absent. */
     readonly firstErrorPatterns?: readonly RegExp[];
     /** Text before the step name on a step's start line in this provider's logs. */
@@ -133,6 +145,14 @@ export interface CommitChecksProvider {
      * 401 or 403 means the credential cannot read the log.
      */
     getJobLog?(ref: ProviderRepoRef, job: CiLogJob, signal: AbortSignal): Promise<DownloadedText>;
+}
+
+/** A write action on one run, or on one job of it (`rerunJob`); ids as the detail names them. */
+export interface CiActionRequest {
+    readonly action: CiAction;
+    readonly runId: string;
+    /** Set for `rerunJob` only. */
+    readonly jobId?: string;
 }
 
 /** The job whose log is downloaded; ids as the detail names them. */

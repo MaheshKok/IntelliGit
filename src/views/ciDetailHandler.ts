@@ -4,11 +4,13 @@
 
 import * as vscode from "vscode";
 import { isE2eControlChannelActive } from "../e2e/activationState";
+import type { CiActionFenceStore } from "../services/commitChecks/ciActionFence";
+import type { CiActionOutcome } from "../services/commitChecks/ciActions";
 import type { CiGenerations, CiOperationContext } from "../services/commitChecks/ciGenerations";
 import type { CiLogMemoryStore } from "../services/commitChecks/ciLogMemoryStore";
 import type { CiLogTarget } from "../services/commitChecks/coordinator";
 import type { CommitChecksFetchOptions } from "../services/commitChecks/service";
-import type { CiLogJob } from "../services/commitChecks/types";
+import type { CiActionRequest, CiLogJob } from "../services/commitChecks/types";
 import { isValidGitHash } from "../services/gitHelpers";
 import { PENDING_CHECK_RETRY_DELAYS_MS } from "../shared/ci/pollSchedule";
 import type { CommitCiDetail } from "../types";
@@ -27,6 +29,23 @@ export interface CommitCiDetailSource {
     ): Promise<CommitCiDetail | undefined>;
     /** The window's CI logs; absent = the host answers no log message. */
     logs?: CiLogAccess;
+    /** CI write actions and their fences; absent = the host answers no action message. */
+    actions?: CiActionAccess;
+}
+
+/** A host's way to run CI write actions for the repository it shows. */
+export interface CiActionAccess {
+    /** The window's action fences; their changes re-post the shown detail. */
+    fences: Pick<CiActionFenceStore, "fenceFor" | "onDidChange" | "onDidEnd">;
+    run(hash: string, request: CiActionRequest, ctx: CiOperationContext): Promise<CiActionOutcome>;
+    /** The Refresh button: ends a "not seen yet" fence, then fetches with `force`. */
+    refresh(
+        hash: string,
+        ctx: CiOperationContext,
+        onScanUpdate?: (detail: CommitCiDetail) => void,
+    ): Promise<CommitCiDetail | undefined>;
+    /** The docs page on tokens that can re-run or cancel; absent when it cannot be named. */
+    helpUrl?: string;
 }
 
 /** A host's way to the window's log store for the repository it shows. */
@@ -87,9 +106,23 @@ export async function answerCommitCiDetailRequest(
     const onScanUpdate = (update: CommitCiDetail): void => {
         if (isCurrent()) post({ type: "commitCiDetail", requestId, repoKey, hash, detail: update });
     };
-    let detail = await source.getDetail(hash, { force: force === true }, ctx, onScanUpdate);
+    let detail =
+        force === true && source.actions
+            ? await source.actions.refresh(hash, ctx, onScanUpdate)
+            : await source.getDetail(hash, { force: force === true }, ctx, onScanUpdate);
     if (!isCurrent()) return;
     post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
+    if (source.actions) {
+        repostOnFenceChange(source.actions.fences, stopped, repoKey, hash, {
+            shown: () => detail,
+            post: (update) => {
+                if (!isCurrent()) return;
+                detail = update;
+                post({ type: "commitCiDetail", requestId, repoKey, hash, detail: update });
+            },
+            refetch: () => source.getDetail(hash, { force: false }, ctx, onScanUpdate),
+        });
+    }
     // The scan pages reach only the newest requester of a commit's detail, so its progress is
     // also re-read and re-posted under the same request id until the scan ends: another view
     // asking for the same commit takes the page updates over. A newer request or a hidden tab
@@ -151,6 +184,47 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
             resolve();
         }
     });
+}
+
+/**
+ * Re-posts the shown detail under the request's id while it is the newest: a fence switching
+ * to "not seen yet" re-posts it with the new label and no request; a fence that ended re-reads
+ * it (from the cache the ending fetch filled), since the shown copy predates that fetch.
+ */
+function repostOnFenceChange(
+    fences: CiActionAccess["fences"],
+    stopped: AbortSignal,
+    repoKey: string,
+    hash: string,
+    view: {
+        shown(): CommitCiDetail | undefined;
+        post(detail: CommitCiDetail): void;
+        refetch(): Promise<CommitCiDetail | undefined>;
+    },
+): void {
+    if (stopped.aborted) return;
+    const changed = fences.onDidChange((change) => {
+        const shown = view.shown();
+        if (stopped.aborted || !shown || change.repoKey !== repoKey || change.hash !== hash) return;
+        const next = { ...shown };
+        delete next.actionFence;
+        const actionFence = fences.fenceFor(repoKey, hash);
+        if (actionFence) next.actionFence = actionFence;
+        view.post(next);
+    });
+    const ended = fences.onDidEnd(async (endedHash) => {
+        if (stopped.aborted || endedHash !== hash) return;
+        const update = await view.refetch();
+        if (update && !stopped.aborted) view.post(update);
+    });
+    stopped.addEventListener(
+        "abort",
+        () => {
+            changed.dispose();
+            ended.dispose();
+        },
+        { once: true },
+    );
 }
 
 /** Whether a run is still looking for failed jobs past its page bound. */

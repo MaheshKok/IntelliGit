@@ -64,6 +64,7 @@ import {
     type CommitCiDetailSource,
 } from "./ciDetailHandler";
 import { answerCiLogMessage } from "./ciLogHandler";
+import { answerCiActionMessage, ciActionAccess, type CiActionOptions } from "./ciActionHandler";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
@@ -205,6 +206,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             ciFixture?: CommitChecksCoordinatorOptions["fixture"];
             /** The window's CI log store; absent = the Checks tab gets no log. */
             ciLogStore?: CiLogMemoryStore;
+            /** The window's action fences and write-token help; absent = no CI write actions. */
+            ciActions?: CiActionOptions;
         } = {},
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
@@ -269,6 +272,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
      */
     ciDetailSource(repoKey: () => string): CommitCiDetailSource {
         const store = this.options.ciLogStore;
+        const ciActions = this.options.ciActions;
         return {
             repoKey,
             generations: this.options.ciGenerations,
@@ -279,6 +283,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                     store,
                     target: (hash, job, ctx) => this.commitChecks.ciLogTarget(hash, job, ctx),
                 },
+            }),
+            ...(ciActions && {
+                actions: ciActionAccess(this.commitChecks, ciActions),
             }),
         };
     }
@@ -492,6 +499,19 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         if (!repoKey || this.view !== webviewView) break;
                         const view = webviewView;
                         await answerCiLogMessage(
+                            this.ciDetailSource(repoKey),
+                            { ...msg },
+                            (reply) => {
+                                if (this.view === view) this.postToWebview(reply);
+                            },
+                        );
+                        break;
+                    }
+                    case "runCiAction": {
+                        const repoKey = this.options.ciRepoKey;
+                        if (!repoKey || this.view !== webviewView) break;
+                        const view = webviewView;
+                        await answerCiActionMessage(
                             this.ciDetailSource(repoKey),
                             { ...msg },
                             (reply) => {

@@ -7,8 +7,10 @@ vi.mock("https");
 
 import {
     createHttpGetJson,
+    createHttpRequestJson,
     HttpError,
     httpGetJson,
+    httpRequestJson,
 } from "../../../../src/services/commitChecks/http";
 
 interface FakeRequest extends EventEmitter {
@@ -199,5 +201,71 @@ describe("httpGetJson", () => {
 
         await expect(promise).rejects.toThrow("HTTP request timed out");
         expect(req.destroy).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("httpRequestJson", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    function stubRequest(req: FakeRequest & { end?: unknown }, res: EventEmitter): void {
+        req.end = vi.fn();
+        vi.mocked(https.request).mockImplementation(((
+            _url: string,
+            _options: unknown,
+            cb: (r: unknown) => void,
+        ) => {
+            cb(res);
+            return req;
+        }) as unknown as typeof https.request);
+    }
+
+    it("sends one POST with its JSON body and resolves the 2xx body", async () => {
+        const req = makeRequest();
+        const res = makeResponse(201);
+        stubRequest(req, res);
+        const observe = vi.fn();
+
+        const promise = createHttpRequestJson(observe)(
+            "POST",
+            "https://api.test/runs/1/cancel",
+            { Authorization: "Bearer t" },
+            { reason: "x" },
+        );
+        res.emit("data", Buffer.from("{}"));
+        res.emit("end");
+
+        await expect(promise).resolves.toEqual({});
+        expect(https.request).toHaveBeenCalledWith(
+            "https://api.test/runs/1/cancel",
+            {
+                method: "POST",
+                headers: { Authorization: "Bearer t", "Content-Type": "application/json" },
+            },
+            expect.any(Function),
+        );
+        expect((req as unknown as { end: ReturnType<typeof vi.fn> }).end).toHaveBeenCalledWith(
+            '{"reason":"x"}',
+        );
+        expect(https.get).not.toHaveBeenCalled();
+        expect(observe).toHaveBeenCalledWith(
+            expect.objectContaining({ url: "https://api.test/runs/1/cancel", statusCode: 201 }),
+        );
+    });
+
+    it("rejects a 403 as an HttpError and follows no redirect", async () => {
+        for (const statusCode of [403, 302]) {
+            const req = makeRequest();
+            const res = makeResponse(statusCode, { location: "https://elsewhere.test/" });
+            stubRequest(req, res);
+
+            const promise = httpRequestJson("POST", "https://api.test/jobs/1/retry", {});
+            res.emit("end");
+
+            await expect(promise).rejects.toMatchObject({ name: "HttpError", statusCode });
+            expect(https.request).toHaveBeenCalledTimes(1);
+            vi.clearAllMocks();
+        }
     });
 });

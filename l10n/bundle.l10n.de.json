@@ -996,5 +996,6 @@
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: Dieses CI-Protokoll ist nicht mehr geladen. Öffnen Sie es erneut über den Tab „Prüfungen“.]",
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: Dieses CI-Protokoll konnte nicht geladen werden: {0}]",
     "This provider cannot show CI logs.": "Dieser Anbieter kann keine CI-Protokolle anzeigen.",
-    "Loading the log of {0}…": "Protokoll von {0} wird geladen…"
+    "Loading the log of {0}…": "Protokoll von {0} wird geladen…",
+    "This provider cannot re-run or cancel CI runs.": "Dieser Anbieter kann CI-Läufe nicht erneut ausführen oder abbrechen."
 }

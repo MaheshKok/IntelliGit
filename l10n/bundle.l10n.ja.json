@@ -996,5 +996,6 @@
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: この CI ログは読み込まれていません。「チェック」タブからもう一度開いてください。]",
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: この CI ログを読み込めませんでした: {0}]",
     "This provider cannot show CI logs.": "このプロバイダーは CI ログを表示できません。",
-    "Loading the log of {0}…": "{0} のログを読み込んでいます…"
+    "Loading the log of {0}…": "{0} のログを読み込んでいます…",
+    "This provider cannot re-run or cancel CI runs.": "このプロバイダーは CI の実行を再実行またはキャンセルできません。"
 }

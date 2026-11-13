@@ -560,5 +560,19 @@
     "commit.checks.tab.logWhenFinished": "Журнал будет доступен после завершения задания",
     "commit.checks.tab.logForbidden": "Ваш токен не может прочитать этот журнал",
     "commit.checks.tab.logFailed": "Не удалось загрузить журнал: {error}",
-    "commit.checks.tab.logTruncated": "Этот журнал обрезан на 50 МБ — откройте его в браузере, чтобы увидеть остальное"
+    "commit.checks.tab.logTruncated": "Этот журнал обрезан на 50 МБ — откройте его в браузере, чтобы увидеть остальное",
+    "commit.checks.tab.rerunFailed": "Перезапустить неудачные",
+    "commit.checks.tab.rerunJob": "Перезапустить задание",
+    "commit.checks.tab.cancelRun": "Отменить запуск",
+    "commit.checks.tab.confirmCancel": "Подтвердить отмену",
+    "commit.checks.tab.keepRunning": "Продолжить выполнение",
+    "commit.checks.tab.waitingRerun": "Ожидание начала перезапуска",
+    "commit.checks.tab.waitingCancel": "Ожидание применения отмены",
+    "commit.checks.tab.rerunNotSeen": "Перезапуск пока не виден — Обновить",
+    "commit.checks.tab.cancelNotSeen": "Отмена пока не видна — Обновить",
+    "commit.checks.tab.actionFailed": "Не удалось запустить действие: {error}",
+    "commit.checks.tab.actionUncertain": "Запрос, возможно, отправлен; обновление",
+    "commit.checks.tab.writeScopeHelpGithub": "У вас нет прав на перезапуск или отмену рабочих процессов в этом репозитории.",
+    "commit.checks.tab.writeScopeHelpGitlab": "Ваш токен GitLab доступен только для чтения. Создайте токен с областью api, чтобы перезапускать или отменять.",
+    "commit.checks.tab.writeActionsHelp": "Как получить токен с такими правами"
 }

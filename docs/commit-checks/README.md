@@ -59,6 +59,27 @@ it in a narrower pane.
 The tab asks for detail only while it is open. A reply for a commit or repository that
 is no longer selected, or an older reply for the same commit, is dropped.
 
+### Write actions
+
+On GitHub and GitLab the tab can **Re-run failed** jobs of a failed run, **Re-run job**
+for one finished job, and **Cancel run** for a queued or running run. Cancel asks once
+more (**Confirm cancel** or **Keep running**) before anything is sent. While a request is
+on its way every action button waits, so a second click sends nothing. Afterwards the
+tab shows "Waiting for re-run to start" (or "Waiting for cancel to take effect") until
+the provider shows the new state; after 10 minutes without it, the label turns into a
+**Refresh** link.
+
+These actions need a token that can write:
+
+- GitHub uses the same built-in VS Code session and its `repo` scope; no new scope is
+  asked for. You also need permission to run workflows in the repository.
+- GitLab needs a personal access token with the `api` scope; a `read_api` token can only
+  read. Create one in GitLab under **Preferences → Access tokens**, then store it with
+  `IntelliGit: Sign in to Commit Checks Provider`.
+
+When the token cannot write, the tab says so, keeps the checks on screen, and links to
+this section.
+
 ## Authentication per provider
 
 | Provider | Credential | How to provide it | Scope / permission |
@@ -162,9 +183,14 @@ again shortly. If GitLab gives the pipeline no update time, a retry that fails a
 cannot be seen while the scan reads, so the scan ends as stopped with that reason instead
 of done, and Refresh reads the failed jobs again from the start. For the same reason, a
 pipeline with no update time is kept for the session only and read again after a
-restart, and the copy saved before it is deleted. If that delete fails, the older copy is
-held back only until VS Code restarts, and may then be shown again until Refresh. A GitLab 403 is treated
-as a missing permission, never as a rate limit.
+restart, and the copy saved before it is deleted. If that delete fails, the older copy
+can come back after a restart, until you press Refresh.
+
+After a re-run or cancel, the window you started it from waits for the new run and
+never shows the old result again. Another VS Code window open on the same repository
+keeps showing the old result until you press Refresh there. Rarely, an older copy that
+another window saved can come back after a restart, until you press Refresh. A GitLab
+403 is treated as a missing permission, never as a rate limit.
 Next-page links are followed only on the GitLab host under the project's own API path.
 
 While the last read of a commit was incomplete (checks still pending, none reported yet,

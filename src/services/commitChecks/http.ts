@@ -180,14 +180,40 @@ function headersHash(headers: Record<string, string>): string {
     return createHash("sha256").update(JSON.stringify(entries)).digest("hex");
 }
 
-/** One HTTPS GET; the observer sees the response before its status is judged. */
+/**
+ * Network boundary for CI write actions: one request with an optional JSON body, never
+ * retried or redirected. Resolves the parsed 2xx body; rejects like `FetchJson`.
+ */
+export type WriteJson = (
+    method: string,
+    url: string,
+    headers: Record<string, string>,
+    body?: unknown,
+) => Promise<unknown>;
+
+/** Creates the write-action request helper; same core, timeout and observer as the GETs. */
+export function createHttpRequestJson(
+    onResponse?: (metadata: HttpResponseMetadata) => void,
+): WriteJson {
+    return async (method, url, headers, body) => {
+        const payload = body === undefined ? undefined : JSON.stringify(body);
+        const sentHeaders =
+            payload === undefined ? headers : { ...headers, "Content-Type": "application/json" };
+        const response = await send(url, sentHeaders, onResponse, method, payload);
+        return toFetchResponse(response, undefined, undefined, "").body;
+    };
+}
+
+/** One HTTPS request (a GET unless `method` says otherwise); the observer sees the response before its status is judged. */
 function send(
     url: string,
     headers: Record<string, string>,
     onResponse?: (metadata: HttpResponseMetadata) => void,
+    method = "GET",
+    payload?: string,
 ): Promise<RawResponse> {
     return new Promise((resolve, reject) => {
-        const req = https.get(url, { headers }, (res) => {
+        const onAnswer = (res: http.IncomingMessage): void => {
             const chunks: Buffer[] = [];
             res.on("data", (chunk: Buffer | string) => {
                 chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk);
@@ -206,11 +232,16 @@ function send(
                     data: Buffer.concat(chunks).toString("utf8"),
                 });
             });
-        });
+        };
+        const req =
+            method === "GET"
+                ? https.get(url, { headers }, onAnswer)
+                : https.request(url, { method, headers }, onAnswer);
         req.on("error", reject);
         req.setTimeout(15000, () => {
             req.destroy(new Error("HTTP request timed out"));
         });
+        if (method !== "GET") req.end(payload);
     });
 }
 
@@ -538,3 +569,6 @@ export const httpGetJson = createHttpGetJson();
 
 /** Default provider-agnostic HTTPS JSON getter that keeps response headers. */
 export const httpGetJsonWithMeta = createHttpGetJsonWithMeta();
+
+/** Production write-action helper with no observer; the request gate wires its own. */
+export const httpRequestJson = createHttpRequestJson();

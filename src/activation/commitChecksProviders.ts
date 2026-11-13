@@ -7,15 +7,35 @@ import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import {
     createHttpGetJson,
+    createHttpRequestJson,
     downloadCiLog,
     type DownloadCiLog,
     type FetchJson,
+    type WriteJson,
 } from "../services/commitChecks/http";
 import {
     type CommitChecksRequestGateRegistry,
     gatedFetchWithMeta,
 } from "../services/commitChecks/requestGate";
 import type { CommitChecksProvider, ProviderId } from "../services/commitChecks/types";
+
+/**
+ * The docs section on tokens that can re-run or cancel CI, under the extension's own repository
+ * as its manifest names it. `HEAD` follows the repository's default branch.
+ *
+ * @param packageJSON - The extension's manifest.
+ * @returns Undefined when the manifest names no GitHub repository, so no link is shown.
+ */
+export function writeActionsHelpUrl(packageJSON: unknown): string | undefined {
+    const repository = (packageJSON as { repository?: unknown } | undefined)?.repository;
+    const url =
+        typeof repository === "string" ? repository : (repository as { url?: unknown })?.url;
+    if (typeof url !== "string") return undefined;
+    const base = /^(?:git\+)?(https:\/\/github\.com\/[\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(
+        url,
+    )?.[1];
+    return base && `${base}/blob/HEAD/docs/commit-checks/README.md#write-actions`;
+}
 
 /**
  * Builds every commit-check provider with each of its requests sent through the shared gate.
@@ -46,6 +66,14 @@ export function createCommitChecksProviders(
         (providerId: ProviderId): DownloadCiLog =>
         (url, headers, signal) =>
             requestGateRegistry.run(providerId, url, () => downloadCiLog(url, headers, signal));
+    const writeFor =
+        (providerId: ProviderId): WriteJson =>
+        (method, url, headers, body) =>
+            requestGateRegistry.run(providerId, url, (generation) =>
+                createHttpRequestJson((response) => {
+                    requestGateRegistry.observeResponse(providerId, response, generation);
+                })(method, url, headers, body),
+            );
     return [
         new GitHubProvider(
             fetchFor("github"),
@@ -54,6 +82,7 @@ export function createCommitChecksProviders(
             (url) => requestGateRegistry.cooldownEnd("github", url),
             etags,
             downloadFor("github"),
+            writeFor("github"),
         ),
         new GitLabProvider(
             fetchFor("gitlab"),
@@ -63,6 +92,7 @@ export function createCommitChecksProviders(
             (url) => requestGateRegistry.cooldownEnd("gitlab", url),
             etags,
             downloadFor("gitlab"),
+            writeFor("gitlab"),
         ),
         new BitbucketCloudProvider(
             fetchFor("bitbucket-cloud"),

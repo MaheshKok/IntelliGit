@@ -996,5 +996,6 @@
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: этот журнал CI больше не загружен. Откройте его снова на вкладке «Проверки».]",
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: не удалось загрузить этот журнал CI: {0}]",
     "This provider cannot show CI logs.": "Этот поставщик не может показывать журналы CI.",
-    "Loading the log of {0}…": "Загрузка журнала {0}…"
+    "Loading the log of {0}…": "Загрузка журнала {0}…",
+    "This provider cannot re-run or cancel CI runs.": "Этот поставщик не может перезапускать или отменять запуски CI."
 }

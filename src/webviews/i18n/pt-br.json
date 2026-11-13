@@ -550,5 +550,19 @@
     "commit.checks.tab.logWhenFinished": "Log disponível quando o job terminar",
     "commit.checks.tab.logForbidden": "Seu token não pode ler este log",
     "commit.checks.tab.logFailed": "Não foi possível carregar o log: {error}",
-    "commit.checks.tab.logTruncated": "Este log foi cortado em 50 MB — abra-o no navegador para ver o restante"
+    "commit.checks.tab.logTruncated": "Este log foi cortado em 50 MB — abra-o no navegador para ver o restante",
+    "commit.checks.tab.rerunFailed": "Executar novamente os que falharam",
+    "commit.checks.tab.rerunJob": "Executar o job novamente",
+    "commit.checks.tab.cancelRun": "Cancelar execução",
+    "commit.checks.tab.confirmCancel": "Confirmar cancelamento",
+    "commit.checks.tab.keepRunning": "Continuar executando",
+    "commit.checks.tab.waitingRerun": "Aguardando o início da nova execução",
+    "commit.checks.tab.waitingCancel": "Aguardando o cancelamento ter efeito",
+    "commit.checks.tab.rerunNotSeen": "Nova execução ainda não vista — Atualizar",
+    "commit.checks.tab.cancelNotSeen": "Cancelamento ainda não visto — Atualizar",
+    "commit.checks.tab.actionFailed": "Não foi possível iniciar a ação: {error}",
+    "commit.checks.tab.actionUncertain": "A solicitação pode ter sido enviada; atualizando",
+    "commit.checks.tab.writeScopeHelpGithub": "Você não tem permissão para executar novamente ou cancelar workflows neste repositório.",
+    "commit.checks.tab.writeScopeHelpGitlab": "Seu token do GitLab é somente leitura. Crie um com o escopo api para executar novamente ou cancelar.",
+    "commit.checks.tab.writeActionsHelp": "Como obter um token que permita isso"
 }

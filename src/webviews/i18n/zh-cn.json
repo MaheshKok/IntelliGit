@@ -530,5 +530,19 @@
     "commit.checks.tab.logWhenFinished": "作业完成后可查看日志",
     "commit.checks.tab.logForbidden": "你的令牌无法读取此日志",
     "commit.checks.tab.logFailed": "无法加载日志：{error}",
-    "commit.checks.tab.logTruncated": "此日志已在 50 MB 处截断——请在浏览器中打开以查看其余部分"
+    "commit.checks.tab.logTruncated": "此日志已在 50 MB 处截断——请在浏览器中打开以查看其余部分",
+    "commit.checks.tab.rerunFailed": "重新运行失败的作业",
+    "commit.checks.tab.rerunJob": "重新运行作业",
+    "commit.checks.tab.cancelRun": "取消运行",
+    "commit.checks.tab.confirmCancel": "确认取消",
+    "commit.checks.tab.keepRunning": "继续运行",
+    "commit.checks.tab.waitingRerun": "正在等待重新运行开始",
+    "commit.checks.tab.waitingCancel": "正在等待取消生效",
+    "commit.checks.tab.rerunNotSeen": "尚未看到重新运行 — 刷新",
+    "commit.checks.tab.cancelNotSeen": "尚未看到取消 — 刷新",
+    "commit.checks.tab.actionFailed": "无法启动该操作：{error}",
+    "commit.checks.tab.actionUncertain": "请求可能已发送；正在刷新",
+    "commit.checks.tab.writeScopeHelpGithub": "你没有权限在此仓库中重新运行或取消工作流。",
+    "commit.checks.tab.writeScopeHelpGitlab": "你的 GitLab 令牌是只读的。请创建一个具有 api 范围的令牌以重新运行或取消。",
+    "commit.checks.tab.writeActionsHelp": "如何获取具有此权限的令牌"
 }

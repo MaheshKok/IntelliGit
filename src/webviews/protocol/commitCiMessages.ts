@@ -1,7 +1,7 @@
 // Checks tab messages shared by every webview that renders the commit details pane
 // (the Git Log panel, the standalone Changed Files view and the undocked window).
 
-import type { CommitCiDetail } from "../../types";
+import type { CiAction, CommitCiDetail } from "../../types";
 
 /** Host's reply to {@link RequestCommitCiDetailMessage}. */
 export interface CommitCiDetailMessage {
@@ -58,6 +58,23 @@ export interface CiLogResultMessage {
 }
 
 /**
+ * Host's reply to {@link RunCiActionMessage}. `uncertain` = the request may have reached the
+ * provider; `forbidden` = the credential may not write, explained by the provider's
+ * `writeScopeHelp` with a link to `helpUrl`.
+ */
+export interface CiActionResultMessage {
+    type: "ciActionResult";
+    requestId: number;
+    repoKey: string;
+    hash: string;
+    outcome: "ok" | "uncertain" | "forbidden" | "failed";
+    /** Why a `failed` action failed. */
+    message?: string;
+    /** The docs page on tokens that can re-run or cancel; absent when it cannot be named. */
+    helpUrl?: string;
+}
+
+/**
  * Checks tab messages a webview sends to its host. Declared inline so the E2E coverage
  * manifest test, which reads outbound unions from source, sees every discriminant.
  */
@@ -109,6 +126,17 @@ type CommitCiOutbound =
           runId: string;
           jobId: string;
           attempt?: number;
+      }
+    | {
+          /** Checks tab asks its host to re-run failed jobs, re-run one job or cancel a run. */
+          type: "runCiAction";
+          requestId: number;
+          repoKey: string;
+          hash: string;
+          action: CiAction;
+          runId: string;
+          /** Set for `rerunJob` only. */
+          jobId?: string;
       };
 
 /** Checks tab asks its host for a commit's CI detail. */
@@ -132,3 +160,5 @@ export type OpenCommitInChecksMessage = Extract<CommitCiOutbound, { type: "openC
 export type PreviewCiLogMessage = Extract<CommitCiOutbound, { type: "previewCiLog" }>;
 /** Checks tab asks to open a job's full log in an editor. */
 export type OpenCiLogMessage = Extract<CommitCiOutbound, { type: "openCiLog" }>;
+/** Checks tab asks to run a CI write action. */
+export type RunCiActionMessage = Extract<CommitCiOutbound, { type: "runCiAction" }>;

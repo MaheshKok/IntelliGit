@@ -530,5 +530,19 @@
     "commit.checks.tab.logWhenFinished": "作業完成後可檢視記錄",
     "commit.checks.tab.logForbidden": "你的權杖無法讀取此記錄",
     "commit.checks.tab.logFailed": "無法載入記錄：{error}",
-    "commit.checks.tab.logTruncated": "此記錄已在 50 MB 處截斷——請在瀏覽器中開啟以檢視其餘部分"
+    "commit.checks.tab.logTruncated": "此記錄已在 50 MB 處截斷——請在瀏覽器中開啟以檢視其餘部分",
+    "commit.checks.tab.rerunFailed": "重新執行失敗的作業",
+    "commit.checks.tab.rerunJob": "重新執行作業",
+    "commit.checks.tab.cancelRun": "取消執行",
+    "commit.checks.tab.confirmCancel": "確認取消",
+    "commit.checks.tab.keepRunning": "繼續執行",
+    "commit.checks.tab.waitingRerun": "正在等待重新執行開始",
+    "commit.checks.tab.waitingCancel": "正在等待取消生效",
+    "commit.checks.tab.rerunNotSeen": "尚未看到重新執行 — 重新整理",
+    "commit.checks.tab.cancelNotSeen": "尚未看到取消 — 重新整理",
+    "commit.checks.tab.actionFailed": "無法啟動該動作：{error}",
+    "commit.checks.tab.actionUncertain": "要求可能已傳送；正在重新整理",
+    "commit.checks.tab.writeScopeHelpGithub": "你沒有權限在此存放庫中重新執行或取消工作流程。",
+    "commit.checks.tab.writeScopeHelpGitlab": "你的 GitLab 權杖是唯讀的。請建立一個具有 api 範圍的權杖以重新執行或取消。",
+    "commit.checks.tab.writeActionsHelp": "如何取得具有此權限的權杖"
 }

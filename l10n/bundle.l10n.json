@@ -996,5 +996,6 @@
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]",
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: could not load this CI log: {0}]",
     "This provider cannot show CI logs.": "This provider cannot show CI logs.",
-    "Loading the log of {0}…": "Loading the log of {0}…"
+    "Loading the log of {0}…": "Loading the log of {0}…",
+    "This provider cannot re-run or cancel CI runs.": "This provider cannot re-run or cancel CI runs."
 }

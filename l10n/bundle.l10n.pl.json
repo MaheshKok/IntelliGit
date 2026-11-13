@@ -996,5 +996,6 @@
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: ten dziennik CI nie jest już wczytany. Otwórz go ponownie na karcie Sprawdzenia.]",
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: nie można wczytać tego dziennika CI: {0}]",
     "This provider cannot show CI logs.": "Ten dostawca nie może wyświetlać dzienników CI.",
-    "Loading the log of {0}…": "Wczytywanie dziennika {0}…"
+    "Loading the log of {0}…": "Wczytywanie dziennika {0}…",
+    "This provider cannot re-run or cancel CI runs.": "Ten dostawca nie może ponownie uruchamiać ani anulować uruchomień CI."
 }

@@ -27,6 +27,8 @@ export interface CommitCiDetailState {
     detail: CommitCiDetail | null | undefined;
     /** Asks the host again, bypassing its caches. */
     refresh: () => void;
+    /** Asks the host again through its caches (after a write action refilled them). */
+    reload: () => void;
 }
 
 // One counter per webview, so a request id is never reused by another pane instance.
@@ -133,7 +135,9 @@ export function useCommitCiDetail(
     const detail = isFor(answer, repoKey, hash) ? answer!.detail : undefined;
 
     useEffect(() => {
-        if (!active || !detail || isCompleteDetail(detail)) return;
+        // A re-run or cancel the provider has not shown yet keeps the ladder going even when
+        // the shown detail is complete: only a fetch can show the action took effect.
+        if (!active || !detail || (isCompleteDetail(detail) && !detail.actionFence)) return;
         // Pending work is re-polled; a failed fetch and "no checks" are not. A failed forced
         // Refresh comes back as the previous pending detail carrying `refreshError`.
         if (
@@ -159,5 +163,10 @@ export function useCommitCiDetail(
         polls.current = 0;
         send(true);
     }, [send]);
-    return { detail, refresh };
+    const reload = useCallback(() => {
+        clearTimeout(pollTimer.current);
+        polls.current = 0;
+        send(false);
+    }, [send]);
+    return { detail, refresh, reload };
 }
