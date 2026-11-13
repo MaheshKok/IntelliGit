@@ -67,8 +67,8 @@ export interface CiActionResultMessage {
     requestId: number;
     repoKey: string;
     hash: string;
-    outcome: "ok" | "uncertain" | "forbidden" | "failed";
-    /** Why a `failed` action failed. */
+    outcome: "ok" | "uncertain" | "forbidden" | "failed" | "signedOut";
+    /** Why a `failed` action failed, or the sign-in wording of a `signedOut` one (a 401). */
     message?: string;
     /** The docs page on tokens that can re-run or cancel; absent when it cannot be named. */
     helpUrl?: string;

@@ -36,7 +36,8 @@ export function ciActionAccess(
     const deps = { coordinator, fences: options.fences };
     return {
         fences: options.fences,
-        run: (hash, request, ctx) => runCiAction(deps, hash, request, ctx),
+        run: (hash, request, ctx, currentRepoKey) =>
+            runCiAction(deps, hash, request, ctx, currentRepoKey),
         refresh: (hash, ctx, onScanUpdate) => refreshCiDetail(deps, hash, ctx, onScanUpdate),
         ...(options.helpUrl !== undefined && { helpUrl: options.helpUrl }),
     };
@@ -85,6 +86,7 @@ export async function answerCiActionMessage(
             ...(jobId !== undefined && { jobId: jobId as string }),
         },
         ctx,
+        () => source.repoKey(),
     );
     const currentRepoKey = source.repoKey();
     const current = source.generations

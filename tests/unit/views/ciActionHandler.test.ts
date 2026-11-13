@@ -237,6 +237,7 @@ describe("answerCiActionMessage", () => {
             HASH,
             { action: "rerunFailed", runId: "77" },
             expect.objectContaining({ repoKey: REPO }),
+            expect.any(Function),
         );
         expect(post).toHaveBeenCalledWith({
             type: "ciActionResult",
@@ -259,7 +260,31 @@ describe("answerCiActionMessage", () => {
             HASH,
             { action: "rerunJob", runId: "77", jobId: "5001" },
             expect.anything(),
+            expect.any(Function),
         );
+    });
+
+    it("hands the action the live repository, so a switch during the write is seen", async () => {
+        const { source, run, switchRepo } = actionSource({ outcome: "ok" });
+        await answerCiActionMessage(source, message(), vi.fn());
+        const liveRepoKey = run.mock.calls[0][3] as () => string;
+        expect(liveRepoKey()).toBe(REPO);
+        switchRepo("/other");
+        expect(liveRepoKey(), "the host's current repository, not the captured one").toBe("/other");
+    });
+
+    it("posts a sign-in outcome with its message", async () => {
+        const { source } = actionSource({ outcome: "signedOut", message: "Sign in to github.com" });
+        const post = vi.fn();
+        await answerCiActionMessage(source, message(), post);
+        expect(post).toHaveBeenCalledWith({
+            type: "ciActionResult",
+            requestId: 3,
+            repoKey: REPO,
+            hash: HASH,
+            outcome: "signedOut",
+            message: "Sign in to github.com",
+        });
     });
 
     it("rejects a malformed message without running anything", async () => {

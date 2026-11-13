@@ -214,6 +214,47 @@ describe("createCommitChecksProviders", () => {
         );
     });
 
+    it("a write queued behind the gate sends nothing once the sign-in changed", async () => {
+        mocks.httpsRequest.mockClear();
+        const registry = new CommitChecksRequestGateRegistry("cooling down");
+        const generations = new CiGenerations();
+        const github = createCommitChecksProviders(
+            registry,
+            {} as CredentialStore,
+            undefined,
+            generations,
+        ).find((provider) => provider instanceof GitHubProvider) as GitHubProvider;
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const admitted = vi.fn();
+        // Four held requests fill the gate, so the write waits in its queue.
+        const busy = Array.from({ length: 4 }, () =>
+            registry.run("github", API, async () => {
+                admitted();
+                await held;
+            }),
+        );
+        await vi.waitFor(() => expect(admitted).toHaveBeenCalledTimes(4));
+        const beforeSend = vi.fn(async () => undefined);
+        const action = github
+            .runAction(ref, { action: "cancel", runId: "1" }, beforeSend)
+            .catch((reason: unknown) => reason);
+        await vi.waitFor(() => expect(beforeSend).toHaveBeenCalledTimes(1));
+
+        generations.bumpAuth();
+        release();
+        await Promise.all(busy);
+        const error = await action;
+
+        expect(
+            mocks.httpsRequest,
+            "the production HTTP boundary must not run after sign-out",
+        ).not.toHaveBeenCalled();
+        expect(error).toMatchObject({ name: "RequestNotSentError", superseded: true });
+    });
+
     it("a busy signed log host does not cool the GitHub API down; a busy API does", async () => {
         const logsUrl = `${API}/repos/microsoft/vscode/actions/jobs/77/logs`;
         const blobUrl = "https://results-receiver.actions.githubusercontent.com/logs/77?sig=abc";

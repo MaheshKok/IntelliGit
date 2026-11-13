@@ -36,6 +36,7 @@ import {
     compactText,
     isCiCdCheckItem,
     readString,
+    redactError,
     redactSecret,
     summaryForItems,
     unavailableSnapshot,
@@ -297,7 +298,11 @@ export class GitLabProvider implements CommitChecksProvider {
         const token = await this.readToken(gitLabRef.host, "");
         if (typeof token !== "string") throw new HttpError(401, token.error ?? token.summary, {});
         await beforeSend();
-        await this.write("POST", url, { "PRIVATE-TOKEN": token });
+        try {
+            await this.write("POST", url, { "PRIVATE-TOKEN": token });
+        } catch (error) {
+            throw redactError(error, token);
+        }
     }
 
     /**

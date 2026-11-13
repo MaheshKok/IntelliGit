@@ -9,19 +9,22 @@ import { getErrorMessage } from "../../utils/errors";
 import { evidenceFor, type CiActionFenceStart, type CiActionFenceStore } from "./ciActionFence";
 import type { CiOperationContext } from "./ciGenerations";
 import type { CommitChecksCoordinator } from "./coordinator";
-import { HttpError } from "./http";
+import { HttpError, RequestNotSentError } from "./http";
 import type { CiActionRequest } from "./types";
 
-/** What one action ended as; `message` is shown inline for `failed`. */
+/**
+ * What one action ended as; `message` is shown inline for `failed` and `signedOut` (a 401: the
+ * pane then reads the signed-out detail and offers the sign-in button).
+ */
 export type CiActionOutcome =
     | { readonly outcome: "ok" | "uncertain" | "forbidden" }
-    | { readonly outcome: "failed"; readonly message: string };
+    | { readonly outcome: "failed" | "signedOut"; readonly message: string };
 
 /** The window's coordinator for the repository and its action fence store. */
 export interface CiActionDeps {
     readonly coordinator: Pick<
         CommitChecksCoordinator,
-        "actionTarget" | "getChecks" | "getDetail" | "invalidate" | "isCurrentContext"
+        "actionTarget" | "actionGuard" | "getChecks" | "getDetail" | "invalidate"
     >;
     readonly fences: Pick<CiActionFenceStore, "begin" | "fail" | "fenceFor" | "endByUserRefresh">;
 }
@@ -33,14 +36,18 @@ export interface CiActionDeps {
  * @param hash - The commit whose run or job the action targets.
  * @param request - The action and its run (and job, for `rerunJob`) as the detail names them.
  * @param ctx - The operation's context; its repository keys the fence.
+ * @param currentRepoKey - The repository the surface shows now, read again right before the
+ *   request is sent.
  */
 export async function runCiAction(
     deps: CiActionDeps,
     hash: string,
     request: CiActionRequest,
     ctx: CiOperationContext,
+    currentRepoKey: () => string = () => ctx.repoKey,
 ): Promise<CiActionOutcome> {
     const changed = failed(vscode.l10n.t("Remote data changed. Reload and try again."));
+    const stillCurrent = deps.coordinator.actionGuard(ctx, currentRepoKey);
     let match;
     let current: CommitCiDetail | undefined;
     try {
@@ -77,8 +84,8 @@ export async function runCiAction(
         await provider.runAction(match.ref, request, async () => {
             await deps.fences.begin(start);
             fenced = true;
-            // The sign-in may have changed while the fence was written: send nothing then.
-            if (!deps.coordinator.isCurrentContext(ctx)) {
+            // The sign-in or repository may have changed while the fence was written: send nothing.
+            if (!stillCurrent()) {
                 stale = true;
                 throw new Error("Remote data changed.");
             }
@@ -89,7 +96,11 @@ export async function runCiAction(
             return changed;
         }
         // A failure before the fence (cooldown, signed out, fence write refused) sent nothing.
-        if (!fenced) return failed(signInOr(err, match.ref.host));
+        if (!fenced) return refused(deps, hash, ctx, err, match.ref.host);
+        if (err instanceof RequestNotSentError) {
+            await failFence(deps, start);
+            return err.superseded ? changed : failed(getErrorMessage(err));
+        }
         if (!(err instanceof HttpError)) {
             await refetch(deps, hash, ctx);
             return { outcome: "uncertain" };
@@ -97,7 +108,7 @@ export async function runCiAction(
         await failFence(deps, start);
         return err.statusCode === 403
             ? { outcome: "forbidden" }
-            : failed(signInOr(err, match.ref.host));
+            : refused(deps, hash, ctx, err, match.ref.host);
     }
     await refetch(deps, hash, ctx);
     return { outcome: "ok" };
@@ -145,12 +156,24 @@ function failed(message: string): CiActionOutcome {
     return { outcome: "failed", message };
 }
 
-/** A 401 asks to sign in again; any other error shows its own token-free message. */
-function signInOr(err: unknown, host: string): string {
-    if (err instanceof HttpError && err.statusCode === 401) {
-        return vscode.l10n.t("Sign in to {host} to view commit checks.", { host });
-    }
-    return getErrorMessage(err);
+/**
+ * A definite failure that is not a missing permission. A 401 means the credential is gone: the
+ * commit is dropped from every cache and read again, so the detail the pane asks for next is the
+ * existing signed-out one; any other error shows its own token-free message.
+ */
+async function refused(
+    deps: CiActionDeps,
+    hash: string,
+    ctx: CiOperationContext,
+    err: unknown,
+    host: string,
+): Promise<CiActionOutcome> {
+    if (!(err instanceof HttpError) || err.statusCode !== 401) return failed(getErrorMessage(err));
+    await refetch(deps, hash, ctx);
+    return {
+        outcome: "signedOut",
+        message: vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
+    };
 }
 
 async function failFence(deps: CiActionDeps, start: CiActionFenceStart): Promise<void> {

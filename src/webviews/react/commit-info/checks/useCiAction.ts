@@ -26,7 +26,7 @@ let lastRequestId = 0;
 
 /**
  * Sends the Checks tab's write actions. While one is in flight every action button is busy, so
- * a second click sends nothing; `ok` and `uncertain` ask for the detail again.
+ * a second click sends nothing; `ok`, `uncertain` and a 401 ask for the detail again.
  *
  * @param repoKey - Repository the pane shows.
  * @param hash - The commit shown.
@@ -80,7 +80,14 @@ export function useCiAction(
                 return;
             }
             release();
-            if (data.outcome === "ok" || data.outcome === "uncertain") latestOnSent.current();
+            // A 401 asks again too: the host dropped its caches, so the next detail is the signed-out one.
+            if (
+                data.outcome === "ok" ||
+                data.outcome === "uncertain" ||
+                data.outcome === "signedOut"
+            ) {
+                latestOnSent.current();
+            }
             setView(viewOf(data));
         };
         window.addEventListener("message", onMessage);

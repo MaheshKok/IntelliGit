@@ -268,4 +268,30 @@ describe("httpRequestJson", () => {
             vi.clearAllMocks();
         }
     });
+
+    it("a request the transport refuses to build rejects as never sent", async () => {
+        vi.mocked(https.request).mockImplementation((() => {
+            throw new TypeError('Invalid character in header content ["Authorization"]');
+        }) as unknown as typeof https.request);
+
+        await expect(
+            httpRequestJson("POST", "https://api.test/runs/1/cancel", { Authorization: "x\ny" }),
+            "a request that was never created is a definite non-send",
+        ).rejects.toMatchObject({
+            name: "RequestNotSentError",
+            message: 'Invalid character in header content ["Authorization"]',
+        });
+    });
+
+    it("a socket error after the request exists is not a never-sent error", async () => {
+        const req = makeRequest() as FakeRequest & { end: unknown };
+        req.end = vi.fn(() => {
+            req.emit("error", new Error("socket hang up"));
+        });
+        vi.mocked(https.request).mockImplementation((() => req) as unknown as typeof https.request);
+
+        await expect(
+            httpRequestJson("POST", "https://api.test/runs/1/cancel", {}),
+        ).rejects.toMatchObject({ name: "Error", message: "socket hang up" });
+    });
 });

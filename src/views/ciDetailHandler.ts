@@ -37,7 +37,12 @@ export interface CommitCiDetailSource {
 export interface CiActionAccess {
     /** The window's action fences; their changes re-post the shown detail. */
     fences: Pick<CiActionFenceStore, "fenceFor" | "onDidChange" | "onDidEnd">;
-    run(hash: string, request: CiActionRequest, ctx: CiOperationContext): Promise<CiActionOutcome>;
+    run(
+        hash: string,
+        request: CiActionRequest,
+        ctx: CiOperationContext,
+        currentRepoKey: () => string,
+    ): Promise<CiActionOutcome>;
     /** The Refresh button: ends a "not seen yet" fence, then fetches with `force`. */
     refresh(
         hash: string,

@@ -11,6 +11,7 @@ import {
     downloadCiLog,
     type DownloadCiLog,
     type FetchJson,
+    RequestNotSentError,
     type WriteJson,
 } from "../services/commitChecks/http";
 import {
@@ -68,12 +69,22 @@ export function createCommitChecksProviders(
             requestGateRegistry.run(providerId, url, () => downloadCiLog(url, headers, signal));
     const writeFor =
         (providerId: ProviderId): WriteJson =>
-        (method, url, headers, body) =>
-            requestGateRegistry.run(providerId, url, (generation) =>
-                createHttpRequestJson((response) => {
+        (method, url, headers, body) => {
+            const asked = generations.capture("");
+            return requestGateRegistry.run(providerId, url, (generation) => {
+                // The headers hold the token read before the request queued: a sign-in change
+                // while it waited for admission must not send it.
+                if (!generations.isCurrent(asked, "")) {
+                    throw new RequestNotSentError(
+                        "The sign-in changed before the request was sent.",
+                        true,
+                    );
+                }
+                return createHttpRequestJson((response) => {
                     requestGateRegistry.observeResponse(providerId, response, generation);
-                })(method, url, headers, body),
-            );
+                })(method, url, headers, body);
+            });
+        };
     return [
         new GitHubProvider(
             fetchFor("github"),

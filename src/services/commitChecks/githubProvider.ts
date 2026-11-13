@@ -37,6 +37,7 @@ import {
     compactText,
     isCiCdCheckItem,
     readString,
+    redactError,
     redactSecret,
     summaryForState,
     summaryForItems,
@@ -256,7 +257,11 @@ export class GitHubProvider implements CommitChecksProvider {
         const session = await openSession("");
         if (!isSession(session)) throw new HttpError(401, session.error ?? session.summary, {});
         await beforeSend();
-        await this.write("POST", url, githubHeaders(session));
+        try {
+            await this.write("POST", url, githubHeaders(session));
+        } catch (error) {
+            throw redactError(error, session.accessToken);
+        }
     }
 
     /**

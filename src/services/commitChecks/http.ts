@@ -50,6 +50,27 @@ export class HttpError extends Error {
 }
 
 /**
+ * A request that was definitely never put on the wire: the transport refused to build it, or the
+ * sign-in changed while it waited for the request gate. A write action may then drop its fence.
+ */
+export class RequestNotSentError extends Error {
+    /**
+     * Builds a never-sent failure.
+     *
+     * @param message - Token-free display message.
+     * @param superseded - Set when the sign-in or settings changed, so the data shown is stale
+     *     rather than the request malformed.
+     */
+    constructor(
+        message: string,
+        readonly superseded = false,
+    ) {
+        super(message);
+        this.name = "RequestNotSentError";
+    }
+}
+
+/**
  * A parsed 2xx response with its headers, for callers that page by `Link` or similar headers.
  * A conditional request answered 304 resolves with `statusCode` 304 and the stored body.
  */
@@ -233,10 +254,17 @@ function send(
                 });
             });
         };
-        const req =
-            method === "GET"
-                ? https.get(url, { headers }, onAnswer)
-                : https.request(url, { method, headers }, onAnswer);
+        let req: http.ClientRequest;
+        try {
+            req =
+                method === "GET"
+                    ? https.get(url, { headers }, onAnswer)
+                    : https.request(url, { method, headers }, onAnswer);
+        } catch (error) {
+            // Node refuses a malformed header or URL before any socket exists.
+            reject(new RequestNotSentError(error instanceof Error ? error.message : String(error)));
+            return;
+        }
         req.on("error", reject);
         req.setTimeout(15000, () => {
             req.destroy(new Error("HTTP request timed out"));

@@ -32,7 +32,11 @@ import { CiDetailPersistentCache } from "../../../../src/services/commitChecks/d
 import { CommitCiDetailService } from "../../../../src/services/commitChecks/detailService";
 import { GitHubProvider } from "../../../../src/services/commitChecks/githubProvider";
 import { GitLabProvider } from "../../../../src/services/commitChecks/gitlabProvider";
-import { HttpError, type WriteJson } from "../../../../src/services/commitChecks/http";
+import {
+    HttpError,
+    RequestNotSentError,
+    type WriteJson,
+} from "../../../../src/services/commitChecks/http";
 import {
     CommitChecksPersistentCache,
     type CommitChecksPersistentState,
@@ -419,9 +423,67 @@ describe("CI write actions", () => {
         expect(storedFences(workspace)).toEqual([]);
     });
 
-    it("401 removes the fence and asks to sign in again", async () => {
+    it("401 removes the fence, rereads the detail and enters the sign-in state", async () => {
         const write = vi.fn(async () => {
             throw new HttpError(401, "HTTP 401: Bad credentials", {});
+        });
+        const provider = github({ current: GITHUB_FAILED }, write);
+        const { deps, ctx, fences, coordinator } = windowOver(provider);
+        const invalidate = vi.spyOn(coordinator, "invalidate");
+
+        const outcome = await runCiAction(deps, HASH, { action: "rerunFailed", runId: "77" }, ctx);
+
+        expect(outcome).toEqual({
+            outcome: "signedOut",
+            message: "Sign in to github.com to view commit checks.",
+        });
+        expect(fences.isFenced(HASH)).toBe(false);
+        expect(
+            invalidate,
+            "the cached tree is dropped so the sign-in state is read",
+        ).toHaveBeenCalledWith(HASH);
+        expect(
+            provider.getDetail,
+            "the detail is fetched again, once more than the start",
+        ).toHaveBeenCalledTimes(2);
+        expect(write, "a rejected credential is never retried").toHaveBeenCalledTimes(1);
+    });
+
+    it("signed out before the fence is the same sign-in outcome and sends nothing", async () => {
+        const calls: WriteCall[] = [];
+        mocks.getSession.mockResolvedValue(undefined);
+        const { deps, ctx, workspace } = windowOver(
+            github({ current: GITHUB_FAILED }, recordingWrite(calls)),
+        );
+
+        const outcome = await runCiAction(deps, HASH, { action: "rerunFailed", runId: "77" }, ctx);
+
+        expect(outcome).toMatchObject({ outcome: "signedOut" });
+        expect(calls).toEqual([]);
+        expect(storedFences(workspace)).toEqual([]);
+    });
+
+    it("a request the transport never created removes the fence and is a definite failure", async () => {
+        const write = vi.fn(async () => {
+            throw new RequestNotSentError('Invalid character in header content ["Authorization"]');
+        });
+        const { deps, ctx, fences, workspace } = windowOver(
+            github({ current: GITHUB_FAILED }, write),
+        );
+
+        const outcome = await runCiAction(deps, HASH, { action: "rerunFailed", runId: "77" }, ctx);
+
+        expect(outcome, "a request that was never created is a definite failure").toEqual({
+            outcome: "failed",
+            message: 'Invalid character in header content ["Authorization"]',
+        });
+        expect(fences.isFenced(HASH)).toBe(false);
+        expect(storedFences(workspace)).toEqual([]);
+    });
+
+    it("a write the gate dropped because the sign-in changed shows stale data and removes the fence", async () => {
+        const write = vi.fn(async () => {
+            throw new RequestNotSentError("credentials changed", true);
         });
         const { deps, ctx, fences } = windowOver(github({ current: GITHUB_FAILED }, write));
 
@@ -429,9 +491,89 @@ describe("CI write actions", () => {
 
         expect(outcome).toEqual({
             outcome: "failed",
-            message: "Sign in to github.com to view commit checks.",
+            message: "Remote data changed. Reload and try again.",
         });
         expect(fences.isFenced(HASH)).toBe(false);
+    });
+
+    it("switching repository during the fence write sends nothing and removes the fence", async () => {
+        const calls: WriteCall[] = [];
+        let shown = REPO;
+        const workspace = memento(() => {
+            shown = "/other";
+        });
+        const { deps, ctx, fences } = windowOver(
+            github({ current: GITHUB_FAILED }, recordingWrite(calls)),
+            { workspace },
+        );
+
+        const outcome = await runCiAction(
+            deps,
+            HASH,
+            { action: "rerunFailed", runId: "77" },
+            ctx,
+            () => shown,
+        );
+
+        expect(calls, "switching repository before the POST must send nothing").toEqual([]);
+        expect(outcome).toEqual({
+            outcome: "failed",
+            message: "Remote data changed. Reload and try again.",
+        });
+        expect(fences.isFenced(HASH)).toBe(false);
+    });
+
+    it("a provider resolution change during the fence write sends nothing", async () => {
+        const calls: WriteCall[] = [];
+        let change = (): void => {};
+        const workspace = memento(() => change());
+        const w = windowOver(github({ current: GITHUB_FAILED }, recordingWrite(calls)), {
+            workspace,
+        });
+        change = () => w.coordinator.clearProviderResolution();
+
+        await runCiAction(w.deps, HASH, { action: "rerunFailed", runId: "77" }, w.ctx);
+
+        expect(calls, "the repository the write was resolved for is gone").toEqual([]);
+        expect(w.fences.isFenced(HASH)).toBe(false);
+    });
+
+    it("a provider error that echoes the token never reaches the reply, and keeps its status", async () => {
+        const cases = [
+            {
+                make: github,
+                token: "gho_token",
+                api: "github.com",
+                runId: "77",
+                current: GITHUB_FAILED,
+            },
+            {
+                make: gitlab,
+                token: "glpat-token",
+                api: "gitlab.com",
+                runId: "300",
+                current: GITLAB_FAILED,
+            },
+        ] as const;
+        for (const { make, token, runId, current } of cases) {
+            const write = vi.fn(async () => {
+                throw new HttpError(422, `HTTP 422: echoed ${token}`, { "x-trace": "1" });
+            });
+            const provider = make({ current }, write);
+            const { deps, ctx } = windowOver(provider);
+
+            const outcome = await runCiAction(deps, HASH, { action: "rerunFailed", runId }, ctx);
+
+            expect(JSON.stringify(outcome), `${token} must be redacted in the reply`).not.toContain(
+                token,
+            );
+            expect(outcome).toEqual({ outcome: "failed", message: "HTTP 422: echoed ***" });
+            const ref = (await deps.coordinator.actionTarget(HASH))!.ref;
+            await expect(
+                provider.runAction!(ref, { action: "cancel", runId }, async () => undefined),
+                "the status stays on the error",
+            ).rejects.toMatchObject({ statusCode: 422, headers: { "x-trace": "1" } });
+        }
     });
 
     it("another HTTP error fails and removes the fence", async () => {

@@ -252,6 +252,40 @@ describe("Checks tab write actions", () => {
         expect(posted("openCommitCheckUrl")).toEqual([expect.objectContaining({ url: HELP_URL })]);
     });
 
+    it("a write 401 enters the sign-in state through the detail the host serves next", () => {
+        const { container } = openPane(failedDetail());
+        click(button(container, "Re-run failed"));
+        const before = posted("requestCommitCiDetail").length;
+
+        replyAction("signedOut", { message: "Sign in to github.com to view commit checks." });
+
+        expect(
+            posted("requestCommitCiDetail").length,
+            "the sign-in state is read again from the host",
+        ).toBe(before + 1);
+        expect(posted("runCiAction"), "the write is never retried").toHaveLength(1);
+        expect(container.querySelector('[data-testid="ci-action-alert"]')?.textContent).toContain(
+            "Sign in to github.com to view commit checks.",
+        );
+
+        replyDetail(
+            failedDetail({
+                outcome: "unavailable",
+                runs: [],
+                error: "Sign in to github.com to view commit checks.",
+                signInHost: "github.com",
+            }),
+        );
+        expect(
+            container.querySelector('[data-testid="checks-tab"]')?.getAttribute("data-state"),
+            "401 must enter the sign-in state",
+        ).toBe("signedOut");
+        click(button(container, "Sign in"));
+        expect(posted("signInForCommitChecks")).toEqual([
+            expect.objectContaining({ host: "github.com" }),
+        ]);
+    });
+
     it("busy state blocks double click", () => {
         const { container } = openPane(failedDetail());
         const rerun = button(container, "Re-run failed")!;

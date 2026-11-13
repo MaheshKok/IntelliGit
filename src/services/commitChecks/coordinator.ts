@@ -329,9 +329,20 @@ export class CommitChecksCoordinator {
         return this.generations?.isCurrent(ctx, ctx.repoKey) ?? true;
     }
 
-    /** Whether the sign-in and CI settings a write action captured still hold (before it sends). */
-    isCurrentContext(ctx: CiOperationContext): boolean {
-        return this.generations?.isCurrent(ctx, ctx.repoKey) ?? true;
+    /**
+     * Captures the provider resolution a write action starts under and returns the check to run
+     * right before it sends: false once the sign-in or CI settings changed, the provider
+     * resolution was cleared (the repository switched), or the surface shows another repository.
+     *
+     * @param ctx - The operation's context.
+     * @param currentRepoKey - The repository the surface shows now, read at each check.
+     */
+    actionGuard(ctx: CiOperationContext, currentRepoKey: () => string): () => boolean {
+        const providerGeneration = this.providerGeneration;
+        return () =>
+            providerGeneration === this.providerGeneration &&
+            (this.generations?.isCurrent(ctx, currentRepoKey()) ??
+                ctx.repoKey === currentRepoKey());
     }
 
     private discard(ctx: CiOperationContext, hash: string, provider?: ProviderId): undefined {
