@@ -3,8 +3,10 @@
 // keeps it and drops the commit from every cache before a forced fetch, and the fence's stored
 // evidence rule decides when a fetched result shows the action took effect.
 
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import * as https from "https";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { interpolateL10n } from "../../../helpers/l10nTestHelper";
 import type { CiJob, CiRun, CommitChecksSnapshot, CommitCiDetailData } from "../../../../src/types";
@@ -18,6 +20,8 @@ vi.mock("vscode", () => ({
             interpolateL10n(message, args),
     },
 }));
+// Mock specifier must match the source import ("https", not "node:https").
+vi.mock("https");
 
 import {
     ACTION_FENCE_KEY_PREFIX,
@@ -34,6 +38,7 @@ import { GitHubProvider } from "../../../../src/services/commitChecks/githubProv
 import { GitLabProvider } from "../../../../src/services/commitChecks/gitlabProvider";
 import {
     HttpError,
+    httpRequestJson,
     RequestNotSentError,
     type WriteJson,
 } from "../../../../src/services/commitChecks/http";
@@ -52,6 +57,30 @@ const GITLAB_API = "https://gitlab.com/api/v4/projects/group%2Fapp";
 const EN = JSON.parse(
     readFileSync(join(__dirname, "../../../../src/webviews/i18n/en.json"), "utf8"),
 ) as Record<string, string>;
+
+/**
+ * Makes `https.request` fail with `code` on its own socket: fresh and never connected, or
+ * reused from the keep-alive pool.
+ */
+function failingTransport(code: string, reused: boolean): void {
+    vi.mocked(https.request).mockImplementation((() => {
+        const req = Object.assign(new EventEmitter(), {
+            reusedSocket: reused,
+            setTimeout: vi.fn(),
+            destroy: vi.fn(),
+            end: vi.fn(() => {
+                req.emit("socket", Object.assign(new EventEmitter(), { connecting: !reused }));
+                queueMicrotask(() =>
+                    req.emit(
+                        "error",
+                        Object.assign(new Error(`connect ${code}`), { code, syscall: "connect" }),
+                    ),
+                );
+            }),
+        });
+        return req;
+    }) as unknown as typeof https.request);
+}
 
 type Memento = CommitChecksPersistentState & {
     values: Map<string, unknown>;
@@ -495,6 +524,41 @@ describe("CI write actions", () => {
         });
         expect(fences.isFenced(HASH)).toBe(false);
         expect(storedFences(workspace)).toEqual([]);
+    });
+
+    it("a real transport that never connected is a definite failure and removes the fence", async () => {
+        for (const code of ["ENETUNREACH", "EPERM"]) {
+            failingTransport(code, false);
+            const { deps, ctx, fences } = windowOver(
+                github({ current: GITHUB_FAILED }, httpRequestJson),
+            );
+
+            const outcome = await runCiAction(
+                deps,
+                HASH,
+                { action: "rerunFailed", runId: "77" },
+                ctx,
+            );
+
+            expect(
+                { outcome: outcome.outcome, fenced: fences.isFenced(HASH) },
+                `${code} before the socket connected sent nothing`,
+            ).toEqual({ outcome: "failed", fenced: false });
+        }
+    });
+
+    it("a real transport reset on a reused socket stays uncertain and keeps the fence", async () => {
+        failingTransport("ECONNRESET", true);
+        const { deps, ctx, fences } = windowOver(
+            github({ current: GITHUB_FAILED }, httpRequestJson),
+        );
+
+        const outcome = await runCiAction(deps, HASH, { action: "rerunFailed", runId: "77" }, ctx);
+
+        expect(
+            { outcome: outcome.outcome, fenced: fences.isFenced(HASH) },
+            "a reused keep-alive socket may have carried the POST",
+        ).toEqual({ outcome: "uncertain", fenced: true });
     });
 
     it("a write the gate dropped because the sign-in changed shows stale data and removes the fence", async () => {

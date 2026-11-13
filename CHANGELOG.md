@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Groundwork for the coming Checks tab: IntelliGit can now re-run failed CI jobs, re-run one job, or cancel a run on GitHub and GitLab, and explain how to get a token that can. Nothing changes in the extension yet.
 
+### Fixed
+
+- CI badges no longer stay stuck loading when the connection drops partway through the host's reply.
+
 ## [0.43.9] - 2026-11-12
 
 ### Added

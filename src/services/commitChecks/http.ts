@@ -7,6 +7,7 @@
 import { createHash } from "crypto";
 import type * as http from "http";
 import * as https from "https";
+import type { Socket } from "net";
 import type { EtagStore } from "./etagStore";
 
 /** Network boundary used by providers; the only thing tests mock. */
@@ -238,23 +239,40 @@ function send(
     payload?: string,
 ): Promise<RawResponse> {
     return new Promise((resolve, reject) => {
+        let settled = false;
+        const settle = (finish: () => void): void => {
+            if (settled) return;
+            settled = true;
+            req.setTimeout(0);
+            finish();
+        };
+        // Read from this request's own socket; undefined until Node hands one over.
+        let connected: boolean | undefined;
+        let answered = false;
         const onAnswer = (res: http.IncomingMessage): void => {
+            answered = true;
             const chunks: Buffer[] = [];
             res.on("data", (chunk: Buffer | string) => {
                 chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk);
             });
+            // The request reached the provider, so a cut-off answer is never a non-send.
+            res.on("error", (error: Error) => settle(() => reject(error)));
+            res.on("close", () =>
+                settle(() => reject(new Error("The connection closed before the response ended."))),
+            );
             res.on("end", () => {
-                req.setTimeout(0);
-                const statusCode = res.statusCode ?? 0;
-                try {
-                    onResponse?.({ url, statusCode, headers: res.headers });
-                } catch {
-                    // Observers are non-critical quota telemetry.
-                }
-                resolve({
-                    statusCode,
-                    headers: res.headers,
-                    data: Buffer.concat(chunks).toString("utf8"),
+                settle(() => {
+                    const statusCode = res.statusCode ?? 0;
+                    try {
+                        onResponse?.({ url, statusCode, headers: res.headers });
+                    } catch {
+                        // Observers are non-critical quota telemetry.
+                    }
+                    resolve({
+                        statusCode,
+                        headers: res.headers,
+                        data: Buffer.concat(chunks).toString("utf8"),
+                    });
                 });
             });
         };
@@ -266,15 +284,28 @@ function send(
                     : https.request(url, { method, headers }, onAnswer);
         } catch (error) {
             // Node refuses a malformed header or URL before any socket exists.
+            settled = true;
             reject(new RequestNotSentError(error instanceof Error ? error.message : String(error)));
             return;
         }
+        // A socket reused from the keep-alive pool has already connected.
+        req.on("socket", (socket: Socket) => {
+            connected = !socket.connecting;
+            if (socket.connecting) socket.once("connect", () => (connected = true));
+        });
         req.on("error", (error: NodeJS.ErrnoException) => {
-            reject(
-                NOT_CONNECTED.has(error.code ?? "")
-                    ? new RequestNotSentError(error.message)
-                    : error,
-            );
+            // A socket that was handed over and never connected sent nothing; once it connected,
+            // even a refusal code (re-emitted by a proxy agent) may follow a sent request.
+            const neverSent =
+                connected !== true && (NOT_CONNECTED.has(error.code ?? "") || connected === false);
+            settle(() => reject(neverSent ? new RequestNotSentError(error.message) : error));
+        });
+        // Node closes the request with no error and never calls back on a reply it cannot hand
+        // over (a 101 upgrade); once a response arrived, its own end, error or close settles.
+        req.on("close", () => {
+            if (!answered) {
+                settle(() => reject(new Error("The connection closed before a response arrived.")));
+            }
         });
         req.setTimeout(15000, () => {
             req.destroy(new Error("HTTP request timed out"));

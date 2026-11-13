@@ -332,4 +332,167 @@ describe("httpRequestJson", () => {
             httpRequestJson("POST", "https://api.test/runs/1/cancel", {}),
         ).rejects.toMatchObject({ name: "Error", message: "socket hang up" });
     });
+
+    it("a POST whose connection drops after the headers rejects so the action can refresh", async () => {
+        for (const drop of ["close", "error"] as const) {
+            const req = makeRequest();
+            const res = makeResponse(202);
+            stubRequest(req, res);
+
+            const promise = httpRequestJson("POST", "https://api.test/runs/1/cancel", {});
+            res.emit("data", Buffer.from('{"par'));
+            if (drop === "error") {
+                expect(
+                    () => res.emit("error", new Error("aborted")),
+                    "a cut-off response's error is handled, never thrown into the extension host",
+                ).not.toThrow();
+            }
+            res.emit("close");
+
+            expect(
+                await stateOf(promise),
+                `a response cut by "${drop}" must settle the write so its uncertain outcome can refresh`,
+            ).toBe("rejected");
+            await expect(
+                promise,
+                "the request was sent, so it is never a non-send",
+            ).rejects.not.toMatchObject({
+                name: "RequestNotSentError",
+            });
+            expect(
+                req.setTimeout,
+                "the idle timeout is cleared on the way out",
+            ).toHaveBeenLastCalledWith(0);
+            vi.clearAllMocks();
+        }
+    });
+
+    it("a response that ends normally still resolves when its close follows", async () => {
+        const req = makeRequest();
+        const res = makeResponse(200);
+        stubRequest(req, res);
+
+        const promise = httpRequestJson("POST", "https://api.test/runs/1/cancel", {});
+        res.emit("data", Buffer.from("{}"));
+        res.emit("end");
+        res.emit("close");
+
+        await expect(promise, "close after end is the normal ending").resolves.toEqual({});
+    });
+
+    it("the request closing after the answer arrived leaves settling to the response", async () => {
+        const req = makeRequest();
+        const res = makeResponse(200);
+        stubRequest(req, res);
+
+        const promise = httpRequestJson("POST", "https://api.test/runs/1/cancel", {});
+        req.emit("close");
+        res.emit("data", Buffer.from("{}"));
+        res.emit("end");
+
+        await expect(
+            promise,
+            "a request close that beats the response's end must not reject a whole answer",
+        ).resolves.toEqual({});
+    });
+
+    it("an error on a fresh socket that never connected rejects as never sent", async () => {
+        for (const code of ["ENETUNREACH", "EPERM"]) {
+            const req = socketRequest({ reused: false, connects: false, code });
+
+            await expect(
+                httpRequestJson("POST", "https://api.test/runs/1/cancel", {}),
+                `${code} on a socket that never connected must delete the action fence`,
+            ).rejects.toMatchObject({ name: "RequestNotSentError", message: `connect ${code}` });
+            expect(req.end).toHaveBeenCalledTimes(1);
+        }
+    });
+
+    it("an error after the socket connected may have sent the request", async () => {
+        socketRequest({ reused: false, connects: true, code: "ECONNRESET" });
+
+        await expect(
+            httpRequestJson("POST", "https://api.test/runs/1/cancel", {}),
+            "a connected socket (a failed TLS handshake included) may have carried the POST",
+        ).rejects.toMatchObject({ name: "Error", message: "connect ECONNRESET" });
+    });
+
+    it("an error on a reused keep-alive socket may have sent the request", async () => {
+        // ECONNREFUSED included: a refusal code after the socket connected is not proof of a non-send.
+        for (const code of ["ECONNRESET", "ECONNREFUSED"]) {
+            socketRequest({ reused: true, connects: false, code });
+
+            await expect(
+                httpRequestJson("POST", "https://api.test/runs/1/cancel", {}),
+                `a reused socket was already connected, so the POST may have gone out (${code})`,
+            ).rejects.toMatchObject({ name: "Error", message: `connect ${code}` });
+        }
+    });
 });
+
+describe("send() shared by the badge GETs", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("a badge GET whose connection drops after the headers rejects", async () => {
+        const req = makeRequest();
+        const res = makeResponse(200);
+        stubGet(req, res);
+
+        const promise = httpGetJson("https://api.test/x", {});
+        res.emit("data", Buffer.from('{"a":'));
+        res.emit("close");
+
+        expect(
+            await stateOf(promise),
+            "a cut-off badge read must settle instead of loading forever",
+        ).toBe("rejected");
+    });
+});
+
+/** "pending", "resolved" or "rejected" once every queued callback has run. */
+async function stateOf(promise: Promise<unknown>): Promise<string> {
+    let state = "pending";
+    promise.then(
+        () => (state = "resolved"),
+        () => (state = "rejected"),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return state;
+}
+
+/**
+ * A request whose socket Node hands over on `end()`: fresh and still connecting unless
+ * `reused`; it connects first when `connects`; then it fails with `code`.
+ */
+function socketRequest(options: {
+    reused: boolean;
+    connects: boolean;
+    code: string;
+}): FakeRequest & { end: ReturnType<typeof vi.fn> } {
+    const req = makeRequest() as FakeRequest & {
+        end: ReturnType<typeof vi.fn>;
+        reusedSocket: boolean;
+    };
+    req.reusedSocket = options.reused;
+    req.end = vi.fn(() => {
+        const socket = Object.assign(new EventEmitter(), { connecting: !options.reused });
+        req.emit("socket", socket);
+        queueMicrotask(() => {
+            if (options.connects) {
+                socket.connecting = false;
+                socket.emit("connect");
+            }
+            req.emit(
+                "error",
+                Object.assign(new Error(`connect ${options.code}`), {
+                    code: options.code,
+                    syscall: "connect",
+                }),
+            );
+        });
+    });
+    vi.mocked(https.request).mockImplementation((() => req) as unknown as typeof https.request);
+    return req;
+}
