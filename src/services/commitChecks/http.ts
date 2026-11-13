@@ -203,20 +203,24 @@ function headersHash(headers: Record<string, string>): string {
 
 /**
  * Network boundary for CI write actions: one request with an optional JSON body, never
- * retried or redirected. Resolves the parsed 2xx body; rejects like `FetchJson`.
+ * retried or redirected. Resolves the parsed 2xx body; rejects like `FetchJson`. `beforeSend`
+ * (the action fence and its checks) is awaited once the request gate admitted the request and
+ * right before it is sent; a rejection sends nothing.
  */
 export type WriteJson = (
     method: string,
     url: string,
     headers: Record<string, string>,
     body?: unknown,
+    beforeSend?: () => Promise<void>,
 ) => Promise<unknown>;
 
 /** Creates the write-action request helper; same core, timeout and observer as the GETs. */
 export function createHttpRequestJson(
     onResponse?: (metadata: HttpResponseMetadata) => void,
 ): WriteJson {
-    return async (method, url, headers, body) => {
+    return async (method, url, headers, body, beforeSend) => {
+        if (beforeSend) await beforeSend();
         const payload = body === undefined ? undefined : JSON.stringify(body);
         const sentHeaders =
             payload === undefined ? headers : { ...headers, "Content-Type": "application/json" };
@@ -265,7 +269,13 @@ function send(
             reject(new RequestNotSentError(error instanceof Error ? error.message : String(error)));
             return;
         }
-        req.on("error", reject);
+        req.on("error", (error: NodeJS.ErrnoException) => {
+            reject(
+                NOT_CONNECTED.has(error.code ?? "")
+                    ? new RequestNotSentError(error.message)
+                    : error,
+            );
+        });
         req.setTimeout(15000, () => {
             req.destroy(new Error("HTTP request timed out"));
         });
@@ -323,6 +333,12 @@ export const CI_LOG_MAX_BYTES = 50 * 1024 * 1024;
 
 /** Inactivity timeout of every request: `setTimeout` on a request measures socket idle time. */
 const REQUEST_IDLE_TIMEOUT_MS = 15000;
+
+/**
+ * Socket errors that only happen before a connection exists (the host name did not resolve, or
+ * the server refused the connection), so no byte of the request reached the provider.
+ */
+const NOT_CONNECTED = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED"]);
 
 /** Statuses `followRedirects` follows; any other 3xx is a final response. */
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);

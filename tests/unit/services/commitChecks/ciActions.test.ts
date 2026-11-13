@@ -210,9 +210,25 @@ function recordingWrite(
     });
 }
 
+/** `write` behind an always-open gate: the fence and its checks, then the request. */
+function admitted(write: WriteJson): WriteJson {
+    return async (method, url, headers, body, beforeSend) => {
+        await beforeSend?.();
+        return write(method, url, headers, body);
+    };
+}
+
 function github(served: Served, write: WriteJson, cooldownEnd: () => number = () => 0) {
     return serve(
-        new GitHubProvider(vi.fn(), undefined, vi.fn(), cooldownEnd, undefined, undefined, write),
+        new GitHubProvider(
+            vi.fn(),
+            undefined,
+            vi.fn(),
+            cooldownEnd,
+            undefined,
+            undefined,
+            admitted(write),
+        ),
         served,
     );
 }
@@ -228,7 +244,7 @@ function gitlab(served: Served, write: WriteJson, cooldownEnd: () => number = ()
             cooldownEnd,
             undefined,
             undefined,
-            write,
+            admitted(write),
         ),
         served,
     );

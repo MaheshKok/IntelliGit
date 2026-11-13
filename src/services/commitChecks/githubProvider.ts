@@ -256,9 +256,8 @@ export class GitHubProvider implements CommitChecksProvider {
         }
         const session = await openSession("");
         if (!isSession(session)) throw new HttpError(401, session.error ?? session.summary, {});
-        await beforeSend();
         try {
-            await this.write("POST", url, githubHeaders(session));
+            await this.write("POST", url, githubHeaders(session), undefined, beforeSend);
         } catch (error) {
             throw redactError(error, session.accessToken);
         }

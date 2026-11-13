@@ -283,6 +283,44 @@ describe("httpRequestJson", () => {
         });
     });
 
+    it("a rejected beforeSend sends nothing", async () => {
+        await expect(
+            httpRequestJson("POST", "https://api.test/runs/1/cancel", {}, undefined, async () => {
+                throw new Error("Remote data changed.");
+            }),
+        ).rejects.toThrow("Remote data changed.");
+        expect(
+            https.request,
+            "the fence step runs before the request exists",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("a DNS or connection refusal before any socket connects rejects as never sent", async () => {
+        for (const code of ["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED"]) {
+            const req = makeRequest() as FakeRequest & { end: unknown };
+            // Node reports these asynchronously, after `request()` has returned.
+            req.end = vi.fn(() => {
+                queueMicrotask(() => {
+                    req.emit(
+                        "error",
+                        Object.assign(new Error(`getaddrinfo ${code} no-such-host`), { code }),
+                    );
+                });
+            });
+            vi.mocked(https.request).mockImplementation(
+                (() => req) as unknown as typeof https.request,
+            );
+
+            await expect(
+                httpRequestJson("POST", "https://no-such-host/runs/1/cancel", {}),
+                `${code} before connection must delete the action fence`,
+            ).rejects.toMatchObject({
+                name: "RequestNotSentError",
+                message: `getaddrinfo ${code} no-such-host`,
+            });
+        }
+    });
+
     it("a socket error after the request exists is not a never-sent error", async () => {
         const req = makeRequest() as FakeRequest & { end: unknown };
         req.end = vi.fn(() => {

@@ -297,9 +297,8 @@ export class GitLabProvider implements CommitChecksProvider {
         }
         const token = await this.readToken(gitLabRef.host, "");
         if (typeof token !== "string") throw new HttpError(401, token.error ?? token.summary, {});
-        await beforeSend();
         try {
-            await this.write("POST", url, { "PRIVATE-TOKEN": token });
+            await this.write("POST", url, { "PRIVATE-TOKEN": token }, undefined, beforeSend);
         } catch (error) {
             throw redactError(error, token);
         }

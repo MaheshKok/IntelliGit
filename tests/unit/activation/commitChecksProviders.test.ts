@@ -11,17 +11,22 @@ const mocks = vi.hoisted(() => ({
     httpsRequest: vi.fn(() => {
         throw new Error("a write reached the network");
     }),
+    /** Runs while the GitHub credential is looked up. */
+    duringSignIn: vi.fn(),
 }));
 
 vi.mock("https", () => ({ get: mocks.httpsGet, request: mocks.httpsRequest }));
 vi.mock("vscode", () => ({
     authentication: {
-        getSession: async () => ({
-            id: "session",
-            accessToken: "gh-token",
-            account: { id: "account", label: "GitHub User" },
-            scopes: ["repo"],
-        }),
+        getSession: async () => {
+            mocks.duringSignIn();
+            return {
+                id: "session",
+                accessToken: "gh-token",
+                account: { id: "account", label: "GitHub User" },
+                scopes: ["repo"],
+            };
+        },
     },
     l10n: { t: (message: string) => message },
 }));
@@ -237,11 +242,12 @@ describe("createCommitChecksProviders", () => {
             }),
         );
         await vi.waitFor(() => expect(admitted).toHaveBeenCalledTimes(4));
+        const queued = vi.spyOn(registry, "run");
         const beforeSend = vi.fn(async () => undefined);
         const action = github
             .runAction(ref, { action: "cancel", runId: "1" }, beforeSend)
             .catch((reason: unknown) => reason);
-        await vi.waitFor(() => expect(beforeSend).toHaveBeenCalledTimes(1));
+        await vi.waitFor(() => expect(queued).toHaveBeenCalledTimes(1));
 
         generations.bumpAuth();
         release();
@@ -253,6 +259,98 @@ describe("createCommitChecksProviders", () => {
             "the production HTTP boundary must not run after sign-out",
         ).not.toHaveBeenCalled();
         expect(error).toMatchObject({ name: "RequestNotSentError", superseded: true });
+    });
+
+    /** Both write-capable providers, built over one gate the way the extension builds them. */
+    function writers(registry: CommitChecksRequestGateRegistry, onToken: () => void = () => {}) {
+        const store = {
+            get: async () => {
+                onToken();
+                return "glpat-token";
+            },
+        } as unknown as CredentialStore;
+        const all = createCommitChecksProviders(registry, store, undefined, new CiGenerations());
+        return [
+            {
+                provider: all.find((p) => p instanceof GitHubProvider) as GitHubProvider,
+                ref,
+                api: API,
+            },
+            {
+                provider: all.find((p) => p instanceof GitLabProvider) as GitLabProvider,
+                ref: { host: "gitlab.com", owner: "group", repo: "app" } as ProviderRepoRef,
+                api: "https://gitlab.com/api/v4/projects/group%2Fapp",
+            },
+        ] as const;
+    }
+
+    it("a queued write runs its pre-send check once admitted, so a change in the queue sends nothing", async () => {
+        const registry = new CommitChecksRequestGateRegistry("cooling down");
+        for (const { provider, ref: target, api } of writers(registry)) {
+            mocks.httpsRequest.mockClear();
+            let release!: () => void;
+            const held = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            const admitted = vi.fn();
+            const busy = Array.from({ length: 4 }, () =>
+                registry.run(provider.id, api, async () => {
+                    admitted();
+                    await held;
+                }),
+            );
+            await vi.waitFor(() => expect(admitted).toHaveBeenCalledTimes(4));
+            // Stands in for the fence write and the live repository and provider check.
+            let current = true;
+            const beforeSend = vi.fn(async () => {
+                if (!current) throw new Error("Remote data changed.");
+            });
+            const action = provider
+                .runAction(target, { action: "cancel", runId: "1" }, beforeSend)
+                .catch((reason: unknown) => reason);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            current = false;
+            release();
+            await Promise.all(busy);
+            await action;
+
+            expect(
+                mocks.httpsRequest,
+                `${provider.id}: no POST after the context changed in the queue`,
+            ).not.toHaveBeenCalled();
+        }
+    });
+
+    it("a cooldown starting during the credential lookup writes no fence and sends nothing", async () => {
+        const registry = new CommitChecksRequestGateRegistry("cooling down");
+        let target = "";
+        const coolDown = () =>
+            registry.observeResponse(target === API ? "github" : "gitlab", {
+                url: target,
+                statusCode: 429,
+                headers: { "retry-after": "60" },
+            });
+        mocks.duringSignIn.mockImplementation(coolDown);
+        for (const { provider, ref: repo, api } of writers(registry, coolDown)) {
+            mocks.httpsRequest.mockClear();
+            target = api;
+            const beforeSend = vi.fn(async () => undefined);
+
+            const error = await provider
+                .runAction(repo, { action: "cancel", runId: "1" }, beforeSend)
+                .catch((reason: unknown) => reason);
+
+            expect(error, provider.id).toMatchObject({
+                until: registry.cooldownEnd(provider.id, api),
+            });
+            expect(
+                beforeSend,
+                `${provider.id}: a bucket in cooldown must not write a fence`,
+            ).not.toHaveBeenCalled();
+            expect(mocks.httpsRequest, provider.id).not.toHaveBeenCalled();
+        }
+        mocks.duringSignIn.mockReset();
     });
 
     it("a busy signed log host does not cool the GitHub API down; a busy API does", async () => {

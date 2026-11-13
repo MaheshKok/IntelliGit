@@ -9,13 +9,14 @@
 - Phase 5: accepted 6898d332, manual; owner OK 2026-11-12 (merged as #420, 86088cab).
 - Phase 6: accepted 69e809bb, verification incomplete (squash-merged as #422, 51b0c3ab).
 - Phase 7: accepted 6fef8c59, manual; owner OK 2026-11-12 (squash-merged as #424, 36bef4be).
-- Phase 8: review pending, started at 6fef8c59 (the given BASE_HEAD). 6fef8c59 is not an ancestor of HEAD (Phase 7 was squash-merged as 36bef4be), so the build sits on accf570d; review `git diff accf570d..<phase 8 commit>`, not against 6fef8c59 (that diff also shows Phase 7's hand-finished merge).
+- Phase 8: review pending, started at 6fef8c593d33c11a1979b403b809f3cd925c7d51 (the given BASE_HEAD). 6fef8c59 is not an ancestor of HEAD (Phase 7 was squash-merged as 36bef4be), so the build sits on accf570d; review `git diff accf570d..<phase 8 commit>`, not against 6fef8c59 (that diff also shows Phase 7's hand-finished merge).
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
 ## Phase 8 state
 - Built (0.43.10, e356954d): POST helper, `writeFor` through the request gate, GitHub/GitLab `runAction`, `ciActions.ts`, fence re-post and re-read, header buttons, cancel confirm, labels, 14 webview strings in 11 locales, README, CHANGELOG, e2e spec, coverage manifest entry.
 - Fix round 1 (dc2b08a2): sign-in recheck after the fence write, busy action released on invalidation or repo/commit change, header keyed per commit, redundant `notSeen` guard dropped.
-- Fix round 2 (this commit), review findings 1-5 and 7:
+- Takeover (after round 2's review): the fence write (`beforeSend`) now runs inside the admitted request-gate callback (`WriteJson` 5th argument; `writeFor` awaits it, then rechecks sign-in, then sends; both providers pass it through). So a cooldown refuses before any fence, and the live-repository and provider-generation guard runs after any queue wait. `send()` maps ENOTFOUND, EAI_AGAIN and ECONNREFUSED to `RequestNotSentError` (fence deleted). Tests: commitChecksProviders.test.ts "a queued write runs its pre-send check once admitted…" and "a cooldown starting during the credential lookup…" (both providers), http.test.ts "a DNS or connection refusal…" and "a rejected beforeSend sends nothing". Five mutants on a copy all red.
+- Fix round 2 (0be960b4), review findings 1-5 and 7:
   - `writeFor` captures the context before queueing and throws `RequestNotSentError` (superseded) inside the admitted gate callback when the sign-in or settings changed; the fence is removed (`ciActions.ts`).
   - `coordinator.actionGuard(ctx, liveRepoKey)` replaces `isCurrentContext`: it holds the provider generation captured at the start and reads the live repository at the check. `runCiAction` takes the live repository as a 5th argument; the host passes `() => source.repoKey()`.
   - `redactError` (normalize.ts) removes the provider's token from a write failure at each provider's write boundary; class, status and headers stay.
@@ -24,6 +25,7 @@
 - Mutations on a copy, all red naming a test: gate recheck removed, live repository ignored, provider generation ignored, redaction off, sync catch removed, 401 outcome back to failed, no reload after 401, not-sent branch removed, superseded message dropped.
 
 ## Decisions and why
+- Takeover: the fence moved into the gate callback instead of deleting a fence the gate refused, because plan §6 says a cooldown writes no fence at all; it holds one gate slot for the fence write. DNS/refused codes are a fixed list, not "socket never connected", because a reused keep-alive socket emits no connect event.
 - Finding 6 (GitHub `summaryMissed` makes a finished execution incomplete) is not in Phase 8's diff: it came in with Phase 7 (36bef4be, in base accf570d) and Phase 8 touches neither it nor `githubJobLog.test.ts`. The reviewer saw it by diffing against 6fef8c59. Left unchanged; see "Found outside scope".
 - Redaction mutates the thrown error's message in place instead of rebuilding it, so `RequestGateCooldownError` and its `until` survive.
 - The live repository is a function argument, not a coordinator field: the coordinator is per window and never knew which repository the pane shows.
@@ -32,7 +34,7 @@
 ## Open risks
 - Finding 7 (exact-worktree GitNexus detect_changes) is still unrun: `.gitnexus/run.cjs` is missing in the worktree and `detect-changes --repo <worktree>` answers "Repository not found" (only the two main checkouts are registered). Indexing the worktree would add a third entry to the shared registry; not done. Changed symbols by hand: runCiAction, refused (new), CommitChecksCoordinator.actionGuard (replaces isCurrentContext, one caller), writeFor, send, createHttpRequestJson users, GitHubProvider.runAction, GitLabProvider.runAction, useCiAction, ciActionAccess, answerCiActionMessage.
 - Phase 8 e2e spec not run locally (runs on CI).
-- `bun run test`: 8 failed / 8008 passed; the 8 are commit-list-column-resize.test.tsx, also red at base accf570d under Node v26.5.0.
+- `bun run test` (takeover): 8 failed / 8012 passed; the 8 are commit-list-column-resize.test.tsx, also red at base accf570d under Node v26.5.0.
 
 ## Next phase: 9
 

@@ -84,7 +84,8 @@ export async function runCiAction(
         await provider.runAction(match.ref, request, async () => {
             await deps.fences.begin(start);
             fenced = true;
-            // The sign-in or repository may have changed while the fence was written: send nothing.
+            // Runs once the request gate admitted the write: the sign-in or repository may have
+            // changed while it queued or while the fence was written, so send nothing then.
             if (!stillCurrent()) {
                 stale = true;
                 throw new Error("Remote data changed.");

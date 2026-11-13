@@ -127,9 +127,9 @@ export interface CommitChecksProvider {
     /**
      * Sends one write action. Refuses with `RequestGateCooldownError` while the request's
      * bucket cools down and with an `HttpError` 401 when signed out, both before `beforeSend`;
-     * then awaits `beforeSend` (the action fence; a rejection sends nothing) and sends one
-     * request, never retried. Rejects with the response's `HttpError`, or another error when
-     * the request may have reached the provider.
+     * once the request gate admits the request, awaits `beforeSend` (the action fence; a
+     * rejection sends nothing) and sends one request, never retried. Rejects with the
+     * response's `HttpError`, or another error when the request may have reached the provider.
      */
     runAction?(
         ref: ProviderRepoRef,
