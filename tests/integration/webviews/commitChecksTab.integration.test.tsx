@@ -262,6 +262,28 @@ describe("Commit details Checks tab", () => {
         ).toBe("push by — · main · #42");
     });
 
+    it("header names and links the run its actions target, not the first run", () => {
+        const { container } = mount(pane(HASH_A));
+        const targeted = run([job("lint", "failure")], {
+            id: "2",
+            runNumber: 43,
+            url: "https://github.com/o/r/actions/runs/2",
+        });
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, { runs: [run([job("unit-tests", "success")]), targeted] }),
+        );
+        const header = container.querySelector<HTMLElement>('[data-testid="ci-header"]')!;
+        expect(
+            header.querySelector('[data-testid="ci-header-run-line"]')?.textContent,
+            "the run line shows the run Cancel and Re-run act on (the selected failed job's run)",
+        ).toBe("push by octo · main · #43");
+        act(() => button(header, /Open in browser/)!.click());
+        expect(posted("openCommitCheckUrl"), "Open in browser opens that same run").toEqual([
+            { type: "openCommitCheckUrl", url: "https://github.com/o/r/actions/runs/2" },
+        ]);
+    });
+
     it("run line stays hidden when the provider does not declare runHeader", () => {
         const { container } = mount(pane(HASH_A));
         reply(

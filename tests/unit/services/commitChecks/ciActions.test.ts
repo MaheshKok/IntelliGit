@@ -82,6 +82,29 @@ function failingTransport(code: string, reused: boolean): void {
     }) as unknown as typeof https.request);
 }
 
+/** Makes `https.request` answer with `statusCode`, then cut the body off before it ends. */
+function cutOffTransport(statusCode: number): void {
+    vi.mocked(https.request).mockImplementation(((
+        _url: string,
+        _options: unknown,
+        onAnswer: (res: unknown) => void,
+    ) => {
+        const req = Object.assign(new EventEmitter(), {
+            setTimeout: vi.fn(),
+            destroy: vi.fn(),
+            end: vi.fn(() => {
+                const res = Object.assign(new EventEmitter(), { statusCode, headers: {} });
+                onAnswer(res);
+                queueMicrotask(() => {
+                    res.emit("data", Buffer.from('{"message":"Resource not acc'));
+                    res.emit("close");
+                });
+            }),
+        });
+        return req;
+    }) as unknown as typeof https.request);
+}
+
 type Memento = CommitChecksPersistentState & {
     values: Map<string, unknown>;
     keys(): readonly string[];
@@ -561,6 +584,20 @@ describe("CI write actions", () => {
         ).toEqual({ outcome: "uncertain", fenced: true });
     });
 
+    it("a real transport whose 403 body is cut off is forbidden and removes the fence", async () => {
+        cutOffTransport(403);
+        const { deps, ctx, fences } = windowOver(
+            github({ current: GITHUB_FAILED }, httpRequestJson),
+        );
+
+        const outcome = await runCiAction(deps, HASH, { action: "rerunFailed", runId: "77" }, ctx);
+
+        expect(
+            { outcome: outcome.outcome, fenced: fences.isFenced(HASH) },
+            "the 403 status line decided the outcome before the body was cut off",
+        ).toEqual({ outcome: "forbidden", fenced: false });
+    });
+
     it("a write the gate dropped because the sign-in changed shows stale data and removes the fence", async () => {
         const write = vi.fn(async () => {
             throw new RequestNotSentError("credentials changed", true);
@@ -689,7 +726,8 @@ describe("CI write actions", () => {
 
         expect(outcome).toEqual({ outcome: "uncertain" });
         expect(invalidate).toHaveBeenCalledWith(HASH);
-        expect(order).toEqual(["invalidate", "fetch"]);
+        // The first fetch is the fresh baseline read before the fence.
+        expect(order).toEqual(["fetch", "invalidate", "fetch"]);
         expect(fences.fenceFor(REPO, HASH)).toEqual({
             targetId: "77",
             action: "rerunFailed",
@@ -699,16 +737,23 @@ describe("CI write actions", () => {
 
     it("re-run on a cached failed commit never shows the old result again", async () => {
         const served: Served = { current: GITHUB_FAILED };
-        const provider = github(served, recordingWrite([]));
+        const slow = deferred<CommitCiDetailData>();
+        let preAction: Promise<unknown> | undefined;
+        const provider = github(
+            served,
+            recordingWrite([], async () => {
+                // A forced read that started after the action read its baseline is still in
+                // flight with the old answer when the POST goes out.
+                served.hold = slow.promise;
+                preAction = coordinator.getDetail(HASH, { force: true }, ctx);
+                await vi.waitFor(() => expect(provider.getDetail).toHaveBeenCalledTimes(3));
+                served.current = GITHUB_RERUN_STARTED;
+                return {};
+            }),
+        );
         const { deps, ctx, coordinator, global, workspace } = windowOver(provider);
         // The failed result sits in L1 and in storage.
         await coordinator.getDetail(HASH, {}, ctx);
-        // A forced read started before the click is still in flight with the old answer.
-        const slow = deferred<CommitCiDetailData>();
-        served.hold = slow.promise;
-        const preAction = coordinator.getDetail(HASH, { force: true }, ctx);
-        await vi.waitFor(() => expect(provider.getDetail).toHaveBeenCalledTimes(2));
-        served.current = GITHUB_RERUN_STARTED;
 
         await runCiAction(deps, HASH, { action: "rerunFailed", runId: "77" }, ctx);
         slow.resolve(GITHUB_FAILED);
@@ -723,6 +768,55 @@ describe("CI write actions", () => {
         });
         const reread = await restarted.coordinator.getDetail(HASH, {}, restarted.ctx);
         expect(reread.runs[0]).toMatchObject({ attempt: 2 });
+    });
+
+    it("the fence's baseline is read fresh, so a lagging read of an external re-run never ends it", async () => {
+        const served: Served = { current: GITHUB_FAILED };
+        const { deps, ctx, coordinator, fences, workspace } = windowOver(
+            github(served, recordingWrite([])),
+        );
+        // Attempt 1 sits in the cache while someone else already re-ran the run as attempt 2.
+        await coordinator.getDetail(HASH, {}, ctx);
+        served.current = detail("github", [run({ attempt: 2 })]);
+
+        await runCiAction(deps, HASH, { action: "rerunFailed", runId: "77" }, ctx);
+        await coordinator.getDetail(HASH, { force: true }, ctx);
+
+        expect(
+            storedFences(workspace),
+            "the fence records the attempt the provider shows at the click, not the cached one",
+        ).toEqual([expect.objectContaining({ before: { attempt: 2, state: "failure" } })]);
+        expect(
+            fences.isFenced(HASH),
+            "a later read still showing attempt 2 says nothing about the clicked re-run",
+        ).toBe(true);
+    });
+
+    it("a failed fresh baseline read stops the action before any fence or write", async () => {
+        const calls: WriteCall[] = [];
+        const served: Served = { current: GITHUB_FAILED };
+        const { deps, ctx, coordinator, workspace } = windowOver(
+            github(served, recordingWrite(calls)),
+        );
+        await coordinator.getDetail(HASH, {}, ctx);
+        // The forced read fails, so the service serves the cached copy with refreshError.
+        served.current = {
+            ...GITHUB_FAILED,
+            outcome: "unavailable",
+            error: "The host did not answer.",
+        };
+
+        const outcome = await runCiAction(deps, HASH, { action: "rerunFailed", runId: "77" }, ctx);
+
+        expect(
+            outcome,
+            "the cached copy a failed read serves is never the fence's baseline",
+        ).toEqual({
+            outcome: "failed",
+            message: "The host did not answer.",
+        });
+        expect(calls, "nothing is sent").toEqual([]);
+        expect(storedFences(workspace), "no fence is written").toEqual([]);
     });
 
     it("restart while waiting shows waiting, never the old failure", async () => {

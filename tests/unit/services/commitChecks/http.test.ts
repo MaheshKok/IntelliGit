@@ -367,6 +367,79 @@ describe("httpRequestJson", () => {
         }
     });
 
+    it("a reply cut off after its status line still reaches the response observer once", async () => {
+        // A 2xx cut-off rejects without ever building the reply, so it pins the observer to the head.
+        for (const statusCode of [429, 202]) {
+            const req = makeRequest();
+            const headers = {
+                "retry-after": "60",
+                "x-ratelimit-limit": "5000",
+                "x-ratelimit-remaining": "0",
+                "x-ratelimit-reset": "1700000000",
+            };
+            const res = makeResponse(statusCode, headers);
+            stubRequest(req, res);
+            const observe = vi.fn();
+
+            const promise = createHttpRequestJson(observe)(
+                "POST",
+                "https://api.test/runs/1/cancel",
+                {},
+            );
+            res.emit("data", Buffer.from('{"message":"API rate'));
+            res.emit("close");
+            await promise.catch(() => undefined);
+
+            expect(
+                observe,
+                `the request gate's cooldown must read the headers of a cut-off ${statusCode}`,
+            ).toHaveBeenCalledTimes(1);
+            expect(observe).toHaveBeenCalledWith({
+                url: "https://api.test/runs/1/cancel",
+                statusCode,
+                headers,
+            });
+            vi.clearAllMocks();
+        }
+    });
+
+    it("a non-2xx reply whose body is cut off rejects as the HttpError its status line decided", async () => {
+        for (const drop of ["close", "error"] as const) {
+            const req = makeRequest();
+            const res = makeResponse(403, { "x-accepted-github-permissions": "actions=write" });
+            stubRequest(req, res);
+
+            const promise = httpRequestJson("POST", "https://api.test/runs/1/cancel", {});
+            res.emit("data", Buffer.from('{"message":"Resource not acc'));
+            if (drop === "error") res.emit("error", new Error("aborted"));
+            res.emit("close");
+
+            await expect(
+                promise,
+                `a 403 cut off by "${drop}" is the same refusal as a whole 403`,
+            ).rejects.toMatchObject({
+                name: "HttpError",
+                statusCode: 403,
+                headers: { "x-accepted-github-permissions": "actions=write" },
+            });
+            vi.clearAllMocks();
+        }
+    });
+
+    it("a 2xx reply cut off before any body byte still rejects, though an empty body would parse", async () => {
+        const req = makeRequest();
+        const res = makeResponse(202);
+        stubRequest(req, res);
+
+        const promise = httpRequestJson("POST", "https://api.test/runs/1/cancel", {});
+        res.emit("close");
+
+        await expect(
+            promise,
+            "a cut-off 2xx stays uncertain, never a whole empty reply",
+        ).rejects.toThrow("The connection closed before the response ended.");
+    });
+
     it("a response that ends normally still resolves when its close follows", async () => {
         const req = makeRequest();
         const res = makeResponse(200);

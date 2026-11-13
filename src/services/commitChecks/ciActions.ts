@@ -52,7 +52,7 @@ export async function runCiAction(
     let current: CommitCiDetail | undefined;
     try {
         match = await deps.coordinator.actionTarget(hash);
-        current = await deps.coordinator.getDetail(hash, {}, ctx);
+        current = await freshBaseline(deps, hash, ctx);
     } catch (err) {
         return failed(getErrorMessage(err));
     }
@@ -151,6 +151,24 @@ function beforeOf(
             job && { jobId: job.id, logicalId: job.logicalId }),
         ...(evidence === "newerJobInPipeline" && { maxJobId: maxJobId(run.jobs) }),
     };
+}
+
+/**
+ * The click-time detail the fence's baseline comes from, read fresh so it never predates an
+ * external re-run. A failed fresh read is served from the cache, so it throws instead.
+ */
+async function freshBaseline(
+    deps: CiActionDeps,
+    hash: string,
+    ctx: CiOperationContext,
+): Promise<CommitCiDetail | undefined> {
+    const detail = await deps.coordinator.getDetail(hash, { force: true }, ctx);
+    if (detail?.refreshError !== undefined) {
+        throw new Error(
+            detail.refreshError || vscode.l10n.t("Remote data changed. Reload and try again."),
+        );
+    }
+    return detail;
 }
 
 function failed(message: string): CiActionOutcome {

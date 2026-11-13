@@ -157,6 +157,40 @@ describe("fence re-post", () => {
         fences.dispose();
     });
 
+    it("a fence change after a scan page re-posts that page, never the older first reply", async () => {
+        vi.useFakeTimers();
+        const fences = new CiActionFenceStore(memento());
+        await beginFence(fences);
+        let onScanUpdate: ((update: CommitCiDetail) => void) | undefined;
+        const { source } = fencedSource(fences);
+        const post = vi.fn();
+        await answerCommitCiDetailRequest(
+            {
+                ...source,
+                getDetail: async (_hash, _options, _ctx, onUpdate) => {
+                    onScanUpdate = onUpdate;
+                    return detail(fences.fenceFor(REPO, HASH));
+                },
+            },
+            request(1),
+            post,
+            new CommitCiDetailLoops(),
+        );
+        const page = {
+            ...detail(),
+            runs: [{ ...detail().runs[0]!, failedScan: { state: "done" as const, found: 1 } }],
+        };
+        onScanUpdate?.(page);
+
+        await vi.advanceTimersByTimeAsync(ACTION_FENCE_NOT_SEEN_MS);
+
+        expect(
+            post.mock.calls.at(-1)?.[0].detail,
+            "the not-seen re-post carries the newest scan page",
+        ).toEqual({ ...page, actionFence: expect.objectContaining({ notSeen: true }) });
+        fences.dispose();
+    });
+
     it("a newer request stops the older one's re-post", async () => {
         vi.useFakeTimers();
         const fences = new CiActionFenceStore(memento());

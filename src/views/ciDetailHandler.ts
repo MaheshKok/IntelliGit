@@ -107,11 +107,15 @@ export async function answerCommitCiDetailRequest(
             ? source.generations.isCurrent(ctx, currentRepoKey)
             : repoKey === currentRepoKey;
     };
-    // Each overflow-scan page re-posts at once while this request is still the loop's newest.
+    // Each overflow-scan page re-posts at once while this request is still the loop's newest,
+    // and becomes the shown detail a fence change re-posts.
+    let detail: CommitCiDetail | undefined;
     const onScanUpdate = (update: CommitCiDetail): void => {
-        if (isCurrent()) post({ type: "commitCiDetail", requestId, repoKey, hash, detail: update });
+        if (!isCurrent()) return;
+        detail = update;
+        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: update });
     };
-    let detail =
+    detail =
         force === true && source.actions
             ? await source.actions.refresh(hash, ctx, onScanUpdate)
             : await source.getDetail(hash, { force: force === true }, ctx, onScanUpdate);

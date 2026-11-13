@@ -18,7 +18,10 @@ export interface ProviderCiCapabilities {
     readonly failureSummary: boolean;
     /** File and line annotations. */
     readonly annotations: boolean;
-    /** Re-run only the failed jobs of a run. */
+    /**
+     * Re-run the failed jobs of a run. GitLab's pipeline retry, which this maps to there,
+     * also restarts canceled jobs, the same as GitLab's own Retry button.
+     */
     readonly rerunFailed: boolean;
     /** Re-run one job. */
     readonly rerunJob: boolean;

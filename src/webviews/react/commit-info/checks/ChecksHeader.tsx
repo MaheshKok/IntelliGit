@@ -31,18 +31,19 @@ export function ChecksHeader({
     onRefresh: () => void;
     onOpenUrl: (url: string) => void;
 }): React.ReactElement {
-    const firstRun = detail?.runs[0];
+    // The run line and link name the run the actions target, so Cancel never acts on a run the header does not show.
+    const shownRun = actionRun ?? detail?.runs[0];
     const span = spanOf(detail?.runs ?? []);
     const runLine =
-        detail?.capabilities.runHeader && firstRun
+        detail?.capabilities.runHeader && shownRun
             ? t("commit.checks.tab.runLine", {
-                  event: firstRun.event ?? "—",
-                  actor: firstRun.actor ?? "—",
-                  ref: firstRun.ref ?? "—",
-                  runNumber: String(firstRun.runNumber ?? "—"),
+                  event: shownRun.event ?? "—",
+                  actor: shownRun.actor ?? "—",
+                  ref: shownRun.ref ?? "—",
+                  runNumber: String(shownRun.runNumber ?? "—"),
               })
             : undefined;
-    const url = firstRun?.url;
+    const url = shownRun?.url;
     return (
         <div data-testid="ci-header" style={headerStyle}>
             {detail ? (

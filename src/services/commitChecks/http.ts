@@ -103,8 +103,9 @@ interface RawResponse {
 /**
  * Creates an HTTPS JSON getter with an optional response observer.
  *
- * The observer receives only response metadata after the response ends and before status/JSON
- * handling. Observer failures are ignored so quota telemetry cannot interrupt provider IO.
+ * The observer receives only response metadata, once the response head arrives (a reply whose
+ * body is then cut off included) and before status/JSON handling. Observer failures are ignored
+ * so quota telemetry cannot interrupt provider IO.
  */
 export function createHttpGetJson(
     onResponse?: (metadata: HttpResponseMetadata) => void,
@@ -251,30 +252,35 @@ function send(
         let answered = false;
         const onAnswer = (res: http.IncomingMessage): void => {
             answered = true;
+            const statusCode = res.statusCode ?? 0;
+            try {
+                onResponse?.({ url, statusCode, headers: res.headers });
+            } catch {
+                // Observers are non-critical quota telemetry.
+            }
             const chunks: Buffer[] = [];
             res.on("data", (chunk: Buffer | string) => {
                 chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk);
             });
-            // The request reached the provider, so a cut-off answer is never a non-send.
-            res.on("error", (error: Error) => settle(() => reject(error)));
-            res.on("close", () =>
-                settle(() => reject(new Error("The connection closed before the response ended."))),
-            );
-            res.on("end", () => {
-                settle(() => {
-                    const statusCode = res.statusCode ?? 0;
-                    try {
-                        onResponse?.({ url, statusCode, headers: res.headers });
-                    } catch {
-                        // Observers are non-critical quota telemetry.
-                    }
+            const answer = (): void =>
+                settle(() =>
                     resolve({
                         statusCode,
                         headers: res.headers,
                         data: Buffer.concat(chunks).toString("utf8"),
-                    });
-                });
-            });
+                    }),
+                );
+            // The request reached the provider, so a cut-off answer is never a non-send; a
+            // non-2xx status line already decided the outcome, so its cut-off body is a whole one.
+            const cutOff = (error: Error): void => {
+                if (statusCode >= 300) answer();
+                else settle(() => reject(error));
+            };
+            res.on("error", cutOff);
+            res.on("close", () =>
+                cutOff(new Error("The connection closed before the response ended.")),
+            );
+            res.on("end", answer);
         };
         let req: http.ClientRequest;
         try {
