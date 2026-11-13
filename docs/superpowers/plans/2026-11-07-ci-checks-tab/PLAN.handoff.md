@@ -9,7 +9,7 @@
 - Phase 5: accepted 6898d332, manual; owner OK 2026-11-12 (merged as #420, 86088cab).
 - Phase 6: accepted 69e809bb, verification incomplete (squash-merged as #422, 51b0c3ab).
 - Phase 7: accepted 6fef8c59, manual; owner OK 2026-11-12 (squash-merged as #424, 36bef4be).
-- Phase 8: review pending, started at 6fef8c593d33c11a1979b403b809f3cd925c7d51 (the given BASE_HEAD). 6fef8c59 is not an ancestor of HEAD (Phase 7 was squash-merged as 36bef4be), so the build sits on accf570d; review `git diff accf570d..<phase 8 commit>`, not against 6fef8c59 (that diff also shows Phase 7's hand-finished merge).
+- Phase 8: accepted b5a56002, manual; owner OK 2026-11-13 ("A: fix by hand").
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
 ## Phase 8 state
@@ -23,6 +23,8 @@
   - `send()` turns a synchronous throw while building the request (Node's invalid-header rejection) into `RequestNotSentError`; `runCiAction` treats it as a definite failure and deletes the fence.
   - A 401 (before or after the fence) returns outcome `signedOut` with the sign-in message, after dropping the commit from every cache and fetching again; the pane asks for the detail again, which is the existing signed-out detail with its Sign in button. Nothing is retried.
 - Mutations on a copy, all red naming a test: gate recheck removed, live repository ignored, provider generation ignored, redaction off, sync catch removed, 401 outcome back to failed, no reload after 401, not-sent branch removed, superseded message dropped.
+- Hand fix (b5a56002): `send()` settles once on a cut-off or missing response, and "never sent" is read from the socket (never connected) instead of a code list alone. Real-Node tests in httpWire.test.ts.
+- Phase 18's delete list now names `answerCiActionMessage`'s switch check and the switch-off half of the ciActionHandler.test.ts test.
 
 ## Decisions and why
 - Takeover: the fence moved into the gate callback instead of deleting a fence the gate refused, because plan §6 says a cooldown writes no fence at all; it holds one gate slot for the fence write. DNS/refused codes are a fixed list, not "socket never connected", because a reused keep-alive socket emits no connect event.
@@ -34,6 +36,7 @@
 ## Open risks
 - Finding 7 (exact-worktree GitNexus detect_changes) is still unrun: `.gitnexus/run.cjs` is missing in the worktree and `detect-changes --repo <worktree>` answers "Repository not found" (only the two main checkouts are registered). Indexing the worktree would add a third entry to the shared registry; not done. Changed symbols by hand: runCiAction, refused (new), CommitChecksCoordinator.actionGuard (replaces isCurrentContext, one caller), writeFor, send, createHttpRequestJson users, GitHubProvider.runAction, GitLabProvider.runAction, useCiAction, ciActionAccess, answerCiActionMessage.
 - Phase 8 e2e spec not run locally (runs on CI).
+- Fable R1 (hand fix): a 502/504 from a gateway after the provider ran the action deletes the fence (K30 step 2, PLAN.md:333, treats every 5xx as definite), so a second click could start a second GitLab job. Owner's call; not changed.
 - `bun run test` (takeover): 8 failed / 8012 passed; the 8 are commit-list-column-resize.test.tsx, also red at base accf570d under Node v26.5.0.
 
 ## Next phase: 9
