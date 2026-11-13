@@ -114,6 +114,8 @@ export function ChecksTab({
             <style>{LAYOUT_CSS}</style>
             {state === "disabled" ? null : (
                 <ChecksHeader
+                    // The cancel confirmation belongs to one repository and commit.
+                    key={commitKey}
                     detail={loaded}
                     actionRun={actionRun}
                     busy={action.busy}

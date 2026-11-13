@@ -4,7 +4,7 @@
 // fence's stored evidence rule then decides when a fetched result shows the action took effect.
 
 import * as vscode from "vscode";
-import type { CommitCiDetail } from "../../types";
+import type { CiActionEvidence, CiJob, CiRun, CommitCiDetail } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import { evidenceFor, type CiActionFenceStart, type CiActionFenceStore } from "./ciActionFence";
 import type { CiOperationContext } from "./ciGenerations";
@@ -21,7 +21,7 @@ export type CiActionOutcome =
 export interface CiActionDeps {
     readonly coordinator: Pick<
         CommitChecksCoordinator,
-        "actionTarget" | "getChecks" | "getDetail" | "invalidate"
+        "actionTarget" | "getChecks" | "getDetail" | "invalidate" | "isCurrentContext"
     >;
     readonly fences: Pick<CiActionFenceStore, "begin" | "fail" | "fenceFor" | "endByUserRefresh">;
 }
@@ -69,21 +69,25 @@ export async function runCiAction(
         targetId: job?.id ?? run.id,
         runId: run.id,
         evidence,
-        before: {
-            ...(run.attempt !== undefined && { attempt: run.attempt }),
-            state: run.state,
-            ...(evidence === "newerJobSameLogicalId" &&
-                job && { jobId: job.id, logicalId: job.logicalId }),
-            ...(evidence === "newerJobInPipeline" && { maxJobId: maxJobId(run.jobs) }),
-        },
+        before: beforeOf(run, job, evidence),
     };
     let fenced = false;
+    let stale = false;
     try {
         await provider.runAction(match.ref, request, async () => {
             await deps.fences.begin(start);
             fenced = true;
+            // The sign-in may have changed while the fence was written: send nothing then.
+            if (!deps.coordinator.isCurrentContext(ctx)) {
+                stale = true;
+                throw new Error("Remote data changed.");
+            }
         });
     } catch (err) {
+        if (stale) {
+            await failFence(deps, start);
+            return changed;
+        }
         // A failure before the fence (cooldown, signed out, fence write refused) sent nothing.
         if (!fenced) return failed(signInOr(err, match.ref.host));
         if (!(err instanceof HttpError)) {
@@ -116,10 +120,25 @@ export async function refreshCiDetail(
     onScanUpdate?: (detail: CommitCiDetail) => void,
 ): Promise<CommitCiDetail | undefined> {
     const fence = deps.fences.fenceFor(ctx.repoKey, hash);
-    if (fence?.notSeen && (await deps.fences.endByUserRefresh(ctx.repoKey, hash, fence.targetId))) {
+    if (fence && (await deps.fences.endByUserRefresh(ctx.repoKey, hash, fence.targetId))) {
         await invalidateQuietly(deps, hash);
     }
     return deps.coordinator.getDetail(hash, { force: true }, ctx, onScanUpdate);
+}
+
+/** What the target looked like when the action started, as far as its evidence rule needs. */
+function beforeOf(
+    run: CiRun,
+    job: CiJob | undefined,
+    evidence: CiActionEvidence,
+): CiActionFenceStart["before"] {
+    return {
+        ...(run.attempt !== undefined && { attempt: run.attempt }),
+        state: run.state,
+        ...(evidence === "newerJobSameLogicalId" &&
+            job && { jobId: job.id, logicalId: job.logicalId }),
+        ...(evidence === "newerJobInPipeline" && { maxJobId: maxJobId(run.jobs) }),
+    };
 }
 
 function failed(message: string): CiActionOutcome {

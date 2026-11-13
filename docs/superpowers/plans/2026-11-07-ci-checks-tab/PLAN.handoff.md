@@ -17,6 +17,13 @@
 - Tests: `ciActions.test.ts` (18), `ciActionHandler.test.ts` (9), `commitChecksActions.integration.test.tsx` (the 7 named + re-run job, unsure send, cancel labels), gate test in `commitChecksProviders.test.ts`, capabilities and http tests.
 - Mutation pass on a copy: 20 of 21 mutants red, each naming its test. The survivor (Refresh condition `fence?.notSeen` -> `fence`) is equivalent: Phase 19's `endByUserRefresh` refuses before not-seen; the stronger mutant (any Refresh removes the fence) goes red on "Refresh before not-seen keeps the fence".
 
+## Fix round 1 (review findings, started at 6fef8c59)
+- Sign-out during the fence write: `runCiAction` rechecks the captured context (`coordinator.isCurrentContext`) after the fence write and before the send; stale = nothing sent, fence removed, "Remote data changed" shown.
+- `useCiAction` releases the busy action on `commitCiDetailInvalidated` and on a repository or commit change; a reply is checked for request id, repository and commit before any state changes; the header is keyed by repository and commit so the cancel confirm resets.
+- Dropped the redundant `fence?.notSeen` guard in `refreshCiDetail`; `endByUserRefresh` stays the one authority. `beforeOf` was split out of `runCiAction` for the lint complexity cap.
+- Retrospective GitNexus impact (CLI from the main checkout, index 10 commits behind, so approximate): ChecksHeader HIGH (5 impacted), CommitChecksCoordinator HIGH (35 impacted, 12 direct; this round only adds one method), useCommitCiDetail HIGH (5), ChecksTab LOW (7). detect-changes was not run (no index of this worktree).
+- Mutations on a copy, all red naming a test: stale request id, wrong-scope reply, invalidation release, effect-cleanup release, header key, context recheck, fence removal on stale.
+
 ## Decisions and why
 - The help URL is derived at run time from the extension manifest's `repository` (`/blob/HEAD/docs/commit-checks/README.md#write-actions`); when it cannot be derived the link is left out, never a guessed URL.
 - The GitLab scope string drops the plan's backticks around `api`: the webview shows a code span as literal backticks and the localization test forbids it. The words are unchanged.

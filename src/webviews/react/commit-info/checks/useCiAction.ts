@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CiAction } from "../../../../types";
-import type { CiActionResultMessage, RunCiActionMessage } from "../../../protocol/commitCiMessages";
+import type {
+    CiActionResultMessage,
+    CommitCiDetailInvalidatedMessage,
+    RunCiActionMessage,
+} from "../../../protocol/commitCiMessages";
 import { getVsCodeApi } from "../../shared/vscodeApi";
 
 /** The last action's outcome as the Checks tab shows it; `idle` shows nothing. */
@@ -54,19 +58,36 @@ export function useCiAction(
     }
 
     useEffect(() => {
-        const onMessage = (event: MessageEvent<unknown>): void => {
-            const data = event.data as Partial<CiActionResultMessage> | null;
-            if (data?.type !== "ciActionResult") return;
-            const expected = inFlight.current;
-            if (!expected || data.requestId !== expected.requestId) return;
+        // The host drops the reply of an action whose repository or sign-in changed, so the
+        // pending action is released here instead of waiting for a reply that never comes.
+        const release = (): void => {
             inFlight.current = null;
             setBusy(null);
-            if (data.repoKey !== repoKey || data.hash !== hash) return;
+        };
+        const onMessage = (event: MessageEvent<unknown>): void => {
+            const data = event.data as Partial<
+                CiActionResultMessage | CommitCiDetailInvalidatedMessage
+            > | null;
+            if (data?.type === "commitCiDetailInvalidated") return release();
+            if (data?.type !== "ciActionResult") return;
+            const expected = inFlight.current;
+            if (
+                !expected ||
+                data.requestId !== expected.requestId ||
+                data.repoKey !== expected.repoKey ||
+                data.hash !== expected.hash
+            ) {
+                return;
+            }
+            release();
             if (data.outcome === "ok" || data.outcome === "uncertain") latestOnSent.current();
             setView(viewOf(data));
         };
         window.addEventListener("message", onMessage);
-        return () => window.removeEventListener("message", onMessage);
+        return () => {
+            window.removeEventListener("message", onMessage);
+            release();
+        };
     }, [repoKey, hash]);
 
     const run = useCallback(

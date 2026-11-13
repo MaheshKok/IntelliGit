@@ -1042,3 +1042,9 @@ PHASE 7: HALT review still failing after takeover
 - Proof at 6fef8c59: typecheck 0, lint 0, build 0; `bun run test` 9 failed / 7944 passed (8 column-resize under Node v26; merge-editor-performance ratio 3.07x under load, 3/3 alone).
 PHASE 7: ACCEPTED 6fef8c59
 Phase 8: built, review pending
+
+## Phase 8 fix round 1 (builder)
+- Findings 1-5 each got a regression test that was red before the fix: `sign-out while the fence is written sends nothing and clears the fence` ("stale authorization must not send a write: expected [ { method: 'POST', ...(1) } ] to deeply equal []"); `sign-in invalidation releases the busy action the host discards` ("auth invalidation must release the discarded action: expected true to be false"); `a repository change releases the busy action and drops its late reply` ("the other repository's buttons are usable: expected true to be false"); `the cancel confirmation is reset when the repository changes`; `a reply with the right request id but another scope is ignored` ("wrong scope reply must be ignored: expected false to be true"); `an old action reply is ignored while a newer action is pending` (red on its precondition before the fix, then guarding the request id: mutation of the id comparison goes red naming "the newer action is still pending").
+- Finding 6: removed the outer `fence?.notSeen` guard; the store's `endByUserRefresh` decides. A deletion with no behaviour change, so no red test is possible; "Refresh before not-seen keeps the fence" covers the store's guard.
+- Finding 7: GitNexus impact run retrospectively from the main checkout's index (10 commits behind): ChecksHeader HIGH, CommitChecksCoordinator HIGH (35 impacted), useCommitCiDetail HIGH, ChecksTab LOW.
+- `bun run test`: only the 8 known commit-list-column-resize failures (red at base accf570d too).

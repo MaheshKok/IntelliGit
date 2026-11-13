@@ -329,6 +329,11 @@ export class CommitChecksCoordinator {
         return this.generations?.isCurrent(ctx, ctx.repoKey) ?? true;
     }
 
+    /** Whether the sign-in and CI settings a write action captured still hold (before it sends). */
+    isCurrentContext(ctx: CiOperationContext): boolean {
+        return this.generations?.isCurrent(ctx, ctx.repoKey) ?? true;
+    }
+
     private discard(ctx: CiOperationContext, hash: string, provider?: ProviderId): undefined {
         this.trace?.({
             kind: "detail",

@@ -268,7 +268,15 @@ function windowOver(
     );
     const ctx = generations.capture(REPO);
     windows.push(fences);
-    return { workspace, global, fences, coordinator, ctx, deps: { coordinator, fences } };
+    return {
+        workspace,
+        global,
+        fences,
+        coordinator,
+        generations,
+        ctx,
+        deps: { coordinator, fences },
+    };
 }
 
 const windows: CiActionFenceStore[] = [];
@@ -357,6 +365,27 @@ describe("CI write actions", () => {
                 before: { attempt: 1, state: "failure" },
             }),
         ]);
+    });
+
+    it("sign-out while the fence is written sends nothing and clears the fence", async () => {
+        const calls: WriteCall[] = [];
+        let signOut = (): void => {};
+        const workspace = memento(() => signOut());
+        const { deps, ctx, fences, generations } = windowOver(
+            github({ current: GITHUB_FAILED }, recordingWrite(calls)),
+            { workspace },
+        );
+        signOut = () => generations.bumpAuth();
+
+        const outcome = await runCiAction(deps, HASH, { action: "rerunFailed", runId: "77" }, ctx);
+
+        expect(calls, "stale authorization must not send a write").toEqual([]);
+        expect(outcome).toEqual({
+            outcome: "failed",
+            message: "Remote data changed. Reload and try again.",
+        });
+        expect(fences.isFenced(HASH), "the fence is cleared").toBe(false);
+        expect(storedFences(workspace)).toEqual([]);
     });
 
     it("GitLab 403 maps to forbidden with scope help", async () => {

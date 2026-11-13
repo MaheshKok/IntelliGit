@@ -4,6 +4,7 @@
 // from `detail.actionFence`, and the problem shown when the token cannot write.
 
 import React, { act } from "react";
+import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CiJob, CiRun, CommitCiDetail, CommitDetail } from "../../../src/types";
 import { NO_CI_CAPABILITIES } from "../../../src/shared/ci/capabilities";
@@ -142,6 +143,22 @@ function dispatch(data: Record<string, unknown>): void {
 
 function replyDetail(detail: CommitCiDetail, requestId = lastDetailRequest().requestId): void {
     dispatch({ type: "commitCiDetail", requestId, repoKey: "/repo", hash: HASH, detail });
+}
+
+function replyDetailIn(repoKey: string, detail: CommitCiDetail): void {
+    dispatch({
+        type: "commitCiDetail",
+        requestId: lastDetailRequest().requestId,
+        repoKey,
+        hash: HASH,
+        detail,
+    });
+}
+
+function switchRepo(root: Root, repoKey: string): void {
+    act(() =>
+        root.render(<CommitInfoPane detail={commit()} ciRepoKey={repoKey} commitChecksEnabled />),
+    );
 }
 
 function replyAction(outcome: string, extra: Record<string, unknown> = {}): void {
@@ -329,6 +346,117 @@ describe("Checks tab write actions", () => {
         act(() => vi.advanceTimersByTime(10 * 60_000));
         expect(posted("requestCommitCiDetail")).toHaveLength(settled);
         expect(fenceLabel(container)).toBeUndefined();
+    });
+
+    it("sign-in invalidation releases the busy action the host discards", () => {
+        const { container } = openPane(failedDetail());
+        click(button(container, "Re-run failed"));
+        expect(button(container, "Re-run failed")?.disabled).toBe(true);
+
+        dispatch({ type: "commitCiDetailInvalidated" });
+        replyDetail(failedDetail());
+
+        expect(
+            button(container, "Re-run failed")?.disabled,
+            "auth invalidation must release the discarded action",
+        ).toBe(false);
+        click(button(container, "Re-run failed"));
+        expect(posted("runCiAction"), "a new click can send again").toHaveLength(2);
+    });
+
+    it("a repository change releases the busy action and drops its late reply", () => {
+        const { container, root } = openPane(failedDetail());
+        click(button(container, "Re-run failed"));
+
+        switchRepo(root, "/other");
+        replyDetailIn("/other", failedDetail({ repoKey: "/other" }));
+        expect(
+            button(container, "Re-run failed")?.disabled,
+            "the other repository's buttons are usable",
+        ).toBe(false);
+
+        const before = posted("requestCommitCiDetail").length;
+        replyAction("ok");
+        expect(
+            posted("requestCommitCiDetail"),
+            "the old repository's reply is ignored",
+        ).toHaveLength(before);
+    });
+
+    it("the cancel confirmation is reset when the repository changes", () => {
+        const { container, root } = openPane(runningDetail());
+        click(button(container, "Cancel run"));
+        expect(button(container, "Confirm cancel")).toBeDefined();
+
+        switchRepo(root, "/other");
+        replyDetailIn("/other", { ...runningDetail(), repoKey: "/other" });
+
+        expect(
+            button(container, "Confirm cancel"),
+            "the confirmation belongs to the previous repository",
+        ).toBeUndefined();
+        expect(button(container, "Cancel run")).toBeDefined();
+    });
+
+    it("a reply with the right request id but another scope is ignored", () => {
+        const { container } = openPane(failedDetail());
+        click(button(container, "Re-run failed"));
+        const sent = posted("runCiAction").at(-1)!;
+
+        for (const scope of [{ repoKey: "/other" }, { hash: "b".repeat(40) }]) {
+            dispatch({
+                type: "ciActionResult",
+                requestId: sent.requestId,
+                repoKey: "/repo",
+                hash: HASH,
+                outcome: "failed",
+                message: "stray",
+                ...scope,
+            });
+            expect(
+                button(container, "Re-run failed")?.disabled,
+                "wrong scope reply must be ignored",
+            ).toBe(true);
+        }
+        expect(container.querySelector('[data-testid="ci-action-alert"]')).toBeNull();
+
+        replyAction("failed", { message: "boom" });
+        expect(button(container, "Re-run failed")?.disabled, "the real reply still lands").toBe(
+            false,
+        );
+        expect(container.querySelector('[data-testid="ci-action-alert"]')?.textContent).toContain(
+            "boom",
+        );
+    });
+
+    it("an old action reply is ignored while a newer action is pending", () => {
+        const { container } = openPane(failedDetail());
+        click(button(container, "Re-run failed"));
+        const old = posted("runCiAction").at(-1)!;
+        dispatch({ type: "commitCiDetailInvalidated" });
+        replyDetail(failedDetail());
+        click(button(container, "Re-run failed"));
+        expect(posted("runCiAction")).toHaveLength(2);
+
+        dispatch({
+            type: "ciActionResult",
+            requestId: old.requestId,
+            repoKey: "/repo",
+            hash: HASH,
+            outcome: "failed",
+            message: "from the old action",
+        });
+
+        expect(
+            button(container, "Re-run failed")?.disabled,
+            "the newer action is still pending",
+        ).toBe(true);
+        expect(container.querySelector('[data-testid="ci-action-alert"]')).toBeNull();
+
+        replyAction("failed", { message: "from the new action" });
+        expect(container.querySelector('[data-testid="ci-action-alert"]')?.textContent).toContain(
+            "from the new action",
+        );
     });
 
     it("the not-seen label appears by timer with no request", () => {
