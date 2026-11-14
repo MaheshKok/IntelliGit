@@ -11,14 +11,16 @@
 - Phase 7: accepted 6fef8c59, manual; owner OK 2026-11-12 (squash-merged as #424, 36bef4be).
 - Phase 8: accepted b5a56002, manual; owner OK 2026-11-13 (squash-merged as #426, 7941c809).
 - Phase 9: accepted 37ba9d13, manual: finished by hand; elephant OK 2026-11-14 after the owner's answer "C: track in #432" (squash-merged as #430, 63b8ea88).
+- Phase 10: accepted 38b89a65, manual: finished by hand after the takeover halt, owner answer "A" 2026-11-14; Codex ACCEPT on d1b0a496 and on 38b89a65; Fable R1's skipped-job bug fixed in 38b89a65.
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 10: review pending, started at 37ba9d135cd05dd2120ccc8a101813ef1730fb47
+## Phase 10: accepted 38b89a65 (started at 37ba9d135cd05dd2120ccc8a101813ef1730fb47)
 - The branch's real base is ee5c9ceb (main after Phase 9's squash merge 63b8ea88 plus two docs commits); 37ba9d13 is not its ancestor.
 - Built (0.43.12): live elapsed time on running runs and jobs (one 1 s interval only while something runs); "usually ~{duration}" / "usually: unknown" from K23's baseline; "overdue" past 1.5 x usual. Pure logic in src/shared/ci/timing.ts; `getUsualDuration` on GitHub and GitLab; `UsualDurationCache` in src/services/commitChecks/ciTiming.ts; coordinator `withUsual`; CI_DETAIL_CONTRACT_VERSION 5 -> 6; 3 strings in 12 locales + CSV; README "Running time".
 - Fix round 1 (d2780ceb): clear shared across windows through a clear epoch; `withUsual` also serves a failed run that still has a queued or running job.
 - Fix round 2 (a5991139): clear epoch under its own key; a failed clear write blocks saved-baseline reads until a write of it succeeds (the next save retries).
-- Takeover (this step): clear tokens are ordered `<count>:<id>` (count one above the newest token the clearing window saw); a clear writes its token under both keys, and readers take the newer of the two, so an older clear's write landing late (same window or another) cannot undo a newer clear, on restart or in a running window's memory.
+- Hand fix (d1b0a496): account switch-and-back test for the AccountChangedError rethrow; EPOCH_KEY comment corrected. R1 round (38b89a65): only a baseline job that succeeded gives a usual time.
+- Takeover: clear tokens are ordered `<count>:<id>` (count one above the newest token the clearing window saw); a clear writes its token under both keys, and readers take the newer of the two, so an older clear's write landing late (same window or another) cannot undo a newer clear, on restart or in a running window's memory.
 
 ## GitNexus impact (spec rule, line 844 of the phase copy), run this step
 - Worktree indexed to an external dir (working tree incl. the takeover edit), then `clean`ed; registry back to its two entries.
