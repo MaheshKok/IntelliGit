@@ -226,6 +226,78 @@ describe("answerCommitCiDetailRequest", () => {
         ).toEqual(["success"]);
     });
 
+    it("an old scan's page built after a forced read's reply shows the forced read's data", async () => {
+        const service = new CommitCiDetailService({ now: () => Date.now() });
+        const serve = { repoKey: "/repo", capabilities: NO_CI_CAPABILITIES };
+        const cursor = { runId: "1", runAttempt: 1, runName: "CI", url: "page-11" };
+        const lastPage = deferred<void>();
+        let fetches = 0;
+        const fetchDetail = async () => {
+            fetches += 1;
+            const base = scanned("running", 0);
+            // The Refresh reads the same run attempt again, so its entry carries the running scan.
+            const runs = fetches === 1 ? base.runs : [{ ...base.runs[0], name: "CI (refreshed)" }];
+            return { ...base, runs, complete: false, scanCursors: [cursor] } as never;
+        };
+        const source = {
+            repoKey: () => "/repo",
+            generations: new CiGenerations(),
+            getDetail: (
+                _hash: string,
+                options: { force?: boolean },
+                _ctx: unknown,
+                onScanUpdate?: (update: CommitCiDetail) => void,
+            ) =>
+                service.getOrFetch("snapshot#detail", fetchDetail, serve, options, undefined, {
+                    continueScan: async () => {
+                        await lastPage.promise;
+                        return { failed: [] };
+                    },
+                    isCurrent: () => true,
+                    onUpdate: (update) => onScanUpdate?.(update),
+                } as never),
+        };
+        const loops = new CommitCiDetailLoops();
+        const firstPost = vi.fn();
+        const first = answerCommitCiDetailRequest(
+            source as never,
+            { type: "requestCommitCiDetail", requestId: 1, repoKey: "/repo", hash: HASH },
+            firstPost,
+            loops,
+        );
+        await vi.waitFor(() => expect(firstPost).toHaveBeenCalled());
+        const post = vi.fn();
+        const forced = answerCommitCiDetailRequest(
+            source as never,
+            {
+                type: "requestCommitCiDetail",
+                requestId: 2,
+                repoKey: "/repo",
+                hash: HASH,
+                force: true,
+            },
+            post,
+            loops,
+        );
+        await vi.waitFor(() => expect(post).toHaveBeenCalled());
+        // The old scan's page is read and built only now, after the Refresh's reply.
+        lastPage.resolve();
+        await vi.waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+        loops.dispose();
+        await Promise.all([forced, first]);
+
+        expect(
+            post.mock.calls.map(([reply]) => [
+                reply.detail?.runs[0].name,
+                reply.detail?.runs[0].failedScan.state,
+            ]),
+            "the old scan's late page must show the forced read's data",
+        ).toEqual([
+            ["CI (refreshed)", "running"],
+            ["CI (refreshed)", "done"],
+        ]);
+    });
+
     it("posts the detail with the request's id, repository and hash", async () => {
         const generations = new CiGenerations();
         const post = vi.fn();
