@@ -274,6 +274,9 @@ export class CommitChecksCoordinator {
                               rule.defaultBranch,
                           )
                         : served;
+                // Each update holds every page found so far, so only the newest one is
+                // published; an older one whose rule read finished late would hide later jobs.
+                let newestUpdate = 0;
                 const scan: CiFailedScanHooks | undefined = continueFailedScan && {
                     continueScan: async (cursor) => {
                         try {
@@ -286,6 +289,7 @@ export class CommitChecksCoordinator {
                     onUpdate:
                         onScanUpdate &&
                         ((update) => {
+                            const updateNumber = ++newestUpdate;
                             void (async () => {
                                 // Re-read through the 1 h cache (K21), so an update after the hour
                                 // carries the current rule, not the one the scan started with.
@@ -294,7 +298,12 @@ export class CommitChecksCoordinator {
                                 await confirm();
                                 // No await from the account check to the publish, so the account
                                 // just confirmed is the one that receives the update.
-                                if (!this.isCurrent(ctx, providerGeneration)) return;
+                                if (
+                                    updateNumber !== newestUpdate ||
+                                    !this.isCurrent(ctx, providerGeneration)
+                                ) {
+                                    return;
+                                }
                                 onScanUpdate(marked);
                             })().catch(() => undefined);
                         }),

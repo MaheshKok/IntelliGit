@@ -49,7 +49,7 @@ const OVERFLOW_DETAIL: CommitCiDetailData = {
 } as CommitCiDetailData;
 
 /** One provider whose merge rule depends on who is signed in, and a switch for who that is. */
-function setup(startAs = "admin", overflow = false) {
+function setup(startAs = "admin", overflow = false, twoPages = false) {
     let account = startAs;
     let adminRequired = ["build"];
     let clock = Date.now();
@@ -57,30 +57,42 @@ function setup(startAs = "admin", overflow = false) {
     let accountReads = 0;
     let holdFromRead = Infinity;
     let holdAdmin: Promise<void> | undefined;
+    let holdRule: Promise<void> | undefined;
     let holdGit: Promise<void> | undefined;
     let holdDetail: Promise<void> | undefined;
     let releaseScan = () => {};
     const scanHeld = new Promise<void>((resolve) => {
         releaseScan = resolve;
     });
+    let scanPages = 0;
     const continueFailedScan = vi.fn(async () => {
         await scanHeld;
+        scanPages += 1;
+        const name = scanPages === 1 ? "build" : "lint";
         return {
             failed: [
                 {
-                    id: "late",
-                    logicalId: "job\0CI\0build",
-                    name: "build",
-                    checkName: "build",
+                    id: scanPages === 1 ? "late" : "late-2",
+                    logicalId: `job\0CI\0${name}`,
+                    name,
+                    checkName: name,
                     state: "failure" as const,
                     steps: [],
                 },
             ],
+            ...(twoPages && scanPages === 1
+                ? { next: { runId: "1", runAttempt: 1, runName: "CI", url: "page-12" } }
+                : {}),
         };
     });
     const getRequiredChecks = vi.fn(async (): Promise<RequiredChecks> => {
-        const asker = account;
+        let asker = account;
         if (asker === "admin" && holdAdmin) await holdAdmin;
+        if (holdRule) {
+            // Like a provider that reads its session only after an await of its own.
+            await holdRule;
+            asker = account;
+        }
         return asker === "admin"
             ? { status: "known", names: adminRequired }
             : { status: "unknown" };
@@ -111,7 +123,9 @@ function setup(startAs = "admin", overflow = false) {
         getRemotes: vi.fn(async () => ["origin"]),
         getRemoteUrl: vi.fn(async () => "https://github.com/octo/app.git"),
         readDefaultBranch: vi.fn(async () => {
-            await holdGit;
+            const wait = holdGit;
+            holdGit = undefined;
+            await wait;
             return { name: "trunk", tipHash: "t1" };
         }),
     } as unknown as GitOps;
@@ -148,6 +162,7 @@ function setup(startAs = "admin", overflow = false) {
         signInAs: (next: string) => {
             account = next;
         },
+        /** Holds the next Git read only; later reads are not held. */
         holdGitRead: () => {
             let release = () => {};
             holdGit = new Promise<void>((resolve) => {
@@ -170,6 +185,18 @@ function setup(startAs = "admin", overflow = false) {
             });
             return release;
         },
+        /** Holds the next rule read; the provider learns who is signed in only on release. */
+        holdRuleRead: () => {
+            let release = () => {};
+            holdRule = new Promise<void>((resolve) => {
+                release = () => {
+                    holdRule = undefined;
+                    resolve();
+                };
+            });
+            return release;
+        },
+        bumpLifecycle: () => generations.bumpLifecycle(),
         continueFailedScan,
         releaseScan,
         detail: (onScanUpdate?: (detail: CommitCiDetail) => void) =>
@@ -312,5 +339,64 @@ describe("rules are isolated when", () => {
             updates.some((d) => d.requiredStatus === "known"),
             "reader must not receive admin marks while confirmation awaits",
         ).toBe(false);
+    });
+
+    it("a switch after the account check, before the provider reads its session, is not cached for the first account", async () => {
+        const c = setup("reader");
+        const release = c.holdRuleRead();
+        const pending = c.detail();
+        await vi.waitFor(() => expect(c.getRequiredChecks).toHaveBeenCalledTimes(1));
+
+        c.signInAs("admin");
+        release();
+        await pending;
+        c.signInAs("reader");
+        const backAsReader = await c.detail();
+
+        expect(
+            backAsReader?.requiredStatus,
+            "reader must not reuse the admin rule fetched under the reader's key",
+        ).toBe("unknown");
+    });
+
+    it("an overflow update is dropped when CI settings change while its rule is reread", async () => {
+        const c = setup("admin", true);
+        const updates: CommitCiDetail[] = [];
+        expect((await c.detail((d) => updates.push(d)))?.requiredStatus).toBe("known");
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(1));
+        const gitReads = c.readDefaultBranch.mock.calls.length;
+
+        const release = c.holdGitRead();
+        c.releaseScan();
+        await vi.waitFor(() =>
+            expect(c.readDefaultBranch.mock.calls.length).toBeGreaterThan(gitReads),
+        );
+        c.bumpLifecycle();
+        release();
+        // The control test above shows an unchanged update lands well inside this window.
+        await new Promise((resolve) => setTimeout(resolve, 30));
+
+        expect(updates, "an update begun before the settings change must not publish").toEqual([]);
+    });
+
+    it("a slow first overflow update cannot overwrite a later one", async () => {
+        const c = setup("admin", true, true);
+        const updates: CommitCiDetail[] = [];
+        expect((await c.detail((d) => updates.push(d)))?.requiredStatus).toBe("known");
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(1));
+
+        // The first page's update waits on its Git read; the second page's does not.
+        const release = c.holdGitRead();
+        c.releaseScan();
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(updates).toHaveLength(1));
+        release();
+        // The control test above shows an unswitched update lands well inside this window.
+        await new Promise((resolve) => setTimeout(resolve, 30));
+
+        expect(
+            updates.at(-1)?.runs[0].jobs.map((job) => job.id),
+            "the last published update must keep the second page's job",
+        ).toContain("late-2");
     });
 });
