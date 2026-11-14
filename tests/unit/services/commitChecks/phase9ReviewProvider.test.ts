@@ -80,7 +80,7 @@ describe("required checks and the GitHub sign-in", () => {
 
     it("a sign-in that fails once is read again after it recovers, not kept for the hour", async () => {
         const provider = providerWith(
-            new HttpError(404, `HTTP 404: {"message":"Branch not protected"}`),
+            new HttpError(404, `HTTP 404: {"message":"Branch not protected"}`, {}),
         );
         const cache = new RequiredChecksCache(() => 0);
         const read = () =>
@@ -106,7 +106,7 @@ describe("required checks and the GitHub sign-in", () => {
 
         await expect(
             providerWith(
-                new HttpError(404, `HTTP 404: {"message":"Branch not protected"}`),
+                new HttpError(404, `HTTP 404: {"message":"Branch not protected"}`, {}),
             ).getRequiredChecks(ghRef, "trunk"),
         ).resolves.toEqual({ status: "unknown" });
     });
