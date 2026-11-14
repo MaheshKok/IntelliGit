@@ -112,14 +112,17 @@ export async function answerCommitCiDetailRequest(
     // are ranked by the read they came from, the reply first (its snapshot is taken before the
     // pages it starts); one that arrives after something newer was posted is dropped, since
     // a reply waits on the merge-rule read and a page can reach the webview before it.
+    // A reply or page carries the fence of the moment it was built, then waits on the rule read
+    // and the account check, so every post takes the store's live fence instead, with no await.
+    const fences = source.actions?.fences;
     let detail: CommitCiDetail | undefined;
     let reads = 0;
     let newest = -1;
     const show = (rank: number, update: CommitCiDetail | undefined): void => {
         if (!isCurrent() || rank < newest) return;
         newest = rank;
-        detail = update;
-        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: update ?? null });
+        detail = update && fences ? withFence(update, fences.fenceFor(repoKey, hash)) : update;
+        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
     };
     const read = async (
         fetch: (
@@ -213,7 +216,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 
 /**
  * Re-posts the shown detail under the request's id while it is the newest: a fence switching
- * to "not seen yet" re-posts it with the new label and no request; a fence that ended re-reads
+ * to "not seen yet" re-posts it (the post takes the new label) with no request; a fence that ended re-reads
  * it (from the cache the ending fetch filled), since the shown copy predates that fetch.
  */
 function repostOnFenceChange(
@@ -232,11 +235,7 @@ function repostOnFenceChange(
     const changed = fences.onDidChange((change) => {
         const shown = view.shown();
         if (stopped.aborted || !shown || change.repoKey !== repoKey || change.hash !== hash) return;
-        const next = { ...shown };
-        delete next.actionFence;
-        const actionFence = fences.fenceFor(repoKey, hash);
-        if (actionFence) next.actionFence = actionFence;
-        view.post(next);
+        view.post(shown);
     });
     const ended = fences.onDidEnd(async (endedHash) => {
         if (stopped.aborted || endedHash !== hash) return;
@@ -250,6 +249,17 @@ function repostOnFenceChange(
         },
         { once: true },
     );
+}
+
+/** `detail` with `actionFence` in place of the fence it carried; none removes it. */
+function withFence(
+    detail: CommitCiDetail,
+    actionFence: CommitCiDetail["actionFence"],
+): CommitCiDetail {
+    const next = { ...detail };
+    delete next.actionFence;
+    if (actionFence) next.actionFence = actionFence;
+    return next;
 }
 
 /** Whether a run is still looking for failed jobs past its page bound. */

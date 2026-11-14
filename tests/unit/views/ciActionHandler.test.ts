@@ -10,6 +10,7 @@ import {
 } from "../../../src/services/commitChecks/ciActionFence";
 import { CiGenerations } from "../../../src/services/commitChecks/ciGenerations";
 import { NO_CI_CAPABILITIES } from "../../../src/shared/ci/capabilities";
+import { PENDING_CHECK_RETRY_DELAYS_MS } from "../../../src/shared/ci/pollSchedule";
 import type { CommitCiDetail } from "../../../src/types";
 import { answerCiActionMessage } from "../../../src/views/ciActionHandler";
 import {
@@ -82,6 +83,12 @@ async function beginFence(fences: CiActionFenceStore): Promise<void> {
         before: { attempt: 1, state: "failure" },
         evidence: "runAttempt",
     });
+}
+
+function deferredVoid(): { promise: Promise<void>; resolve: () => void } {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => (resolve = r));
+    return { promise, resolve };
 }
 
 const request = (requestId: number, force?: boolean) => ({
@@ -188,6 +195,83 @@ describe("fence re-post", () => {
             post.mock.calls.at(-1)?.[0].detail,
             "the not-seen re-post carries the newest scan page",
         ).toEqual({ ...page, actionFence: expect.objectContaining({ notSeen: true }) });
+        fences.dispose();
+    });
+
+    // The coordinator builds a scan page or a reply with the fence of that moment, then holds it
+    // across the rule read and the account check; the not-seen timer can fire meanwhile.
+    it("a scan page held across the not-seen timer is posted with the live label", async () => {
+        vi.useFakeTimers();
+        const fences = new CiActionFenceStore(memento());
+        await beginFence(fences);
+        let onScanUpdate: ((update: CommitCiDetail) => void) | undefined;
+        const { source } = fencedSource(fences);
+        const post = vi.fn();
+        await answerCommitCiDetailRequest(
+            {
+                ...source,
+                getDetail: async (_hash, _options, _ctx, onUpdate) => {
+                    onScanUpdate = onUpdate;
+                    return detail(fences.fenceFor(REPO, HASH));
+                },
+            },
+            request(1),
+            post,
+            new CommitCiDetailLoops(),
+        );
+        const held = {
+            ...detail(fences.fenceFor(REPO, HASH)),
+            runs: [{ ...detail().runs[0]!, failedScan: { state: "done" as const, found: 1 } }],
+        };
+
+        await vi.advanceTimersByTimeAsync(ACTION_FENCE_NOT_SEEN_MS);
+        onScanUpdate?.(held);
+
+        expect(
+            post.mock.calls.at(-1)?.[0].detail.actionFence?.notSeen,
+            "a held scan page must show the live not-seen label",
+        ).toBe(true);
+        fences.dispose();
+    });
+
+    it("a ladder reply held across the not-seen timer is posted with the live label", async () => {
+        vi.useFakeTimers();
+        const fences = new CiActionFenceStore(memento());
+        await beginFence(fences);
+        const running = {
+            ...detail(),
+            runs: [{ ...detail().runs[0]!, failedScan: { state: "running" as const, found: 0 } }],
+        };
+        const release = deferredVoid();
+        let reads = 0;
+        const { source } = fencedSource(fences);
+        const post = vi.fn();
+        const answered = answerCommitCiDetailRequest(
+            {
+                ...source,
+                getDetail: async () => {
+                    reads += 1;
+                    const actionFence = fences.fenceFor(REPO, HASH);
+                    if (reads === 1) return { ...running, ...(actionFence && { actionFence }) };
+                    await release.promise;
+                    return detail(actionFence);
+                },
+            },
+            request(1),
+            post,
+            new CommitCiDetailLoops(),
+        );
+
+        await vi.advanceTimersByTimeAsync(PENDING_CHECK_RETRY_DELAYS_MS[0]!);
+        expect(reads, "the ladder re-read has started").toBe(2);
+        await vi.advanceTimersByTimeAsync(ACTION_FENCE_NOT_SEEN_MS);
+        release.resolve();
+        await answered;
+
+        expect(
+            post.mock.calls.at(-1)?.[0].detail.actionFence?.notSeen,
+            "a held ladder reply must show the live not-seen label",
+        ).toBe(true);
         fences.dispose();
     });
 
