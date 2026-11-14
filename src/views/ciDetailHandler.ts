@@ -113,7 +113,8 @@ export async function answerCommitCiDetailRequest(
     // merge-rule read and the account check after its snapshot is built, so they can arrive out
     // of order, and an old entry's page can reach a newer read's hooks: one whose snapshot is
     // older than the shown one is dropped. Unnumbered ones (no provider, a sign-in failure, a
-    // fence re-post of the shown copy) are posted as they come.
+    // fence re-post of the shown copy) are posted as they come. The number ranks only the data:
+    // what a dropped one says about the request itself still reaches the view on the shown data.
     // A reply or page carries the fence of the moment it was built, so every post takes the
     // store's live fence instead, with no await.
     const fences = source.actions?.fences;
@@ -122,13 +123,17 @@ export async function answerCommitCiDetailRequest(
     const show = (update: CommitCiDetail | undefined): void => {
         if (!isCurrent()) return;
         const snapshot = update && snapshotOf(update);
-        if (snapshot !== undefined) {
-            if (snapshot < newest) return;
+        let next = update;
+        if (snapshot !== undefined && snapshot < newest) {
+            const outcome = requestOutcome(update as CommitCiDetail);
+            if (!outcome || !detail) return;
+            next = { ...detail, ...outcome };
+        } else if (snapshot !== undefined) {
             newest = snapshot;
         }
         detail =
-            update &&
-            withoutSnapshot(fences ? withFence(update, fences.fenceFor(repoKey, hash)) : update);
+            next &&
+            withoutSnapshot(fences ? withFence(next, fences.fenceFor(repoKey, hash)) : next);
         post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
     };
     const read = async (
@@ -266,6 +271,21 @@ function withFence(
     delete next.actionFence;
     if (actionFence) next.actionFence = actionFence;
     return next;
+}
+
+/**
+ * What a reply says about its own request rather than the CI data it shows: a failed Refresh's
+ * error and the sign-in host it routes to. Every other field (runs, checks, coverage, outcome,
+ * the merge marks of the reply's own rule read) belongs to the data. Undefined when none.
+ */
+function requestOutcome(
+    update: CommitCiDetail,
+): Pick<CommitCiDetail, "refreshError" | "signInHost"> | undefined {
+    if (update.refreshError === undefined) return undefined;
+    return {
+        refreshError: update.refreshError,
+        ...(update.signInHost !== undefined && { signInHost: update.signInHost }),
+    };
 }
 
 /** Whether a run is still looking for failed jobs past its page bound. */

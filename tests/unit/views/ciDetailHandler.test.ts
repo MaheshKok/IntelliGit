@@ -208,6 +208,196 @@ describe("answerCommitCiDetailRequest", () => {
         }
     });
 
+    it("a failed Refresh's error held past a newer scan page is still shown", async () => {
+        const service = new CommitCiDetailService({ now: () => Date.now() });
+        const serve = { repoKey: "/repo", capabilities: NO_CI_CAPABILITIES };
+        const cursor = { runId: "1", runAttempt: 1, runName: "CI", url: "page-11" };
+        const lastPage = deferred<void>();
+        const replyHeld = deferred<void>();
+        let fetches = 0;
+        const fetchDetail = async () => {
+            fetches += 1;
+            if (fetches === 1) {
+                return {
+                    ...scanned("running", 0),
+                    complete: false,
+                    scanCursors: [cursor],
+                } as never;
+            }
+            return {
+                ...detail("/repo"),
+                complete: false,
+                outcome: "unavailable",
+                error: "HTTP 502",
+            } as never;
+        };
+        const source = {
+            repoKey: () => "/repo",
+            generations: new CiGenerations(),
+            getDetail: async (
+                _hash: string,
+                options: { force?: boolean },
+                _ctx: unknown,
+                onScanUpdate?: (update: CommitCiDetail) => void,
+            ) => {
+                const reply = await service.getOrFetch(
+                    "snapshot#detail",
+                    fetchDetail,
+                    serve,
+                    options,
+                    undefined,
+                    {
+                        continueScan: async () => {
+                            await lastPage.promise;
+                            return { failed: [] };
+                        },
+                        isCurrent: () => true,
+                        onUpdate: (update) => onScanUpdate?.(update),
+                    } as never,
+                );
+                // The merge-rule read holds the Refresh's reply, as a cold rule cache does.
+                if (options.force) await replyHeld.promise;
+                return reply;
+            },
+        };
+        const loops = new CommitCiDetailLoops();
+        const firstPost = vi.fn();
+        const first = answerCommitCiDetailRequest(
+            source as never,
+            { type: "requestCommitCiDetail", requestId: 1, repoKey: "/repo", hash: HASH },
+            firstPost,
+            loops,
+        );
+        await vi.waitFor(() => expect(firstPost).toHaveBeenCalled());
+        const post = vi.fn();
+        const forced = answerCommitCiDetailRequest(
+            source as never,
+            {
+                type: "requestCommitCiDetail",
+                requestId: 2,
+                repoKey: "/repo",
+                hash: HASH,
+                force: true,
+            },
+            post,
+            loops,
+        );
+        await vi.waitFor(() => expect(fetches).toBe(2));
+        // The old scan's page is built after the failed reply and posts while it is held.
+        lastPage.resolve();
+        await vi.waitFor(() => expect(post).toHaveBeenCalled());
+        replyHeld.resolve();
+        await forced;
+        loops.dispose();
+        await first;
+
+        expect(
+            post.mock.calls.at(-1)?.[0].detail?.refreshError,
+            "the failed Refresh's error must be shown",
+        ).toBe("HTTP 502");
+    });
+
+    it("a failed Refresh held past a running scan page is not re-read automatically", async () => {
+        vi.useFakeTimers();
+        try {
+            const service = new CommitCiDetailService({ now: () => Date.now() });
+            const serve = { repoKey: "/repo", capabilities: NO_CI_CAPABILITIES };
+            const cursor = { runId: "1", runAttempt: 1, runName: "CI", url: "page-11" };
+            const firstPage = deferred<void>();
+            const replyHeld = deferred<void>();
+            let fetches = 0;
+            let pages = 0;
+            const fetchDetail = async () => {
+                fetches += 1;
+                if (fetches === 1) {
+                    return {
+                        ...scanned("running", 0),
+                        complete: false,
+                        scanCursors: [cursor],
+                    } as never;
+                }
+                return {
+                    ...detail("/repo"),
+                    complete: false,
+                    outcome: "unavailable",
+                    error: "HTTP 502",
+                } as never;
+            };
+            const source = {
+                repoKey: () => "/repo",
+                generations: new CiGenerations(),
+                getDetail: async (
+                    _hash: string,
+                    options: { force?: boolean },
+                    _ctx: unknown,
+                    onScanUpdate?: (update: CommitCiDetail) => void,
+                ) => {
+                    const reply = await service.getOrFetch(
+                        "snapshot#detail",
+                        fetchDetail,
+                        serve,
+                        options,
+                        undefined,
+                        {
+                            continueScan: async () => {
+                                pages += 1;
+                                // One page that leaves the scan running, then none for the test.
+                                if (pages > 1) return new Promise(() => undefined);
+                                await firstPage.promise;
+                                return { failed: [], next: { ...cursor, url: "page-12" } };
+                            },
+                            isCurrent: () => true,
+                            onUpdate: (update) => onScanUpdate?.(update),
+                        } as never,
+                    );
+                    if (options.force) await replyHeld.promise;
+                    return reply;
+                },
+            };
+            const loops = new CommitCiDetailLoops();
+            const first = answerCommitCiDetailRequest(
+                source as never,
+                { type: "requestCommitCiDetail", requestId: 1, repoKey: "/repo", hash: HASH },
+                vi.fn(),
+                loops,
+            );
+            await vi.advanceTimersByTimeAsync(0);
+            const post = vi.fn();
+            const forced = answerCommitCiDetailRequest(
+                source as never,
+                {
+                    type: "requestCommitCiDetail",
+                    requestId: 2,
+                    repoKey: "/repo",
+                    hash: HASH,
+                    force: true,
+                },
+                post,
+                loops,
+            );
+            await vi.advanceTimersByTimeAsync(0);
+            firstPage.resolve();
+            await vi.advanceTimersByTimeAsync(0);
+            expect(post, "the running page posts while the reply is held").toHaveBeenCalledTimes(1);
+            replyHeld.resolve();
+            // Long enough for the pending cache entry to expire and the ladder to re-read it.
+            await vi.advanceTimersByTimeAsync(60_000);
+            loops.dispose();
+            await vi.advanceTimersByTimeAsync(0);
+            await Promise.all([forced, first]);
+
+            expect(fetches, "provider reads after the failed Refresh").toBe(2);
+            expect(post, "the failure stays shown until the next Refresh").toHaveBeenCalledTimes(2);
+            expect(post.mock.calls.at(-1)?.[0].detail?.refreshError).toBe("HTTP 502");
+            expect(
+                post.mock.calls.at(-1)?.[0].detail?.runs[0].failedScan.state,
+                "the error shows on the newer running page's data",
+            ).toBe("running");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("an old scan's page landing during a forced read does not hide the fetched reply", async () => {
         const post = await forcedReadOverOldScan(false);
 
