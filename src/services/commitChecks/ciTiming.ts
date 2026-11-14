@@ -18,7 +18,10 @@ export interface UsualDuration {
 /** K23: a baseline is complete and immutable, so it is kept a day, in memory and on disk. */
 const USUAL_TTL_MS = 24 * 60 * 60 * 1000;
 const STORE_KEY = "intelligit.commitChecks.usualDurations";
-/** The clear token lives under its own key, so a late write of the entries cannot revert it. */
+/**
+ * A clear writes its token here and under the entries key; readers take the newer of the two
+ * (see {@link newerEpoch}), so a late write of an older token to either key cannot revert it.
+ */
 const EPOCH_KEY = "intelligit.commitChecks.usualDurationsEpoch";
 /** Saved baselines kept at most; the oldest are dropped first. */
 const MAX_SAVED = 200;
@@ -38,8 +41,8 @@ interface Saved {
 
 /**
  * The entries and the clear token they were saved under. Entries count only while that token
- * equals the one under {@link EPOCH_KEY}, which only a clear writes: a clear in one window
- * reaches all of them, and an older entries write that lands late is simply not read.
+ * is the newest one in storage: a clear in one window reaches all of them, and an older write
+ * that lands late is simply not read.
  */
 interface Stored {
     readonly epoch: string;
@@ -164,15 +167,21 @@ export class UsualDurationCache {
     /**
      * Drops every baseline, saved ones too, in every window; a fetch already under way, here or
      * in another window, is not kept. The new epoch is written at once, not queued behind saves,
-     * under a key no save writes, so no older save can revert it.
+     * and ranks above every epoch this window has seen, so no older write can revert it.
      */
     clear(): void {
         this.generation += 1;
         this.entries.clear();
-        if (!this.store) return;
+        const store = this.store;
+        if (!store) return;
+        const epoch = `${epochCount(this.readStored().epoch) + 1}:${randomUUID()}`;
         // Until the write lands, this window ignores every saved baseline; a save retries it.
-        this.pendingEpoch = randomUUID();
-        void this.writeEpoch(this.pendingEpoch);
+        this.pendingEpoch = epoch;
+        void this.writeEpoch(epoch);
+        // A failure here is covered by the epoch key; a save under this epoch rewrites it.
+        void Promise.resolve(store.update(STORE_KEY, { epoch, entries: {} })).catch(
+            () => undefined,
+        );
     }
 
     /** Writes a clear's epoch; only the latest clear's success lifts the saved-baseline block. */
@@ -219,12 +228,15 @@ export class UsualDurationCache {
     private readStored(): Stored {
         if (this.pendingEpoch !== null) return { epoch: this.pendingEpoch, entries: {} };
         const stored = this.store?.get<unknown>(EPOCH_KEY);
-        const epoch = typeof stored === "string" ? stored : "";
         const raw = this.store?.get<unknown>(STORE_KEY);
         const { epoch: savedUnder, entries } = (raw ?? {}) as {
             epoch?: unknown;
             entries?: unknown;
         };
+        const epoch = newerEpoch(
+            typeof stored === "string" ? stored : "",
+            typeof savedUnder === "string" ? savedUnder : "",
+        );
         if (savedUnder !== epoch || !entries || typeof entries !== "object") {
             return { epoch, entries: {} };
         }
@@ -233,6 +245,19 @@ export class UsualDurationCache {
             entries: Object.fromEntries(Object.entries(entries).filter(([, e]) => isSaved(e))),
         };
     }
+}
+
+/** The rank of a clear token `<count>:<id>`; an older build's plain id ranks 0. */
+function epochCount(epoch: string): number {
+    const match = /^(\d+):/.exec(epoch);
+    return match ? Number(match[1]) : 0;
+}
+
+/** The later of two clear tokens: higher count first, then the id, the same in every window. */
+function newerEpoch(a: string, b: string): string {
+    const [countA, countB] = [epochCount(a), epochCount(b)];
+    if (countA !== countB) return countA > countB ? a : b;
+    return a >= b ? a : b;
 }
 
 function isSaved(entry: unknown): entry is Saved {

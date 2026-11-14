@@ -864,6 +864,46 @@ describe("usual duration cache and serving", () => {
         expect(fetch).not.toHaveBeenCalled();
     });
 
+    it.each([false, true])(
+        "an older clear's late write cannot undo a newer clear across a restart (other window: %s)",
+        async (otherWindow) => {
+            const store = sharedStore();
+            const update = store.update;
+            let release!: () => void;
+            let firstEpochWrite = true;
+            store.update = async (key: string, value: unknown) => {
+                if (key.endsWith("Epoch") && firstEpochWrite) {
+                    firstEpochWrite = false;
+                    await new Promise<void>((r) => (release = r));
+                }
+                await update(key, value);
+            };
+            const windowA = new UsualDurationCache({ store });
+            const windowB = otherWindow ? new UsualDurationCache({ store }) : windowA;
+
+            // Clear 1's write is held; a baseline is saved between the two clears.
+            windowA.clear();
+            await windowA.get("usual:k:300", async () => ({
+                baselineRunId: "200",
+                runMs: 1_000,
+                jobMs: {},
+            }));
+            await new Promise((done) => setTimeout(done, 0));
+            windowB.clear();
+            await new Promise((done) => setTimeout(done, 0));
+            // Clear 1's write lands last.
+            release();
+            await new Promise((done) => setTimeout(done, 0));
+
+            const fetch = vi.fn(async () => ({ baselineRunId: "201", runMs: 2_000, jobMs: {} }));
+            const restarted = await new UsualDurationCache({ store }).get("usual:k:300", fetch);
+            expect(restarted?.runMs, "clear 2 dropped the baseline saved before it").toBe(2_000);
+            // The window that saved it, still running, does not serve it from memory either.
+            const again = await windowA.get("usual:k:300", fetch);
+            expect(again?.runMs, "clear 2 also reaches the saving window's memory").toBe(2_000);
+        },
+    );
+
     it("a running job in a failed but incomplete run still gets its usual duration", async () => {
         const failedRun = selectedRun({
             state: "failure",
