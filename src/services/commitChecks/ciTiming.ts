@@ -2,6 +2,7 @@
 // latest successful earlier run of the same workflow and branch; this module caches it per
 // selected run and attaches it to the served detail.
 
+import { randomUUID } from "node:crypto";
 import type * as vscode from "vscode";
 import type { CiRun } from "../../types";
 
@@ -31,6 +32,15 @@ interface UsualDurationCacheOptions {
 interface Saved {
     readonly at: number;
     readonly value: UsualDuration;
+}
+
+/**
+ * What the store holds: the entries and the clear token they were saved under. Every window
+ * reads the token, and each clear replaces it, so a clear in one window reaches all of them.
+ */
+interface Stored {
+    readonly epoch: string;
+    readonly entries: Readonly<Record<string, Saved>>;
 }
 
 /**
@@ -93,13 +103,16 @@ export function applyUsual(run: CiRun, usual: UsualDuration | null): CiRun {
 export class UsualDurationCache {
     private readonly entries = new Map<
         string,
-        { readonly at: number; readonly value: Promise<UsualDuration | null> }
+        {
+            readonly at: number;
+            readonly epoch: string;
+            readonly value: Promise<UsualDuration | null>;
+        }
     >();
     private readonly store?: Pick<vscode.Memento, "get" | "update">;
     private readonly now: () => number;
+    // Counts this cache's own clears, which also fence a cache that has no store.
     private generation = 0;
-    // Saved entries from before the last clear() are ignored until its write lands.
-    private clearedAt = Number.NEGATIVE_INFINITY;
     private writes: Promise<unknown> = Promise.resolve();
 
     /**
@@ -115,23 +128,25 @@ export class UsualDurationCache {
     /** The kept baseline for `key`, or `fetch`'s answer when none is younger than a day. */
     get(key: string, fetch: () => Promise<UsualDuration | null>): Promise<UsualDuration | null> {
         const now = this.now();
+        const stored = this.readStored();
+        const epoch = this.epochOf(stored);
         const hit = this.entries.get(key);
-        if (hit && now - hit.at < USUAL_TTL_MS) return hit.value;
-        const saved = this.readSaved()[key];
+        // A clear in any window changes the epoch, so a baseline from before it is never reused.
+        if (hit && hit.epoch === epoch && now - hit.at < USUAL_TTL_MS) return hit.value;
+        const saved = stored.entries[key];
         if (saved && now - saved.at < USUAL_TTL_MS) {
             const value = Promise.resolve(saved.value);
-            this.entries.set(key, { at: saved.at, value });
+            this.entries.set(key, { at: saved.at, epoch, value });
             return value;
         }
-        const generation = this.generation;
-        const entry = { at: now, value: fetch() };
+        const entry = { at: now, epoch, value: fetch() };
         this.entries.set(key, entry);
         entry.value.then(
             (value) => {
                 if (!value) {
                     if (this.entries.get(key) === entry) this.entries.delete(key);
-                } else if (generation === this.generation) {
-                    this.save(key, { at: entry.at, value });
+                } else {
+                    this.save(key, { at: entry.at, value }, epoch);
                 }
             },
             () => {
@@ -141,25 +156,38 @@ export class UsualDurationCache {
         return entry.value;
     }
 
-    /** Drops every baseline, saved ones too; a fetch already under way is not kept. */
+    /**
+     * Drops every baseline, saved ones too, in every window; a fetch already under way, here or
+     * in another window, is not kept. The new epoch is written at once, not queued behind saves,
+     * so this window and the others see it before any older queued save can land.
+     */
     clear(): void {
         this.generation += 1;
-        this.clearedAt = this.now();
         this.entries.clear();
         const store = this.store;
-        if (store) this.enqueue(() => store.update(STORE_KEY, undefined));
+        if (!store) return;
+        // A failed write only means another window keeps its baselines until they expire.
+        Promise.resolve(store.update(STORE_KEY, { epoch: randomUUID(), entries: {} })).catch(
+            () => undefined,
+        );
     }
 
-    private save(key: string, saved: Saved): void {
+    /** Saves `saved` unless a clear (here or in another window) happened since `epoch`. */
+    private save(key: string, saved: Saved, epoch: string): void {
         const store = this.store;
         if (!store) return;
-        this.enqueue(() => {
+        this.enqueue(async () => {
+            const current = this.readStored();
+            if (this.epochOf(current) !== epoch) return;
             const now = this.now();
-            const kept = Object.entries({ ...this.readSaved(), [key]: saved })
+            const kept = Object.entries({ ...current.entries, [key]: saved })
                 .filter(([, entry]) => now - entry.at < USUAL_TTL_MS)
                 .sort(([, a], [, b]) => b.at - a.at)
                 .slice(0, MAX_SAVED);
-            return store.update(STORE_KEY, Object.fromEntries(kept));
+            await store.update(STORE_KEY, {
+                epoch: current.epoch,
+                entries: Object.fromEntries(kept),
+            });
         });
     }
 
@@ -169,12 +197,21 @@ export class UsualDurationCache {
         this.writes = this.writes.then(write).then(undefined, () => undefined);
     }
 
-    private readSaved(): Record<string, Saved> {
+    /** This cache's clears plus the shared clear token; either changing ends an epoch. */
+    private epochOf(stored: Stored): string {
+        return `${this.generation}|${stored.epoch}`;
+    }
+
+    private readStored(): Stored {
         const raw = this.store?.get<unknown>(STORE_KEY);
-        if (!raw || typeof raw !== "object") return {};
-        return Object.fromEntries(
-            Object.entries(raw).filter(([, entry]) => isSaved(entry) && entry.at > this.clearedAt),
-        );
+        const { epoch, entries } = (raw ?? {}) as { epoch?: unknown; entries?: unknown };
+        if (typeof epoch !== "string" || !entries || typeof entries !== "object") {
+            return { epoch: "", entries: {} };
+        }
+        return {
+            epoch,
+            entries: Object.fromEntries(Object.entries(entries).filter(([, e]) => isSaved(e))),
+        };
     }
 }
 

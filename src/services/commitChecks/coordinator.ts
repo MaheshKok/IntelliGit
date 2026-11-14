@@ -9,6 +9,7 @@ import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
 import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type {
     CiRun,
+    CiState,
     CommitChecksSnapshot,
     CommitCiDetail,
     CommitCiDetailData,
@@ -330,8 +331,8 @@ export class CommitChecksCoordinator {
     }
 
     /**
-     * The fetched detail with each queued or running run's usual duration and its jobs' (K23),
-     * cached per selected run. A run whose lookup failed is left without one; only a change
+     * The fetched detail with the usual duration of each run that is queued, running or has a
+     * queued or running job, and of its jobs (K23), cached per selected run. A run whose lookup failed is left without one; only a change
      * of the signed-in account rejects.
      */
     private async withUsual(
@@ -346,7 +347,9 @@ export class CommitChecksCoordinator {
         const scope = provider.keyFor(ref);
         const runs: CiRun[] = [];
         for (const run of detail.runs) {
-            if (run.state !== "queued" && run.state !== "running") {
+            // A failed run can still have a job going, and that job shows a usual duration too.
+            const active = (state: CiState) => state === "queued" || state === "running";
+            if (!active(run.state) && !run.jobs.some((job) => active(job.state))) {
                 runs.push(run);
                 continue;
             }

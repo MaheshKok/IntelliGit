@@ -710,4 +710,65 @@ describe("usual duration cache and serving", () => {
         await restarted.get("usual:k:300", fetch);
         expect(fetch).toHaveBeenCalledTimes(3);
     });
+
+    function sharedStore() {
+        const saved = new Map<string, unknown>();
+        return {
+            get: (key: string) => saved.get(key),
+            update: async (key: string, value: unknown) => {
+                saved.set(key, value);
+            },
+        };
+    }
+
+    it("a clear in another window drops this window's kept baseline", async () => {
+        const store = sharedStore();
+        const windowA = new UsualDurationCache({ store });
+        const windowB = new UsualDurationCache({ store });
+        let runMs = 1_000;
+        const fetch = vi.fn(async () => ({ baselineRunId: "200", runMs, jobMs: {} }));
+        expect((await windowA.get("usual:k:300", fetch))?.runMs).toBe(1_000);
+
+        // Another window signs in to a different account and clears its detail cache.
+        new CommitCiDetailService({ usualDurations: windowB }).clear();
+        runMs = 2_000;
+
+        expect((await windowA.get("usual:k:300", fetch))?.runMs).toBe(2_000);
+        expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("a clear in another window fences a fetch already under way, across a restart", async () => {
+        const store = sharedStore();
+        const windowA = new UsualDurationCache({ store });
+        const windowB = new UsualDurationCache({ store });
+        let resolve!: (value: UsualDuration) => void;
+        const pending = windowA.get("usual:k:300", () => new Promise((r) => (resolve = r)));
+
+        windowB.clear();
+        resolve({ baselineRunId: "200", runMs: 1_000, jobMs: {} });
+        await pending;
+        // Lets every queued write land.
+        await new Promise((done) => setTimeout(done, 0));
+
+        const fetch = vi.fn(async () => null);
+        await new UsualDurationCache({ store }).get("usual:k:300", fetch);
+        expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("a running job in a failed but incomplete run still gets its usual duration", async () => {
+        const failedRun = selectedRun({
+            state: "failure",
+            jobs: [job("lint", "failure"), job("build", "running")],
+        });
+        const { provider, read } = coordinatorFor([failedRun], async () => ({
+            baselineRunId: "200",
+            runMs: 600_000,
+            jobMs: { [jobKey("CI", "build")]: 30_000 },
+        }));
+
+        const detail = await read();
+
+        expect(detail?.runs[0]?.jobs[1]?.usualDurationMs).toBe(30_000);
+        expect(provider.getUsualDuration).toHaveBeenCalledTimes(1);
+    });
 });
