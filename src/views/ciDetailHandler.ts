@@ -108,28 +108,45 @@ export async function answerCommitCiDetailRequest(
             : repoKey === currentRepoKey;
     };
     // Each overflow-scan page re-posts at once while this request is still the loop's newest,
-    // and becomes the shown detail a fence change re-posts.
+    // and becomes the shown detail a fence change re-posts. A read's reply and its scan pages
+    // are ranked by the read they came from, the reply first (its snapshot is taken before the
+    // pages it starts); one that arrives after something newer was posted is dropped, since
+    // a reply waits on the merge-rule read and a page can reach the webview before it.
     let detail: CommitCiDetail | undefined;
-    const onScanUpdate = (update: CommitCiDetail): void => {
-        if (!isCurrent()) return;
+    let reads = 0;
+    let newest = -1;
+    const show = (rank: number, update: CommitCiDetail | undefined): void => {
+        if (!isCurrent() || rank < newest) return;
+        newest = rank;
         detail = update;
-        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: update });
+        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: update ?? null });
     };
-    detail =
+    const read = async (
+        fetch: (
+            onScanUpdate: (update: CommitCiDetail) => void,
+        ) => Promise<CommitCiDetail | undefined>,
+        postEmpty = true,
+    ): Promise<void> => {
+        const rank = 2 * ++reads;
+        const reply = await fetch((update) => show(rank + 1, update));
+        if (reply !== undefined || postEmpty) show(rank, reply);
+    };
+    const reread = (postEmpty = true): Promise<void> =>
+        read(
+            (onScanUpdate) => source.getDetail(hash, { force: false }, ctx, onScanUpdate),
+            postEmpty,
+        );
+    await read((onScanUpdate) =>
         force === true && source.actions
-            ? await source.actions.refresh(hash, ctx, onScanUpdate)
-            : await source.getDetail(hash, { force: force === true }, ctx, onScanUpdate);
+            ? source.actions.refresh(hash, ctx, onScanUpdate)
+            : source.getDetail(hash, { force: force === true }, ctx, onScanUpdate),
+    );
     if (!isCurrent()) return;
-    post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
     if (source.actions) {
         repostOnFenceChange(source.actions.fences, stopped, repoKey, hash, {
             shown: () => detail,
-            post: (update) => {
-                if (!isCurrent()) return;
-                detail = update;
-                post({ type: "commitCiDetail", requestId, repoKey, hash, detail: update });
-            },
-            refetch: () => source.getDetail(hash, { force: false }, ctx, onScanUpdate),
+            post: (update) => show(newest, update),
+            refetch: () => reread(false),
         });
     }
     // The scan pages reach only the newest requester of a commit's detail, so its progress is
@@ -141,9 +158,8 @@ export async function answerCommitCiDetailRequest(
         const delays = PENDING_CHECK_RETRY_DELAYS_MS;
         await sleep(delays[Math.min(rung, delays.length - 1)], stopped);
         if (!isCurrent()) return;
-        detail = await source.getDetail(hash, { force: false }, ctx, onScanUpdate);
+        await reread();
         if (!isCurrent()) return;
-        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
     }
 }
 
@@ -208,7 +224,8 @@ function repostOnFenceChange(
     view: {
         shown(): CommitCiDetail | undefined;
         post(detail: CommitCiDetail): void;
-        refetch(): Promise<CommitCiDetail | undefined>;
+        /** Reads the detail again and posts it unless something newer was posted meanwhile. */
+        refetch(): Promise<void>;
     },
 ): void {
     if (stopped.aborted) return;
@@ -223,8 +240,7 @@ function repostOnFenceChange(
     });
     const ended = fences.onDidEnd(async (endedHash) => {
         if (stopped.aborted || endedHash !== hash) return;
-        const update = await view.refetch();
-        if (update && !stopped.aborted) view.post(update);
+        await view.refetch();
     });
     stopped.addEventListener(
         "abort",

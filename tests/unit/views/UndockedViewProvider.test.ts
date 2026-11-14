@@ -925,7 +925,13 @@ describe("UndockedViewProvider Checks tab loops", () => {
 
     it("each overflow-scan page reaches the panel under the request's id", async () => {
         await withLoopHarness(async ({ provider, getDetail }) => {
-            const page = runningScan(HASH_A);
+            // The page that ends the scan: a page newer than its read's reply stays shown, so a
+            // running one would keep the ladder re-reading.
+            const running = runningScan(HASH_A);
+            const page: CommitCiDetail = {
+                ...running,
+                runs: [{ ...running.runs[0], failedScan: { state: "done", found: 1 } }],
+            };
             getDetail.mockImplementation(
                 async (
                     _hash: string,

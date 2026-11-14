@@ -314,8 +314,10 @@ describe("answerCommitCiDetailRequest", () => {
                     getDetail: async (_hash, _options, _ctx, onUpdate) => {
                         reads += 1;
                         if (reads === 1) return scanned("running", 0);
-                        onUpdate?.(scanned("running", 1));
-                        return scanned("done", 2);
+                        // As in the coordinator: a read's reply is the snapshot taken before
+                        // the pages it starts, so its own page is newer than the reply.
+                        onUpdate?.(scanned("done", 2));
+                        return scanned("running", 1);
                     },
                 },
                 { type: "requestCommitCiDetail", requestId: 8, repoKey: "/repo", hash: HASH },
@@ -332,9 +334,67 @@ describe("answerCommitCiDetailRequest", () => {
                 "the page from the ladder's re-read reaches the webview",
             ).toEqual([
                 [8, { state: "running", found: 0 }],
-                [8, { state: "running", found: 1 }],
                 [8, { state: "done", found: 2 }],
             ]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("a reply that arrives after its own read's scan page does not overwrite it", async () => {
+        const post = vi.fn();
+        await answerCommitCiDetailRequest(
+            {
+                repoKey: () => "/repo",
+                generations: new CiGenerations(),
+                getDetail: async (_hash, _options, _ctx, onUpdate) => {
+                    // The reply waited on the merge-rule read while the scan found a page.
+                    onUpdate?.(scanned("done", 2));
+                    return scanned("done", 1);
+                },
+            },
+            { type: "requestCommitCiDetail", requestId: 9, repoKey: "/repo", hash: HASH },
+            post,
+            new CommitCiDetailLoops(),
+        );
+
+        expect(
+            post.mock.calls.at(-1)?.[0].detail.runs[0].failedScan.found,
+            "the older reply must not replace the newer scan page",
+        ).toBe(2);
+    });
+
+    it("a scan page from an earlier read that lands after a newer reply is dropped", async () => {
+        vi.useFakeTimers();
+        try {
+            let firstOnUpdate: ((update: CommitCiDetail) => void) | undefined;
+            let reads = 0;
+            const post = vi.fn();
+            const answered = answerCommitCiDetailRequest(
+                {
+                    repoKey: () => "/repo",
+                    generations: new CiGenerations(),
+                    getDetail: async (_hash, _options, _ctx, onUpdate) => {
+                        reads += 1;
+                        if (reads > 1) return scanned("done", 2);
+                        firstOnUpdate = onUpdate;
+                        return scanned("running", 0);
+                    },
+                },
+                { type: "requestCommitCiDetail", requestId: 10, repoKey: "/repo", hash: HASH },
+                post,
+                new CommitCiDetailLoops(),
+            );
+            await vi.runAllTimersAsync();
+            await answered;
+
+            // The first read's page was decorated slowly and lands after the re-read's reply.
+            firstOnUpdate?.(scanned("running", 1));
+
+            expect(
+                post.mock.calls.map(([reply]) => reply.detail.runs[0].failedScan.found),
+                "a late page from an older read must not replace the newer reply",
+            ).toEqual([0, 2]);
         } finally {
             vi.useRealTimers();
         }

@@ -17,6 +17,7 @@ vi.mock("vscode", () => ({
 }));
 
 import { GitHubProvider } from "../../../../src/services/commitChecks/githubProvider";
+import { RequiredChecksCache } from "../../../../src/services/commitChecks/requiredChecks";
 
 const ghRef = { host: "github.com", owner: "octo", repo: "app" } as ProviderRepoRef;
 
@@ -70,5 +71,42 @@ describe("C2 every protection 403", () => {
             status: "partial",
             names: ["build"],
         });
+    });
+});
+
+describe("required checks and the GitHub sign-in", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("a sign-in that fails once is read again after it recovers, not kept for the hour", async () => {
+        const provider = providerWith(
+            new HttpError(404, `HTTP 404: {"message":"Branch not protected"}`),
+        );
+        const cache = new RequiredChecksCache(() => 0);
+        const read = () =>
+            cache.get("octo/app", "trunk", () => provider.getRequiredChecks(ghRef, "trunk"));
+        mocks.getSession.mockRejectedValueOnce(new Error("keychain locked"));
+        mocks.getSession.mockResolvedValue({
+            id: "session",
+            accessToken: "gh-token",
+            account: { id: "account", label: "GitHub User" },
+            scopes: ["repo"],
+        });
+
+        await read().catch(() => undefined);
+
+        expect(
+            (await read()).status,
+            "a failed sign-in read must not stay cached as unknown",
+        ).not.toBe("unknown");
+    });
+
+    it("no GitHub session answers unknown", async () => {
+        mocks.getSession.mockResolvedValue(undefined);
+
+        await expect(
+            providerWith(
+                new HttpError(404, `HTTP 404: {"message":"Branch not protected"}`),
+            ).getRequiredChecks(ghRef, "trunk"),
+        ).resolves.toEqual({ status: "unknown" });
     });
 });

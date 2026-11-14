@@ -331,7 +331,11 @@ export class GitHubProvider implements CommitChecksProvider {
      */
     async getRequiredChecks(ref: ProviderRepoRef, branch: string): Promise<RequiredChecks> {
         const session = await openSession("");
-        if (!isSession(session)) return UNKNOWN_REQUIRED;
+        if (!isSession(session)) {
+            // A failed sign-in read rejects, so the hour cache drops it; signed out is an answer.
+            if (session.state === "unavailable") throw new Error(session.error);
+            return UNKNOWN_REQUIRED;
+        }
         const headers = githubHeaders(session);
         const base = repoApiUrl(ref as GitHubRepoRef);
         const name = encodeURIComponent(branch);
