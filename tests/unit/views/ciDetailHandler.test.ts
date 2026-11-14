@@ -229,6 +229,7 @@ describe("answerCommitCiDetailRequest", () => {
                 complete: false,
                 outcome: "unavailable",
                 error: "HTTP 502",
+                signInHost: "github.com",
             } as never;
         };
         const source = {
@@ -295,6 +296,10 @@ describe("answerCommitCiDetailRequest", () => {
             post.mock.calls.at(-1)?.[0].detail?.refreshError,
             "the failed Refresh's error must be shown",
         ).toBe("HTTP 502");
+        expect(
+            post.mock.calls.at(-1)?.[0].detail?.signInHost,
+            "the failed Refresh's sign-in route must be shown",
+        ).toBe("github.com");
     });
 
     it("a failed Refresh held past a running scan page is not re-read automatically", async () => {
