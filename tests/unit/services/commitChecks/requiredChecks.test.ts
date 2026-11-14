@@ -30,7 +30,6 @@ import { CommitChecksCoordinator } from "../../../../src/services/commitChecks/c
 import { CiGenerations } from "../../../../src/services/commitChecks/ciGenerations";
 import {
     applyRequired,
-    REQUIRED_CHECKS_TTL_MS,
     type RequiredChecks,
 } from "../../../../src/services/commitChecks/requiredChecks";
 import { NO_CI_CAPABILITIES } from "../../../../src/shared/ci/capabilities";
@@ -215,7 +214,7 @@ describe("GitHubProvider.getRequiredChecks (C2)", () => {
         const rateLimited = new HttpError(403, "HTTP 403: API rate limit exceeded", {
             "x-ratelimit-remaining": "0",
         });
-        const limited = fakeGitHub([[]], rateLimited);
+        const limited = fakeGitHub([rateLimited], NOT_PROTECTED);
         await expect(limited.provider.getRequiredChecks(ghRef, "trunk")).rejects.toBe(rateLimited);
     });
 
@@ -455,7 +454,8 @@ describe("CommitChecksCoordinator required checks", () => {
 
         const first = await c.detail();
         const second = await c.detail();
-        c.advance(REQUIRED_CHECKS_TTL_MS - 1);
+        // K21's hour as literals, so the test does not follow a changed constant.
+        c.advance(3_599_999);
         await c.detail();
 
         expect(c.getRequiredChecks).toHaveBeenCalledTimes(1);

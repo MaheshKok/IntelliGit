@@ -303,15 +303,28 @@ export class CommitChecksCoordinator {
         const { provider, ref } = match;
         const getRequiredChecks = provider.getRequiredChecks?.bind(provider);
         if (!provider.capabilities.requiredChecks || !getRequiredChecks) return undefined;
+        const unknown = { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: false };
         try {
-            const branch = await this.gitOps.readDefaultBranch();
-            if (!branch) return { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: true };
-            const checks = await this.requiredChecks.get(provider.keyFor(ref), branch.name, () =>
-                getRequiredChecks(ref, branch.name),
+            // The rule depends on who is signed in, so the cache is partitioned by account and
+            // withAccount rereads the account after the reads: a switch mid-read starts over.
+            return await this.withAccount(
+                match,
+                () => Promise.resolve(undefined),
+                async (account) => {
+                    const branch = await this.gitOps.readDefaultBranch();
+                    if (!branch) return { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: true };
+                    const scope = provider.keyFor(ref);
+                    const checks = await this.requiredChecks.get(
+                        account === undefined ? scope : `${scope}|${account}`,
+                        branch.name,
+                        () => getRequiredChecks(ref, branch.name),
+                    );
+                    return { checks, defaultBranchUnknown: false };
+                },
+                () => unknown,
             );
-            return { checks, defaultBranchUnknown: false };
         } catch {
-            return { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: false };
+            return unknown;
         }
     }
 

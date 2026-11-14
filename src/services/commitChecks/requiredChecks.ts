@@ -19,7 +19,7 @@ export interface RequiredChecks {
 export const UNKNOWN_REQUIRED: RequiredChecks = Object.freeze({ status: "unknown" });
 
 /** K21: required checks stay in memory (L1) only, for one hour. */
-export const REQUIRED_CHECKS_TTL_MS = 60 * 60 * 1000;
+const REQUIRED_CHECKS_TTL_MS = 60 * 60 * 1000;
 
 interface Entry {
     readonly at: number;

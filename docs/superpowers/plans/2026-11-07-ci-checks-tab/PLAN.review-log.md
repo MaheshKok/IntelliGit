@@ -1080,3 +1080,9 @@ PHASE 8: ACCEPTED b5a56002
 - Gates: Gate L 6/6 exit 0. Proof chain: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build exit 0; `bun run test` 8079 passed / 10 failed: 8 commit-list-column-resize (Node v26.5.0, no localStorage, known since accf570d), tsconfigCoverage + screenshotComparatorMeta (worktree has empty node_modules; both pass in the linked copy). `tsc -p tsconfig.tests.json --noEmit` exit 0. Gate G build:prod + package exit 0 (88 entries).
 - GitNexus impact/detect_changes not run: the worktree guard refuses the CLI; callers checked by hand.
 - Not run here: Codex review, fix routing, seal, final verifier (the workflow runs them).
+
+## Phase 9 fix round 1 (builder)
+- F1 githubProvider getRequiredChecks: every protection 403 (rate-limited included) maps to partial/unknown. Test phase9ReviewProvider.test.ts "C2 every protection 403 ...", red before: "promise rejected HttpError: HTTP 403: API rate limit excee... instead of resolving". The old rate-limit-on-protection test in requiredChecks.test.ts moved to the rules read (still rejects).
+- F2 coordinator.readRequired: cache scope `<repoKey>|<account>` under withAccount (rereads account after the reads). Test phase9Review.test.ts "rules are isolated when ...", red before: "reader must not inherit admin's known rule: expected 'known' to be 'unknown'" and "old admin result must be discarded or reread: expected 'known' not to be 'known'".
+- F3 requiredChecks.test.ts "cached for 1 h" uses literal 3,599,999 ms. Mutations on a copy: TTL 30 min -> red "expected vi.fn() to be called 1 times, but got 2 times"; TTL 2 h -> red "called 2 times, but got 1 times"; both name "cached for 1 h". Exported REQUIRED_CHECKS_TTL_MS un-exported (no other user).
+- Gates: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build pass; test 8083 passed, 10 failed (the same 10: 8 commit-list-column-resize, tsconfigCoverage, screenshotComparatorMeta).

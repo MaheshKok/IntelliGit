@@ -20,11 +20,14 @@
 - UI: "blocks merge" (red) on required jobs/checks that failed or have not finished; "optional" (muted) on optional jobs; header "required: unknown" when the provider lacks the capability or the rule is not known. 4 strings in 12 locales.
 - CI_DETAIL_CONTRACT_VERSION 4 -> 5 (K32). README section, CHANGELOG 0.43.11.
 
+- Fix round 1 (review pending again): protection's 403 always maps to partial/unknown (rate-limited too); the required-rules cache is keyed by account and read under withAccount, so a switch mid-read rereads; K21's hour is pinned by literal 3,599,999/3,600,000 ms; `REQUIRED_CHECKS_TTL_MS` is no longer exported (knip).
+
 ## Decisions and why
 - `cancelled` counts as blocking, with failure, timed_out, action_required, queued, running and pending: a cancelled required check does not satisfy branch protection.
 - `defaultBranchUnknown` is a non-persisted detail field so the §8 hint has one source of truth.
 - Cache key uses `provider.keyFor(ref)`, the key every other per-repo cache uses.
-- A 403 with `retry-after` or `x-ratelimit-remaining: 0` is transient, not a refusal, so a rate limit never caches "unknown" for an hour.
+- A 403 with `retry-after` or `x-ratelimit-remaining: 0` on the rules read is still transient (rejects, not cached). On the protection read every 403 maps per C2 (round 1), so a rate-limited protection read caches partial/unknown for an hour (trade-off: the frozen C2 text says any 403).
+- Account change during the required read: `withAccount` retries, then gives "unknown" (no old-account answer is published).
 
 ## Open risks
 - GitNexus impact/detect_changes not run: the worktree guard refuses the CLI here and the registry holds no worktree. Callers checked by hand: GitOps (new method only), coordinator.getDetail/clear, provider capability maps, CheckTree/ChecksHeader.
