@@ -575,5 +575,9 @@
     "commit.checks.tab.actionUncertain": "Żądanie mogło zostać wysłane; odświeżanie",
     "commit.checks.tab.writeScopeHelpGithub": "Nie masz uprawnień do ponownego uruchamiania ani anulowania przepływów pracy w tym repozytorium.",
     "commit.checks.tab.writeScopeHelpGitlab": "Twój token GitLab jest tylko do odczytu. Utwórz token z zakresem api, aby uruchamiać ponownie lub anulować.",
-    "commit.checks.tab.writeActionsHelp": "Jak uzyskać token, który to umożliwia"
+    "commit.checks.tab.writeActionsHelp": "Jak uzyskać token, który to umożliwia",
+    "commit.checks.tab.blocksMerge": "blokuje scalanie",
+    "commit.checks.tab.optional": "opcjonalne",
+    "commit.checks.tab.requiredUnknown": "wymagane: nieznane",
+    "commit.checks.tab.defaultBranchUnknown": "domyślna gałąź nieznana — uruchom git remote set-head origin --auto"
 }

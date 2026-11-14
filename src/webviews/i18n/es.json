@@ -565,5 +565,9 @@
     "commit.checks.tab.actionUncertain": "Es posible que la solicitud se haya enviado; actualizando",
     "commit.checks.tab.writeScopeHelpGithub": "No tiene permiso para volver a ejecutar ni cancelar flujos de trabajo en este repositorio.",
     "commit.checks.tab.writeScopeHelpGitlab": "Su token de GitLab es de solo lectura. Cree uno con el ámbito api para volver a ejecutar o cancelar.",
-    "commit.checks.tab.writeActionsHelp": "Cómo obtener un token que pueda hacerlo"
+    "commit.checks.tab.writeActionsHelp": "Cómo obtener un token que pueda hacerlo",
+    "commit.checks.tab.blocksMerge": "bloquea la fusión",
+    "commit.checks.tab.optional": "opcional",
+    "commit.checks.tab.requiredUnknown": "obligatorio: desconocido",
+    "commit.checks.tab.defaultBranchUnknown": "rama predeterminada desconocida: ejecute git remote set-head origin --auto"
 }

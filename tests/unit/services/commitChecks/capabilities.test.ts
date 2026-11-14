@@ -46,11 +46,30 @@ describe("provider capabilities", () => {
         // Phase 2: GitHub reads runs, jobs, steps and the run header. Phase 3: GitLab reads
         // pipelines, jobs and the pipeline header; its API has no steps. Phase 7: both read
         // job logs and failure summaries. Phase 8: both re-run failed jobs, re-run one job and
-        // cancel a run, and explain a refused write with their own scope help.
+        // cancel a run, and explain a refused write with their own scope help. Phase 9: both
+        // read required checks; GitLab marks jobs allowed to fail as optional.
         const write = ["rerunFailed", "rerunJob", "cancel"] as const;
         const landed: Record<string, readonly (keyof ProviderCiCapabilities)[]> = {
-            github: ["runs", "jobs", "steps", "runHeader", "logs", "failureSummary", ...write],
-            gitlab: ["runs", "jobs", "runHeader", "logs", "failureSummary", ...write],
+            github: [
+                "runs",
+                "jobs",
+                "steps",
+                "runHeader",
+                "logs",
+                "failureSummary",
+                ...write,
+                "requiredChecks",
+            ],
+            gitlab: [
+                "runs",
+                "jobs",
+                "runHeader",
+                "logs",
+                "failureSummary",
+                ...write,
+                "requiredChecks",
+                "optionalJobs",
+            ],
         };
         const scopeHelp: Record<string, string> = {
             github: "commit.checks.tab.writeScopeHelpGithub",

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.11] - 2026-11-14
+
+### Added
+
+- Groundwork for the coming Checks tab: IntelliGit can now tell which CI checks block merging and which jobs are allowed to fail, and says so plainly when your provider won't share it. Nothing changes in the extension yet.
+
 ## [0.43.10] - 2026-11-13
 
 ### Added

@@ -344,6 +344,8 @@ export interface CommitCiDetail extends CommitCiDetailData {
     /** From the installed provider, never from a cache. */
     capabilities: ProviderCiCapabilities;
     repoKey: string;
+    /** `origin/HEAD` is missing, so required checks could not be read (never stored). */
+    defaultBranchUnknown?: true;
     /** A re-run or cancel the provider has not shown yet; `notSeen` after 10 minutes. */
     actionFence?: {
         targetId: string;

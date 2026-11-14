@@ -545,5 +545,9 @@
     "commit.checks.tab.actionUncertain": "요청이 전송되었을 수 있습니다. 새로 고치는 중",
     "commit.checks.tab.writeScopeHelpGithub": "이 저장소에서 워크플로를 다시 실행하거나 취소할 권한이 없습니다.",
     "commit.checks.tab.writeScopeHelpGitlab": "GitLab 토큰이 읽기 전용입니다. 다시 실행하거나 취소하려면 api 범위로 토큰을 만드세요.",
-    "commit.checks.tab.writeActionsHelp": "이 작업이 가능한 토큰을 받는 방법"
+    "commit.checks.tab.writeActionsHelp": "이 작업이 가능한 토큰을 받는 방법",
+    "commit.checks.tab.blocksMerge": "병합 차단",
+    "commit.checks.tab.optional": "선택 사항",
+    "commit.checks.tab.requiredUnknown": "필수: 알 수 없음",
+    "commit.checks.tab.defaultBranchUnknown": "기본 브랜치를 알 수 없음 — git remote set-head origin --auto를 실행하세요"
 }

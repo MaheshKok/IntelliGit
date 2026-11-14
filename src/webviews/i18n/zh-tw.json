@@ -545,5 +545,9 @@
     "commit.checks.tab.actionUncertain": "要求可能已傳送；正在重新整理",
     "commit.checks.tab.writeScopeHelpGithub": "你沒有權限在此存放庫中重新執行或取消工作流程。",
     "commit.checks.tab.writeScopeHelpGitlab": "你的 GitLab 權杖是唯讀的。請建立一個具有 api 範圍的權杖以重新執行或取消。",
-    "commit.checks.tab.writeActionsHelp": "如何取得具有此權限的權杖"
+    "commit.checks.tab.writeActionsHelp": "如何取得具有此權限的權杖",
+    "commit.checks.tab.blocksMerge": "阻擋合併",
+    "commit.checks.tab.optional": "選用",
+    "commit.checks.tab.requiredUnknown": "必要: 未知",
+    "commit.checks.tab.defaultBranchUnknown": "預設分支未知 — 請執行 git remote set-head origin --auto"
 }

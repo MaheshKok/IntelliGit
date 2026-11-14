@@ -44,6 +44,7 @@ import {
 import { CI_MAX_PAGES, CI_PAGE_SIZE, isUnderApiPrefix, paginate } from "./paginate";
 import { RequestGateCooldownError } from "./requestGate";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
+import { UNKNOWN_REQUIRED, type RequiredChecks } from "./requiredChecks";
 import {
     hasUnfinishedWork,
     isCompleteDetail,
@@ -229,6 +230,8 @@ export class GitLabProvider implements CommitChecksProvider {
         rerunFailed: true,
         rerunJob: true,
         cancel: true,
+        requiredChecks: true,
+        optionalJobs: true,
         writeScopeHelp: "commit.checks.tab.writeScopeHelpGitlab",
         // POST pipelines/:id/retry restarts failed and canceled jobs.
         rerunFailedLabel: "commit.checks.tab.rerunFailedAndCanceled",
@@ -359,6 +362,31 @@ export class GitLabProvider implements CommitChecksProvider {
     /** Fingerprint of the token stored for the host; never the token. */
     accountKey(ref: ProviderRepoRef): Promise<string> {
         return tokenAccountKey(() => this.store.get(ref.host));
+    }
+
+    /**
+     * §7: with the project's "Pipelines must succeed" on, every job not allowed to fail is
+     * required. The setting is per project, so `branch` does not change the answer. A missing
+     * field, a refusal (401, 403, 404) or no token is `unknown`; any other failure rejects.
+     */
+    async getRequiredChecks(ref: ProviderRepoRef, _branch: string): Promise<RequiredChecks> {
+        const gitLabRef = ref as GitLabRepoRef;
+        const token = await this.readToken(gitLabRef.host, "");
+        if (typeof token !== "string") return UNKNOWN_REQUIRED;
+        let project: unknown;
+        try {
+            project = await this.fetchJson(projectApiUrl(gitLabRef), { "PRIVATE-TOKEN": token });
+        } catch (err) {
+            if (err instanceof HttpError && [401, 403, 404].includes(err.statusCode)) {
+                return UNKNOWN_REQUIRED;
+            }
+            throw redactError(err, token);
+        }
+        const flag = (project as { only_allow_merge_if_pipeline_succeeds?: unknown } | null)
+            ?.only_allow_merge_if_pipeline_succeeds;
+        return typeof flag === "boolean"
+            ? { status: "known", nonOptionalJobs: flag }
+            : UNKNOWN_REQUIRED;
     }
 
     /**

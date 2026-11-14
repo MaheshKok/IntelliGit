@@ -58,6 +58,16 @@ export function ChecksHeader({
                             {runLine}
                         </span>
                     ) : null}
+                    {!detail.capabilities.requiredChecks || detail.requiredStatus !== "known" ? (
+                        <span data-testid="ci-header-required" style={runLineStyle}>
+                            {t("commit.checks.tab.requiredUnknown")}
+                        </span>
+                    ) : null}
+                    {detail.defaultBranchUnknown ? (
+                        <span data-testid="ci-header-default-branch" style={runLineStyle}>
+                            {t("commit.checks.tab.defaultBranchUnknown")}
+                        </span>
+                    ) : null}
                 </>
             ) : null}
             <span style={{ flex: 1 }} />

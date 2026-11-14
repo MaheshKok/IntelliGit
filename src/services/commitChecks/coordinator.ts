@@ -19,6 +19,12 @@ import { ciLogKey, type CiLogSource } from "./ciLogMemoryStore";
 import type { CiTrace } from "./ciTrace";
 import { attach, CommitCiDetailService, type CiFailedScanHooks } from "./detailService";
 import { summaryForState, unavailableSnapshot } from "./normalize";
+import {
+    applyRequired,
+    RequiredChecksCache,
+    UNKNOWN_REQUIRED,
+    type RequiredChecks,
+} from "./requiredChecks";
 import { CommitChecksService, type CommitChecksFetchOptions } from "./service";
 import type {
     CiDetailFetch,
@@ -97,6 +103,7 @@ export class CommitChecksCoordinator {
     private readonly generations?: CiGenerations;
     private readonly trace?: CiTrace;
     private readonly fixture?: CommitChecksCoordinatorOptions["fixture"];
+    private readonly requiredChecks: RequiredChecksCache;
     private resolvedProvider = false;
     private providerMatch: ProviderMatch | null = null;
     private providerGeneration = 0;
@@ -132,6 +139,7 @@ export class CommitChecksCoordinator {
         this.generations = options.generations;
         this.trace = options.trace;
         this.fixture = options.fixture;
+        this.requiredChecks = new RequiredChecksCache(options.now);
     }
 
     /** Drops shared cached snapshots and details; called after credential/settings changes. */
@@ -139,6 +147,7 @@ export class CommitChecksCoordinator {
         this.clearProviderResolution();
         this.service.clear();
         this.detailService.clear();
+        this.requiredChecks.clear();
     }
 
     /** Clears only the memoized provider/ref, preserving shared cached snapshots. */
@@ -242,6 +251,12 @@ export class CommitChecksCoordinator {
             : async (): Promise<CiDetailFetch> =>
                   floorDetail(await this.fetchSnapshot(match, hash, options), provider.id);
         const serve = { repoKey: ctx.repoKey, capabilities: provider.capabilities };
+        // Read beside the detail and applied at serve time, so the detail cache never holds it.
+        const required = this.readRequired(match);
+        const markRequired = async (served: CommitCiDetail): Promise<CommitCiDetail> => {
+            const rule = await required;
+            return rule ? applyRequired(served, rule.checks, rule.defaultBranchUnknown) : served;
+        };
         const continueFailedScan = provider.continueFailedScan?.bind(provider);
         const scan: CiFailedScanHooks | undefined = continueFailedScan && {
             continueScan: async (cursor) => {
@@ -252,7 +267,11 @@ export class CommitChecksCoordinator {
                 }
             },
             isCurrent: () => this.isCurrent(ctx, providerGeneration),
-            onUpdate: onScanUpdate,
+            onUpdate:
+                onScanUpdate &&
+                ((update) => {
+                    void markRequired(update).then(onScanUpdate);
+                }),
         };
         const detail = await this.withAccount(
             match,
@@ -268,8 +287,32 @@ export class CommitChecksCoordinator {
                 ),
             (error) => attach(floorDetail(unavailableSnapshot(hash, error), provider.id), serve),
         );
+        const marked = await markRequired(detail);
         if (!this.isCurrent(ctx, providerGeneration)) return this.discard(ctx, hash, provider.id);
-        return detail;
+        return marked;
+    }
+
+    /**
+     * The merge rule of the default branch, read fresh from `origin/HEAD` on every call and
+     * cached per branch for an hour (K21, K22). Undefined for a provider that cannot read
+     * one. Never rejects: any failure is `unknown`, and a transient one is not cached.
+     */
+    private async readRequired(
+        match: ProviderMatch,
+    ): Promise<{ checks: RequiredChecks; defaultBranchUnknown: boolean } | undefined> {
+        const { provider, ref } = match;
+        const getRequiredChecks = provider.getRequiredChecks?.bind(provider);
+        if (!provider.capabilities.requiredChecks || !getRequiredChecks) return undefined;
+        try {
+            const branch = await this.gitOps.readDefaultBranch();
+            if (!branch) return { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: true };
+            const checks = await this.requiredChecks.get(provider.keyFor(ref), branch.name, () =>
+                getRequiredChecks(ref, branch.name),
+            );
+            return { checks, defaultBranchUnknown: false };
+        } catch {
+            return { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: false };
+        }
     }
 
     /**

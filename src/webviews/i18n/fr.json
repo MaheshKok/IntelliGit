@@ -565,5 +565,9 @@
     "commit.checks.tab.actionUncertain": "La requête a peut-être été envoyée ; actualisation",
     "commit.checks.tab.writeScopeHelpGithub": "Vous n’avez pas l’autorisation de relancer ou d’annuler des workflows dans ce dépôt.",
     "commit.checks.tab.writeScopeHelpGitlab": "Votre jeton GitLab est en lecture seule. Créez-en un avec la portée api pour relancer ou annuler.",
-    "commit.checks.tab.writeActionsHelp": "Comment obtenir un jeton qui le permet"
+    "commit.checks.tab.writeActionsHelp": "Comment obtenir un jeton qui le permet",
+    "commit.checks.tab.blocksMerge": "bloque la fusion",
+    "commit.checks.tab.optional": "facultatif",
+    "commit.checks.tab.requiredUnknown": "obligatoire : inconnu",
+    "commit.checks.tab.defaultBranchUnknown": "branche par défaut inconnue — exécutez git remote set-head origin --auto"
 }

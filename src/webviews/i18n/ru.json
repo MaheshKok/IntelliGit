@@ -575,5 +575,9 @@
     "commit.checks.tab.actionUncertain": "Запрос, возможно, отправлен; обновление",
     "commit.checks.tab.writeScopeHelpGithub": "У вас нет прав на перезапуск или отмену рабочих процессов в этом репозитории.",
     "commit.checks.tab.writeScopeHelpGitlab": "Ваш токен GitLab доступен только для чтения. Создайте токен с областью api, чтобы перезапускать или отменять.",
-    "commit.checks.tab.writeActionsHelp": "Как получить токен с такими правами"
+    "commit.checks.tab.writeActionsHelp": "Как получить токен с такими правами",
+    "commit.checks.tab.blocksMerge": "блокирует слияние",
+    "commit.checks.tab.optional": "необязательно",
+    "commit.checks.tab.requiredUnknown": "обязательность: неизвестно",
+    "commit.checks.tab.defaultBranchUnknown": "ветка по умолчанию неизвестна — выполните git remote set-head origin --auto"
 }

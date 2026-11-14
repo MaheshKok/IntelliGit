@@ -27,6 +27,7 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { readEmptyTreeOid } from "./emptyTree";
+import { readDefaultBranch, type DefaultBranch } from "../services/commitChecks/defaultBranch";
 import { PartialChanges } from "./partialChanges";
 import { GitExecutor } from "./executor";
 import {
@@ -562,6 +563,11 @@ export class GitOps {
         }
         const escaped = oldUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         await this.executor.run(["remote", "set-url", "--", name, newUrl, `^${escaped}$`]);
+    }
+
+    /** Reads `origin/HEAD` and its tip fresh on every call; `null` when either is missing. */
+    readDefaultBranch(): Promise<DefaultBranch | null> {
+        return readDefaultBranch((args) => this.executor.run(args));
     }
 
     /** Reads a validated remote URL so host services can inspect provider metadata. */

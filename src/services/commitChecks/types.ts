@@ -14,6 +14,7 @@ import type {
 } from "../../types";
 import type { CiOperationContext } from "./ciGenerations";
 import type { DownloadedText } from "./http";
+import type { RequiredChecks } from "./requiredChecks";
 
 export type { ProviderId } from "../../types";
 
@@ -119,6 +120,12 @@ export interface CommitChecksProvider {
     ): Promise<CiFailedScanPage>;
     /** Continuation guard: true only for a next-page URL under this provider's API base. */
     allowNext?(ref: ProviderRepoRef, url: string): boolean;
+    /**
+     * Reads which checks must pass before a merge into `branch`. A refusal or a missing
+     * setting is a `partial` or `unknown` status; a transient failure (network, server error,
+     * rate limit) rejects, so nothing is cached for it.
+     */
+    getRequiredChecks?(ref: ProviderRepoRef, branch: string): Promise<RequiredChecks>;
     /**
      * The evidence rule that ends an action's fence, stored with the fence when the action
      * starts. Absent = `cancelled` for cancel; re-run actions need it.

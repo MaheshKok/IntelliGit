@@ -6,6 +6,7 @@ import { t } from "../../shared/i18n";
 import { JETBRAINS_UI } from "../../shared/tokens";
 import {
     badgeStateOf,
+    blocksMerge,
     formatCiDuration,
     formatCiDurationMs,
     formatCiStart,
@@ -88,6 +89,7 @@ export function CheckTree({
                     ) : (
                         <span style={nameStyle}>{check.name}</span>
                     )}
+                    {blocksMerge(check.required, check.state) ? <BlocksMergeTag /> : null}
                     {check.durationMs !== undefined ? (
                         <span data-testid="ci-check-duration" style={checksStyles.muted}>
                             {formatCiDurationMs(check.durationMs)}
@@ -199,6 +201,15 @@ function RunGroup({
                             <StateIcon state={badgeStateOf(job.state)} />
                             <span style={checksStyles.visuallyHidden}>{stateLabel(job.state)}</span>
                             <span style={nameStyle}>{job.name}</span>
+                            {blocksMerge(job.required, job.state) ? <BlocksMergeTag /> : null}
+                            {job.optional ? (
+                                <span
+                                    data-testid="ci-tag-optional"
+                                    style={{ ...checksStyles.tag, color: JETBRAINS_UI.color.muted }}
+                                >
+                                    {t("commit.checks.tab.optional")}
+                                </span>
+                            ) : null}
                             <span style={checksStyles.muted}>
                                 {formatCiDuration(job.startedAt, job.completedAt)}
                             </span>
@@ -241,6 +252,18 @@ function RunGroup({
             />
             <FailedScanNote run={run} onRefresh={onRefresh} />
         </div>
+    );
+}
+
+/** Red tag on a required job or check that failed or has not finished. */
+function BlocksMergeTag(): React.ReactElement {
+    return (
+        <span
+            data-testid="ci-tag-blocks-merge"
+            style={{ ...checksStyles.tag, color: JETBRAINS_UI.color.deleted }}
+        >
+            {t("commit.checks.tab.blocksMerge")}
+        </span>
     );
 }
 
