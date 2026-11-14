@@ -53,8 +53,29 @@ interface ScanRequester {
 /** This service's clear count, the key's invalidate count and the store's clear generation. */
 type Generation = readonly [number, number, string | undefined];
 
+/**
+ * When a served detail's snapshot was built, counted across the window. Every snapshot is of the
+ * key's current entry, so a higher number never holds older data, whichever entry it came from.
+ * A symbol key, so JSON never saves or posts it.
+ */
+const SNAPSHOT = Symbol("ciDetailSnapshot");
+let snapshots = 0;
+
 /** What a read hands back before the read-time values are attached; never cached. */
-type ServedDetailData = CommitCiDetailData & Pick<CommitCiDetail, "refreshError">;
+type ServedDetailData = CommitCiDetailData &
+    Pick<CommitCiDetail, "refreshError"> & { readonly [SNAPSHOT]?: number };
+
+/** The snapshot number of a served detail or scan page; undefined when it was not served here. */
+export function snapshotOf(detail: CommitCiDetail): number | undefined {
+    return (detail as { readonly [SNAPSHOT]?: number })[SNAPSHOT];
+}
+
+/** A copy of `detail` without its snapshot number. */
+export function withoutSnapshot(detail: CommitCiDetail): CommitCiDetail {
+    const next: CommitCiDetail & { [SNAPSHOT]?: number } = { ...detail };
+    delete next[SNAPSHOT];
+    return next;
+}
 
 /** Values attached to every served detail at read time, never cached. */
 export interface CiDetailServeContext {
@@ -206,14 +227,15 @@ export class CommitCiDetailService {
                     }
                     // The newer entry expired while the read waited: fetch, never fall back.
                 } else {
-                    this.cache.set(key, {
+                    const entry: DetailEntry = {
                         data: persisted,
                         fetchedAt: this.now(),
                         storeGeneration: readGeneration[2],
-                    });
+                    };
+                    this.cache.set(key, entry);
                     this.evictOldest();
                     this.traceOutcome("hit-l2", persisted, serve);
-                    return persisted;
+                    return served(entry);
                 }
             }
         }
@@ -644,9 +666,9 @@ function carryScans(
  * (GitHub), or the commit status listed under the job's own id (GitLab only: a GitHub status
  * context that happens to equal a job id is a separate check).
  */
-function served(entry: DetailEntry): CommitCiDetailData {
+function served(entry: DetailEntry): ServedDetailData {
     const scans = entry.scans;
-    if (!scans) return entry.data;
+    if (!scans) return { ...entry.data, [SNAPSHOT]: ++snapshots };
     const gitlab = entry.data.provider === "gitlab";
     const foundOwnChecks = new Set(
         [...scans.values()].flatMap((scan) =>
@@ -684,6 +706,7 @@ function served(entry: DetailEntry): CommitCiDetailData {
             ![...scans.values()].some((scan) => scan.remoteChanged),
         otherChecks,
         runs,
+        [SNAPSHOT]: ++snapshots,
     };
 }
 

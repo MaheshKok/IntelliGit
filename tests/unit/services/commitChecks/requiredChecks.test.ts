@@ -30,6 +30,7 @@ import { CommitChecksCoordinator } from "../../../../src/services/commitChecks/c
 import { CiGenerations } from "../../../../src/services/commitChecks/ciGenerations";
 import {
     applyRequired,
+    RequiredChecksCache,
     type RequiredChecks,
 } from "../../../../src/services/commitChecks/requiredChecks";
 import { NO_CI_CAPABILITIES } from "../../../../src/shared/ci/capabilities";
@@ -544,5 +545,30 @@ describe("CommitChecksCoordinator required checks", () => {
         expect(c.readDefaultBranch).not.toHaveBeenCalled();
         expect(detail?.requiredStatus).toBeUndefined();
         expect(detail?.runs[0].jobs[0].required).toBeUndefined();
+    });
+});
+
+describe("RequiredChecksCache", () => {
+    it("a fetch that fails after a clear() never drops the newer fetch's rule", async () => {
+        const cache = new RequiredChecksCache();
+        let failOld!: (error: Error) => void;
+        const old = cache.get(
+            "/repo",
+            "trunk",
+            () => new Promise<RequiredChecks>((_resolve, reject) => (failOld = reject)),
+        );
+        cache.clear();
+        const newer: RequiredChecks = { status: "known", names: ["build"] };
+        await cache.get("/repo", "trunk", async () => newer);
+
+        failOld(new Error("HTTP 502"));
+        await expect(old).rejects.toThrow("HTTP 502");
+        const refetch = vi.fn(async (): Promise<RequiredChecks> => ({ status: "unknown" }));
+
+        expect(
+            await cache.get("/repo", "trunk", refetch),
+            "the old fetch's failure must not remove the newer rule",
+        ).toBe(newer);
+        expect(refetch).not.toHaveBeenCalled();
     });
 });

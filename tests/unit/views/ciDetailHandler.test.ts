@@ -50,10 +50,92 @@ function scanned(state: CiFailedScan["state"], found: number): CommitCiDetail {
     };
 }
 
+/** `update` served by the detail service, so it carries the number of a snapshot built now. */
+function snapshot(update: CommitCiDetail): Promise<CommitCiDetail> {
+    return new CommitCiDetailService().getOrFetch("snapshot#detail", async () => update, {
+        repoKey: update.repoKey,
+        capabilities: update.capabilities,
+    });
+}
+
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
     let resolve!: (value: T) => void;
     const promise = new Promise<T>((r) => (resolve = r));
     return { promise, resolve };
+}
+
+/**
+ * A running scan's last page lands while a forced Refresh of the same commit fetches, so the
+ * old entry's page reaches the Refresh's hooks. `holdPage` holds that page, as the merge-rule
+ * read and account check do, until the Refresh's reply was posted. Returns the Refresh's posts.
+ */
+async function forcedReadOverOldScan(holdPage: boolean): Promise<ReturnType<typeof vi.fn>> {
+    const service = new CommitCiDetailService({ now: () => Date.now() });
+    const serve = { repoKey: "/repo", capabilities: NO_CI_CAPABILITIES };
+    const key = "snapshot#detail";
+    const lastPage = deferred<void>();
+    const fetched = deferred<void>();
+    const held: (() => void)[] = [];
+    let fetches = 0;
+    const fetchDetail = async () => {
+        fetches += 1;
+        if (fetches === 1) {
+            return {
+                ...scanned("running", 0),
+                complete: false,
+                scanCursors: [{ runId: "1", runAttempt: 1, runName: "CI", url: "page-11" }],
+            } as never;
+        }
+        await fetched.promise;
+        return { ...detail("/repo"), outcome: "success" } as never;
+    };
+    const source = {
+        repoKey: () => "/repo",
+        generations: new CiGenerations(),
+        getDetail: (
+            _hash: string,
+            options: { force?: boolean },
+            _ctx: unknown,
+            onScanUpdate?: (update: CommitCiDetail) => void,
+        ) =>
+            service.getOrFetch(key, fetchDetail, serve, options, undefined, {
+                continueScan: async () => {
+                    await lastPage.promise;
+                    return { failed: [] };
+                },
+                isCurrent: () => true,
+                onUpdate: (update) => {
+                    if (holdPage && options.force) held.push(() => onScanUpdate?.(update));
+                    else onScanUpdate?.(update);
+                },
+            } as never),
+    };
+    const loops = new CommitCiDetailLoops();
+    const firstPost = vi.fn();
+    const first = answerCommitCiDetailRequest(
+        source as never,
+        { type: "requestCommitCiDetail", requestId: 1, repoKey: "/repo", hash: HASH },
+        firstPost,
+        loops,
+    );
+    await vi.waitFor(() => expect(firstPost).toHaveBeenCalled());
+    const post = vi.fn();
+    const forced = answerCommitCiDetailRequest(
+        source as never,
+        { type: "requestCommitCiDetail", requestId: 2, repoKey: "/repo", hash: HASH, force: true },
+        post,
+        loops,
+    );
+    await vi.waitFor(() => expect(fetches).toBe(2));
+    lastPage.resolve();
+    if (holdPage) await vi.waitFor(() => expect(held).toHaveLength(1));
+    else await vi.waitFor(() => expect(post).toHaveBeenCalled());
+    fetched.resolve();
+    await forced;
+    for (const release of held) release();
+    loops.dispose();
+    await first;
+    return post;
 }
 
 // The Checks tab switch is on only while the E2E control channel is; these tests turn it on.
@@ -124,6 +206,24 @@ describe("answerCommitCiDetailRequest", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it("an old scan's page landing during a forced read does not hide the fetched reply", async () => {
+        const post = await forcedReadOverOldScan(false);
+
+        expect(
+            post.mock.calls.at(-1)?.[0].detail?.outcome,
+            "the forced read's fetched reply must replace the old scan's page",
+        ).toBe("success");
+    });
+
+    it("an old scan's page held past a forced read's reply is dropped", async () => {
+        const post = await forcedReadOverOldScan(true);
+
+        expect(
+            post.mock.calls.map(([reply]) => reply.detail?.outcome),
+            "the old scan's page must not replace the forced read's newer reply",
+        ).toEqual(["success"]);
     });
 
     it("posts the detail with the request's id, repository and hash", async () => {
@@ -313,11 +413,12 @@ describe("answerCommitCiDetailRequest", () => {
                     generations: new CiGenerations(),
                     getDetail: async (_hash, _options, _ctx, onUpdate) => {
                         reads += 1;
-                        if (reads === 1) return scanned("running", 0);
+                        if (reads === 1) return snapshot(scanned("running", 0));
                         // As in the coordinator: a read's reply is the snapshot taken before
                         // the pages it starts, so its own page is newer than the reply.
-                        onUpdate?.(scanned("done", 2));
-                        return scanned("running", 1);
+                        const reply = await snapshot(scanned("running", 1));
+                        onUpdate?.(await snapshot(scanned("done", 2)));
+                        return reply;
                     },
                 },
                 { type: "requestCommitCiDetail", requestId: 8, repoKey: "/repo", hash: HASH },
@@ -349,8 +450,9 @@ describe("answerCommitCiDetailRequest", () => {
                 generations: new CiGenerations(),
                 getDetail: async (_hash, _options, _ctx, onUpdate) => {
                     // The reply waited on the merge-rule read while the scan found a page.
-                    onUpdate?.(scanned("done", 2));
-                    return scanned("done", 1);
+                    const reply = await snapshot(scanned("done", 1));
+                    onUpdate?.(await snapshot(scanned("done", 2)));
+                    return reply;
                 },
             },
             { type: "requestCommitCiDetail", requestId: 9, repoKey: "/repo", hash: HASH },
@@ -368,6 +470,7 @@ describe("answerCommitCiDetailRequest", () => {
         vi.useFakeTimers();
         try {
             let firstOnUpdate: ((update: CommitCiDetail) => void) | undefined;
+            let latePage: CommitCiDetail | undefined;
             let reads = 0;
             const post = vi.fn();
             const answered = answerCommitCiDetailRequest(
@@ -376,9 +479,11 @@ describe("answerCommitCiDetailRequest", () => {
                     generations: new CiGenerations(),
                     getDetail: async (_hash, _options, _ctx, onUpdate) => {
                         reads += 1;
-                        if (reads > 1) return scanned("done", 2);
+                        if (reads > 1) return snapshot(scanned("done", 2));
+                        const reply = await snapshot(scanned("running", 0));
+                        latePage = await snapshot(scanned("running", 1));
                         firstOnUpdate = onUpdate;
-                        return scanned("running", 0);
+                        return reply;
                     },
                 },
                 { type: "requestCommitCiDetail", requestId: 10, repoKey: "/repo", hash: HASH },
@@ -389,7 +494,7 @@ describe("answerCommitCiDetailRequest", () => {
             await answered;
 
             // The first read's page was decorated slowly and lands after the re-read's reply.
-            firstOnUpdate?.(scanned("running", 1));
+            if (latePage) firstOnUpdate?.(latePage);
 
             expect(
                 post.mock.calls.map(([reply]) => reply.detail.runs[0].failedScan.found),

@@ -136,6 +136,26 @@ describe("fence re-post", () => {
         fences.dispose();
     });
 
+    it("a detail built while a fence ran is posted without its label once the fence ended", async () => {
+        const running = new CiActionFenceStore(memento());
+        await beginFence(running);
+        const label = running.fenceFor(REPO, HASH);
+        const fences = new CiActionFenceStore(memento());
+        const { source } = fencedSource(fences);
+        source.getDetail = vi.fn(async () => detail(label));
+        const post = vi.fn();
+
+        await answerCommitCiDetailRequest(source, request(1), post, new CommitCiDetailLoops());
+
+        expect(label, "the detail was built with a label").toBeDefined();
+        expect(
+            post.mock.calls.at(-1)?.[0].detail.actionFence,
+            "an ended fence's label must not be posted",
+        ).toBeUndefined();
+        running.dispose();
+        fences.dispose();
+    });
+
     it("a fence that ended re-reads the detail instead of re-posting the copy from before", async () => {
         const fences = new CiActionFenceStore(memento());
         await beginFence(fences);

@@ -9,6 +9,7 @@ import type { CiActionOutcome } from "../services/commitChecks/ciActions";
 import type { CiGenerations, CiOperationContext } from "../services/commitChecks/ciGenerations";
 import type { CiLogMemoryStore } from "../services/commitChecks/ciLogMemoryStore";
 import type { CiLogTarget } from "../services/commitChecks/coordinator";
+import { snapshotOf, withoutSnapshot } from "../services/commitChecks/detailService";
 import type { CommitChecksFetchOptions } from "../services/commitChecks/service";
 import type { CiActionRequest, CiLogJob } from "../services/commitChecks/types";
 import { isValidGitHash } from "../services/gitHelpers";
@@ -108,20 +109,26 @@ export async function answerCommitCiDetailRequest(
             : repoKey === currentRepoKey;
     };
     // Each overflow-scan page re-posts at once while this request is still the loop's newest,
-    // and becomes the shown detail a fence change re-posts. A read's reply and its scan pages
-    // are ranked by the read they came from, the reply first (its snapshot is taken before the
-    // pages it starts); one that arrives after something newer was posted is dropped, since
-    // a reply waits on the merge-rule read and a page can reach the webview before it.
-    // A reply or page carries the fence of the moment it was built, then waits on the rule read
-    // and the account check, so every post takes the store's live fence instead, with no await.
+    // and becomes the shown detail a fence change re-posts. A reply or page waits on the
+    // merge-rule read and the account check after its snapshot is built, so they can arrive out
+    // of order, and an old entry's page can reach a newer read's hooks: one whose snapshot is
+    // older than the shown one is dropped. Unnumbered ones (no provider, a sign-in failure, a
+    // fence re-post of the shown copy) are posted as they come.
+    // A reply or page carries the fence of the moment it was built, so every post takes the
+    // store's live fence instead, with no await.
     const fences = source.actions?.fences;
     let detail: CommitCiDetail | undefined;
-    let reads = 0;
     let newest = -1;
-    const show = (rank: number, update: CommitCiDetail | undefined): void => {
-        if (!isCurrent() || rank < newest) return;
-        newest = rank;
-        detail = update && fences ? withFence(update, fences.fenceFor(repoKey, hash)) : update;
+    const show = (update: CommitCiDetail | undefined): void => {
+        if (!isCurrent()) return;
+        const snapshot = update && snapshotOf(update);
+        if (snapshot !== undefined) {
+            if (snapshot < newest) return;
+            newest = snapshot;
+        }
+        detail =
+            update &&
+            withoutSnapshot(fences ? withFence(update, fences.fenceFor(repoKey, hash)) : update);
         post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
     };
     const read = async (
@@ -130,9 +137,8 @@ export async function answerCommitCiDetailRequest(
         ) => Promise<CommitCiDetail | undefined>,
         postEmpty = true,
     ): Promise<void> => {
-        const rank = 2 * ++reads;
-        const reply = await fetch((update) => show(rank + 1, update));
-        if (reply !== undefined || postEmpty) show(rank, reply);
+        const reply = await fetch(show);
+        if (reply !== undefined || postEmpty) show(reply);
     };
     const reread = (postEmpty = true): Promise<void> =>
         read(
@@ -148,7 +154,7 @@ export async function answerCommitCiDetailRequest(
     if (source.actions) {
         repostOnFenceChange(source.actions.fences, stopped, repoKey, hash, {
             shown: () => detail,
-            post: (update) => show(newest, update),
+            post: show,
             refetch: () => reread(false),
         });
     }
