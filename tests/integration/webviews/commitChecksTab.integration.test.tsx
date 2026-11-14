@@ -5,7 +5,13 @@
 
 import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CiJob, CiRun, CommitCiDetail, CommitDetail } from "../../../src/types";
+import type {
+    CiJob,
+    CiRun,
+    CommitCheckState,
+    CommitCiDetail,
+    CommitDetail,
+} from "../../../src/types";
 import { NO_CI_CAPABILITIES } from "../../../src/shared/ci/capabilities";
 import { PENDING_CHECK_RETRY_DELAYS_MS } from "../../../src/shared/ci/pollSchedule";
 import { CommitInfoPane } from "../../../src/webviews/react/commit-info/CommitInfoPane";
@@ -730,6 +736,83 @@ describe("Commit details Checks tab", () => {
         expect(
             container.querySelector('[data-testid="ci-header-default-branch"]')?.textContent,
         ).toBe("default branch unknown — run git remote set-head origin --auto");
+    });
+
+    it("the header names the default branch whose required rules were applied, not the run's ref", () => {
+        const { container } = mount(pane(HASH_A));
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, {
+                capabilities: { ...TREE_CAPABILITIES, requiredChecks: true },
+                requiredStatus: "known",
+                defaultBranch: "trunk",
+                runs: [run([job("build", "failure")], { ref: "feature/one" })],
+            }),
+        );
+
+        const header = container.querySelector<HTMLElement>('[data-testid="ci-header"]')!;
+        expect(
+            header.querySelector('[data-testid="ci-header-required-scope"]')?.textContent ?? "",
+            "required-check scope must name trunk, independently of run ref feature/one",
+        ).toContain("trunk");
+        expect(header.textContent).toContain("feature/one");
+    });
+
+    it("tags a required job or check as blocks merge in every unfinished or failed state, and in no other", () => {
+        const { container } = mount(pane(HASH_A));
+        const jobStates: CiJob["state"][] = [
+            "queued",
+            "running",
+            "success",
+            "failure",
+            "cancelled",
+            "skipped",
+            "neutral",
+            "unknown",
+        ];
+        const checkStates: CommitCheckState[] = [
+            "success",
+            "failure",
+            "pending",
+            "skipped",
+            "neutral",
+            "cancelled",
+            "timed_out",
+            "action_required",
+            "unknown",
+            "none",
+            "unavailable",
+        ];
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, {
+                capabilities: { ...TREE_CAPABILITIES, requiredChecks: true },
+                requiredStatus: "known",
+                outcome: "failure",
+                runs: [
+                    run(jobStates.map((state) => job(`job-${state}`, state, { required: "yes" }))),
+                ],
+                otherChecks: checkStates.map((state) => ({
+                    name: `check-${state}`,
+                    description: "",
+                    state,
+                    source: "status" as const,
+                    required: "yes" as const,
+                })),
+            }),
+        );
+
+        const blocks = (row: HTMLElement) =>
+            row.querySelector('[data-testid="ci-tag-blocks-merge"]') !== null;
+        const jobBlocking = jobStates.filter((state) => blocks(jobRow(container, `job-${state}`)));
+        expect(jobBlocking).toEqual(["queued", "running", "failure", "cancelled"]);
+        const checkRows = Array.from(
+            container.querySelectorAll<HTMLElement>('[data-testid="ci-check-row"]'),
+        );
+        expect(
+            checkStates.filter((_, index) => blocks(checkRows[index])),
+            "cancelled, timed_out, action_required and pending required checks block merge",
+        ).toEqual(["failure", "pending", "cancelled", "timed_out", "action_required"]);
     });
 
     it("tags required jobs that failed or have not finished as blocks merge, and optional jobs", () => {

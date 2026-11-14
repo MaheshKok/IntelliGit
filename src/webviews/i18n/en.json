@@ -170,6 +170,7 @@
     "commit.checks.tab.blocksMerge": "blocks merge",
     "commit.checks.tab.optional": "optional",
     "commit.checks.tab.requiredUnknown": "required: unknown",
+    "commit.checks.tab.requiredScope": "required checks from {branch}",
     "commit.checks.tab.defaultBranchUnknown": "default branch unknown — run git remote set-head origin --auto",
     "commit.checks.tab.openInBrowser": "Open in browser",
     "commit.checks.tab.jobsPageBound": "Showing the first {count} jobs — open the run in the browser for the rest",

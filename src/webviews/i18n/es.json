@@ -569,5 +569,6 @@
     "commit.checks.tab.blocksMerge": "bloquea la fusión",
     "commit.checks.tab.optional": "opcional",
     "commit.checks.tab.requiredUnknown": "obligatorio: desconocido",
+    "commit.checks.tab.requiredScope": "comprobaciones obligatorias de {branch}",
     "commit.checks.tab.defaultBranchUnknown": "rama predeterminada desconocida: ejecute git remote set-head origin --auto"
 }

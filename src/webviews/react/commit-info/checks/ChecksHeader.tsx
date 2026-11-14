@@ -63,6 +63,11 @@ export function ChecksHeader({
                             {t("commit.checks.tab.requiredUnknown")}
                         </span>
                     ) : null}
+                    {detail.defaultBranch ? (
+                        <span data-testid="ci-header-required-scope" style={runLineStyle}>
+                            {t("commit.checks.tab.requiredScope", { branch: detail.defaultBranch })}
+                        </span>
+                    ) : null}
                     {detail.defaultBranchUnknown ? (
                         <span data-testid="ci-header-default-branch" style={runLineStyle}>
                             {t("commit.checks.tab.defaultBranchUnknown")}

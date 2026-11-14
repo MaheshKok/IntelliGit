@@ -64,12 +64,14 @@ export class RequiredChecksCache {
 
 /**
  * The detail with each job and flat check marked `required`, and `requiredStatus` set.
- * `defaultBranchUnknown` says the rule could not be read because `origin/HEAD` is missing.
+ * `defaultBranchUnknown` says the rule could not be read because `origin/HEAD` is missing;
+ * `defaultBranch` names the branch whose rule was applied.
  */
 export function applyRequired(
     detail: CommitCiDetail,
     rule: RequiredChecks,
     defaultBranchUnknown = false,
+    defaultBranch?: string,
 ): CommitCiDetail {
     const names = new Set(rule.names ?? []);
     const byName = (name: string): NonNullable<CiJob["required"]> => {
@@ -93,6 +95,7 @@ export function applyRequired(
         ...detail,
         requiredStatus: rule.status,
         ...(defaultBranchUnknown ? { defaultBranchUnknown: true as const } : {}),
+        ...(defaultBranch === undefined ? {} : { defaultBranch }),
         runs: detail.runs.map((run) => ({
             ...run,
             jobs: run.jobs.map((job) => ({ ...job, required: forJob(job) })),

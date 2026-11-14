@@ -13,25 +13,21 @@
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
 ## Phase 9: review pending, started at b5a56002
-- The branch's real base is ca0271a6 (main after Phase 8's squash merge 7941c809 plus a docs commit); b5a56002 is not its ancestor. HEAD did not move during the build.
-- Built (0.43.11): C2 required-checks read for GitHub (rulesets, paginated, union with classic protection; "Branch not protected" 404 = known empty; 401/403/other 404 = partial or unknown; rate limit, 5xx, network = transient, rejects, not cached) and GitLab (`only_allow_merge_if_pipeline_succeeds` -> non-optional jobs required; missing field or 401/403/404 = unknown).
-- `RequiredChecksCache` (requiredChecks.ts): L1, key `required:<repoKey>:<branch>`, 1 h, rejected fetch dropped, emptied by coordinator.clear(). `applyRequired` marks checks at serve time in coordinator.getDetail (scan updates too), so marks are never persisted.
-- `readDefaultBranch` (defaultBranch.ts, GitOps.readDefaultBranch): `origin/HEAD` via symbolic-ref plus the tip, read fresh each call; missing = null, no "main" fallback. Null shows "default branch unknown — run git remote set-head origin --auto" in the header.
-- UI: "blocks merge" (red) on required jobs/checks that failed or have not finished; "optional" (muted) on optional jobs; header "required: unknown" when the provider lacks the capability or the rule is not known. 4 strings in 12 locales.
-- CI_DETAIL_CONTRACT_VERSION 4 -> 5 (K32). README section, CHANGELOG 0.43.11.
-
-- Fix round 1 (review pending again): protection's 403 always maps to partial/unknown (rate-limited too); the required-rules cache is keyed by account and read under withAccount, so a switch mid-read rereads; K21's hour is pinned by literal 3,599,999/3,600,000 ms; `REQUIRED_CHECKS_TTL_MS` is no longer exported (knip).
+- The branch's real base is ca0271a6 (main after Phase 8's squash merge 7941c809 plus a docs commit); b5a56002 is not its ancestor.
+- Built (0.43.11): C2 required-checks read for GitHub (rulesets, paginated, union with classic protection) and GitLab (`only_allow_merge_if_pipeline_succeeds`); "blocks merge" / "optional" tags and the header's "required: unknown"; `RequiredChecksCache` (requiredChecks.ts, L1, 1 h); `readDefaultBranch` (origin/HEAD, no "main" fallback); CI_DETAIL_CONTRACT_VERSION 4 -> 5.
+- Fix round 1: protection's 403 always maps to partial/unknown; the rules cache is keyed by account; K21's hour pinned by literal ms.
+- Fix round 2 (review pending again): `getDetail` now runs the detail read and the required read under ONE `withAccount` attempt (the detail fetch no longer has its own nested loop), so a switch at any point rereads both and no account's rule marks another's detail. `readRequired` takes that attempt's account and confirm: it confirms after the Git read (before any provider request) and again after the fetch, so a rejected fetch is evicted from the cache; only an account change rejects, everything else stays `unknown`. The served detail carries `defaultBranch` (never stored), and the header shows "required checks from {branch}" (`ci-header-required-scope`; new key `commit.checks.tab.requiredScope`, 12 locales plus the CSV row). Round 1's cancelled-tag gap is pinned by an all-states table test.
 
 ## Decisions and why
 - `cancelled` counts as blocking, with failure, timed_out, action_required, queued, running and pending: a cancelled required check does not satisfy branch protection.
-- `defaultBranchUnknown` is a non-persisted detail field so the §8 hint has one source of truth.
-- Cache key uses `provider.keyFor(ref)`, the key every other per-repo cache uses.
-- A 403 with `retry-after` or `x-ratelimit-remaining: 0` on the rules read is still transient (rejects, not cached). On the protection read every 403 maps per C2 (round 1), so a rate-limited protection read caches partial/unknown for an hour (trade-off: the frozen C2 text says any 403).
-- Account change during the required read: `withAccount` retries, then gives "unknown" (no old-account answer is published).
+- `defaultBranchUnknown` and `defaultBranch` are non-persisted detail fields (no contract version bump).
+- Cache key uses `provider.keyFor(ref)` plus the account.
+- A 403 with `retry-after` or `x-ratelimit-remaining: 0` on the rules read is transient (rejects, not cached). On the protection read every 403 maps per C2, so a rate-limited protection read caches partial/unknown for an hour.
+- Account change during a detail read: `withAccount` retries both reads, then gives an unavailable detail (no old-account answer is published).
 
 ## Open risks
-- GitNexus impact/detect_changes not run: the worktree guard refuses the CLI here and the registry holds no worktree. Callers checked by hand: GitOps (new method only), coordinator.getDetail/clear, provider capability maps, CheckTree/ChecksHeader.
-- `bun run test`: 10 failed / 8079 passed. 8 are commit-list-column-resize (Node v26.5.0, no `localStorage`, known); tsconfigCoverage and screenshotComparatorMeta fail only in a worktree without node_modules and pass in the linked copy.
+- GitNexus impact/detect_changes not run (worktree guard). Callers checked by hand: coordinator.getDetail/clear, provider capability maps, CheckTree/ChecksHeader.
+- `bun run test`: 10 failed, the same 10 as before: 8 commit-list-column-resize (Node v26.5.0, no `localStorage`), tsconfigCoverage and screenshotComparatorMeta (worktree without its own node_modules).
 - Phase 9 e2e not run locally.
 
 ## Next phase: 10
@@ -45,8 +41,9 @@
 - diffBudgets.test.ts "large compute" timing budget is load-sensitive.
 - GitHub carryScans treats two missing `runAttempt` values as the same run.
 - Extract detailOf/flatDetail into a shared module when Phase 17 adds a third provider detail.
-- `bun run package` can pack ignored `output/` leftovers; a copy under $TMPDIR/phase-run hits the socket-path limit unless TMPDIR is short.
+- `bun run package` can pack ignored `output/` leftovers.
 - noRepositoryMode.ts registers a placeholder `refreshBadges`, so a token change there clears no cache.
 - GitNexus registry holds two "IntelliGit" entries and no worktrees.
 - Bitbucket detail reads (Phases 17/18) should pass the ETag store when they add metadata fetches.
 - impeccable flags a placeholder `<img>` in commitChecksTab.integration.test.tsx (pre-existing test markup).
+- The worktree has no node_modules, so `node_modules/.bin/*` fails here; call the main checkout's binaries.

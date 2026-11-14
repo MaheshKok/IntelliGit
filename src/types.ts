@@ -346,6 +346,8 @@ export interface CommitCiDetail extends CommitCiDetailData {
     repoKey: string;
     /** `origin/HEAD` is missing, so required checks could not be read (never stored). */
     defaultBranchUnknown?: true;
+    /** The default branch whose merge rule marked the checks (never stored). */
+    defaultBranch?: string;
     /** A re-run or cancel the provider has not shown yet; `notSeen` after 10 minutes. */
     actionFence?: {
         targetId: string;

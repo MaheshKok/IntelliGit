@@ -549,5 +549,6 @@
     "commit.checks.tab.blocksMerge": "阻止合并",
     "commit.checks.tab.optional": "可选",
     "commit.checks.tab.requiredUnknown": "必需: 未知",
+    "commit.checks.tab.requiredScope": "来自 {branch} 的必需检查",
     "commit.checks.tab.defaultBranchUnknown": "默认分支未知 — 请运行 git remote set-head origin --auto"
 }

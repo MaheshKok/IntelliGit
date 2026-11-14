@@ -33,9 +33,11 @@ const DETAIL: CommitCiDetailData = {
 };
 
 /** One provider whose merge rule depends on who is signed in, and a switch for who that is. */
-function setup() {
-    let account = "admin";
+function setup(startAs = "admin") {
+    let account = startAs;
     let holdAdmin: Promise<void> | undefined;
+    let holdGit: Promise<void> | undefined;
+    let holdDetail: Promise<void> | undefined;
     const getRequiredChecks = vi.fn(async (): Promise<RequiredChecks> => {
         const asker = account;
         if (asker === "admin" && holdAdmin) await holdAdmin;
@@ -48,20 +50,45 @@ function setup() {
         keyFor: () => "github:github.com:octo/app",
         accountKey: async () => `account-${account}`,
         getChecks: vi.fn(),
-        getDetail: vi.fn(async () => DETAIL),
+        getDetail: vi.fn(async () => {
+            const wait = holdDetail;
+            holdDetail = undefined;
+            await wait;
+            return DETAIL;
+        }),
         getRequiredChecks,
     };
     const gitOps = {
         getRemotes: vi.fn(async () => ["origin"]),
         getRemoteUrl: vi.fn(async () => "https://github.com/octo/app.git"),
-        readDefaultBranch: vi.fn(async () => ({ name: "trunk", tipHash: "t1" })),
+        readDefaultBranch: vi.fn(async () => {
+            await holdGit;
+            return { name: "trunk", tipHash: "t1" };
+        }),
     } as unknown as GitOps;
     const generations = new CiGenerations();
     const coordinator = new CommitChecksCoordinator(gitOps, [provider], {}, { generations });
     return {
         getRequiredChecks,
+        readDefaultBranch: gitOps.readDefaultBranch as ReturnType<typeof vi.fn>,
+        getDetailCalls: () => (provider.getDetail as ReturnType<typeof vi.fn>).mock.calls.length,
         signInAs: (next: string) => {
             account = next;
+        },
+        holdGitRead: () => {
+            let release = () => {};
+            holdGit = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            return release;
+        },
+        /** Holds the next detail read only; a retry is not held. */
+        holdDetailRead: () => {
+            let release = () => {};
+            holdDetail = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            return release;
         },
         holdAdminRead: () => {
             let release = () => {};
@@ -100,5 +127,48 @@ describe("rules are isolated when", () => {
         expect(published?.requiredStatus, "old admin result must be discarded or reread").not.toBe(
             "known",
         );
+    });
+
+    it("a switch during the Git read, then back, cannot reuse another account's known rule", async () => {
+        const c = setup("reader");
+        const release = c.holdGitRead();
+        const pending = c.detail();
+        await vi.waitFor(() => expect(c.readDefaultBranch).toHaveBeenCalledTimes(1));
+
+        c.signInAs("admin");
+        release();
+        await pending;
+        c.signInAs("reader");
+        const backAsReader = await c.detail();
+
+        expect(
+            backAsReader?.requiredStatus,
+            "reader must not reuse admin rule cached during git await",
+        ).toBe("unknown");
+    });
+
+    it("a switch after the rules settle, while the detail is pending, cannot publish the old account's rule", async () => {
+        const c = setup();
+        const release = c.holdDetailRead();
+        const pending = c.detail();
+        await vi.waitFor(() => expect(c.getRequiredChecks).toHaveBeenCalledTimes(1));
+        await vi.waitFor(() => expect(c.getDetailCalls()).toBe(1));
+        // Let the admin rules settle before the switch.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        c.signInAs("reader");
+        release();
+        const published = await pending;
+
+        expect(
+            published?.requiredStatus,
+            "new account detail must not be decorated with old account rules",
+        ).toBe("unknown");
+    });
+
+    it("the served detail names the default branch whose rules were applied", async () => {
+        const c = setup();
+
+        expect((await c.detail())?.defaultBranch).toBe("trunk");
     });
 });

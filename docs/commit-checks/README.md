@@ -67,8 +67,10 @@ merge** tag. A GitLab job that is allowed to fail (`allow_failure`) carries a mu
 **required: unknown**; that is a fact about what the provider shares, not an error.
 
 - The rule is read for the repository's default branch, which IntelliGit takes from
-  `origin/HEAD` every time, never from a cache or a guessed `main`. When `origin/HEAD`
-  is missing, the header says so: run `git remote set-head origin --auto` to set it.
+  `origin/HEAD` every time, never from a cache or a guessed `main`. The header names
+  that branch (**required checks from trunk**), whatever branch the run was on. When
+  `origin/HEAD` is missing, the header says so: run `git remote set-head origin --auto`
+  to set it.
 - GitHub: a check is required when the branch's rulesets or its branch protection name
   it. Both are always read. A branch with no protection keeps the answer complete; when
   your token may not read the protection settings, the header shows

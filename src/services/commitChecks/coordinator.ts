@@ -251,43 +251,59 @@ export class CommitChecksCoordinator {
             : async (): Promise<CiDetailFetch> =>
                   floorDetail(await this.fetchSnapshot(match, hash, options), provider.id);
         const serve = { repoKey: ctx.repoKey, capabilities: provider.capabilities };
-        // Read beside the detail and applied at serve time, so the detail cache never holds it.
-        const required = this.readRequired(match);
-        const markRequired = async (served: CommitCiDetail): Promise<CommitCiDetail> => {
-            const rule = await required;
-            return rule ? applyRequired(served, rule.checks, rule.defaultBranchUnknown) : served;
-        };
         const continueFailedScan = provider.continueFailedScan?.bind(provider);
-        const scan: CiFailedScanHooks | undefined = continueFailedScan && {
-            continueScan: async (cursor) => {
-                try {
-                    return await continueFailedScan(ref, cursor, ctx);
-                } catch (err) {
-                    return { error: getErrorMessage(err) };
-                }
-            },
-            isCurrent: () => this.isCurrent(ctx, providerGeneration),
-            onUpdate:
-                onScanUpdate &&
-                ((update) => {
-                    void markRequired(update).then(onScanUpdate);
-                }),
-        };
-        const detail = await this.withAccount(
+        const unavailable = (error: string): CommitCiDetail =>
+            attach(floorDetail(unavailableSnapshot(hash, error), provider.id), serve);
+        // The detail and its required marks are read and published under one account: a switch
+        // anywhere in between starts both over, so no account's rule marks another's detail.
+        const marked = await this.withAccount(
             match,
             fetchDetail,
-            (account, checkedFetch, confirm) =>
-                this.detailService.getOrFetch(
-                    `${this.snapshotKey(match, account, hash)}#detail`,
-                    checkedFetch,
-                    serve,
-                    options,
-                    confirm,
-                    scan,
-                ),
-            (error) => attach(floorDetail(unavailableSnapshot(hash, error), provider.id), serve),
+            async (account, checkedFetch, confirm) => {
+                // Read beside the detail and applied at serve time, so the detail cache never holds it.
+                const required = this.readRequired(match, account, confirm);
+                const markRequired = async (served: CommitCiDetail): Promise<CommitCiDetail> => {
+                    const rule = await required;
+                    return rule
+                        ? applyRequired(
+                              served,
+                              rule.checks,
+                              rule.defaultBranchUnknown,
+                              rule.defaultBranch,
+                          )
+                        : served;
+                };
+                const scan: CiFailedScanHooks | undefined = continueFailedScan && {
+                    continueScan: async (cursor) => {
+                        try {
+                            return await continueFailedScan(ref, cursor, ctx);
+                        } catch (err) {
+                            return { error: getErrorMessage(err) };
+                        }
+                    },
+                    isCurrent: () => this.isCurrent(ctx, providerGeneration),
+                    onUpdate:
+                        onScanUpdate &&
+                        ((update) => {
+                            // A rule read dropped for an account switch publishes nothing.
+                            void markRequired(update).then(onScanUpdate, () => undefined);
+                        }),
+                };
+                const [detail] = await Promise.all([
+                    this.detailService.getOrFetch(
+                        `${this.snapshotKey(match, account, hash)}#detail`,
+                        checkedFetch,
+                        serve,
+                        options,
+                        confirm,
+                        scan,
+                    ),
+                    required,
+                ]);
+                return markRequired(detail);
+            },
+            unavailable,
         );
-        const marked = await markRequired(detail);
         if (!this.isCurrent(ctx, providerGeneration)) return this.discard(ctx, hash, provider.id);
         return marked;
     }
@@ -295,36 +311,45 @@ export class CommitChecksCoordinator {
     /**
      * The merge rule of the default branch, read fresh from `origin/HEAD` on every call and
      * cached per branch for an hour (K21, K22). Undefined for a provider that cannot read
-     * one. Never rejects: any failure is `unknown`, and a transient one is not cached.
+     * one. Any failure is `unknown` and a transient one is not cached; only a change of the
+     * signed-in account rejects (the caller's `withAccount` then starts over under the new one).
+     *
+     * @param match - The provider and repository the rule is read for.
+     * @param account - The account the caller's attempt runs under; it partitions the cache.
+     * @param confirm - Throws once the signed-in account is no longer `account`.
      */
     private async readRequired(
         match: ProviderMatch,
-    ): Promise<{ checks: RequiredChecks; defaultBranchUnknown: boolean } | undefined> {
+        account: string | undefined,
+        confirm: () => Promise<void>,
+    ): Promise<
+        | { checks: RequiredChecks; defaultBranchUnknown: boolean; defaultBranch?: string }
+        | undefined
+    > {
         const { provider, ref } = match;
         const getRequiredChecks = provider.getRequiredChecks?.bind(provider);
         if (!provider.capabilities.requiredChecks || !getRequiredChecks) return undefined;
-        const unknown = { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: false };
         try {
-            // The rule depends on who is signed in, so the cache is partitioned by account and
-            // withAccount rereads the account after the reads: a switch mid-read starts over.
-            return await this.withAccount(
-                match,
-                () => Promise.resolve(undefined),
-                async (account) => {
-                    const branch = await this.gitOps.readDefaultBranch();
-                    if (!branch) return { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: true };
-                    const scope = provider.keyFor(ref);
-                    const checks = await this.requiredChecks.get(
-                        account === undefined ? scope : `${scope}|${account}`,
-                        branch.name,
-                        () => getRequiredChecks(ref, branch.name),
-                    );
-                    return { checks, defaultBranchUnknown: false };
+            const branch = await this.gitOps.readDefaultBranch();
+            if (!branch) return { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: true };
+            // A switch during the Git read must not start the fetch: it would run as the new
+            // account and be cached under the old account's key.
+            await confirm();
+            const scope = provider.keyFor(ref);
+            const checks = await this.requiredChecks.get(
+                account === undefined ? scope : `${scope}|${account}`,
+                branch.name,
+                async () => {
+                    const rule = await getRequiredChecks(ref, branch.name);
+                    // A throw here is a rejected fetch, which the cache drops.
+                    await confirm();
+                    return rule;
                 },
-                () => unknown,
             );
-        } catch {
-            return unknown;
+            return { checks, defaultBranchUnknown: false, defaultBranch: branch.name };
+        } catch (err) {
+            if (err instanceof AccountChangedError) throw err;
+            return { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: false };
         }
     }
 

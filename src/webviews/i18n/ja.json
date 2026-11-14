@@ -549,5 +549,6 @@
     "commit.checks.tab.blocksMerge": "マージをブロック",
     "commit.checks.tab.optional": "任意",
     "commit.checks.tab.requiredUnknown": "必須: 不明",
+    "commit.checks.tab.requiredScope": "{branch} の必須チェック",
     "commit.checks.tab.defaultBranchUnknown": "既定のブランチが不明です — git remote set-head origin --auto を実行してください"
 }

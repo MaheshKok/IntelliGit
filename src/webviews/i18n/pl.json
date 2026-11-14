@@ -579,5 +579,6 @@
     "commit.checks.tab.blocksMerge": "blokuje scalanie",
     "commit.checks.tab.optional": "opcjonalne",
     "commit.checks.tab.requiredUnknown": "wymagane: nieznane",
+    "commit.checks.tab.requiredScope": "wymagane kontrole z {branch}",
     "commit.checks.tab.defaultBranchUnknown": "domyślna gałąź nieznana — uruchom git remote set-head origin --auto"
 }
