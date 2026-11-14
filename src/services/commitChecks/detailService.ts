@@ -244,7 +244,14 @@ export class CommitCiDetailService {
                     ) {
                         // A failed refresh must not blank the tree: keep the earlier entry as is.
                         this.traceOutcome("failed", data, serve);
-                        return { ...served(previous), refreshError: data.error ?? "" };
+                        // The sign-in host rides along so an action can route to sign-in.
+                        return {
+                            ...served(previous),
+                            refreshError: data.error ?? "",
+                            ...(data.signInHost === undefined
+                                ? {}
+                                : { signInHost: data.signInHost }),
+                        };
                     }
                     const entry: DetailEntry = {
                         data,

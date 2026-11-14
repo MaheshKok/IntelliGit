@@ -8,7 +8,7 @@ import type { CiActionEvidence, CiJob, CiRun, CommitCiDetail } from "../../types
 import { getErrorMessage } from "../../utils/errors";
 import { evidenceFor, type CiActionFenceStart, type CiActionFenceStore } from "./ciActionFence";
 import type { CiOperationContext } from "./ciGenerations";
-import type { CommitChecksCoordinator } from "./coordinator";
+import type { CommitChecksCoordinator, ProviderMatch } from "./coordinator";
 import { HttpError, RequestNotSentError } from "./http";
 import type { CiActionRequest } from "./types";
 
@@ -48,14 +48,9 @@ export async function runCiAction(
 ): Promise<CiActionOutcome> {
     const changed = failed(vscode.l10n.t("Remote data changed. Reload and try again."));
     const stillCurrent = deps.coordinator.actionGuard(ctx, currentRepoKey);
-    let match;
-    let current: CommitCiDetail | undefined;
-    try {
-        match = await deps.coordinator.actionTarget(hash);
-        current = await freshBaseline(deps, hash, ctx);
-    } catch (err) {
-        return failed(getErrorMessage(err));
-    }
+    const begun = await actionStart(deps, hash, ctx);
+    if (begun.stop) return begun.stop;
+    const { match, current } = begun;
     const provider = match?.provider;
     const evidence = provider && evidenceFor(provider, request.action);
     if (!match || !provider?.runAction || !provider.capabilities[request.action] || !evidence) {
@@ -154,24 +149,42 @@ function beforeOf(
 }
 
 /**
- * The click-time detail the fence's baseline comes from, read fresh so it never predates an
- * external re-run. A failed fresh read (served from the cache, or with nothing cached the
- * provider's unavailable detail) throws instead, carrying the provider's error.
+ * The action's provider and its click-time detail, which is the fence's baseline: read fresh so
+ * it never predates an external re-run. A failed fresh read (served from the cache, or with
+ * nothing cached the provider's unavailable detail) stops the action with the provider's error.
  */
-async function freshBaseline(
+async function actionStart(
     deps: CiActionDeps,
     hash: string,
     ctx: CiOperationContext,
-): Promise<CommitCiDetail | undefined> {
-    const detail = await deps.coordinator.getDetail(hash, { force: true }, ctx);
-    if (detail?.refreshError !== undefined || detail?.outcome === "unavailable") {
-        throw new Error(
+): Promise<
+    | { readonly stop: CiActionOutcome }
+    | {
+          readonly stop?: undefined;
+          readonly match: ProviderMatch | null;
+          readonly current: CommitCiDetail | undefined;
+      }
+> {
+    let match: ProviderMatch | null;
+    let detail: CommitCiDetail | undefined;
+    try {
+        match = await deps.coordinator.actionTarget(hash);
+        detail = await deps.coordinator.getDetail(hash, { force: true }, ctx);
+    } catch (err) {
+        return { stop: failed(getErrorMessage(err)) };
+    }
+    if (detail?.refreshError === undefined && detail?.outcome !== "unavailable") {
+        return { match, current: detail };
+    }
+    // A missing or expired credential takes the sign-in path, as a 401 from the write does.
+    if (detail.signInHost) return { stop: await signedOut(deps, hash, ctx, detail.signInHost) };
+    return {
+        stop: failed(
             detail.refreshError ||
                 detail.error ||
                 vscode.l10n.t("Remote data changed. Reload and try again."),
-        );
-    }
-    return detail;
+        ),
+    };
 }
 
 /**
@@ -200,6 +213,15 @@ async function refused(
     host: string,
 ): Promise<CiActionOutcome> {
     if (!(err instanceof HttpError) || err.statusCode !== 401) return failed(getErrorMessage(err));
+    return signedOut(deps, hash, ctx, host);
+}
+
+async function signedOut(
+    deps: CiActionDeps,
+    hash: string,
+    ctx: CiOperationContext,
+    host: string,
+): Promise<CiActionOutcome> {
     await refetch(deps, hash, ctx);
     return {
         outcome: "signedOut",

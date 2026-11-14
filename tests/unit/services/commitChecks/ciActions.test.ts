@@ -972,6 +972,70 @@ describe("CI write actions", () => {
         expect(storedFences(workspace)).toEqual([]);
     });
 
+    const EXPIRED = [
+        { name: "GitHub", make: github, served: GITHUB_FAILED, runId: "77", host: "github.com" },
+        { name: "GitLab", make: gitlab, served: GITLAB_FAILED, runId: "300", host: "gitlab.com" },
+    ] as const;
+    const signedOutDetail = (target: (typeof EXPIRED)[number]): CommitCiDetailData => ({
+        ...target.served,
+        outcome: "unavailable",
+        runs: [],
+        error: `Sign in to ${target.host} to view commit checks.`,
+        signInHost: target.host,
+    });
+
+    it.each(EXPIRED)(
+        "an expired token at the fresh read takes the sign-in path over a cached tree on $name",
+        async (target) => {
+            const calls: WriteCall[] = [];
+            const served: Served = { current: target.served };
+            const { deps, ctx, coordinator, workspace } = windowOver(
+                target.make(served, recordingWrite(calls)),
+            );
+            await coordinator.getDetail(HASH, {}, ctx);
+            served.current = signedOutDetail(target);
+
+            const outcome = await runCiAction(
+                deps,
+                HASH,
+                { action: "rerunFailed", runId: target.runId },
+                ctx,
+            );
+
+            expect(outcome, `${target.name}: a rejected token asks the user to sign in`).toEqual({
+                outcome: "signedOut",
+                message: `Sign in to ${target.host} to view commit checks.`,
+            });
+            expect(calls).toEqual([]);
+            expect(storedFences(workspace)).toEqual([]);
+            expect(
+                await coordinator.getDetail(HASH, {}, ctx),
+                `${target.name}: the cached tree is dropped so the pane shows Sign in`,
+            ).toMatchObject({ outcome: "unavailable", signInHost: target.host });
+        },
+    );
+
+    it.each(EXPIRED)(
+        "an expired token at the fresh read with nothing cached takes the sign-in path on $name",
+        async (target) => {
+            const calls: WriteCall[] = [];
+            const { deps, ctx, workspace } = windowOver(
+                target.make({ current: signedOutDetail(target) }, recordingWrite(calls)),
+            );
+
+            const outcome = await runCiAction(
+                deps,
+                HASH,
+                { action: "rerunFailed", runId: target.runId },
+                ctx,
+            );
+
+            expect(outcome).toMatchObject({ outcome: "signedOut" });
+            expect(calls).toEqual([]);
+            expect(storedFences(workspace)).toEqual([]);
+        },
+    );
+
     it("a failed fresh read with nothing cached shows the provider's error and sends nothing", async () => {
         const calls: WriteCall[] = [];
         const { deps, ctx, workspace } = windowOver(
