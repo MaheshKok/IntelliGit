@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.13] - 2026-11-14
+
+### Added
+
+- Groundwork for the coming Checks tab: IntelliGit can now tell whether a failed CI job broke in this commit, was already broken before it, was fixed by it, or is also failing on your default branch. Nothing changes in the extension yet.
+
 ## [0.43.12] - 2026-11-14
 
 ### Added

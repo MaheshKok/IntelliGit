@@ -103,6 +103,30 @@ guesses a time.
   account and shown run; signing in or out drops it. "No earlier run" and a failed lookup
   are not kept, so the next look asks again.
 
+### Compared with the parent and the default branch
+
+Each job and check is compared with the same check on the commit's first parent (a merge
+commit is compared with its first parent only):
+
+- **new**: it failed here and passed on the parent;
+- **still**: it failed here and on the parent;
+- **fixed**: it passed here and failed on the parent;
+- **unknown**: it failed here, and the parent has no check that is surely the same one.
+
+A check still running, or whose parent run has not finished, gets no tag. A failed check also
+red on the default branch's newest commit carries **also red on &lt;branch&gt;**, with the
+branch's real name. The default branch is what `origin/HEAD` points at, read again for every
+comparison, so a `git fetch` that moves it is seen at once; when `origin/HEAD` is missing the
+header says **default branch unknown — run git remote set-head origin --auto** and no
+"also red" tag is shown. The parent's and the tip's checks come from the same cache the
+Git Log badges use. A snapshot that cannot be read tags nothing.
+
+Two checks are the same check when they belong to the same workflow (GitLab: pipeline) and
+job. Job and check-run ids are never compared across commits, because every run gives them
+new ones. GitHub's and GitLab's per-commit check lists do not name the workflow or pipeline,
+so the parent's check is matched by name instead, and only when exactly one check on the
+parent and exactly one on the commit carry that name; anything else is **unknown**.
+
 ### Write actions
 
 On GitHub and GitLab the tab can **Re-run failed** jobs of a failed run, **Re-run job**

@@ -18,12 +18,14 @@ import type {
 import type {
     CancelCommitCiDetailMessage,
     CiActionResultMessage,
+    CiHistoryMessage,
     CiLogPreviewMessage,
     CiLogResultMessage,
     CommitCiDetailInvalidatedMessage,
     CommitCiDetailMessage,
     OpenCiLogMessage,
     RunCiActionMessage,
+    RequestCiHistoryMessage,
     OpenCommitChecksSettingsMessage,
     OpenChecksTabMessage,
     OpenCommitInChecksMessage,
@@ -258,6 +260,7 @@ export type CommitGraphOutbound =
     | PreviewCiLogMessage
     | OpenCiLogMessage
     | RunCiActionMessage
+    | RequestCiHistoryMessage
     | OpenCommitChecksSettingsMessage
     | OpenCommitInChecksMessage;
 
@@ -426,4 +429,5 @@ export type CommitGraphInbound =
     | CiLogPreviewMessage
     | CiLogResultMessage
     | CiActionResultMessage
+    | CiHistoryMessage
     | OpenChecksTabMessage;

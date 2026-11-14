@@ -16,6 +16,7 @@ import {
 } from "./ciDetailHandler";
 import { answerCiLogMessage } from "./ciLogHandler";
 import { answerCiActionMessage } from "./ciActionHandler";
+import { answerCiHistoryRequest } from "./ciHistoryHandler";
 
 /** What the Changed Files view needs to serve its Checks tab. */
 export interface CommitInfoCiSource extends CommitCiDetailSource {
@@ -144,6 +145,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                 case "previewCiLog":
                 case "openCiLog":
                 case "runCiAction":
+                case "requestCiHistory":
                     try {
                         await this.handleChecksMessage(msg, webviewView);
                     } catch (err) {
@@ -225,12 +227,19 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     | "signInForCommitChecks"
                     | "previewCiLog"
                     | "openCiLog"
-                    | "runCiAction";
+                    | "runCiAction"
+                    | "requestCiHistory";
             }
         >,
         view: vscode.WebviewView,
     ): Promise<void> {
         switch (msg.type) {
+            case "requestCiHistory":
+                if (!this.ciSource || this.view !== view) return;
+                await answerCiHistoryRequest(this.ciSource, { ...msg }, (reply) => {
+                    if (this.view === view) this.postToWebview(reply);
+                });
+                return;
             case "runCiAction":
                 if (!this.ciSource || this.view !== view) return;
                 await answerCiActionMessage(this.ciSource, { ...msg }, (reply) => {

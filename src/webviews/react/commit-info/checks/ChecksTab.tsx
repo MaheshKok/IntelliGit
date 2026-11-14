@@ -9,6 +9,7 @@ import { CheckTree } from "./CheckTree";
 import { ChecksHeader } from "./ChecksHeader";
 import { checksStyles } from "./checksStyles";
 import { useCiAction, type CiActionTarget, type CiActionView } from "./useCiAction";
+import { useCiHistory } from "./useCiHistory";
 import { useCommitCiDetail } from "./useCommitCiDetail";
 
 type ChecksTabMessage =
@@ -69,10 +70,13 @@ function rerunJobTarget(
 export function ChecksTab({
     repoKey,
     hash,
+    parentHashes,
     enabled,
 }: {
     repoKey: string;
     hash: string;
+    /** The commit's parents, first parent first; its checks are compared with the first. */
+    parentHashes: readonly string[];
     enabled: boolean;
 }): React.ReactElement {
     const { detail, refresh, reload } = useCommitCiDetail(repoKey, enabled ? hash : null, true);
@@ -87,6 +91,7 @@ export function ChecksTab({
         [],
     );
     const loaded = state === "detail" ? detail! : undefined;
+    const { history, defaultBranchUnknown } = useCiHistory(repoKey, hash, parentHashes, loaded);
     const selectedJob =
         loaded &&
         (loaded.runs.flatMap((run) => run.jobs).find((job) => job.id === selectedJobId) ??
@@ -117,6 +122,7 @@ export function ChecksTab({
                     // The cancel confirmation belongs to one repository and commit.
                     key={commitKey}
                     detail={loaded}
+                    defaultBranchUnknown={defaultBranchUnknown}
                     actionRun={actionRun}
                     busy={action.busy}
                     onAction={action.run}
@@ -141,6 +147,8 @@ export function ChecksTab({
                     <div className="intelligit-checks-columns">
                         <CheckTree
                             detail={loaded}
+                            hash={hash}
+                            history={history}
                             selectedJobId={selectedJob?.id ?? null}
                             onSelectJob={(job) => setPicked({ commitKey, jobId: job.id })}
                             onOpenUrl={openUrl}

@@ -65,6 +65,7 @@ import {
 } from "./ciDetailHandler";
 import { answerCiLogMessage } from "./ciLogHandler";
 import { answerCiActionMessage, ciActionAccess, type CiActionOptions } from "./ciActionHandler";
+import { answerCiHistoryRequest } from "./ciHistoryHandler";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
@@ -278,6 +279,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             generations: this.options.ciGenerations,
             getDetail: (hash, options, ctx, onScanUpdate) =>
                 this.getCommitCiDetail(hash, options, ctx, onScanUpdate),
+            history: (parents) => this.commitChecks.ciHistory(parents),
             ...(store && {
                 logs: {
                     store,
@@ -512,6 +514,19 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         if (!repoKey || this.view !== webviewView) break;
                         const view = webviewView;
                         await answerCiActionMessage(
+                            this.ciDetailSource(repoKey),
+                            { ...msg },
+                            (reply) => {
+                                if (this.view === view) this.postToWebview(reply);
+                            },
+                        );
+                        break;
+                    }
+                    case "requestCiHistory": {
+                        const repoKey = this.options.ciRepoKey;
+                        if (!repoKey || this.view !== webviewView) break;
+                        const view = webviewView;
+                        await answerCiHistoryRequest(
                             this.ciDetailSource(repoKey),
                             { ...msg },
                             (reply) => {

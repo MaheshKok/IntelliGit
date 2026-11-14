@@ -573,5 +573,10 @@
     "commit.checks.tab.overdue": "atrasado",
     "commit.checks.tab.requiredUnknown": "obrigatório: desconhecido",
     "commit.checks.tab.requiredScope": "verificações obrigatórias de {branch}",
-    "commit.checks.tab.defaultBranchUnknown": "branch padrão desconhecido — execute git remote set-head origin --auto"
+    "commit.checks.tab.defaultBranchUnknown": "branch padrão desconhecido — execute git remote set-head origin --auto",
+    "commit.checks.tab.history.new": "novo",
+    "commit.checks.tab.history.still": "persistente",
+    "commit.checks.tab.history.fixed": "corrigido",
+    "commit.checks.tab.history.unknown": "desconhecido",
+    "commit.checks.tab.history.alsoRed": "também vermelho em {branch}"
 }

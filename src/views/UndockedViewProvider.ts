@@ -36,6 +36,7 @@ import {
 } from "./ciDetailHandler";
 import { answerCiLogMessage } from "./ciLogHandler";
 import { answerCiActionMessage, ciActionAccess, type CiActionOptions } from "./ciActionHandler";
+import { answerCiHistoryRequest } from "./ciHistoryHandler";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
 import { postWebviewMessage } from "./webviewDelivery";
@@ -452,6 +453,7 @@ export class UndockedViewProvider {
             generations: this.ciGenerations,
             getDetail: (hash, options, ctx, onScanUpdate) =>
                 this.commitChecks.getDetail(hash, options, ctx, onScanUpdate),
+            history: (parents) => this.commitChecks.ciHistory(parents),
             ...(store && {
                 logs: {
                     store,
@@ -833,7 +835,8 @@ export class UndockedViewProvider {
                 msg.type === "cancelCommitCiDetail" ||
                 msg.type === "previewCiLog" ||
                 msg.type === "openCiLog" ||
-                msg.type === "runCiAction";
+                msg.type === "runCiAction" ||
+                msg.type === "requestCiHistory";
             if (ciMessage && this.panel !== panel) return;
             // A window reload sends ready without reopening the panel and ends the old scan loop.
             if (msg.type === "ready" && this.panel === panel) this.ciDetailLoops.dispose();
@@ -1340,6 +1343,13 @@ export class UndockedViewProvider {
             case "runCiAction": {
                 const panel = this.panel;
                 await answerCiActionMessage(this.ciDetailSource(), { ...msg }, (reply) => {
+                    if (this.panel === panel) this.postToWebview(reply);
+                });
+                break;
+            }
+            case "requestCiHistory": {
+                const panel = this.panel;
+                await answerCiHistoryRequest(this.ciDetailSource(), { ...msg }, (reply) => {
                     if (this.panel === panel) this.postToWebview(reply);
                 });
                 break;

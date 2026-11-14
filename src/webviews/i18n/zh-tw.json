@@ -553,5 +553,10 @@
     "commit.checks.tab.overdue": "已逾時",
     "commit.checks.tab.requiredUnknown": "必要: 未知",
     "commit.checks.tab.requiredScope": "來自 {branch} 的必要檢查",
-    "commit.checks.tab.defaultBranchUnknown": "預設分支未知 — 請執行 git remote set-head origin --auto"
+    "commit.checks.tab.defaultBranchUnknown": "預設分支未知 — 請執行 git remote set-head origin --auto",
+    "commit.checks.tab.history.new": "新增",
+    "commit.checks.tab.history.still": "持續",
+    "commit.checks.tab.history.fixed": "已修復",
+    "commit.checks.tab.history.unknown": "未知",
+    "commit.checks.tab.history.alsoRed": "{branch} 上也失敗"
 }

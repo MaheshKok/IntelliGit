@@ -1,0 +1,18 @@
+[
+    {
+        "id": 93,
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "ref": "main",
+        "status": "failed",
+        "name": "unit-tests",
+        "target_url": "https://gitlab.com/group/project/-/jobs/93",
+        "description": null,
+        "created_at": "2026-11-07T10:00:00.000Z",
+        "started_at": "2026-11-07T10:00:05.000Z",
+        "finished_at": "2026-11-07T10:04:00.000Z",
+        "allow_failure": false,
+        "coverage": null,
+        "pipeline_id": 512,
+        "author": { "id": 1, "username": "dev", "name": "Dev", "state": "active" }
+    }
+]

@@ -7,6 +7,7 @@ import * as vscode from "vscode";
 import type { GitOps } from "../../git/operations";
 import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
 import { isCompleteSnapshot } from "../../shared/ci/completion";
+import type { CiHistory } from "../../shared/ci/history";
 import type {
     CiRun,
     CiState,
@@ -17,6 +18,7 @@ import type {
 } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import type { CiGenerations, CiOperationContext } from "./ciGenerations";
+import { readCiHistory } from "./ciHistory";
 import { applyUsual, usualCacheKey } from "./ciTiming";
 import { ciLogKey, type CiLogSource } from "./ciLogMemoryStore";
 import type { CiTrace } from "./ciTrace";
@@ -203,6 +205,22 @@ export class CommitChecksCoordinator {
             };
         }
         return this.fetchFresh(hash, options);
+    }
+
+    /**
+     * The snapshots a commit's checks are compared with: its first parent's and the default
+     * branch tip's, both cache first; `origin/HEAD` is read for this request.
+     *
+     * @param parents - The commit's parent hashes, first parent first.
+     */
+    ciHistory(parents: readonly string[]): Promise<CiHistory> {
+        return readCiHistory(
+            {
+                getChecks: (hash) => this.getChecks(hash),
+                readDefaultBranch: () => this.gitOps.readDefaultBranch(),
+            },
+            parents,
+        );
     }
 
     /**
