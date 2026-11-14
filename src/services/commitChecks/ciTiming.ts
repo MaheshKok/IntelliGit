@@ -20,7 +20,10 @@ const USUAL_TTL_MS = 24 * 60 * 60 * 1000;
 const STORE_KEY = "intelligit.commitChecks.usualDurations";
 /**
  * A clear writes its token here and under the entries key; readers take the newer of the two
- * (see {@link newerEpoch}), so a late write of an older token to either key cannot revert it.
+ * (see {@link newerEpoch}). One window cannot undo its own clear: VS Code applies each update to
+ * memory at once, in call order. Across windows this covers one late write of an older token to
+ * either key; late writes to both keys can still revert a clear, which is the cross-window
+ * ordering PLAN.md puts out of scope (handoff, Open risks).
  */
 const EPOCH_KEY = "intelligit.commitChecks.usualDurationsEpoch";
 /** Saved baselines kept at most; the oldest are dropped first. */

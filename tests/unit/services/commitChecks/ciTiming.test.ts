@@ -636,6 +636,35 @@ describe("usual duration cache and serving", () => {
         expect(provider.getUsualDuration).toHaveBeenCalledTimes(3);
     });
 
+    it("an account switch and switch back during a lookup still retries the rejected lookup", async () => {
+        // The account reads as "account-b" exactly once, right after the first lookup, and is
+        // "account-a" again before the read's final confirm: A -> B -> A.
+        let readOtherAccountOnce = false;
+        let calls = 0;
+        const { provider, read } = coordinatorFor(
+            [selectedRun()],
+            async () => {
+                calls += 1;
+                if (calls === 1) readOtherAccountOnce = true;
+                return { baselineRunId: "200", runMs: calls * 1_000, jobMs: {} };
+            },
+            new UsualDurationCache(),
+            async () => {
+                if (!readOtherAccountOnce) return "account-a";
+                readOtherAccountOnce = false;
+                return "account-b";
+            },
+        );
+
+        const detail = await read();
+
+        expect(
+            detail?.runs[0]?.usualDurationMs,
+            "the lookup rejected by the switch is asked again under account-a",
+        ).toBe(2_000);
+        expect(provider.getUsualDuration).toHaveBeenCalledTimes(2);
+    });
+
     it("a found baseline is kept across sessions for 24 hours", async () => {
         const saved = new Map<string, unknown>();
         const store = {
