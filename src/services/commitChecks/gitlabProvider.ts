@@ -371,8 +371,9 @@ export class GitLabProvider implements CommitChecksProvider {
      */
     async getRequiredChecks(ref: ProviderRepoRef, _branch: string): Promise<RequiredChecks> {
         const gitLabRef = ref as GitLabRepoRef;
-        const token = await this.readToken(gitLabRef.host, "");
-        if (typeof token !== "string") return UNKNOWN_REQUIRED;
+        // A failed store read rejects, so the hour cache drops it; no token is an answer.
+        const token = await this.store.get(gitLabRef.host);
+        if (!token) return UNKNOWN_REQUIRED;
         let project: unknown;
         try {
             project = await this.fetchJson(projectApiUrl(gitLabRef), { "PRIVATE-TOKEN": token });

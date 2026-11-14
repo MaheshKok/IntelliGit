@@ -17,6 +17,7 @@ vi.mock("vscode", () => ({
 }));
 
 import { GitHubProvider } from "../../../../src/services/commitChecks/githubProvider";
+import { GitLabProvider } from "../../../../src/services/commitChecks/gitlabProvider";
 import { RequiredChecksCache } from "../../../../src/services/commitChecks/requiredChecks";
 
 const ghRef = { host: "github.com", owner: "octo", repo: "app" } as ProviderRepoRef;
@@ -107,6 +108,39 @@ describe("required checks and the GitHub sign-in", () => {
             providerWith(
                 new HttpError(404, `HTTP 404: {"message":"Branch not protected"}`),
             ).getRequiredChecks(ghRef, "trunk"),
+        ).resolves.toEqual({ status: "unknown" });
+    });
+});
+
+describe("required checks and the GitLab token store", () => {
+    const glRef = { host: "gitlab.com", owner: "group", repo: "app" } as ProviderRepoRef;
+    const gitlabWith = (get: () => Promise<string | undefined>) =>
+        new GitLabProvider(
+            vi.fn(async () => ({ only_allow_merge_if_pipeline_succeeds: true })),
+            { get } as never,
+        );
+
+    it("a token store that fails once is read again after it recovers, not kept for the hour", async () => {
+        const get = vi
+            .fn<() => Promise<string | undefined>>()
+            .mockRejectedValueOnce(new Error("keychain locked"))
+            .mockResolvedValue("gl-token");
+        const provider = gitlabWith(get);
+        const cache = new RequiredChecksCache(() => 0);
+        const read = () =>
+            cache.get("group/app", "trunk", () => provider.getRequiredChecks(glRef, "trunk"));
+
+        await read().catch(() => undefined);
+
+        expect(
+            (await read()).status,
+            "a failed token-store read must not stay cached as unknown",
+        ).toBe("known");
+    });
+
+    it("no GitLab token answers unknown", async () => {
+        await expect(
+            gitlabWith(async () => undefined).getRequiredChecks(glRef, "trunk"),
         ).resolves.toEqual({ status: "unknown" });
     });
 });
