@@ -18,6 +18,8 @@ export interface UsualDuration {
 /** K23: a baseline is complete and immutable, so it is kept a day, in memory and on disk. */
 const USUAL_TTL_MS = 24 * 60 * 60 * 1000;
 const STORE_KEY = "intelligit.commitChecks.usualDurations";
+/** The clear token lives under its own key, so a late write of the entries cannot revert it. */
+const EPOCH_KEY = "intelligit.commitChecks.usualDurationsEpoch";
 /** Saved baselines kept at most; the oldest are dropped first. */
 const MAX_SAVED = 200;
 
@@ -35,8 +37,9 @@ interface Saved {
 }
 
 /**
- * What the store holds: the entries and the clear token they were saved under. Every window
- * reads the token, and each clear replaces it, so a clear in one window reaches all of them.
+ * The entries and the clear token they were saved under. Entries count only while that token
+ * equals the one under {@link EPOCH_KEY}, which only a clear writes: a clear in one window
+ * reaches all of them, and an older entries write that lands late is simply not read.
  */
 interface Stored {
     readonly epoch: string;
@@ -114,6 +117,8 @@ export class UsualDurationCache {
     // Counts this cache's own clears, which also fence a cache that has no store.
     private generation = 0;
     private writes: Promise<unknown> = Promise.resolve();
+    // Set by a clear until its shared write succeeds; while set, saved baselines are not read.
+    private pendingEpoch: string | null = null;
 
     /**
      * Creates an empty cache.
@@ -159,17 +164,25 @@ export class UsualDurationCache {
     /**
      * Drops every baseline, saved ones too, in every window; a fetch already under way, here or
      * in another window, is not kept. The new epoch is written at once, not queued behind saves,
-     * so this window and the others see it before any older queued save can land.
+     * under a key no save writes, so no older save can revert it.
      */
     clear(): void {
         this.generation += 1;
         this.entries.clear();
-        const store = this.store;
-        if (!store) return;
-        // A failed write only means another window keeps its baselines until they expire.
-        Promise.resolve(store.update(STORE_KEY, { epoch: randomUUID(), entries: {} })).catch(
-            () => undefined,
-        );
+        if (!this.store) return;
+        // Until the write lands, this window ignores every saved baseline; a save retries it.
+        this.pendingEpoch = randomUUID();
+        void this.writeEpoch(this.pendingEpoch);
+    }
+
+    /** Writes a clear's epoch; only the latest clear's success lifts the saved-baseline block. */
+    private async writeEpoch(epoch: string): Promise<void> {
+        try {
+            await this.store?.update(EPOCH_KEY, epoch);
+            if (this.pendingEpoch === epoch) this.pendingEpoch = null;
+        } catch {
+            // The epoch stays pending: this window keeps ignoring saved baselines.
+        }
     }
 
     /** Saves `saved` unless a clear (here or in another window) happened since `epoch`. */
@@ -177,6 +190,7 @@ export class UsualDurationCache {
         const store = this.store;
         if (!store) return;
         this.enqueue(async () => {
+            if (this.pendingEpoch !== null) await this.writeEpoch(this.pendingEpoch);
             const current = this.readStored();
             if (this.epochOf(current) !== epoch) return;
             const now = this.now();
@@ -203,10 +217,16 @@ export class UsualDurationCache {
     }
 
     private readStored(): Stored {
+        if (this.pendingEpoch !== null) return { epoch: this.pendingEpoch, entries: {} };
+        const stored = this.store?.get<unknown>(EPOCH_KEY);
+        const epoch = typeof stored === "string" ? stored : "";
         const raw = this.store?.get<unknown>(STORE_KEY);
-        const { epoch, entries } = (raw ?? {}) as { epoch?: unknown; entries?: unknown };
-        if (typeof epoch !== "string" || !entries || typeof entries !== "object") {
-            return { epoch: "", entries: {} };
+        const { epoch: savedUnder, entries } = (raw ?? {}) as {
+            epoch?: unknown;
+            entries?: unknown;
+        };
+        if (savedUnder !== epoch || !entries || typeof entries !== "object") {
+            return { epoch, entries: {} };
         }
         return {
             epoch,

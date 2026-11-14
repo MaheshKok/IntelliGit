@@ -755,6 +755,115 @@ describe("usual duration cache and serving", () => {
         expect(fetch).toHaveBeenCalledTimes(1);
     });
 
+    // A store whose first write is held back, so it lands after a clear that started later.
+    function storeWithSlowFirstWrite() {
+        const store = sharedStore();
+        const update = store.update;
+        let release!: () => void;
+        let started!: () => void;
+        const entered = new Promise<void>((r) => (started = r));
+        let first = true;
+        store.update = async (key: string, value: unknown) => {
+            if (first) {
+                first = false;
+                started();
+                await new Promise<void>((r) => (release = r));
+            }
+            await update(key, value);
+        };
+        return { store, entered, release: () => release() };
+    }
+
+    it("a save already awaiting storage cannot bring back baselines a clear dropped, across a restart", async () => {
+        const { store, entered, release } = storeWithSlowFirstWrite();
+        const windowA = new UsualDurationCache({ store });
+        const windowB = new UsualDurationCache({ store });
+        await windowA.get("usual:k:300", async () => ({
+            baselineRunId: "200",
+            runMs: 1,
+            jobMs: {},
+        }));
+        await entered;
+
+        windowB.clear();
+        release();
+        await new Promise((done) => setTimeout(done, 0));
+
+        const fetch = vi.fn(async () => null);
+        await new UsualDurationCache({ store }).get("usual:k:300", fetch);
+        expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("a clear in the same window cannot be overtaken by its older save", async () => {
+        const { store, entered, release } = storeWithSlowFirstWrite();
+        const cache = new UsualDurationCache({ store });
+        await cache.get("usual:k:300", async () => ({ baselineRunId: "200", runMs: 1, jobMs: {} }));
+        await entered;
+
+        cache.clear();
+        release();
+        await new Promise((done) => setTimeout(done, 0));
+
+        const fetch = vi.fn(async () => null);
+        await new UsualDurationCache({ store }).get("usual:k:300", fetch);
+        expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("a clear whose shared write failed never serves this window its own saved baseline", async () => {
+        const store = sharedStore();
+        const update = store.update;
+        const cache = new UsualDurationCache({ store });
+        await cache.get("usual:k:300", async () => ({
+            baselineRunId: "200",
+            runMs: 1_000,
+            jobMs: {},
+        }));
+        await new Promise((done) => setTimeout(done, 0));
+
+        store.update = async () => {
+            throw new Error("disk full");
+        };
+        cache.clear();
+        await new Promise((done) => setTimeout(done, 0));
+
+        const fetch = vi.fn(async () => ({ baselineRunId: "201", runMs: 2_000, jobMs: {} }));
+        expect((await cache.get("usual:k:300", fetch))?.runMs).toBe(2_000);
+        store.update = update;
+    });
+
+    it("a failed clear is retried by the next save, so it still reaches a restart", async () => {
+        const store = sharedStore();
+        const update = store.update;
+        const cache = new UsualDurationCache({ store });
+        await cache.get("usual:k:300", async () => ({
+            baselineRunId: "200",
+            runMs: 1_000,
+            jobMs: {},
+        }));
+        await new Promise((done) => setTimeout(done, 0));
+
+        store.update = async () => {
+            throw new Error("disk full");
+        };
+        cache.clear();
+        await new Promise((done) => setTimeout(done, 0));
+        store.update = update;
+
+        await cache.get("usual:k:300", async () => ({
+            baselineRunId: "201",
+            runMs: 2_000,
+            jobMs: {},
+        }));
+        await new Promise((done) => setTimeout(done, 0));
+
+        // The restart gets the new baseline, not the one the clear dropped.
+        const fetch = vi.fn(async () => null);
+        expect((await new UsualDurationCache({ store }).get("usual:k:300", fetch))?.runMs).toBe(
+            2_000,
+        );
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
     it("a running job in a failed but incomplete run still gets its usual duration", async () => {
         const failedRun = selectedRun({
             state: "failure",
