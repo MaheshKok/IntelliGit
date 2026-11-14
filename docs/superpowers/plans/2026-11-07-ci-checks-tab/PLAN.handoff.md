@@ -10,9 +10,10 @@
 - Phase 6: accepted 69e809bb, verification incomplete (squash-merged as #422, 51b0c3ab).
 - Phase 7: accepted 6fef8c59, manual; owner OK 2026-11-12 (squash-merged as #424, 36bef4be).
 - Phase 8: accepted b5a56002, manual; owner OK 2026-11-13 (squash-merged as #426, 7941c809).
+- Phase 9: accepted 37ba9d13, manual: finished by hand; elephant OK 2026-11-14 after the owner's answer "C: track in #432" (PR #430, not merged yet).
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 9: review pending, started at b5a56002
+## Phase 9: accepted at 37ba9d13, started at b5a56002
 - The branch's real base is ca0271a6 (main after Phase 8's squash merge 7941c809 plus a docs commit); b5a56002 is not its ancestor.
 - Built (0.43.11): C2 required-checks read for GitHub (rulesets, paginated, union with classic protection) and GitLab (`only_allow_merge_if_pipeline_succeeds`); "blocks merge" / "optional" tags and the header's "required: unknown"; `RequiredChecksCache` (requiredChecks.ts, L1, 1 h); `readDefaultBranch` (origin/HEAD, no "main" fallback); CI_DETAIL_CONTRACT_VERSION 4 -> 5.
 - Fix round 1: protection's 403 always maps to partial/unknown; the rules cache is keyed by account; K21's hour pinned by literal ms.
