@@ -11,10 +11,10 @@
 - Phase 7: accepted 6fef8c59, manual; owner OK 2026-11-12 (squash-merged as #424, 36bef4be).
 - Phase 8: accepted b5a56002, manual; owner OK 2026-11-13 (squash-merged as #426, 7941c809).
 - Phase 9: accepted 37ba9d13, manual: finished by hand; elephant OK 2026-11-14 after the owner's answer "C: track in #432" (squash-merged as #430, 63b8ea88).
-- Phase 10: accepted 38b89a65, manual: finished by hand after the takeover halt, owner answer "A" 2026-11-14; Codex ACCEPT on d1b0a496 and on 38b89a65; Fable R1's skipped-job bug fixed in 38b89a65.
+- Phase 10: accepted 8ff6422d, manual: finished by hand after the takeover halt, owner answer "A" 2026-11-14; Codex ACCEPT on d1b0a496 and on 38b89a65; Fable R1's skipped-job bug fixed in 38b89a65; CodeRabbit's two findings on #435 fixed in 8ff6422d (head of record).
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 10: accepted 38b89a65 (started at 37ba9d135cd05dd2120ccc8a101813ef1730fb47)
+## Phase 10: accepted 8ff6422d (started at 37ba9d135cd05dd2120ccc8a101813ef1730fb47)
 - The branch's real base is ee5c9ceb (main after Phase 9's squash merge 63b8ea88 plus two docs commits); 37ba9d13 is not its ancestor.
 - Built (0.43.12): live elapsed time on running runs and jobs (one 1 s interval only while something runs); "usually ~{duration}" / "usually: unknown" from K23's baseline; "overdue" past 1.5 x usual. Pure logic in src/shared/ci/timing.ts; `getUsualDuration` on GitHub and GitLab; `UsualDurationCache` in src/services/commitChecks/ciTiming.ts; coordinator `withUsual`; CI_DETAIL_CONTRACT_VERSION 5 -> 6; 3 strings in 12 locales + CSV; README "Running time".
 - Fix round 1 (d2780ceb): clear shared across windows through a clear epoch; `withUsual` also serves a failed run that still has a queued or running job.
@@ -33,7 +33,7 @@
 - "No baseline" and a failed lookup are not cached, only a found baseline: an earlier run still going may succeed and become the baseline.
 - The cache key carries the account (`usual:<repoKey>|<account>:<runId>`), and the lookup confirms the attempt's account after it.
 - The usual is applied when the detail is fetched, so it lives in the cached detail: hence the contract bump.
-- Job usual matches by logical id only when the id is unique in both runs; a cut baseline job list gives no job matches.
+- Job usual matches by logical id only when the id is unique in both runs; a cut job list, baseline or current, gives no job matches (current side: CodeRabbit round, 8ff6422d).
 - Only a baseline job that succeeded gives a usual time (R1 fix round): a skipped job's zero-length span would make the same running job "overdue" at once. Passed on dropping 0 ms spans instead: a real job can finish in under a second.
 - Overdue is strictly greater than 1.5 x usual; unknown usual never shows overdue.
 - GitLab baseline: `created_before` + `order_by=id&sort=desc`; GitHub: `created=<createdAt` on the same workflow id; the selected run itself is skipped.
