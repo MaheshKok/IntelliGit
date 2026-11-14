@@ -8,6 +8,8 @@ import type { GitOps } from "../../git/operations";
 import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
 import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type {
+    CiRun,
+    CiState,
     CommitChecksSnapshot,
     CommitCiDetail,
     CommitCiDetailData,
@@ -15,6 +17,7 @@ import type {
 } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import type { CiGenerations, CiOperationContext } from "./ciGenerations";
+import { applyUsual, usualCacheKey } from "./ciTiming";
 import { ciLogKey, type CiLogSource } from "./ciLogMemoryStore";
 import type { CiTrace } from "./ciTrace";
 import { attach, CommitCiDetailService, type CiFailedScanHooks } from "./detailService";
@@ -311,7 +314,7 @@ export class CommitChecksCoordinator {
                 const [detail, rule] = await Promise.all([
                     this.detailService.getOrFetch(
                         `${this.snapshotKey(match, account, hash)}#detail`,
-                        checkedFetch,
+                        async () => this.withUsual(match, account, await checkedFetch(), confirm),
                         serve,
                         options,
                         confirm,
@@ -325,6 +328,50 @@ export class CommitChecksCoordinator {
         );
         if (!this.isCurrent(ctx, providerGeneration)) return this.discard(ctx, hash, provider.id);
         return marked;
+    }
+
+    /**
+     * The fetched detail with the usual duration of each run that is queued, running or has a
+     * queued or running job, and of its jobs (K23), cached per selected run. A run whose lookup failed is left without one; only a change
+     * of the signed-in account rejects.
+     */
+    private async withUsual(
+        match: ProviderMatch,
+        account: string | undefined,
+        detail: CiDetailFetch,
+        confirm: () => Promise<void>,
+    ): Promise<CiDetailFetch> {
+        const { provider, ref } = match;
+        const getUsualDuration = provider.getUsualDuration?.bind(provider);
+        if (!provider.capabilities.usualDuration || !getUsualDuration) return detail;
+        const scope = provider.keyFor(ref);
+        const runs: CiRun[] = [];
+        for (const run of detail.runs) {
+            // A failed run can still have a job going, and that job shows a usual duration too.
+            const active = (state: CiState) => state === "queued" || state === "running";
+            if (!active(run.state) && !run.jobs.some((job) => active(job.state))) {
+                runs.push(run);
+                continue;
+            }
+            try {
+                // Serial, so a commit with many running runs never takes every gate slot at once.
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
+                const usual = await this.detailService.usualDurations.get(
+                    usualCacheKey(account === undefined ? scope : `${scope}|${account}`, run),
+                    async () => {
+                        const found = await getUsualDuration(ref, run);
+                        // A throw here is a rejected fetch, which the cache drops.
+                        await confirm();
+                        return found;
+                    },
+                );
+                runs.push(applyUsual(run, usual));
+            } catch (err) {
+                if (err instanceof AccountChangedError) throw err;
+                runs.push(run);
+            }
+        }
+        return { ...detail, runs };
     }
 
     /**

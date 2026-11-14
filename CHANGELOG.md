@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.12] - 2026-11-14
+
+### Added
+
+- Groundwork for the coming Checks tab: IntelliGit can now tell how long a running CI job has been going, how long it usually takes, and when it is running late. Nothing changes in the extension yet.
+
 ## [0.43.11] - 2026-11-14
 
 ### Added

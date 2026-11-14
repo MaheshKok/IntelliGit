@@ -578,6 +578,9 @@
     "commit.checks.tab.writeActionsHelp": "Как получить токен с такими правами",
     "commit.checks.tab.blocksMerge": "блокирует слияние",
     "commit.checks.tab.optional": "необязательно",
+    "commit.checks.tab.usually": "обычно ~{duration}",
+    "commit.checks.tab.usuallyUnknown": "обычно: неизвестно",
+    "commit.checks.tab.overdue": "задерживается",
     "commit.checks.tab.requiredUnknown": "обязательность: неизвестно",
     "commit.checks.tab.requiredScope": "обязательные проверки ветки {branch}",
     "commit.checks.tab.defaultBranchUnknown": "ветка по умолчанию неизвестна — выполните git remote set-head origin --auto"

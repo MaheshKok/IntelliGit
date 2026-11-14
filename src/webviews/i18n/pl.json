@@ -578,6 +578,9 @@
     "commit.checks.tab.writeActionsHelp": "Jak uzyskać token, który to umożliwia",
     "commit.checks.tab.blocksMerge": "blokuje scalanie",
     "commit.checks.tab.optional": "opcjonalne",
+    "commit.checks.tab.usually": "zwykle ~{duration}",
+    "commit.checks.tab.usuallyUnknown": "zwykle: nieznane",
+    "commit.checks.tab.overdue": "opóźnione",
     "commit.checks.tab.requiredUnknown": "wymagane: nieznane",
     "commit.checks.tab.requiredScope": "wymagane kontrole z {branch}",
     "commit.checks.tab.defaultBranchUnknown": "domyślna gałąź nieznana — uruchom git remote set-head origin --auto"

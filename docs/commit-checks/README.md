@@ -83,6 +83,26 @@ merge** tag. A GitLab job that is allowed to fail (`allow_failure`) carries a mu
 - The rule is kept in memory for one hour per repository and branch; signing in or out
   drops it. A network or server error is not kept, so the next look asks again.
 
+### Running time
+
+A running workflow, pipeline or job shows how long it has been running, counted up once a
+second in the tab itself with no request to the provider; the counting stops when nothing
+runs. While it is queued or running it also shows **usually ~Xm**: how long the same
+workflow's (GitLab: the same ref's) latest successful run before it took. A job's usual time
+comes from the job with the same name in that run, and only when exactly one job there has
+that name. Past one and a half times its usual time an item carries an **overdue** tag. With
+no earlier successful run to compare with, the tab says **usually: unknown**; it never
+guesses a time.
+
+- GitHub: the latest successful run of the same workflow on the same branch created before
+  the one shown; the run took from its start to its last update.
+- GitLab: the latest successful pipeline on the same ref created before the one shown,
+  found with `created_before` and newest id first, so a pipeline that was still running
+  when the shown one began still counts. Its own duration and its jobs' durations are used.
+- A found earlier run is kept for a day, in memory and across restarts, per repository,
+  account and shown run; signing in or out drops it. "No earlier run" and a failed lookup
+  are not kept, so the next look asks again.
+
 ### Write actions
 
 On GitHub and GitLab the tab can **Re-run failed** jobs of a failed run, **Re-run job**

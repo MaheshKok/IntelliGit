@@ -41,6 +41,7 @@ import { CommitChecksService } from "../services/commitChecks/service";
 import { CommitChecksPersistentCache } from "../services/commitChecks/persistentCache";
 import { CommitCiDetailService } from "../services/commitChecks/detailService";
 import { CiDetailPersistentCache } from "../services/commitChecks/detailPersistentCache";
+import { UsualDurationCache } from "../services/commitChecks/ciTiming";
 import { CiGenerations } from "../services/commitChecks/ciGenerations";
 import { CiActionFenceStore } from "../services/commitChecks/ciActionFence";
 import { createCiTrace } from "../services/commitChecks/ciTrace";
@@ -291,6 +292,7 @@ export async function activateRepositoryMode(
         }),
         trace: ciTrace,
         fences: ciActionFences,
+        usualDurations: new UsualDurationCache({ store: context.globalState }),
     });
     // CI logs live in this window's memory only (owner path C). An E2E run serves the logs it
     // seeded; otherwise the job's provider downloads it through its request gate.

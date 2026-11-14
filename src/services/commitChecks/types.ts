@@ -8,11 +8,13 @@ import type {
     CiAction,
     CiActionEvidence,
     CiJob,
+    CiRun,
     CommitChecksSnapshot,
     CommitCiDetailData,
     ProviderId,
 } from "../../types";
 import type { CiOperationContext } from "./ciGenerations";
+import type { UsualDuration } from "./ciTiming";
 import type { DownloadedText } from "./http";
 import type { RequiredChecks } from "./requiredChecks";
 
@@ -126,6 +128,12 @@ export interface CommitChecksProvider {
      * rate limit) rejects, so nothing is cached for it.
      */
     getRequiredChecks?(ref: ProviderRepoRef, branch: string): Promise<RequiredChecks>;
+    /**
+     * K23: how long the latest successful earlier run of `run`'s workflow on the same branch
+     * took, and its jobs. Null when there is none or `run` lacks what the search needs; a
+     * transient failure rejects, so nothing is cached for it.
+     */
+    getUsualDuration?(ref: ProviderRepoRef, run: CiRun): Promise<UsualDuration | null>;
     /**
      * The evidence rule that ends an action's fence, stored with the fence when the action
      * starts. Absent = `cancelled` for cancel; re-run actions need it.
