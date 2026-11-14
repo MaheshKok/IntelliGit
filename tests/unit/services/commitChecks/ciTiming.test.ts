@@ -273,6 +273,62 @@ describe("GitHub usual duration (K23)", () => {
         expect(await provider.getUsualDuration(ghRef, selectedRun())).toBeNull();
     });
 
+    it("a baseline job that did not succeed has no usual time", async () => {
+        const gh = fakeGitHub(
+            [
+                ghRun(
+                    200,
+                    11,
+                    "2026-11-14T11:30:00Z",
+                    "success",
+                    "2026-11-14T11:30:00Z",
+                    "2026-11-14T11:40:00Z",
+                ),
+            ],
+            new Map([
+                [
+                    "200",
+                    [
+                        ghJob(1, "build", "2026-11-14T11:30:05Z", "2026-11-14T11:35:05Z"),
+                        // GitHub stamps a skipped job with the same start and end time.
+                        {
+                            ...ghJob(2, "deploy", "2026-11-14T11:36:05Z", "2026-11-14T11:36:05Z"),
+                            conclusion: "skipped",
+                        },
+                        {
+                            ...ghJob(3, "lint", "2026-11-14T11:30:05Z", "2026-11-14T11:31:05Z"),
+                            conclusion: "failure",
+                        },
+                    ],
+                ],
+            ]),
+        );
+        const provider = new GitHubProvider(gh.fetchJson, undefined, gh.fetchWithMeta);
+
+        const usual = await provider.getUsualDuration(ghRef, selectedRun());
+
+        expect(usual?.jobMs, "only the job that succeeded has a usual time").toEqual({
+            [jobKey("CI", "build")]: 5 * 60_000,
+        });
+    });
+
+    it("a cut job list gives no job a usual time", async () => {
+        const gh = githubWorld();
+        // The jobs page links to a next page the provider refuses, so the list is cut.
+        const cut: FetchJsonWithMeta = vi.fn(async (url: string) => {
+            const response = await gh.fetchWithMeta(url);
+            return url.includes("/jobs")
+                ? { ...response, headers: { link: '<https://evil.example/next>; rel="next"' } }
+                : response;
+        });
+        const provider = new GitHubProvider(gh.fetchJson, undefined, cut);
+
+        const usual = await provider.getUsualDuration(ghRef, selectedRun());
+
+        expect(usual?.runMs).toBe(10 * 60_000);
+        expect(usual?.jobMs, "a cut list cannot show a job is unique").toEqual({});
+    });
+
     it("rejects on a failed request so nothing is cached for it", async () => {
         const gh = githubWorld();
         const failing: FetchJsonWithMeta = vi.fn(async (url: string) => {
@@ -486,6 +542,80 @@ describe("GitLab usual duration (K23)", () => {
             jobMs: {},
         });
     });
+
+    it("skips a listed pipeline that is the selected pipeline itself", async () => {
+        const gl = fakeGitLab(
+            [glPipeline(30, "main", "success", "2026-11-14T11:00:00Z", "2026-11-14T11:01:00Z", 60)],
+            new Map(),
+        );
+        expect(await glProvider(gl).getUsualDuration(glRef, selectedRun({ id: "30" }))).toBeNull();
+    });
+
+    it("a baseline job that did not succeed has no usual time", async () => {
+        const gl = fakeGitLab(
+            [
+                glPipeline(
+                    20,
+                    "main",
+                    "success",
+                    "2026-11-14T11:30:00Z",
+                    "2026-11-14T11:40:00Z",
+                    600,
+                ),
+            ],
+            new Map([
+                [
+                    "20",
+                    [
+                        { id: 1, name: "build", status: "success", duration: 300 },
+                        { id: 2, name: "deploy", status: "skipped", duration: 0 },
+                        { id: 3, name: "lint", status: "failed", duration: 30 },
+                    ],
+                ],
+            ]),
+        );
+
+        const usual = await glProvider(gl).getUsualDuration(glRef, selectedRun({ id: "30" }));
+
+        expect(usual?.jobMs, "only the job that succeeded has a usual time").toEqual({
+            [jobKey("", "build")]: 300_000,
+        });
+    });
+
+    it("a cut job list gives no job a usual time", async () => {
+        const gl = fakeGitLab(
+            [
+                glPipeline(
+                    20,
+                    "main",
+                    "success",
+                    "2026-11-14T11:30:00Z",
+                    "2026-11-14T11:40:00Z",
+                    600,
+                ),
+            ],
+            new Map([["20", [{ id: 1, name: "build", status: "success", duration: 300 }]]]),
+        );
+        // Every jobs page names a next page, so reading stops at the page bound; only the
+        // first page holds the job.
+        const paged: FetchJsonWithMeta = vi.fn(async (url: string) => {
+            const response = await gl.fetchWithMeta(url);
+            if (!url.includes("/jobs")) return response;
+            const page = Number(new URL(url).searchParams.get("page") ?? "1");
+            return {
+                statusCode: 200,
+                headers: { "x-next-page": String(page + 1) },
+                body: page === 1 ? response.body : [],
+            };
+        });
+        const store = { get: vi.fn(async () => "gl-token") } as unknown as CredentialStore;
+        const provider = new GitLabProvider(gl.fetchJson, store, undefined, paged);
+
+        const usual = await provider.getUsualDuration(glRef, selectedRun({ id: "30" }));
+
+        expect(usual?.runMs).toBe(600_000);
+        expect(usual?.jobMs, "a cut list cannot show a job is unique").toEqual({});
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -589,6 +719,18 @@ describe("usual duration cache and serving", () => {
         ]);
         expect(detail?.runs[1]?.usualDurationMs).toBeUndefined();
         expect(detail?.runs[1]?.jobs[0]?.usualDurationMs).toBeUndefined();
+        expect(provider.getUsualDuration).toHaveBeenCalledTimes(1);
+    });
+
+    it("a queued run is asked for its usual time", async () => {
+        const { provider, read } = coordinatorFor(
+            [selectedRun({ state: "queued", startedAt: undefined })],
+            async () => ({ baselineRunId: "200", runMs: 60_000, jobMs: {} }),
+        );
+
+        const detail = await read();
+
+        expect(detail?.runs[0]?.usualDurationMs, "a queued run shows its usual time").toBe(60_000);
         expect(provider.getUsualDuration).toHaveBeenCalledTimes(1);
     });
 

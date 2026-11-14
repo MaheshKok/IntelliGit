@@ -163,6 +163,30 @@ describe("Checks tab timing", () => {
         );
     });
 
+    it("a running run whose jobs are all queued still ticks", () => {
+        vi.setSystemTime(START + 10_000);
+        const queued = job("queued", { startedAt: undefined });
+        const { container } = mount(tree(detail([run([queued], { state: "running" })])));
+        const runRow = () => container.querySelector<HTMLElement>('[data-testid="ci-run-row"]')!;
+
+        expect(elapsedOf(runRow())).toBe("10s");
+        act(() => {
+            vi.advanceTimersByTime(1_000);
+        });
+        expect(elapsedOf(runRow()), "the run's elapsed time moves on its own").toBe("11s");
+    });
+
+    it("a queued job shows its usual time", () => {
+        vi.setSystemTime(START + 5_000);
+        const queued = job("queued", { startedAt: undefined, usualDurationMs: 60_000 });
+        const { container } = mount(tree(detail([run([queued], { state: "running" })])));
+
+        expect(
+            jobRow(container).querySelector('[data-testid="ci-usually"]')?.textContent,
+            "a queued job says how long it usually takes",
+        ).toBe("usually ~1m 00s");
+    });
+
     it("shows no usually hint when the provider was never asked", () => {
         vi.setSystemTime(START + 5_000);
         const { container } = mount(tree(detail([run([job("running")])])));

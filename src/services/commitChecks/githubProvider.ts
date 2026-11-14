@@ -407,7 +407,11 @@ export class GitHubProvider implements CommitChecksProvider {
                 (body) =>
                     readList<GitHubWorkflowJob>(body, "jobs").map((job) => ({
                         logicalId: toJob(job, runName).logicalId,
-                        ms: spanMs(job.started_at, job.completed_at),
+                        // A skipped job carries a zero-length span, which is not a usual time.
+                        ms:
+                            job.conclusion === "success"
+                                ? spanMs(job.started_at, job.completed_at)
+                                : null,
                     })),
                 CI_MAX_PAGES,
                 (url) => this.allowNext(gitHubRef, url),

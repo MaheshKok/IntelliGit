@@ -429,7 +429,8 @@ export class GitLabProvider implements CommitChecksProvider {
                 (body) =>
                     readArray<GitLabJob>(body).map((job) => ({
                         logicalId: toJob(job, runName).logicalId,
-                        ms: secondsToMs(job.duration),
+                        // A skipped or failed job's duration is not a usual time.
+                        ms: job.status === "success" ? secondsToMs(job.duration) : null,
                     })),
                 CI_MAX_PAGES,
                 (url) => this.allowNext(gitLabRef, url),
