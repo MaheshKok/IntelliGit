@@ -100,6 +100,22 @@ export function redactSecret(message: string, secret: string): string {
 }
 
 /**
+ * Removes a secret from a write request's failure in place, so the error keeps its class,
+ * status and headers (the caller reads them) while its text can no longer carry the token
+ * to the webview.
+ *
+ * @param error - What the write threw.
+ * @param secret - The access token the request carried.
+ * @returns The same error.
+ */
+export function redactError<T>(error: T, secret: string): T {
+    if (!secret || !(error instanceof Error) || !error.message.includes(secret)) return error;
+    error.message = redactSecret(error.message, secret);
+    if (error.stack) error.stack = redactSecret(error.stack, secret);
+    return error;
+}
+
+/**
  * Builds the terminal snapshot shown when checks cannot be retrieved.
  *
  * @param hash - The commit hash the snapshot describes.

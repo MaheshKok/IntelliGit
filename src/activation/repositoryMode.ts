@@ -46,7 +46,7 @@ import { CiActionFenceStore } from "../services/commitChecks/ciActionFence";
 import { createCiTrace } from "../services/commitChecks/ciTrace";
 import { CiLogMemoryStore, type CiLogSource } from "../services/commitChecks/ciLogMemoryStore";
 import { registerCiLogDocumentProvider } from "../services/commitChecks/ciLogDocument";
-import { createCommitChecksProviders } from "./commitChecksProviders";
+import { createCommitChecksProviders, writeActionsHelpUrl } from "./commitChecksProviders";
 import { captureWebviewViewProvider } from "../e2e/webviewCapture";
 import { readE2eCiFixture, readE2eCiFixtureLog } from "../e2e/ciFixture";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
@@ -377,6 +377,11 @@ export async function activateRepositoryMode(
         | undefined;
 
     const ciFixture = (hash: string) => readE2eCiFixture(context.globalState, hash);
+    const writeHelpUrl = writeActionsHelpUrl(context.extension?.packageJSON);
+    const ciActions = ciActionFences && {
+        fences: ciActionFences,
+        ...(writeHelpUrl !== undefined && { helpUrl: writeHelpUrl }),
+    };
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps, credentialStore, {
         hostMap: commitCheckHostMap,
         settings: commitCheckSettings,
@@ -388,6 +393,7 @@ export async function activateRepositoryMode(
         ciRepoKey: () => repoRoot,
         ciFixture,
         ciLogStore,
+        ciActions,
     });
     const sidebarGraph = new CommitGraphViewProvider(
         context.extensionUri,
@@ -405,6 +411,7 @@ export async function activateRepositoryMode(
             commitChecksProviders,
             ciFixture,
             ciLogStore,
+            ciActions,
         },
     );
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
@@ -944,6 +951,7 @@ export async function activateRepositoryMode(
                 ciTrace,
                 ciFixture,
                 ciLogStore,
+                ciActions,
                 commitChecksProviders,
                 commitMessageGenerationCoordinator,
                 onSelectedRepositoryRootChanged: async (root) => {

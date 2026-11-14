@@ -560,5 +560,20 @@
     "commit.checks.tab.logWhenFinished": "Dziennik będzie dostępny po zakończeniu zadania",
     "commit.checks.tab.logForbidden": "Twój token nie może odczytać tego dziennika",
     "commit.checks.tab.logFailed": "Nie można wczytać dziennika: {error}",
-    "commit.checks.tab.logTruncated": "Ten dziennik obcięto przy 50 MB — otwórz go w przeglądarce, aby zobaczyć resztę"
+    "commit.checks.tab.logTruncated": "Ten dziennik obcięto przy 50 MB — otwórz go w przeglądarce, aby zobaczyć resztę",
+    "commit.checks.tab.rerunFailed": "Uruchom ponownie nieudane",
+    "commit.checks.tab.rerunFailedAndCanceled": "Uruchom ponownie nieudane i anulowane",
+    "commit.checks.tab.rerunJob": "Uruchom zadanie ponownie",
+    "commit.checks.tab.cancelRun": "Anuluj uruchomienie",
+    "commit.checks.tab.confirmCancel": "Potwierdź anulowanie",
+    "commit.checks.tab.keepRunning": "Kontynuuj",
+    "commit.checks.tab.waitingRerun": "Oczekiwanie na rozpoczęcie ponownego uruchomienia",
+    "commit.checks.tab.waitingCancel": "Oczekiwanie na zastosowanie anulowania",
+    "commit.checks.tab.rerunNotSeen": "Ponowne uruchomienie jeszcze niewidoczne — Odśwież",
+    "commit.checks.tab.cancelNotSeen": "Anulowanie jeszcze niewidoczne — Odśwież",
+    "commit.checks.tab.actionFailed": "Nie można uruchomić akcji: {error}",
+    "commit.checks.tab.actionUncertain": "Żądanie mogło zostać wysłane; odświeżanie",
+    "commit.checks.tab.writeScopeHelpGithub": "Nie masz uprawnień do ponownego uruchamiania ani anulowania przepływów pracy w tym repozytorium.",
+    "commit.checks.tab.writeScopeHelpGitlab": "Twój token GitLab jest tylko do odczytu. Utwórz token z zakresem api, aby uruchamiać ponownie lub anulować.",
+    "commit.checks.tab.writeActionsHelp": "Jak uzyskać token, który to umożliwia"
 }

@@ -530,5 +530,20 @@
     "commit.checks.tab.logWhenFinished": "ジョブの完了後にログを表示できます",
     "commit.checks.tab.logForbidden": "このトークンではこのログを読み取れません",
     "commit.checks.tab.logFailed": "ログを読み込めませんでした: {error}",
-    "commit.checks.tab.logTruncated": "このログは 50 MB で切り詰められました。残りはブラウザーで開いてください"
+    "commit.checks.tab.logTruncated": "このログは 50 MB で切り詰められました。残りはブラウザーで開いてください",
+    "commit.checks.tab.rerunFailed": "失敗したジョブを再実行",
+    "commit.checks.tab.rerunFailedAndCanceled": "失敗およびキャンセルされたジョブを再実行",
+    "commit.checks.tab.rerunJob": "ジョブを再実行",
+    "commit.checks.tab.cancelRun": "実行をキャンセル",
+    "commit.checks.tab.confirmCancel": "キャンセルを確定",
+    "commit.checks.tab.keepRunning": "実行を続ける",
+    "commit.checks.tab.waitingRerun": "再実行の開始を待っています",
+    "commit.checks.tab.waitingCancel": "キャンセルが反映されるのを待っています",
+    "commit.checks.tab.rerunNotSeen": "再実行はまだ表示されていません — 更新",
+    "commit.checks.tab.cancelNotSeen": "キャンセルはまだ表示されていません — 更新",
+    "commit.checks.tab.actionFailed": "操作を開始できませんでした: {error}",
+    "commit.checks.tab.actionUncertain": "リクエストは送信された可能性があります。更新しています",
+    "commit.checks.tab.writeScopeHelpGithub": "このリポジトリでワークフローを再実行またはキャンセルする権限がありません。",
+    "commit.checks.tab.writeScopeHelpGitlab": "GitLab トークンは読み取り専用です。再実行やキャンセルには api スコープ付きのトークンを作成してください。",
+    "commit.checks.tab.writeActionsHelp": "これができるトークンの入手方法"
 }

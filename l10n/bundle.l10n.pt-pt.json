@@ -996,5 +996,6 @@
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: este registo de CI já não está carregado. Abra-o novamente no separador Verificações.]",
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: não foi possível carregar este registo de CI: {0}]",
     "This provider cannot show CI logs.": "Este fornecedor não pode mostrar registos de CI.",
-    "Loading the log of {0}…": "A carregar o registo de {0}…"
+    "Loading the log of {0}…": "A carregar o registo de {0}…",
+    "This provider cannot re-run or cancel CI runs.": "Este fornecedor não pode executar novamente nem cancelar execuções de CI."
 }

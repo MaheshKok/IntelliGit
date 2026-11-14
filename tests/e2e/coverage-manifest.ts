@@ -639,6 +639,12 @@ const WEBVIEW_ENTRIES = [
     { kind: "webview", id: "openCiLog", mutating: false },
     {
         kind: "webview",
+        id: "runCiAction",
+        mutating: true,
+        coveredBySpec: "tests/e2e/ciActions.spec.ts",
+    },
+    {
+        kind: "webview",
         id: "signInForCommitChecks",
         mutating: true,
         notCovered: WEBVIEW_NOT_COVERED,

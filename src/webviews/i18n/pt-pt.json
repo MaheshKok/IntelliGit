@@ -550,5 +550,20 @@
     "commit.checks.tab.logWhenFinished": "Registo disponível quando o job terminar",
     "commit.checks.tab.logForbidden": "O seu token não pode ler este registo",
     "commit.checks.tab.logFailed": "Não foi possível carregar o registo: {error}",
-    "commit.checks.tab.logTruncated": "Este registo foi cortado a 50 MB — abra-o no navegador para ver o resto"
+    "commit.checks.tab.logTruncated": "Este registo foi cortado a 50 MB — abra-o no navegador para ver o resto",
+    "commit.checks.tab.rerunFailed": "Executar novamente os que falharam",
+    "commit.checks.tab.rerunFailedAndCanceled": "Executar novamente os que falharam e os cancelados",
+    "commit.checks.tab.rerunJob": "Executar a tarefa novamente",
+    "commit.checks.tab.cancelRun": "Cancelar execução",
+    "commit.checks.tab.confirmCancel": "Confirmar cancelamento",
+    "commit.checks.tab.keepRunning": "Continuar a executar",
+    "commit.checks.tab.waitingRerun": "A aguardar o início da nova execução",
+    "commit.checks.tab.waitingCancel": "A aguardar que o cancelamento tenha efeito",
+    "commit.checks.tab.rerunNotSeen": "Nova execução ainda não visível — Atualizar",
+    "commit.checks.tab.cancelNotSeen": "Cancelamento ainda não visível — Atualizar",
+    "commit.checks.tab.actionFailed": "Não foi possível iniciar a ação: {error}",
+    "commit.checks.tab.actionUncertain": "O pedido pode ter sido enviado; a atualizar",
+    "commit.checks.tab.writeScopeHelpGithub": "Não tem permissão para executar novamente ou cancelar workflows neste repositório.",
+    "commit.checks.tab.writeScopeHelpGitlab": "O seu token do GitLab é só de leitura. Crie um com o âmbito api para executar novamente ou cancelar.",
+    "commit.checks.tab.writeActionsHelp": "Como obter um token que o permita"
 }

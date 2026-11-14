@@ -45,10 +45,16 @@ describe("provider capabilities", () => {
         const store = {} as CredentialStore;
         // Phase 2: GitHub reads runs, jobs, steps and the run header. Phase 3: GitLab reads
         // pipelines, jobs and the pipeline header; its API has no steps. Phase 7: both read
-        // job logs and failure summaries.
+        // job logs and failure summaries. Phase 8: both re-run failed jobs, re-run one job and
+        // cancel a run, and explain a refused write with their own scope help.
+        const write = ["rerunFailed", "rerunJob", "cancel"] as const;
         const landed: Record<string, readonly (keyof ProviderCiCapabilities)[]> = {
-            github: ["runs", "jobs", "steps", "runHeader", "logs", "failureSummary"],
-            gitlab: ["runs", "jobs", "runHeader", "logs", "failureSummary"],
+            github: ["runs", "jobs", "steps", "runHeader", "logs", "failureSummary", ...write],
+            gitlab: ["runs", "jobs", "runHeader", "logs", "failureSummary", ...write],
+        };
+        const scopeHelp: Record<string, string> = {
+            github: "commit.checks.tab.writeScopeHelpGithub",
+            gitlab: "commit.checks.tab.writeScopeHelpGitlab",
         };
         const providers: CommitChecksProvider[] = [
             new GitHubProvider(fetch),
@@ -63,7 +69,16 @@ describe("provider capabilities", () => {
                     on.includes(flag),
                 );
             }
-            expect(provider.capabilities.writeScopeHelp).toBeUndefined();
+            expect(provider.capabilities.writeScopeHelp, provider.id).toBe(scopeHelp[provider.id]);
+            expect(
+                provider.capabilities.rerunFailedLabel,
+                `${provider.id}: only GitLab's retry also restarts canceled jobs`,
+            ).toBe(
+                provider.id === "gitlab" ? "commit.checks.tab.rerunFailedAndCanceled" : undefined,
+            );
+            expect(provider.runAction === undefined, `${provider.id}.runAction`).toBe(
+                !on.includes("cancel"),
+            );
             expect(provider.getDetail === undefined, `${provider.id}.getDetail`).toBe(
                 on.length === 0,
             );

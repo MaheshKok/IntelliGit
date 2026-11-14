@@ -28,7 +28,8 @@ import type {
     ProviderRepoRef,
 } from "./types";
 
-interface ProviderMatch {
+/** The provider that serves a repository and its parsed repository reference. */
+export interface ProviderMatch {
     provider: CommitChecksProvider;
     ref: ProviderRepoRef;
 }
@@ -328,6 +329,22 @@ export class CommitChecksCoordinator {
         return this.generations?.isCurrent(ctx, ctx.repoKey) ?? true;
     }
 
+    /**
+     * Captures the provider resolution a write action starts under and returns the check to run
+     * right before it sends: false once the sign-in or CI settings changed, the provider
+     * resolution was cleared (the repository switched), or the surface shows another repository.
+     *
+     * @param ctx - The operation's context.
+     * @param currentRepoKey - The repository the surface shows now, read at each check.
+     */
+    actionGuard(ctx: CiOperationContext, currentRepoKey: () => string): () => boolean {
+        const providerGeneration = this.providerGeneration;
+        return () =>
+            providerGeneration === this.providerGeneration &&
+            (this.generations?.isCurrent(ctx, currentRepoKey()) ??
+                ctx.repoKey === currentRepoKey());
+    }
+
     private discard(ctx: CiOperationContext, hash: string, provider?: ProviderId): undefined {
         this.trace?.({
             kind: "detail",
@@ -349,8 +366,24 @@ export class CommitChecksCoordinator {
         const match = await this.resolveEnabledMatch();
         if (!match) return;
         const snapshotKey = this.snapshotKey(match, await this.readAccount(match), hash);
-        await this.service.invalidate(snapshotKey);
-        await this.detailService.invalidate(`${snapshotKey}#detail`);
+        // Both run even when one fails to delete its stored entry, so neither cache keeps
+        // serving the dropped result in this window; the first failure is still reported.
+        const results = await Promise.allSettled([
+            this.service.invalidate(snapshotKey),
+            this.detailService.invalidate(`${snapshotKey}#detail`),
+        ]);
+        const failed = results.find((result) => result.status === "rejected");
+        if (failed) throw failed.reason;
+    }
+
+    /**
+     * The provider and repository a write action on this repository goes to, or null when
+     * none applies (feature or provider off, no matching remote, or an E2E fixture, which
+     * never sends a request). Throws when the remotes cannot be read.
+     */
+    async actionTarget(hash: string): Promise<ProviderMatch | null> {
+        if (!this.enabled || this.fixture?.(hash)) return null;
+        return this.resolveEnabledMatch();
     }
 
     /** Builds the no-badge snapshot used when the feature or matched provider is disabled. */

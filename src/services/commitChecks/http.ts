@@ -7,6 +7,7 @@
 import { createHash } from "crypto";
 import type * as http from "http";
 import * as https from "https";
+import type { Socket } from "net";
 import type { EtagStore } from "./etagStore";
 
 /** Network boundary used by providers; the only thing tests mock. */
@@ -50,6 +51,27 @@ export class HttpError extends Error {
 }
 
 /**
+ * A request that was definitely never put on the wire: the transport refused to build it, or the
+ * sign-in changed while it waited for the request gate. A write action may then drop its fence.
+ */
+export class RequestNotSentError extends Error {
+    /**
+     * Builds a never-sent failure.
+     *
+     * @param message - Token-free display message.
+     * @param superseded - Set when the sign-in or settings changed, so the data shown is stale
+     *     rather than the request malformed.
+     */
+    constructor(
+        message: string,
+        readonly superseded = false,
+    ) {
+        super(message);
+        this.name = "RequestNotSentError";
+    }
+}
+
+/**
  * A parsed 2xx response with its headers, for callers that page by `Link` or similar headers.
  * A conditional request answered 304 resolves with `statusCode` 304 and the stored body.
  */
@@ -81,8 +103,9 @@ interface RawResponse {
 /**
  * Creates an HTTPS JSON getter with an optional response observer.
  *
- * The observer receives only response metadata after the response ends and before status/JSON
- * handling. Observer failures are ignored so quota telemetry cannot interrupt provider IO.
+ * The observer receives only response metadata, once the response head arrives (a reply whose
+ * body is then cut off included) and before status/JSON handling. Observer failures are ignored
+ * so quota telemetry cannot interrupt provider IO.
  */
 export function createHttpGetJson(
     onResponse?: (metadata: HttpResponseMetadata) => void,
@@ -180,37 +203,128 @@ function headersHash(headers: Record<string, string>): string {
     return createHash("sha256").update(JSON.stringify(entries)).digest("hex");
 }
 
-/** One HTTPS GET; the observer sees the response before its status is judged. */
+/**
+ * Network boundary for CI write actions: one request with an optional JSON body, never
+ * retried or redirected. Resolves the parsed 2xx body; rejects like `FetchJson`. `beforeSend`
+ * (the action fence and its checks) is awaited once the request gate admitted the request and
+ * right before it is sent; a rejection sends nothing.
+ */
+export type WriteJson = (
+    method: string,
+    url: string,
+    headers: Record<string, string>,
+    body?: unknown,
+    beforeSend?: () => Promise<void>,
+) => Promise<unknown>;
+
+/** Creates the write-action request helper; same core, timeout and observer as the GETs. */
+export function createHttpRequestJson(
+    onResponse?: (metadata: HttpResponseMetadata) => void,
+): WriteJson {
+    return async (method, url, headers, body, beforeSend) => {
+        if (beforeSend) await beforeSend();
+        const payload = body === undefined ? undefined : JSON.stringify(body);
+        const sentHeaders =
+            payload === undefined ? headers : { ...headers, "Content-Type": "application/json" };
+        const response = await send(url, sentHeaders, onResponse, method, payload);
+        return toFetchResponse(response, undefined, undefined, "").body;
+    };
+}
+
+/** One HTTPS request (a GET unless `method` says otherwise); the observer sees the response before its status is judged. */
 function send(
     url: string,
     headers: Record<string, string>,
     onResponse?: (metadata: HttpResponseMetadata) => void,
+    method = "GET",
+    payload?: string,
 ): Promise<RawResponse> {
     return new Promise((resolve, reject) => {
-        const req = https.get(url, { headers }, (res) => {
+        let settled = false;
+        const settle = (finish: () => void): void => {
+            if (settled) return;
+            settled = true;
+            req.setTimeout(0);
+            finish();
+        };
+        // Read from this request's own socket; undefined until Node hands one over.
+        let connected: boolean | undefined;
+        let answered = false;
+        let cutOffReply: ((error: Error) => void) | undefined;
+        const onAnswer = (res: http.IncomingMessage): void => {
+            answered = true;
+            const statusCode = res.statusCode ?? 0;
+            try {
+                onResponse?.({ url, statusCode, headers: res.headers });
+            } catch {
+                // Observers are non-critical quota telemetry.
+            }
             const chunks: Buffer[] = [];
             res.on("data", (chunk: Buffer | string) => {
                 chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk);
             });
-            res.on("end", () => {
-                req.setTimeout(0);
-                const statusCode = res.statusCode ?? 0;
-                try {
-                    onResponse?.({ url, statusCode, headers: res.headers });
-                } catch {
-                    // Observers are non-critical quota telemetry.
-                }
-                resolve({
-                    statusCode,
-                    headers: res.headers,
-                    data: Buffer.concat(chunks).toString("utf8"),
-                });
-            });
+            const answer = (): void =>
+                settle(() =>
+                    resolve({
+                        statusCode,
+                        headers: res.headers,
+                        data: Buffer.concat(chunks).toString("utf8"),
+                    }),
+                );
+            // The request reached the provider, so a cut-off answer is never a non-send; a
+            // non-2xx status line already decided the outcome, so its cut-off body is a whole one.
+            const cutOff = (error: Error): void => {
+                if (statusCode >= 300) answer();
+                else settle(() => reject(error));
+            };
+            cutOffReply = cutOff;
+            res.on("error", cutOff);
+            res.on("close", () =>
+                cutOff(new Error("The connection closed before the response ended.")),
+            );
+            res.on("end", answer);
+        };
+        let req: http.ClientRequest;
+        try {
+            req =
+                method === "GET"
+                    ? https.get(url, { headers }, onAnswer)
+                    : https.request(url, { method, headers }, onAnswer);
+        } catch (error) {
+            // Node refuses a malformed header or URL before any socket exists.
+            settled = true;
+            reject(new RequestNotSentError(error instanceof Error ? error.message : String(error)));
+            return;
+        }
+        // A socket reused from the keep-alive pool has already connected.
+        req.on("socket", (socket: Socket) => {
+            connected = !socket.connecting;
+            if (socket.connecting) socket.once("connect", () => (connected = true));
         });
-        req.on("error", reject);
+        req.on("error", (error: NodeJS.ErrnoException) => {
+            // A timeout or reset mid-body reaches the request before the response: once a reply
+            // arrived, its status decides, as for any cut-off body.
+            if (cutOffReply) {
+                cutOffReply(error);
+                return;
+            }
+            // A socket that was handed over and never connected sent nothing; once it connected,
+            // even a refusal code (re-emitted by a proxy agent) may follow a sent request.
+            const neverSent =
+                connected !== true && (NOT_CONNECTED.has(error.code ?? "") || connected === false);
+            settle(() => reject(neverSent ? new RequestNotSentError(error.message) : error));
+        });
+        // Node closes the request with no error and never calls back on a reply it cannot hand
+        // over (a 101 upgrade); once a response arrived, its own end, error or close settles.
+        req.on("close", () => {
+            if (!answered) {
+                settle(() => reject(new Error("The connection closed before a response arrived.")));
+            }
+        });
         req.setTimeout(15000, () => {
             req.destroy(new Error("HTTP request timed out"));
         });
+        if (method !== "GET") req.end(payload);
     });
 }
 
@@ -264,6 +378,12 @@ export const CI_LOG_MAX_BYTES = 50 * 1024 * 1024;
 
 /** Inactivity timeout of every request: `setTimeout` on a request measures socket idle time. */
 const REQUEST_IDLE_TIMEOUT_MS = 15000;
+
+/**
+ * Socket errors that only happen before a connection exists (the host name did not resolve, or
+ * the server refused the connection), so no byte of the request reached the provider.
+ */
+const NOT_CONNECTED = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED"]);
 
 /** Statuses `followRedirects` follows; any other 3xx is a final response. */
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -538,3 +658,6 @@ export const httpGetJson = createHttpGetJson();
 
 /** Default provider-agnostic HTTPS JSON getter that keeps response headers. */
 export const httpGetJsonWithMeta = createHttpGetJsonWithMeta();
+
+/** Production write-action helper with no observer; the request gate wires its own. */
+export const httpRequestJson = createHttpRequestJson();

@@ -1,6 +1,6 @@
 import React from "react";
 import { VscLoading } from "react-icons/vsc";
-import type { CiJob, CommitCiDetail } from "../../../../types";
+import type { CiJob, CiRun, CommitCiDetail } from "../../../../types";
 import { SPIN_KEYFRAMES } from "../../shared/components/iconStyles";
 import { t } from "../../shared/i18n";
 import { getVsCodeApi } from "../../shared/vscodeApi";
@@ -8,6 +8,7 @@ import { CheckJobDetail } from "./CheckJobDetail";
 import { CheckTree } from "./CheckTree";
 import { ChecksHeader } from "./ChecksHeader";
 import { checksStyles } from "./checksStyles";
+import { useCiAction, type CiActionTarget, type CiActionView } from "./useCiAction";
 import { useCommitCiDetail } from "./useCommitCiDetail";
 
 type ChecksTabMessage =
@@ -49,6 +50,17 @@ function firstFailedJob(detail: CommitCiDetail): CiJob | undefined {
     return undefined;
 }
 
+/** "Re-run job" for the selected finished job, unless the provider cannot or an action is pending. */
+function rerunJobTarget(
+    detail: CommitCiDetail | undefined,
+    run: CiRun | undefined,
+    job: CiJob | undefined,
+): CiActionTarget | null {
+    if (!detail?.capabilities.rerunJob || detail.actionFence || !run || !job) return null;
+    if (job.state === "queued" || job.state === "running") return null;
+    return { action: "rerunJob", runId: run.id, jobId: job.id };
+}
+
 /**
  * The Checks tab body: requests the selected commit's CI detail while shown and renders
  * the header, the run, job and step tree and the selected job, or the state that
@@ -63,7 +75,8 @@ export function ChecksTab({
     hash: string;
     enabled: boolean;
 }): React.ReactElement {
-    const { detail, refresh } = useCommitCiDetail(repoKey, enabled ? hash : null, true);
+    const { detail, refresh, reload } = useCommitCiDetail(repoKey, enabled ? hash : null, true);
+    const action = useCiAction(repoKey, hash, reload);
     // A job id is unique only inside one commit, so a pick counts only for the commit it was made on.
     const commitKey = `${repoKey}\0${hash}`;
     const [picked, setPicked] = React.useState<{ commitKey: string; jobId: string } | null>(null);
@@ -89,6 +102,8 @@ export function ChecksTab({
                   attempt: selectedJob.attempt ?? selectedRun.attempt,
               }
             : null;
+    const actionRun = selectedRun ?? loaded?.runs[0];
+    const rerunJob = rerunJobTarget(loaded, selectedRun, selectedJob);
 
     return (
         <div
@@ -98,8 +113,24 @@ export function ChecksTab({
         >
             <style>{LAYOUT_CSS}</style>
             {state === "disabled" ? null : (
-                <ChecksHeader detail={loaded} onRefresh={refresh} onOpenUrl={openUrl} />
+                <ChecksHeader
+                    // The cancel confirmation belongs to one repository and commit.
+                    key={commitKey}
+                    detail={loaded}
+                    actionRun={actionRun}
+                    busy={action.busy}
+                    onAction={action.run}
+                    onRefresh={refresh}
+                    onOpenUrl={openUrl}
+                />
             )}
+            {loaded ? (
+                <ActionAlert
+                    view={action.view}
+                    writeScopeHelp={loaded.capabilities.writeScopeHelp}
+                    onOpenUrl={openUrl}
+                />
+            ) : null}
             {detail?.refreshError !== undefined ? (
                 <div role="alert" style={checksStyles.note}>
                     {t("commit.checks.tab.refreshFailed", { error: detail.refreshError })}
@@ -121,6 +152,15 @@ export function ChecksTab({
                                 showSteps={loaded.capabilities.steps}
                                 showFailureSummary={loaded.capabilities.failureSummary}
                                 logJob={logJob}
+                                rerunJob={
+                                    rerunJob
+                                        ? {
+                                              target: rerunJob,
+                                              busy: action.busy,
+                                              onAction: action.run,
+                                          }
+                                        : null
+                                }
                                 onOpenUrl={openUrl}
                             />
                         ) : null}
@@ -129,6 +169,42 @@ export function ChecksTab({
                     <StateMessage state={state} detail={detail} onRefresh={refresh} />
                 )}
             </div>
+        </div>
+    );
+}
+
+/** The last write action's problem: no permission (with the help link), a failure, or unsure. */
+function ActionAlert({
+    view,
+    writeScopeHelp,
+    onOpenUrl,
+}: {
+    view: CiActionView;
+    writeScopeHelp: string | undefined;
+    onOpenUrl: (url: string) => void;
+}): React.ReactElement | null {
+    if (view.status === "idle") return null;
+    const helpUrl = view.status === "forbidden" ? view.helpUrl : undefined;
+    let text: string;
+    if (view.status === "uncertain") text = t("commit.checks.tab.actionUncertain");
+    else if (view.status === "failed")
+        text = t("commit.checks.tab.actionFailed", { error: view.message });
+    else
+        text = writeScopeHelp
+            ? t(writeScopeHelp)
+            : t("commit.checks.tab.actionFailed", { error: "403" });
+    return (
+        <div role="alert" data-testid="ci-action-alert" style={checksStyles.note}>
+            <span>{text}</span>
+            {helpUrl ? (
+                <button
+                    type="button"
+                    style={checksStyles.linkButton}
+                    onClick={() => onOpenUrl(helpUrl)}
+                >
+                    {t("commit.checks.tab.writeActionsHelp")}
+                </button>
+            ) : null}
         </div>
     );
 }

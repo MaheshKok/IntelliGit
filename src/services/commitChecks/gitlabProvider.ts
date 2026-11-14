@@ -6,6 +6,8 @@
 
 import * as vscode from "vscode";
 import type {
+    CiAction,
+    CiActionEvidence,
     CiCoverage,
     CiFlatCheck,
     CiJob,
@@ -21,17 +23,20 @@ import {
     downloadCiLog,
     HttpError,
     httpGetJsonWithMeta,
+    httpRequestJson,
     type DownloadCiLog,
     type DownloadedText,
     type FetchJson,
     type FetchJsonWithMeta,
     type FetchResponse,
+    type WriteJson,
 } from "./http";
 import {
     aggregateState,
     compactText,
     isCiCdCheckItem,
     readString,
+    redactError,
     redactSecret,
     summaryForItems,
     unavailableSnapshot,
@@ -48,6 +53,7 @@ import type { EtagStore } from "./etagStore";
 import { cleanFailureSummary } from "../../shared/ci/excerpt";
 import { logicalCheckId } from "../../shared/ci/identity";
 import type {
+    CiActionRequest,
     CiDetailFetch,
     CiFailedScanCursor,
     CiFailedScanPage,
@@ -220,6 +226,12 @@ export class GitLabProvider implements CommitChecksProvider {
         runHeader: true,
         logs: true,
         failureSummary: true,
+        rerunFailed: true,
+        rerunJob: true,
+        cancel: true,
+        writeScopeHelp: "commit.checks.tab.writeScopeHelpGitlab",
+        // POST pipelines/:id/retry restarts failed and canceled jobs.
+        rerunFailedLabel: "commit.checks.tab.rerunFailedAndCanceled",
     });
     /**
      * GitLab's runner writes a job's verdict as "ERROR: ...", often after a section marker and a
@@ -241,6 +253,7 @@ export class GitLabProvider implements CommitChecksProvider {
      * @param etags - The window's conditional-request store; reads of a commit that was still
      *   running when last read send `If-None-Match` through `fetchWithMeta`. None: no ETags.
      * @param downloadLog - The job log (trace) download.
+     * @param write - The write-action request (retry, cancel).
      */
     constructor(
         private readonly fetchJson: FetchJson,
@@ -250,7 +263,48 @@ export class GitLabProvider implements CommitChecksProvider {
         private readonly cooldownEnd: (url: string) => number = () => 0,
         private readonly etags?: EtagStore,
         private readonly downloadLog: DownloadCiLog = downloadCiLog,
+        private readonly write: WriteJson = httpRequestJson,
     ) {}
+
+    /**
+     * A GitLab retry creates new jobs instead of a new attempt: a job retry is seen as a newer job
+     * with the same logical id, a pipeline retry as any newer job in the pipeline.
+     */
+    actionEvidence(action: CiAction): CiActionEvidence {
+        if (action === "cancel") return "cancelled";
+        return action === "rerunJob" ? "newerJobSameLogicalId" : "newerJobInPipeline";
+    }
+
+    /**
+     * Retries a pipeline's failed jobs, retries one job or cancels a pipeline with the stored
+     * token; a read-only token is refused by GitLab with 403.
+     */
+    async runAction(
+        ref: ProviderRepoRef,
+        request: CiActionRequest,
+        beforeSend: () => Promise<void>,
+    ): Promise<void> {
+        const gitLabRef = ref as GitLabRepoRef;
+        const base = projectApiUrl(gitLabRef);
+        const url =
+            request.action === "rerunJob"
+                ? `${base}/jobs/${encodeURIComponent(request.jobId ?? "")}/retry`
+                : `${base}/pipelines/${encodeURIComponent(request.runId)}/${request.action === "cancel" ? "cancel" : "retry"}`;
+        const until = this.cooldownEnd(url);
+        if (until > 0) {
+            throw new RequestGateCooldownError(
+                vscode.l10n.t("Commit-check requests are temporarily paused due to rate limiting."),
+                until,
+            );
+        }
+        const token = await this.readToken(gitLabRef.host, "");
+        if (typeof token !== "string") throw new HttpError(401, token.error ?? token.summary, {});
+        try {
+            await this.write("POST", url, { "PRIVATE-TOKEN": token }, undefined, beforeSend);
+        } catch (error) {
+            throw redactError(error, token);
+        }
+    }
 
     /**
      * Downloads a job's trace with the stored token.

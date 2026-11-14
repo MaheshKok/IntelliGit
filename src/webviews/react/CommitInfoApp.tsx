@@ -109,7 +109,9 @@ function App(): React.ReactElement {
                 case "commitCiDetailInvalidated":
                 case "ciLogPreview":
                 case "ciLogResult":
-                    // useCommitCiDetail and the job's log panel listen for their own messages.
+                case "ciActionResult":
+                    // useCommitCiDetail, the job's log panel and the action buttons listen for
+                    // their own messages.
                     return;
                 default: {
                     const exhaustive: never = msg;

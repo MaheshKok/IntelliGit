@@ -550,5 +550,20 @@
     "commit.checks.tab.logWhenFinished": "Registro disponible cuando termine el trabajo",
     "commit.checks.tab.logForbidden": "Su token no puede leer este registro",
     "commit.checks.tab.logFailed": "No se pudo cargar el registro: {error}",
-    "commit.checks.tab.logTruncated": "Este registro se cortó en 50 MB: ábralo en el navegador para ver el resto"
+    "commit.checks.tab.logTruncated": "Este registro se cortó en 50 MB: ábralo en el navegador para ver el resto",
+    "commit.checks.tab.rerunFailed": "Volver a ejecutar los fallidos",
+    "commit.checks.tab.rerunFailedAndCanceled": "Volver a ejecutar los fallidos y cancelados",
+    "commit.checks.tab.rerunJob": "Volver a ejecutar el trabajo",
+    "commit.checks.tab.cancelRun": "Cancelar ejecución",
+    "commit.checks.tab.confirmCancel": "Confirmar cancelación",
+    "commit.checks.tab.keepRunning": "Seguir ejecutando",
+    "commit.checks.tab.waitingRerun": "Esperando a que empiece la nueva ejecución",
+    "commit.checks.tab.waitingCancel": "Esperando a que se aplique la cancelación",
+    "commit.checks.tab.rerunNotSeen": "Aún no se ve la nueva ejecución — Actualizar",
+    "commit.checks.tab.cancelNotSeen": "Aún no se ve la cancelación — Actualizar",
+    "commit.checks.tab.actionFailed": "No se pudo iniciar la acción: {error}",
+    "commit.checks.tab.actionUncertain": "Es posible que la solicitud se haya enviado; actualizando",
+    "commit.checks.tab.writeScopeHelpGithub": "No tiene permiso para volver a ejecutar ni cancelar flujos de trabajo en este repositorio.",
+    "commit.checks.tab.writeScopeHelpGitlab": "Su token de GitLab es de solo lectura. Cree uno con el ámbito api para volver a ejecutar o cancelar.",
+    "commit.checks.tab.writeActionsHelp": "Cómo obtener un token que pueda hacerlo"
 }

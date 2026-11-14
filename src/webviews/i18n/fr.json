@@ -550,5 +550,20 @@
     "commit.checks.tab.logWhenFinished": "Journal disponible à la fin du job",
     "commit.checks.tab.logForbidden": "Votre jeton ne peut pas lire ce journal",
     "commit.checks.tab.logFailed": "Impossible de charger le journal : {error}",
-    "commit.checks.tab.logTruncated": "Ce journal a été coupé à 50 Mo — ouvrez-le dans le navigateur pour voir la suite"
+    "commit.checks.tab.logTruncated": "Ce journal a été coupé à 50 Mo — ouvrez-le dans le navigateur pour voir la suite",
+    "commit.checks.tab.rerunFailed": "Relancer les échecs",
+    "commit.checks.tab.rerunFailedAndCanceled": "Relancer les échecs et les annulés",
+    "commit.checks.tab.rerunJob": "Relancer le job",
+    "commit.checks.tab.cancelRun": "Annuler l’exécution",
+    "commit.checks.tab.confirmCancel": "Confirmer l’annulation",
+    "commit.checks.tab.keepRunning": "Continuer l’exécution",
+    "commit.checks.tab.waitingRerun": "En attente du démarrage de la relance",
+    "commit.checks.tab.waitingCancel": "En attente de la prise en compte de l’annulation",
+    "commit.checks.tab.rerunNotSeen": "Relance pas encore visible — Actualiser",
+    "commit.checks.tab.cancelNotSeen": "Annulation pas encore visible — Actualiser",
+    "commit.checks.tab.actionFailed": "Impossible de lancer l’action : {error}",
+    "commit.checks.tab.actionUncertain": "La requête a peut-être été envoyée ; actualisation",
+    "commit.checks.tab.writeScopeHelpGithub": "Vous n’avez pas l’autorisation de relancer ou d’annuler des workflows dans ce dépôt.",
+    "commit.checks.tab.writeScopeHelpGitlab": "Votre jeton GitLab est en lecture seule. Créez-en un avec la portée api pour relancer ou annuler.",
+    "commit.checks.tab.writeActionsHelp": "Comment obtenir un jeton qui le permet"
 }

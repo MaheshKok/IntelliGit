@@ -996,5 +996,6 @@
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit：此 CI 日志已不再加载。请从“检查”选项卡重新打开。]",
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit：无法加载此 CI 日志：{0}]",
     "This provider cannot show CI logs.": "此提供程序无法显示 CI 日志。",
-    "Loading the log of {0}…": "正在加载 {0} 的日志…"
+    "Loading the log of {0}…": "正在加载 {0} 的日志…",
+    "This provider cannot re-run or cancel CI runs.": "此提供程序无法重新运行或取消 CI 运行。"
 }

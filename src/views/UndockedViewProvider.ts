@@ -35,6 +35,7 @@ import {
     type CommitCiDetailSource,
 } from "./ciDetailHandler";
 import { answerCiLogMessage } from "./ciLogHandler";
+import { answerCiActionMessage, ciActionAccess, type CiActionOptions } from "./ciActionHandler";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
 import { postWebviewMessage } from "./webviewDelivery";
@@ -158,6 +159,8 @@ interface UndockedViewProviderOptions {
     ciFixture?: CommitChecksCoordinatorOptions["fixture"];
     /** The window's CI log store; absent = the Checks tab gets no log. */
     ciLogStore?: CiLogMemoryStore;
+    /** The window's action fences and write-token help; absent = no CI write actions. */
+    ciActions?: CiActionOptions;
     commitChecksProviders?: readonly CommitChecksProvider[];
     /** Shared activation-owned coordinator; undocked providers never construct their own. */
     commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator;
@@ -255,6 +258,7 @@ export class UndockedViewProvider {
     private readonly commitChecks: CommitChecksCoordinator;
     private readonly ciGenerations?: CiGenerations;
     private readonly ciLogStore?: CiLogMemoryStore;
+    private readonly ciActions?: CiActionOptions;
     private commitChecksGeneration = 0;
     private commitCheckDemandSeq = 0;
     private readonly ciDetailLoops = new CommitCiDetailLoops();
@@ -400,6 +404,7 @@ export class UndockedViewProvider {
         });
         this.ciGenerations = options.ciGenerations;
         this.ciLogStore = options.ciLogStore;
+        this.ciActions = options.ciActions;
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
             options.commitChecksProviders ?? [
@@ -441,6 +446,7 @@ export class UndockedViewProvider {
     /** What the panel's Checks tab messages are answered with. */
     private ciDetailSource(): CommitCiDetailSource {
         const store = this.ciLogStore;
+        const ciActions = this.ciActions;
         return {
             repoKey: () => this.selectedRepositoryRoot,
             generations: this.ciGenerations,
@@ -452,6 +458,7 @@ export class UndockedViewProvider {
                     target: (hash, job, ctx) => this.commitChecks.ciLogTarget(hash, job, ctx),
                 },
             }),
+            ...(ciActions && { actions: ciActionAccess(this.commitChecks, ciActions) }),
         };
     }
     /**
@@ -825,7 +832,8 @@ export class UndockedViewProvider {
                 msg.type === "requestCommitCiDetail" ||
                 msg.type === "cancelCommitCiDetail" ||
                 msg.type === "previewCiLog" ||
-                msg.type === "openCiLog";
+                msg.type === "openCiLog" ||
+                msg.type === "runCiAction";
             if (ciMessage && this.panel !== panel) return;
             // A window reload sends ready without reopening the panel and ends the old scan loop.
             if (msg.type === "ready" && this.panel === panel) this.ciDetailLoops.dispose();
@@ -1325,6 +1333,13 @@ export class UndockedViewProvider {
             case "openCiLog": {
                 const panel = this.panel;
                 await answerCiLogMessage(this.ciDetailSource(), { ...msg }, (reply) => {
+                    if (this.panel === panel) this.postToWebview(reply);
+                });
+                break;
+            }
+            case "runCiAction": {
+                const panel = this.panel;
+                await answerCiActionMessage(this.ciDetailSource(), { ...msg }, (reply) => {
                     if (this.panel === panel) this.postToWebview(reply);
                 });
                 break;

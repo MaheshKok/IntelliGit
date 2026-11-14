@@ -6,6 +6,8 @@
 import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import type {
+    CiAction,
+    CiActionEvidence,
     CiCoverage,
     CiFlatCheck,
     CiJob,
@@ -23,16 +25,19 @@ import {
     HttpError,
     httpGetJson,
     httpGetJsonWithMeta,
+    httpRequestJson,
     type DownloadCiLog,
     type DownloadedText,
     type FetchJson,
     type FetchJsonWithMeta,
+    type WriteJson,
 } from "./http";
 import {
     aggregateState,
     compactText,
     isCiCdCheckItem,
     readString,
+    redactError,
     redactSecret,
     summaryForState,
     summaryForItems,
@@ -50,6 +55,7 @@ import { cleanFailureSummary } from "../../shared/ci/excerpt";
 import { logicalCheckId } from "../../shared/ci/identity";
 import type { EtagStore } from "./etagStore";
 import type {
+    CiActionRequest,
     CiDetailFetch,
     CiFailedScanCursor,
     CiFailedScanPage,
@@ -187,6 +193,10 @@ export class GitHubProvider implements CommitChecksProvider {
         runHeader: true,
         logs: true,
         failureSummary: true,
+        rerunFailed: true,
+        rerunJob: true,
+        cancel: true,
+        writeScopeHelp: "commit.checks.tab.writeScopeHelpGithub",
     });
     /** GitHub Actions prefixes each error annotation line of a log with this marker. */
     readonly firstErrorPatterns = [/##\[error\]/];
@@ -206,6 +216,7 @@ export class GitHubProvider implements CommitChecksProvider {
      * @param etags - The window's conditional-request store; reads of a commit that was still
      *   running when last read send `If-None-Match` through `fetchWithMeta`. None: no ETags.
      * @param downloadLog - The job log download; follows the logs endpoint's redirect.
+     * @param write - The write-action request (re-run, cancel).
      */
     constructor(
         private readonly fetchJson: FetchJson = httpGetJson,
@@ -214,7 +225,43 @@ export class GitHubProvider implements CommitChecksProvider {
         private readonly cooldownEnd: (url: string) => number = () => 0,
         private readonly etags?: EtagStore,
         private readonly downloadLog: DownloadCiLog = downloadCiLog,
+        private readonly write: WriteJson = httpRequestJson,
     ) {}
+
+    /** A GitHub re-run, of failed jobs or of one job, starts a new attempt of the run. */
+    actionEvidence(action: CiAction): CiActionEvidence {
+        return action === "cancel" ? "cancelled" : "runAttempt";
+    }
+
+    /**
+     * Re-runs a run's failed jobs, re-runs one job (by its Actions job id) or cancels a run,
+     * with the session's existing `repo` scope; nothing asks for another scope.
+     */
+    async runAction(
+        ref: ProviderRepoRef,
+        request: CiActionRequest,
+        beforeSend: () => Promise<void>,
+    ): Promise<void> {
+        const base = `${repoApiUrl(ref as GitHubRepoRef)}/actions`;
+        const url =
+            request.action === "rerunJob"
+                ? `${base}/jobs/${encodeURIComponent(request.jobId ?? "")}/rerun`
+                : `${base}/runs/${encodeURIComponent(request.runId)}/${request.action === "cancel" ? "cancel" : "rerun-failed-jobs"}`;
+        const until = this.cooldownEnd(url);
+        if (until > 0) {
+            throw new RequestGateCooldownError(
+                vscode.l10n.t("Commit-check requests are temporarily paused due to rate limiting."),
+                until,
+            );
+        }
+        const session = await openSession("");
+        if (!isSession(session)) throw new HttpError(401, session.error ?? session.summary, {});
+        try {
+            await this.write("POST", url, githubHeaders(session), undefined, beforeSend);
+        } catch (error) {
+            throw redactError(error, session.accessToken);
+        }
+    }
 
     /**
      * Downloads a job's log. The logs endpoint redirects to a short-lived signed URL on another

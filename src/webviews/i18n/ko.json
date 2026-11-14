@@ -530,5 +530,20 @@
     "commit.checks.tab.logWhenFinished": "작업이 끝나면 로그를 볼 수 있습니다",
     "commit.checks.tab.logForbidden": "토큰으로 이 로그를 읽을 수 없습니다",
     "commit.checks.tab.logFailed": "로그를 불러올 수 없습니다: {error}",
-    "commit.checks.tab.logTruncated": "이 로그는 50MB에서 잘렸습니다. 나머지는 브라우저에서 여세요"
+    "commit.checks.tab.logTruncated": "이 로그는 50MB에서 잘렸습니다. 나머지는 브라우저에서 여세요",
+    "commit.checks.tab.rerunFailed": "실패한 작업 다시 실행",
+    "commit.checks.tab.rerunFailedAndCanceled": "실패 및 취소된 작업 다시 실행",
+    "commit.checks.tab.rerunJob": "작업 다시 실행",
+    "commit.checks.tab.cancelRun": "실행 취소",
+    "commit.checks.tab.confirmCancel": "취소 확인",
+    "commit.checks.tab.keepRunning": "계속 실행",
+    "commit.checks.tab.waitingRerun": "다시 실행이 시작되기를 기다리는 중",
+    "commit.checks.tab.waitingCancel": "취소가 적용되기를 기다리는 중",
+    "commit.checks.tab.rerunNotSeen": "다시 실행이 아직 보이지 않음 — 새로 고침",
+    "commit.checks.tab.cancelNotSeen": "취소가 아직 보이지 않음 — 새로 고침",
+    "commit.checks.tab.actionFailed": "작업을 시작할 수 없습니다: {error}",
+    "commit.checks.tab.actionUncertain": "요청이 전송되었을 수 있습니다. 새로 고치는 중",
+    "commit.checks.tab.writeScopeHelpGithub": "이 저장소에서 워크플로를 다시 실행하거나 취소할 권한이 없습니다.",
+    "commit.checks.tab.writeScopeHelpGitlab": "GitLab 토큰이 읽기 전용입니다. 다시 실행하거나 취소하려면 api 범위로 토큰을 만드세요.",
+    "commit.checks.tab.writeActionsHelp": "이 작업이 가능한 토큰을 받는 방법"
 }

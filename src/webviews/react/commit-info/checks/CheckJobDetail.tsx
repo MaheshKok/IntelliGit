@@ -3,7 +3,9 @@ import type { CiJob } from "../../../../types";
 import { StateIcon } from "../../commit-list/CommitChecksPopover";
 import { t } from "../../shared/i18n";
 import { badgeStateOf, formatCiDuration, formatCiStart, stateLabel } from "./ciFormat";
+import { ActionButton } from "./ChecksHeader";
 import { checksStyles } from "./checksStyles";
+import type { CiActionTarget } from "./useCiAction";
 import { useCiLog, type CiLogJobRef, type CiLogView } from "./useCiLog";
 
 /**
@@ -15,6 +17,7 @@ export function CheckJobDetail({
     showSteps,
     showFailureSummary = false,
     logJob = null,
+    rerunJob = null,
     onOpenUrl,
 }: {
     job: CiJob | undefined;
@@ -23,6 +26,12 @@ export function CheckJobDetail({
     showFailureSummary?: boolean;
     /** The selected job's log identity; null when the provider has no logs. */
     logJob?: CiLogJobRef | null;
+    /** "Re-run job" for this finished job; null when the provider cannot or an action is pending. */
+    rerunJob?: {
+        target: CiActionTarget;
+        busy: CiActionTarget | null;
+        onAction: (target: CiActionTarget) => void;
+    } | null;
     onOpenUrl: (url: string) => void;
 }): React.ReactElement {
     if (!job) {
@@ -37,7 +46,17 @@ export function CheckJobDetail({
         <div data-testid="ci-job-detail" style={detailStyle}>
             <div style={titleStyle}>
                 <StateIcon state={badgeStateOf(job.state)} />
-                <span style={{ fontWeight: 600, overflowWrap: "anywhere" }}>{job.name}</span>
+                <span style={{ fontWeight: 600, overflowWrap: "anywhere", flex: 1 }}>
+                    {job.name}
+                </span>
+                {rerunJob ? (
+                    <ActionButton
+                        label={t("commit.checks.tab.rerunJob")}
+                        target={rerunJob.target}
+                        busy={rerunJob.busy}
+                        onClick={rerunJob.onAction}
+                    />
+                ) : null}
             </div>
             <dl style={factsStyle}>
                 <dt style={checksStyles.muted}>{t("commit.checks.tab.state")}</dt>
