@@ -442,6 +442,21 @@ describe("httpRequestJson", () => {
         }
     });
 
+    it("a 3xx reply whose body is cut off rejects as the HttpError its status line decided", async () => {
+        const req = makeRequest();
+        const res = makeResponse(302);
+        stubRequest(req, res);
+
+        const promise = httpRequestJson("POST", "https://api.test/runs/1/cancel", {});
+        res.emit("data", Buffer.from("<html>Moved"));
+        res.emit("close");
+
+        await expect(
+            promise,
+            "a cut-off 302 is the same definite refusal as a whole 302",
+        ).rejects.toMatchObject({ name: "HttpError", statusCode: 302 });
+    });
+
     it("a 2xx reply cut off before any body byte still rejects, though an empty body would parse", async () => {
         const req = makeRequest();
         const res = makeResponse(202);
