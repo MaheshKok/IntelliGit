@@ -1,5 +1,6 @@
 import React from "react";
 import { VscChevronDown, VscChevronRight } from "react-icons/vsc";
+import { ELAPSED_TICK_MS, isOverdue } from "../../../../shared/ci/timing";
 import type { CiCoverage, CiJob, CiRun, CommitCiDetail } from "../../../../types";
 import { StateIcon } from "../../commit-list/CommitChecksPopover";
 import { t } from "../../shared/i18n";
@@ -38,6 +39,13 @@ export function CheckTree({
     const isExpanded = (job: CiJob): boolean => expanded.get(job.id) ?? job.state === "failure";
     const toggle = (job: CiJob): void =>
         setExpanded((prev) => new Map(prev).set(job.id, !isExpanded(job)));
+    useSecondTick(
+        detail.runs.some(
+            (run) => run.state === "running" || run.jobs.some((job) => job.state === "running"),
+        ),
+    );
+    // Read on every render; the tick above re-renders once a second while anything runs.
+    const now = Date.now();
 
     return (
         <div
@@ -55,6 +63,7 @@ export function CheckTree({
                 <RunGroup
                     key={run.id}
                     run={run}
+                    now={now}
                     showSteps={detail.capabilities.steps}
                     selectedJobId={selectedJobId}
                     isExpanded={isExpanded}
@@ -113,6 +122,7 @@ export function CheckTree({
 
 function RunGroup({
     run,
+    now,
     showSteps,
     selectedJobId,
     isExpanded,
@@ -122,6 +132,7 @@ function RunGroup({
     onRefresh,
 }: {
     run: CiRun;
+    now: number;
     showSteps: boolean;
     selectedJobId: string | null;
     isExpanded: (job: CiJob) => boolean;
@@ -136,9 +147,7 @@ function RunGroup({
                 <StateIcon state={badgeStateOf(run.state)} />
                 <span style={checksStyles.visuallyHidden}>{stateLabel(run.state)}</span>
                 <span style={{ ...nameStyle, fontWeight: 600 }}>{run.name}</span>
-                <span style={checksStyles.muted}>
-                    {formatCiDuration(run.startedAt, run.completedAt)}
-                </span>
+                <Timing item={run} now={now} />
                 <span style={{ ...checksStyles.muted, ...ellipsisStyle }}>
                     {formatCiStart(run.startedAt)}
                 </span>
@@ -210,9 +219,7 @@ function RunGroup({
                                     {t("commit.checks.tab.optional")}
                                 </span>
                             ) : null}
-                            <span style={checksStyles.muted}>
-                                {formatCiDuration(job.startedAt, job.completedAt)}
-                            </span>
+                            <Timing item={job} now={now} />
                             <span style={{ ...checksStyles.muted, ...ellipsisStyle }}>
                                 {formatCiStart(job.startedAt)}
                             </span>
@@ -252,6 +259,63 @@ function RunGroup({
             />
             <FailedScanNote run={run} onRefresh={onRefresh} />
         </div>
+    );
+}
+
+/** Re-renders once a second while `active` (K14); no timer runs otherwise. */
+function useSecondTick(active: boolean): void {
+    const [, setTick] = React.useState(0);
+    React.useEffect(() => {
+        if (!active) return undefined;
+        const timer = window.setInterval(() => setTick((tick) => tick + 1), ELAPSED_TICK_MS);
+        return () => window.clearInterval(timer);
+    }, [active]);
+}
+
+/**
+ * A run's or job's duration: live elapsed time while it runs, then "usually ~Xm" from the
+ * previous successful run (K23) while it is queued or running, and "overdue" past 1.5 times
+ * that (K15).
+ */
+function Timing({
+    item,
+    now,
+}: {
+    item: Pick<CiRun, "state" | "startedAt" | "completedAt" | "usualDurationMs">;
+    now: number;
+}): React.ReactElement {
+    const running = item.state === "running";
+    const elapsedMs = running && item.startedAt ? now - Date.parse(item.startedAt) : null;
+    const unfinished = running || item.state === "queued";
+    return (
+        <>
+            {running ? (
+                <span data-testid="ci-elapsed" style={checksStyles.muted}>
+                    {formatCiDurationMs(elapsedMs)}
+                </span>
+            ) : (
+                <span style={checksStyles.muted}>
+                    {formatCiDuration(item.startedAt, item.completedAt)}
+                </span>
+            )}
+            {unfinished && item.usualDurationMs !== undefined ? (
+                <span data-testid="ci-usually" style={checksStyles.muted}>
+                    {item.usualDurationMs === null
+                        ? t("commit.checks.tab.usuallyUnknown")
+                        : t("commit.checks.tab.usually", {
+                              duration: formatCiDurationMs(item.usualDurationMs),
+                          })}
+                </span>
+            ) : null}
+            {elapsedMs !== null && isOverdue(elapsedMs, item.usualDurationMs) ? (
+                <span
+                    data-testid="ci-tag-overdue"
+                    style={{ ...checksStyles.tag, color: JETBRAINS_UI.color.modified }}
+                >
+                    {t("commit.checks.tab.overdue")}
+                </span>
+            ) : null}
+        </>
     );
 }
 

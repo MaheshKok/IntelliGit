@@ -47,6 +47,7 @@ import { CI_MAX_PAGES, CI_PAGE_SIZE, isUnderApiPrefix, linkHeaderNext, paginate 
 import { RequestGateCooldownError } from "./requestGate";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import { UNKNOWN_REQUIRED, type RequiredChecks } from "./requiredChecks";
+import { spanMs, uniqueJobDurations, type UsualDuration } from "./ciTiming";
 import {
     hasUnfinishedWork,
     isCompleteDetail,
@@ -198,6 +199,7 @@ export class GitHubProvider implements CommitChecksProvider {
         rerunJob: true,
         cancel: true,
         requiredChecks: true,
+        usualDuration: true,
         writeScopeHelp: "commit.checks.tab.writeScopeHelpGithub",
     });
     /** GitHub Actions prefixes each error annotation line of a log with this marker. */
@@ -372,6 +374,53 @@ export class GitHubProvider implements CommitChecksProvider {
         }
         const status = known ? "known" : names.size > 0 ? "partial" : "unknown";
         return { status, names: [...names] };
+    }
+
+    /**
+     * K23: the latest successful run of `run`'s workflow on its branch created before it; the
+     * run took `updated_at - run_started_at`. Signed out, or `run` without a workflow, branch
+     * or creation time, is null; a failed request or sign-in read rejects.
+     */
+    async getUsualDuration(ref: ProviderRepoRef, run: CiRun): Promise<UsualDuration | null> {
+        if (!run.workflowId || !run.ref || !run.createdAt) return null;
+        const session = await openSession("");
+        if (!isSession(session)) {
+            if (session.state === "unavailable") throw new Error(session.error);
+            return null;
+        }
+        const gitHubRef = ref as GitHubRepoRef;
+        const base = repoApiUrl(gitHubRef);
+        const fetch = (url: string) => this.fetchWithMeta(url, githubHeaders(session));
+        try {
+            const query = `branch=${encodeURIComponent(run.ref)}&status=success&created=${encodeURIComponent(`<${run.createdAt}`)}&per_page=1`;
+            const listed = await fetch(
+                `${base}/actions/workflows/${encodeURIComponent(run.workflowId)}/runs?${query}`,
+            );
+            const baseline = readList<GitHubWorkflowRun>(listed.body, "workflow_runs")[0];
+            const baselineRunId = readId(baseline?.id);
+            if (!baseline || baselineRunId === undefined || baselineRunId === run.id) return null;
+            const runName = readString(baseline.name) || readString(baseline.display_title);
+            const jobs = await paginate(
+                fetch,
+                `${base}/actions/runs/${encodeURIComponent(baselineRunId)}/jobs?filter=latest&per_page=${CI_PAGE_SIZE}`,
+                linkHeaderNext,
+                (body) =>
+                    readList<GitHubWorkflowJob>(body, "jobs").map((job) => ({
+                        logicalId: toJob(job, runName).logicalId,
+                        ms: spanMs(job.started_at, job.completed_at),
+                    })),
+                CI_MAX_PAGES,
+                (url) => this.allowNext(gitHubRef, url),
+            );
+            return {
+                baselineRunId,
+                runMs: spanMs(baseline.run_started_at, baseline.updated_at),
+                // A cut job list cannot show that an id is unique, so no job gets a match.
+                jobMs: jobs.coverage === "full" ? uniqueJobDurations(jobs.items) : {},
+            };
+        } catch (err) {
+            throw redactError(err, session.accessToken);
+        }
     }
 
     /** Authenticates, fetches check-runs + statuses in parallel, and normalizes them. */

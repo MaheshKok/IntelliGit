@@ -45,6 +45,7 @@ import { CI_MAX_PAGES, CI_PAGE_SIZE, isUnderApiPrefix, paginate } from "./pagina
 import { RequestGateCooldownError } from "./requestGate";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import { UNKNOWN_REQUIRED, type RequiredChecks } from "./requiredChecks";
+import { uniqueJobDurations, type UsualDuration } from "./ciTiming";
 import {
     hasUnfinishedWork,
     isCompleteDetail,
@@ -96,6 +97,8 @@ interface GitLabPipeline {
     started_at?: unknown;
     finished_at?: unknown;
     updated_at?: unknown;
+    /** Seconds the pipeline ran; null while it runs. */
+    duration?: unknown;
 }
 
 /** One entry of a pipeline's job list. */
@@ -108,6 +111,8 @@ interface GitLabJob {
     started_at?: unknown;
     finished_at?: unknown;
     allow_failure?: unknown;
+    /** Seconds the job ran, with a fraction; null while it runs. */
+    duration?: unknown;
     /** Why a failed job failed, as a code such as `script_failure`. */
     failure_reason?: unknown;
 }
@@ -232,6 +237,7 @@ export class GitLabProvider implements CommitChecksProvider {
         cancel: true,
         requiredChecks: true,
         optionalJobs: true,
+        usualDuration: true,
         writeScopeHelp: "commit.checks.tab.writeScopeHelpGitlab",
         // POST pipelines/:id/retry restarts failed and canceled jobs.
         rerunFailedLabel: "commit.checks.tab.rerunFailedAndCanceled",
@@ -388,6 +394,55 @@ export class GitLabProvider implements CommitChecksProvider {
         return typeof flag === "boolean"
             ? { status: "known", nonOptionalJobs: flag }
             : UNKNOWN_REQUIRED;
+    }
+
+    /**
+     * K23: the latest successful pipeline on `run`'s ref created before it, found with
+     * `created_before` and `order_by=id&sort=desc` (the list carries no duration, so the
+     * pipeline and its jobs are read for theirs). No token, or `run` without a ref or creation
+     * time, is null; a failed request or store read rejects.
+     */
+    async getUsualDuration(ref: ProviderRepoRef, run: CiRun): Promise<UsualDuration | null> {
+        if (!run.ref || !run.createdAt) return null;
+        const gitLabRef = ref as GitLabRepoRef;
+        const token = await this.store.get(gitLabRef.host);
+        if (!token) return null;
+        const fetch = (url: string) => this.fetchWithMeta(url, { "PRIVATE-TOKEN": token });
+        const base = projectApiUrl(gitLabRef);
+        try {
+            const listed = await fetch(
+                `${base}/pipelines?ref=${encodeURIComponent(run.ref)}&status=success&created_before=${encodeURIComponent(run.createdAt)}&order_by=id&sort=desc&per_page=1`,
+            );
+            const baselineRunId = readId(readArray<GitLabPipeline>(listed.body)[0]?.id);
+            if (baselineRunId === undefined || baselineRunId === run.id) return null;
+            const pipelineUrl = `${base}/pipelines/${encodeURIComponent(baselineRunId)}`;
+            const pipeline = ((await fetch(pipelineUrl)).body ?? {}) as GitLabPipeline;
+            const runName = readString(pipeline.name);
+            let current = `${pipelineUrl}/jobs?per_page=${CI_PAGE_SIZE}`;
+            const jobs = await paginate(
+                (url) => {
+                    current = url;
+                    return fetch(url);
+                },
+                current,
+                (response) => nextPageUrl(response, current),
+                (body) =>
+                    readArray<GitLabJob>(body).map((job) => ({
+                        logicalId: toJob(job, runName).logicalId,
+                        ms: secondsToMs(job.duration),
+                    })),
+                CI_MAX_PAGES,
+                (url) => this.allowNext(gitLabRef, url),
+            );
+            return {
+                baselineRunId,
+                runMs: secondsToMs(pipeline.duration),
+                // A cut job list cannot show that an id is unique, so no job gets a match.
+                jobMs: jobs.coverage === "full" ? uniqueJobDurations(jobs.items) : {},
+            };
+        } catch (err) {
+            throw redactError(err, token);
+        }
     }
 
     /**
@@ -679,6 +734,13 @@ export class GitLabProvider implements CommitChecksProvider {
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/** A GitLab duration in seconds as milliseconds; null when it is missing or not a duration. */
+function secondsToMs(seconds: unknown): number | null {
+    return typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0
+        ? Math.round(seconds * 1000)
+        : null;
+}
 
 /** REST API v4 base of the remote's project, addressed by its URL-encoded path. */
 function projectApiUrl(ref: GitLabRepoRef): string {

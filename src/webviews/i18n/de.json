@@ -558,6 +558,9 @@
     "commit.checks.tab.writeActionsHelp": "So erhalten Sie ein Token, das das darf",
     "commit.checks.tab.blocksMerge": "blockiert Merge",
     "commit.checks.tab.optional": "optional",
+    "commit.checks.tab.usually": "meist ~{duration}",
+    "commit.checks.tab.usuallyUnknown": "meist: unbekannt",
+    "commit.checks.tab.overdue": "überfällig",
     "commit.checks.tab.requiredUnknown": "erforderlich: unbekannt",
     "commit.checks.tab.requiredScope": "erforderliche Prüfungen von {branch}",
     "commit.checks.tab.defaultBranchUnknown": "Standardbranch unbekannt – führen Sie git remote set-head origin --auto aus"

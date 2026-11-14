@@ -8,6 +8,7 @@ import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
 import { hasUnfinishedWork, isCompleteDetail } from "../../shared/ci/completion";
 import type { CiFailedScan, CiJob, CommitCiDetail, CommitCiDetailData } from "../../types";
 import type { CiActionFenceStore } from "./ciActionFence";
+import { UsualDurationCache } from "./ciTiming";
 import type { CiTrace, CiTraceOutcome, CiTraceReason } from "./ciTrace";
 import type { CiDetailPersistentCache } from "./detailPersistentCache";
 import type { PersistentWrite } from "./persistentCache";
@@ -109,6 +110,8 @@ export interface CommitCiDetailServiceOptions {
         CiActionFenceStore,
         "isFenced" | "fenceFor" | "resolve" | "onDidEnd" | "sequence"
     >;
+    /** K23 baselines of running runs; omitted = kept in memory only. */
+    usualDurations?: UsualDurationCache;
 }
 
 /** Shared in-memory CI detail cache with in-flight de-dupe and a per-key fence. */
@@ -130,6 +133,8 @@ export class CommitCiDetailService {
     private readonly persistentCache?: CiDetailPersistentCache;
     private readonly trace?: CiTrace;
     private readonly fences?: CommitCiDetailServiceOptions["fences"];
+    /** K23 baselines, cleared with the details. */
+    readonly usualDurations: UsualDurationCache;
     // False once a clear() failed: the store may still hold another account's entries.
     private persistentReadable = Promise.resolve(true);
     private generation = 0;
@@ -154,6 +159,7 @@ export class CommitCiDetailService {
         this.persistentCache = options.persistentCache;
         this.trace = options.trace;
         this.fences = options.fences;
+        this.usualDurations = options.usualDurations ?? new UsualDurationCache({ now: this.now });
         this.fences?.onDidEnd((hash) => this.fenceEnded(hash));
     }
 
@@ -349,6 +355,7 @@ export class CommitCiDetailService {
         this.cache.clear();
         this.inflight.clear();
         this.scanHooks.clear();
+        this.usualDurations.clear();
         const clear = this.persistentCache?.clear();
         if (clear) {
             this.persistentReadable = clear.then(
