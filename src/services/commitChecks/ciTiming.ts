@@ -84,7 +84,7 @@ export function uniqueJobDurations(
 
 /**
  * The run with its usual duration and each job's, matched by logical id when the id is unique
- * in the run; `null` = unknown ("usually: unknown").
+ * in the run's full job list (a cut list cannot show that); `null` = unknown ("usually: unknown").
  */
 export function applyUsual(run: CiRun, usual: UsualDuration | null): CiRun {
     const counts = new Map<string, number>();
@@ -96,6 +96,7 @@ export function applyUsual(run: CiRun, usual: UsualDuration | null): CiRun {
             ...job,
             usualDurationMs:
                 usual &&
+                run.jobsCoverage === "full" &&
                 counts.get(job.logicalId) === 1 &&
                 Object.hasOwn(usual.jobMs, job.logicalId)
                     ? usual.jobMs[job.logicalId]

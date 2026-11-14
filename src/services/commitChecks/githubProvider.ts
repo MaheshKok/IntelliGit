@@ -414,7 +414,7 @@ export class GitHubProvider implements CommitChecksProvider {
                                 : null,
                     })),
                 CI_MAX_PAGES,
-                (url) => this.allowNext(gitHubRef, url),
+                (url) => this.allowNext(gitHubRef, url, readId(baseline.repository?.id)),
             );
             return {
                 baselineRunId,

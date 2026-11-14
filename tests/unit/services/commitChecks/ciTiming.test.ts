@@ -329,6 +329,45 @@ describe("GitHub usual duration (K23)", () => {
         expect(usual?.jobMs, "a cut list cannot show a job is unique").toEqual({});
     });
 
+    it("reads a baseline's second jobs page from GitHub's repository-id link", async () => {
+        const run200 = {
+            ...ghRun(
+                200,
+                11,
+                "2026-11-14T11:30:00Z",
+                "success",
+                "2026-11-14T11:30:00Z",
+                "2026-11-14T11:40:00Z",
+            ),
+            repository: { id: 42 },
+        };
+        const gh = fakeGitHub(
+            [run200],
+            new Map([["200", [ghJob(1, "build", "2026-11-14T11:30:05Z", "2026-11-14T11:35:05Z")]]]),
+        );
+        // GitHub's Link header names the next page by repository id, not owner and name.
+        const page2 =
+            "https://api.github.com/repositories/42/actions/runs/200/jobs?filter=latest&per_page=100&page=2";
+        const paged: FetchJsonWithMeta = vi.fn(async (url: string) => {
+            if (url === page2) {
+                const jobs = [ghJob(2, "lint", "2026-11-14T11:30:05Z", "2026-11-14T11:31:05Z")];
+                return { statusCode: 200, headers: {}, body: { total_count: 2, jobs } };
+            }
+            const response = await gh.fetchWithMeta(url);
+            return url.includes("/jobs")
+                ? { ...response, headers: { link: `<${page2}>; rel="next"` } }
+                : response;
+        });
+        const provider = new GitHubProvider(gh.fetchJson, undefined, paged);
+
+        const usual = await provider.getUsualDuration(ghRef, selectedRun());
+
+        expect(usual?.jobMs, "both jobs pages are read").toEqual({
+            [jobKey("CI", "build")]: 5 * 60_000,
+            [jobKey("CI", "lint")]: 60_000,
+        });
+    });
+
     it("rejects on a failed request so nothing is cached for it", async () => {
         const gh = githubWorld();
         const failing: FetchJsonWithMeta = vi.fn(async (url: string) => {
@@ -720,6 +759,27 @@ describe("usual duration cache and serving", () => {
         expect(detail?.runs[1]?.usualDurationMs).toBeUndefined();
         expect(detail?.runs[1]?.jobs[0]?.usualDurationMs).toBeUndefined();
         expect(provider.getUsualDuration).toHaveBeenCalledTimes(1);
+    });
+
+    it("a run whose own job list is cut gives its jobs no usual time", async () => {
+        // "build" is the only job on the read page; a second "build" may sit past the bound.
+        const cut = selectedRun({
+            jobs: [job("build")],
+            jobsCoverage: { reason: "pageBound", shown: 1 },
+        });
+        const { read } = coordinatorFor([cut], async () => ({
+            baselineRunId: "200",
+            runMs: 600_000,
+            jobMs: { [jobKey("CI", "build")]: 300_000 },
+        }));
+
+        const detail = await read();
+
+        expect(detail?.runs[0]?.usualDurationMs).toBe(600_000);
+        expect(
+            detail?.runs[0]?.jobs[0]?.usualDurationMs,
+            "a cut list cannot show the job is unique",
+        ).toBeNull();
     });
 
     it("a queued run is asked for its usual time", async () => {
