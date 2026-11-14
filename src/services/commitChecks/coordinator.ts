@@ -19,6 +19,12 @@ import { ciLogKey, type CiLogSource } from "./ciLogMemoryStore";
 import type { CiTrace } from "./ciTrace";
 import { attach, CommitCiDetailService, type CiFailedScanHooks } from "./detailService";
 import { summaryForState, unavailableSnapshot } from "./normalize";
+import {
+    applyRequired,
+    RequiredChecksCache,
+    UNKNOWN_REQUIRED,
+    type RequiredChecks,
+} from "./requiredChecks";
 import { CommitChecksService, type CommitChecksFetchOptions } from "./service";
 import type {
     CiDetailFetch,
@@ -97,6 +103,7 @@ export class CommitChecksCoordinator {
     private readonly generations?: CiGenerations;
     private readonly trace?: CiTrace;
     private readonly fixture?: CommitChecksCoordinatorOptions["fixture"];
+    private readonly requiredChecks: RequiredChecksCache;
     private resolvedProvider = false;
     private providerMatch: ProviderMatch | null = null;
     private providerGeneration = 0;
@@ -132,6 +139,7 @@ export class CommitChecksCoordinator {
         this.generations = options.generations;
         this.trace = options.trace;
         this.fixture = options.fixture;
+        this.requiredChecks = new RequiredChecksCache(options.now);
     }
 
     /** Drops shared cached snapshots and details; called after credential/settings changes. */
@@ -139,6 +147,7 @@ export class CommitChecksCoordinator {
         this.clearProviderResolution();
         this.service.clear();
         this.detailService.clear();
+        this.requiredChecks.clear();
     }
 
     /** Clears only the memoized provider/ref, preserving shared cached snapshots. */
@@ -243,33 +252,124 @@ export class CommitChecksCoordinator {
                   floorDetail(await this.fetchSnapshot(match, hash, options), provider.id);
         const serve = { repoKey: ctx.repoKey, capabilities: provider.capabilities };
         const continueFailedScan = provider.continueFailedScan?.bind(provider);
-        const scan: CiFailedScanHooks | undefined = continueFailedScan && {
-            continueScan: async (cursor) => {
-                try {
-                    return await continueFailedScan(ref, cursor, ctx);
-                } catch (err) {
-                    return { error: getErrorMessage(err) };
-                }
-            },
-            isCurrent: () => this.isCurrent(ctx, providerGeneration),
-            onUpdate: onScanUpdate,
-        };
-        const detail = await this.withAccount(
+        const unavailable = (error: string): CommitCiDetail =>
+            attach(floorDetail(unavailableSnapshot(hash, error), provider.id), serve);
+        // The detail and its required marks are read and published under one account: a switch
+        // anywhere in between starts both over, so no account's rule marks another's detail.
+        const marked = await this.withAccount(
             match,
             fetchDetail,
-            (account, checkedFetch, confirm) =>
-                this.detailService.getOrFetch(
-                    `${this.snapshotKey(match, account, hash)}#detail`,
-                    checkedFetch,
-                    serve,
-                    options,
-                    confirm,
-                    scan,
-                ),
-            (error) => attach(floorDetail(unavailableSnapshot(hash, error), provider.id), serve),
+            async (account, checkedFetch, confirm) => {
+                // Read beside the detail and applied at serve time, so the detail cache never holds it.
+                const required = this.readRequired(match, account, confirm);
+                const markRequired = (
+                    served: CommitCiDetail,
+                    rule: Awaited<typeof required>,
+                ): CommitCiDetail =>
+                    rule
+                        ? applyRequired(
+                              served,
+                              rule.checks,
+                              rule.defaultBranchUnknown,
+                              rule.defaultBranch,
+                          )
+                        : served;
+                // Each update holds every page found so far, so only the newest one is
+                // published; an older one whose rule read finished late would hide later jobs.
+                let newestUpdate = 0;
+                const scan: CiFailedScanHooks | undefined = continueFailedScan && {
+                    continueScan: async (cursor) => {
+                        try {
+                            return await continueFailedScan(ref, cursor, ctx);
+                        } catch (err) {
+                            return { error: getErrorMessage(err) };
+                        }
+                    },
+                    isCurrent: () => this.isCurrent(ctx, providerGeneration),
+                    onUpdate:
+                        onScanUpdate &&
+                        ((update) => {
+                            const updateNumber = ++newestUpdate;
+                            void (async () => {
+                                // Re-read through the 1 h cache (K21), so an update after the hour
+                                // carries the current rule, not the one the scan started with.
+                                const rule = await this.readRequired(match, account, confirm);
+                                const marked = markRequired(update, rule);
+                                await confirm();
+                                // No await from the account check to the publish, so the account
+                                // just confirmed is the one that receives the update.
+                                if (
+                                    updateNumber !== newestUpdate ||
+                                    !this.isCurrent(ctx, providerGeneration)
+                                ) {
+                                    return;
+                                }
+                                onScanUpdate(marked);
+                            })().catch(() => undefined);
+                        }),
+                };
+                const [detail, rule] = await Promise.all([
+                    this.detailService.getOrFetch(
+                        `${this.snapshotKey(match, account, hash)}#detail`,
+                        checkedFetch,
+                        serve,
+                        options,
+                        confirm,
+                        scan,
+                    ),
+                    required,
+                ]);
+                return markRequired(detail, rule);
+            },
+            unavailable,
         );
         if (!this.isCurrent(ctx, providerGeneration)) return this.discard(ctx, hash, provider.id);
-        return detail;
+        return marked;
+    }
+
+    /**
+     * The merge rule of the default branch, read fresh from `origin/HEAD` on every call and
+     * cached per branch for an hour (K21, K22). Undefined for a provider that cannot read
+     * one. Any failure is `unknown` and a transient one is not cached; only a change of the
+     * signed-in account rejects (the caller's `withAccount` then starts over under the new one).
+     *
+     * @param match - The provider and repository the rule is read for.
+     * @param account - The account the caller's attempt runs under; it partitions the cache.
+     * @param confirm - Throws once the signed-in account is no longer `account`.
+     */
+    private async readRequired(
+        match: ProviderMatch,
+        account: string | undefined,
+        confirm: () => Promise<void>,
+    ): Promise<
+        | { checks: RequiredChecks; defaultBranchUnknown: boolean; defaultBranch?: string }
+        | undefined
+    > {
+        const { provider, ref } = match;
+        const getRequiredChecks = provider.getRequiredChecks?.bind(provider);
+        if (!provider.capabilities.requiredChecks || !getRequiredChecks) return undefined;
+        try {
+            const branch = await this.gitOps.readDefaultBranch();
+            if (!branch) return { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: true };
+            // A switch during the Git read must not start the fetch: it would run as the new
+            // account and be cached under the old account's key.
+            await confirm();
+            const scope = provider.keyFor(ref);
+            const checks = await this.requiredChecks.get(
+                account === undefined ? scope : `${scope}|${account}`,
+                branch.name,
+                async () => {
+                    const rule = await getRequiredChecks(ref, branch.name);
+                    // A throw here is a rejected fetch, which the cache drops.
+                    await confirm();
+                    return rule;
+                },
+            );
+            return { checks, defaultBranchUnknown: false, defaultBranch: branch.name };
+        } catch (err) {
+            if (err instanceof AccountChangedError) throw err;
+            return { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: false };
+        }
     }
 
     /**

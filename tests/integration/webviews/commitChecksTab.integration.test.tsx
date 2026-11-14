@@ -5,10 +5,17 @@
 
 import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CiJob, CiRun, CommitCiDetail, CommitDetail } from "../../../src/types";
+import type {
+    CiJob,
+    CiRun,
+    CommitCheckState,
+    CommitCiDetail,
+    CommitDetail,
+} from "../../../src/types";
 import { NO_CI_CAPABILITIES } from "../../../src/shared/ci/capabilities";
 import { PENDING_CHECK_RETRY_DELAYS_MS } from "../../../src/shared/ci/pollSchedule";
 import { CommitInfoPane } from "../../../src/webviews/react/commit-info/CommitInfoPane";
+import { JETBRAINS_UI } from "../../../src/webviews/react/shared/tokens";
 import { formatCiStart } from "../../../src/webviews/react/commit-info/checks/ciFormat";
 import { initReactDomTestEnvironment, mount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
@@ -666,6 +673,212 @@ describe("Commit details Checks tab", () => {
             type: "cancelCommitCiDetail",
             requestId: reshown.requestId,
         });
+    });
+
+    it("Bitbucket Cloud shows required: unknown", () => {
+        const { container } = mount(pane(HASH_A));
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, {
+                provider: "bitbucket-cloud",
+                capabilities: { ...TREE_CAPABILITIES, requiredChecks: false },
+                outcome: "failure",
+                runs: [run([job("build", "failure")])],
+            }),
+        );
+
+        const header = checksTab(container).querySelector<HTMLElement>(
+            '[data-testid="ci-header"]',
+        )!;
+        const required = header.querySelector<HTMLElement>('[data-testid="ci-header-required"]');
+        expect(required?.textContent).toBe("required: unknown");
+        // Unknown is a fact about the provider, never an error.
+        expect(required?.getAttribute("role")).toBeNull();
+        expect(required?.style.color).toBe(JETBRAINS_UI.color.muted);
+        expect(
+            jobRow(container, "build").querySelector('[data-testid="ci-tag-blocks-merge"]'),
+        ).toBeNull();
+    });
+
+    it("required: unknown shows while the rule is partial or unknown, and hides once known", () => {
+        const required = (detail: CommitCiDetail) => {
+            const { container, root } = mount(pane(HASH_A));
+            reply(lastRequest(), detail);
+            const text = container.querySelector('[data-testid="ci-header-required"]')?.textContent;
+            act(() => root.unmount());
+            return text ?? null;
+        };
+        const withRule = { ...TREE_CAPABILITIES, requiredChecks: true };
+
+        expect(
+            required(ciDetail(HASH_A, { capabilities: withRule, requiredStatus: "partial" })),
+        ).toBe("required: unknown");
+        expect(
+            required(ciDetail(HASH_A, { capabilities: withRule, requiredStatus: "unknown" })),
+        ).toBe("required: unknown");
+        expect(required(ciDetail(HASH_A, { capabilities: withRule }))).toBe("required: unknown");
+        expect(
+            required(ciDetail(HASH_A, { capabilities: withRule, requiredStatus: "known" })),
+        ).toBeNull();
+    });
+
+    it("a missing origin/HEAD says how to set it", () => {
+        const { container } = mount(pane(HASH_A));
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, {
+                capabilities: { ...TREE_CAPABILITIES, requiredChecks: true },
+                requiredStatus: "unknown",
+                defaultBranchUnknown: true,
+            }),
+        );
+
+        expect(
+            container.querySelector('[data-testid="ci-header-default-branch"]')?.textContent,
+        ).toBe("default branch unknown — run git remote set-head origin --auto");
+    });
+
+    it("the header names the default branch whose required rules were applied, not the run's ref", () => {
+        const { container } = mount(pane(HASH_A));
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, {
+                capabilities: { ...TREE_CAPABILITIES, requiredChecks: true },
+                requiredStatus: "known",
+                defaultBranch: "trunk",
+                runs: [run([job("build", "failure")], { ref: "feature/one" })],
+            }),
+        );
+
+        const header = container.querySelector<HTMLElement>('[data-testid="ci-header"]')!;
+        expect(
+            header.querySelector('[data-testid="ci-header-required-scope"]')?.textContent ?? "",
+            "required-check scope must name trunk, independently of run ref feature/one",
+        ).toContain("trunk");
+        expect(header.textContent).toContain("feature/one");
+    });
+
+    it("tags a required job or check as blocks merge in every unfinished or failed state, and in no other", () => {
+        const { container } = mount(pane(HASH_A));
+        const jobStates: CiJob["state"][] = [
+            "queued",
+            "running",
+            "success",
+            "failure",
+            "cancelled",
+            "skipped",
+            "neutral",
+            "unknown",
+        ];
+        const checkStates: CommitCheckState[] = [
+            "success",
+            "failure",
+            "pending",
+            "skipped",
+            "neutral",
+            "cancelled",
+            "timed_out",
+            "action_required",
+            "unknown",
+            "none",
+            "unavailable",
+        ];
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, {
+                capabilities: { ...TREE_CAPABILITIES, requiredChecks: true },
+                requiredStatus: "known",
+                outcome: "failure",
+                runs: [
+                    run(jobStates.map((state) => job(`job-${state}`, state, { required: "yes" }))),
+                ],
+                otherChecks: checkStates.map((state) => ({
+                    name: `check-${state}`,
+                    description: "",
+                    state,
+                    source: "status" as const,
+                    required: "yes" as const,
+                })),
+            }),
+        );
+
+        const blocks = (row: HTMLElement) =>
+            row.querySelector('[data-testid="ci-tag-blocks-merge"]') !== null;
+        const jobBlocking = jobStates.filter((state) => blocks(jobRow(container, `job-${state}`)));
+        expect(jobBlocking).toEqual(["queued", "running", "failure", "cancelled"]);
+        const checkRows = Array.from(
+            container.querySelectorAll<HTMLElement>('[data-testid="ci-check-row"]'),
+        );
+        expect(
+            checkStates.filter((_, index) => blocks(checkRows[index])),
+            "cancelled, timed_out, action_required and pending required checks block merge",
+        ).toEqual(["failure", "pending", "cancelled", "timed_out", "action_required"]);
+    });
+
+    it("tags required jobs that failed or have not finished as blocks merge, and optional jobs", () => {
+        const { container } = mount(pane(HASH_A));
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, {
+                capabilities: { ...TREE_CAPABILITIES, requiredChecks: true, optionalJobs: true },
+                requiredStatus: "known",
+                outcome: "failure",
+                runs: [
+                    run([
+                        job("build", "failure", { required: "yes" }),
+                        job("deploy", "running", { required: "yes" }),
+                        job("queued", "queued", { required: "yes" }),
+                        job("passed", "success", { required: "yes" }),
+                        job("lint", "failure", { required: "no" }),
+                        job("maybe", "failure", { required: "unknown" }),
+                        job("flaky", "failure", { optional: true, required: "no" }),
+                    ]),
+                ],
+                otherChecks: [
+                    {
+                        name: "ci/legacy",
+                        description: "",
+                        state: "failure",
+                        source: "status",
+                        required: "yes",
+                    },
+                    {
+                        name: "codecov",
+                        description: "",
+                        state: "failure",
+                        source: "status",
+                        required: "no",
+                    },
+                ],
+            }),
+        );
+
+        const tags = (row: HTMLElement) =>
+            Array.from(row.querySelectorAll<HTMLElement>('[data-testid^="ci-tag-"]')).map(
+                (tag) => tag.textContent,
+            );
+        const names = ["build", "deploy", "queued", "passed", "lint", "maybe", "flaky"];
+        expect(names.map((name) => [name, tags(jobRow(container, name))])).toEqual([
+            ["build", ["blocks merge"]],
+            ["deploy", ["blocks merge"]],
+            ["queued", ["blocks merge"]],
+            ["passed", []],
+            ["lint", []],
+            ["maybe", []],
+            ["flaky", ["optional"]],
+        ]);
+        const blocks = jobRow(container, "build").querySelector<HTMLElement>(
+            '[data-testid="ci-tag-blocks-merge"]',
+        )!;
+        expect(blocks.style.color).toBe(JETBRAINS_UI.color.deleted);
+        const optional = jobRow(container, "flaky").querySelector<HTMLElement>(
+            '[data-testid="ci-tag-optional"]',
+        )!;
+        expect(optional.style.color).toBe(JETBRAINS_UI.color.muted);
+        const checkRows = Array.from(
+            container.querySelectorAll<HTMLElement>('[data-testid="ci-check-row"]'),
+        );
+        expect(checkRows.map(tags)).toEqual([["blocks merge"], []]);
     });
 
     it("floor provider renders flat list without dead controls", () => {

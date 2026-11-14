@@ -46,6 +46,7 @@ import {
 import { CI_MAX_PAGES, CI_PAGE_SIZE, isUnderApiPrefix, linkHeaderNext, paginate } from "./paginate";
 import { RequestGateCooldownError } from "./requestGate";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
+import { UNKNOWN_REQUIRED, type RequiredChecks } from "./requiredChecks";
 import {
     hasUnfinishedWork,
     isCompleteDetail,
@@ -196,6 +197,7 @@ export class GitHubProvider implements CommitChecksProvider {
         rerunFailed: true,
         rerunJob: true,
         cancel: true,
+        requiredChecks: true,
         writeScopeHelp: "commit.checks.tab.writeScopeHelpGithub",
     });
     /** GitHub Actions prefixes each error annotation line of a log with this marker. */
@@ -317,6 +319,59 @@ export class GitHubProvider implements CommitChecksProvider {
         } catch {
             return `unresolved-${randomUUID()}`;
         }
+    }
+
+    /**
+     * C2: the union of the branch's ruleset `required_status_checks` and its branch
+     * protection's `contexts`/`checks`. Both are read every time. Protection answering 404
+     * "Branch not protected" adds nothing and keeps the result known; any other refusal of
+     * either read leaves `partial` (some names were read) or `unknown`. A server error, a
+     * network failure or a rate-limited read of either endpoint rejects.
+     */
+    async getRequiredChecks(ref: ProviderRepoRef, branch: string): Promise<RequiredChecks> {
+        const session = await openSession("");
+        if (!isSession(session)) {
+            // A failed sign-in read rejects, so the hour cache drops it; signed out is an answer.
+            if (session.state === "unavailable") throw new Error(session.error);
+            return UNKNOWN_REQUIRED;
+        }
+        const headers = githubHeaders(session);
+        const base = repoApiUrl(ref as GitHubRepoRef);
+        const name = encodeURIComponent(branch);
+        const [rules, protection] = await Promise.allSettled([
+            paginate(
+                (url) => this.fetchWithMeta(url, headers),
+                `${base}/rules/branches/${name}?per_page=${CI_PAGE_SIZE}`,
+                linkHeaderNext,
+                readRequiredRuleNames,
+                CI_MAX_PAGES,
+                (url) => this.allowNext(ref, url),
+            ),
+            this.fetchJson(`${base}/branches/${name}/protection/required_status_checks`, headers),
+        ]);
+        const names = new Set<string>();
+        let known = true;
+        if (rules.status === "fulfilled") {
+            rules.value.items.forEach((item) => names.add(item));
+            if (rules.value.coverage !== "full") known = false;
+        } else {
+            if (!isRefusal(rules.reason)) throw redactError(rules.reason, session.accessToken);
+            known = false;
+        }
+        if (protection.status === "fulfilled") {
+            readProtectionNames(protection.value).forEach((item) => names.add(item));
+        } else if (!isNotProtected(protection.reason)) {
+            // A 403 that says "slow down" (retry-after, or no quota left) rejects so the hour
+            // cache drops it; any other 403 is a refusal. The request gate pauses only when
+            // GitHub gives a usable wait time: a no-quota 403 with no usable reset gets no pause
+            // yet (#432).
+            if (!isRefusal(protection.reason)) {
+                throw redactError(protection.reason, session.accessToken);
+            }
+            known = false;
+        }
+        const status = known ? "known" : names.size > 0 ? "partial" : "unknown";
+        return { status, names: [...names] };
     }
 
     /** Authenticates, fetches check-runs + statuses in parallel, and normalizes them. */
@@ -1147,6 +1202,53 @@ function isCredentialRejection(reason: unknown): boolean {
     if (reason.statusCode !== 403) return false;
     const remaining = reason.headers["x-ratelimit-remaining"];
     return (Array.isArray(remaining) ? remaining[0] : remaining) !== "0";
+}
+
+/** A 404 whose body is GitHub's "Branch not protected": protection is off, not refused. */
+function isNotProtected(reason: unknown): boolean {
+    return (
+        reason instanceof HttpError &&
+        reason.statusCode === 404 &&
+        reason.message.includes('"Branch not protected"')
+    );
+}
+
+/**
+ * The API would not share the rule: 401, 404, or a 403 that is not an exhausted quota. A
+ * rate limit is transient, so it is not cached as "unknown" for an hour.
+ */
+function isRefusal(reason: unknown): boolean {
+    if (!(reason instanceof HttpError)) return false;
+    if (reason.statusCode === 401 || reason.statusCode === 404) return true;
+    return (
+        reason.statusCode === 403 && isCredentialRejection(reason) && !reason.headers["retry-after"]
+    );
+}
+
+/** The status-check contexts of a `rules/branches/{branch}` page's `required_status_checks` rules. */
+function readRequiredRuleNames(body: unknown): string[] {
+    if (!Array.isArray(body)) return [];
+    return body.flatMap((rule: unknown) => {
+        const { type, parameters } = (rule ?? {}) as { type?: unknown; parameters?: unknown };
+        if (type !== "required_status_checks") return [];
+        const checks = (parameters as { required_status_checks?: unknown } | null)
+            ?.required_status_checks;
+        return Array.isArray(checks) ? checks.flatMap(readContext) : [];
+    });
+}
+
+/** The `contexts` and `checks[].context` of a branch protection's required status checks. */
+function readProtectionNames(body: unknown): string[] {
+    const { contexts, checks } = (body ?? {}) as { contexts?: unknown; checks?: unknown };
+    return [
+        ...(Array.isArray(contexts) ? contexts.filter((c) => typeof c === "string") : []),
+        ...(Array.isArray(checks) ? checks.flatMap(readContext) : []),
+    ];
+}
+
+function readContext(check: unknown): string[] {
+    const context = (check as { context?: unknown } | null)?.context;
+    return typeof context === "string" && context ? [context] : [];
 }
 
 function cleanRepoRef(owner: string, repo: string): GitHubRepoRef | null {

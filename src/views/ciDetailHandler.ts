@@ -9,6 +9,7 @@ import type { CiActionOutcome } from "../services/commitChecks/ciActions";
 import type { CiGenerations, CiOperationContext } from "../services/commitChecks/ciGenerations";
 import type { CiLogMemoryStore } from "../services/commitChecks/ciLogMemoryStore";
 import type { CiLogTarget } from "../services/commitChecks/coordinator";
+import { snapshotOf, withoutSnapshot } from "../services/commitChecks/detailService";
 import type { CommitChecksFetchOptions } from "../services/commitChecks/service";
 import type { CiActionRequest, CiLogJob } from "../services/commitChecks/types";
 import { isValidGitHash } from "../services/gitHelpers";
@@ -108,28 +109,58 @@ export async function answerCommitCiDetailRequest(
             : repoKey === currentRepoKey;
     };
     // Each overflow-scan page re-posts at once while this request is still the loop's newest,
-    // and becomes the shown detail a fence change re-posts.
+    // and becomes the shown detail a fence change re-posts. A reply or page waits on the
+    // merge-rule read and the account check after its snapshot is built, so they can arrive out
+    // of order, and an old entry's page can reach a newer read's hooks: one whose snapshot is
+    // older than the shown one is dropped. Unnumbered ones (no provider, a sign-in failure, a
+    // fence re-post of the shown copy) are posted as they come. The number ranks only the data:
+    // what a dropped one says about the request itself still reaches the view on the shown data.
+    // A reply or page carries the fence of the moment it was built, so every post takes the
+    // store's live fence instead, with no await.
+    const fences = source.actions?.fences;
     let detail: CommitCiDetail | undefined;
-    const onScanUpdate = (update: CommitCiDetail): void => {
+    let newest = -1;
+    const show = (update: CommitCiDetail | undefined): void => {
         if (!isCurrent()) return;
-        detail = update;
-        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: update });
+        const snapshot = update && snapshotOf(update);
+        let next = update;
+        if (snapshot !== undefined && snapshot < newest) {
+            const outcome = requestOutcome(update as CommitCiDetail);
+            if (!outcome || !detail) return;
+            next = { ...detail, ...outcome };
+        } else if (snapshot !== undefined) {
+            newest = snapshot;
+        }
+        detail =
+            next &&
+            withoutSnapshot(fences ? withFence(next, fences.fenceFor(repoKey, hash)) : next);
+        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
     };
-    detail =
+    const read = async (
+        fetch: (
+            onScanUpdate: (update: CommitCiDetail) => void,
+        ) => Promise<CommitCiDetail | undefined>,
+        postEmpty = true,
+    ): Promise<void> => {
+        const reply = await fetch(show);
+        if (reply !== undefined || postEmpty) show(reply);
+    };
+    const reread = (postEmpty = true): Promise<void> =>
+        read(
+            (onScanUpdate) => source.getDetail(hash, { force: false }, ctx, onScanUpdate),
+            postEmpty,
+        );
+    await read((onScanUpdate) =>
         force === true && source.actions
-            ? await source.actions.refresh(hash, ctx, onScanUpdate)
-            : await source.getDetail(hash, { force: force === true }, ctx, onScanUpdate);
+            ? source.actions.refresh(hash, ctx, onScanUpdate)
+            : source.getDetail(hash, { force: force === true }, ctx, onScanUpdate),
+    );
     if (!isCurrent()) return;
-    post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
     if (source.actions) {
         repostOnFenceChange(source.actions.fences, stopped, repoKey, hash, {
             shown: () => detail,
-            post: (update) => {
-                if (!isCurrent()) return;
-                detail = update;
-                post({ type: "commitCiDetail", requestId, repoKey, hash, detail: update });
-            },
-            refetch: () => source.getDetail(hash, { force: false }, ctx, onScanUpdate),
+            post: show,
+            refetch: () => reread(false),
         });
     }
     // The scan pages reach only the newest requester of a commit's detail, so its progress is
@@ -141,9 +172,8 @@ export async function answerCommitCiDetailRequest(
         const delays = PENDING_CHECK_RETRY_DELAYS_MS;
         await sleep(delays[Math.min(rung, delays.length - 1)], stopped);
         if (!isCurrent()) return;
-        detail = await source.getDetail(hash, { force: false }, ctx, onScanUpdate);
+        await reread();
         if (!isCurrent()) return;
-        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
     }
 }
 
@@ -197,7 +227,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 
 /**
  * Re-posts the shown detail under the request's id while it is the newest: a fence switching
- * to "not seen yet" re-posts it with the new label and no request; a fence that ended re-reads
+ * to "not seen yet" re-posts it (the post takes the new label) with no request; a fence that ended re-reads
  * it (from the cache the ending fetch filled), since the shown copy predates that fetch.
  */
 function repostOnFenceChange(
@@ -208,23 +238,19 @@ function repostOnFenceChange(
     view: {
         shown(): CommitCiDetail | undefined;
         post(detail: CommitCiDetail): void;
-        refetch(): Promise<CommitCiDetail | undefined>;
+        /** Reads the detail again and posts it unless something newer was posted meanwhile. */
+        refetch(): Promise<void>;
     },
 ): void {
     if (stopped.aborted) return;
     const changed = fences.onDidChange((change) => {
         const shown = view.shown();
         if (stopped.aborted || !shown || change.repoKey !== repoKey || change.hash !== hash) return;
-        const next = { ...shown };
-        delete next.actionFence;
-        const actionFence = fences.fenceFor(repoKey, hash);
-        if (actionFence) next.actionFence = actionFence;
-        view.post(next);
+        view.post(shown);
     });
     const ended = fences.onDidEnd(async (endedHash) => {
         if (stopped.aborted || endedHash !== hash) return;
-        const update = await view.refetch();
-        if (update && !stopped.aborted) view.post(update);
+        await view.refetch();
     });
     stopped.addEventListener(
         "abort",
@@ -234,6 +260,32 @@ function repostOnFenceChange(
         },
         { once: true },
     );
+}
+
+/** `detail` with `actionFence` in place of the fence it carried; none removes it. */
+function withFence(
+    detail: CommitCiDetail,
+    actionFence: CommitCiDetail["actionFence"],
+): CommitCiDetail {
+    const next = { ...detail };
+    delete next.actionFence;
+    if (actionFence) next.actionFence = actionFence;
+    return next;
+}
+
+/**
+ * What a reply says about its own request rather than the CI data it shows: a failed Refresh's
+ * error and the sign-in host it routes to. Every other field (runs, checks, coverage, outcome,
+ * the merge marks of the reply's own rule read) belongs to the data. Undefined when none.
+ */
+function requestOutcome(
+    update: CommitCiDetail,
+): Pick<CommitCiDetail, "refreshError" | "signInHost"> | undefined {
+    if (update.refreshError === undefined) return undefined;
+    return {
+        refreshError: update.refreshError,
+        ...(update.signInHost !== undefined && { signInHost: update.signInHost }),
+    };
 }
 
 /** Whether a run is still looking for failed jobs past its page bound. */

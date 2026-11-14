@@ -1,0 +1,402 @@
+// Phase 9 review round 1: the required-rules read follows the signed-in account (K21).
+
+import { describe, expect, it, vi } from "vitest";
+import { interpolateL10n } from "../../../helpers/l10nTestHelper";
+import type {
+    CommitChecksProvider,
+    ProviderRepoRef,
+} from "../../../../src/services/commitChecks/types";
+import type { CommitCiDetail, CommitCiDetailData } from "../../../../src/types";
+import type { GitOps } from "../../../../src/git/operations";
+
+vi.mock("vscode", () => ({
+    authentication: { getSession: vi.fn() },
+    l10n: { t: interpolateL10n },
+}));
+
+import { CommitChecksCoordinator } from "../../../../src/services/commitChecks/coordinator";
+import { CiGenerations } from "../../../../src/services/commitChecks/ciGenerations";
+import type { RequiredChecks } from "../../../../src/services/commitChecks/requiredChecks";
+import { NO_CI_CAPABILITIES } from "../../../../src/shared/ci/capabilities";
+
+const ghRef = { host: "github.com", owner: "octo", repo: "app" } as ProviderRepoRef;
+
+const DETAIL: CommitCiDetailData = {
+    hash: "abc",
+    provider: "github",
+    complete: true,
+    outcome: "failure",
+    runs: [],
+    runsCoverage: "full",
+    otherChecks: [],
+    otherChecksCoverage: "full",
+};
+
+/** A detail whose only run stopped at the job page bound, so a failed-job scan continues it. */
+const OVERFLOW_DETAIL: CommitCiDetailData = {
+    ...DETAIL,
+    runs: [
+        {
+            id: "1",
+            name: "CI",
+            attempt: 1,
+            state: "failure",
+            jobs: [],
+            jobsCoverage: { reason: "pageBound", shown: 1000 },
+        },
+    ],
+    scanCursors: [{ runId: "1", runAttempt: 1, runName: "CI", url: "page-11" }],
+} as CommitCiDetailData;
+
+/** One provider whose merge rule depends on who is signed in, and a switch for who that is. */
+function setup(startAs = "admin", overflow = false, twoPages = false) {
+    let account = startAs;
+    let adminRequired = ["build"];
+    let clock = Date.now();
+    let holdAccount: Promise<void> | undefined;
+    let accountReads = 0;
+    let holdFromRead = Infinity;
+    let holdAdmin: Promise<void> | undefined;
+    let holdRule: Promise<void> | undefined;
+    let holdGit: Promise<void> | undefined;
+    let holdDetail: Promise<void> | undefined;
+    let releaseScan = () => {};
+    const scanHeld = new Promise<void>((resolve) => {
+        releaseScan = resolve;
+    });
+    let scanPages = 0;
+    const continueFailedScan = vi.fn(async () => {
+        await scanHeld;
+        scanPages += 1;
+        const name = scanPages === 1 ? "build" : "lint";
+        return {
+            failed: [
+                {
+                    id: scanPages === 1 ? "late" : "late-2",
+                    logicalId: `job\0CI\0${name}`,
+                    name,
+                    checkName: name,
+                    state: "failure" as const,
+                    steps: [],
+                },
+            ],
+            ...(twoPages && scanPages === 1
+                ? { next: { runId: "1", runAttempt: 1, runName: "CI", url: "page-12" } }
+                : {}),
+        };
+    });
+    const getRequiredChecks = vi.fn(async (): Promise<RequiredChecks> => {
+        let asker = account;
+        if (asker === "admin" && holdAdmin) await holdAdmin;
+        if (holdRule) {
+            // Like a provider that reads its session only after an await of its own.
+            await holdRule;
+            asker = account;
+        }
+        return asker === "admin"
+            ? { status: "known", names: adminRequired }
+            : { status: "unknown" };
+    });
+    const accountKey = vi.fn(async () => {
+        accountReads += 1;
+        if (accountReads >= holdFromRead) await holdAccount;
+        // Like VS Code's getSession, the answer is the account signed in when the read returns.
+        return `account-${account}`;
+    });
+    const provider: CommitChecksProvider = {
+        id: "github",
+        capabilities: { ...NO_CI_CAPABILITIES, requiredChecks: true },
+        match: () => ghRef,
+        keyFor: () => "github:github.com:octo/app",
+        accountKey,
+        getChecks: vi.fn(),
+        getDetail: vi.fn(async () => {
+            const wait = holdDetail;
+            holdDetail = undefined;
+            await wait;
+            return overflow ? OVERFLOW_DETAIL : DETAIL;
+        }),
+        getRequiredChecks,
+        ...(overflow ? { continueFailedScan } : {}),
+    };
+    const gitOps = {
+        getRemotes: vi.fn(async () => ["origin"]),
+        getRemoteUrl: vi.fn(async () => "https://github.com/octo/app.git"),
+        readDefaultBranch: vi.fn(async () => {
+            const wait = holdGit;
+            holdGit = undefined;
+            await wait;
+            return { name: "trunk", tipHash: "t1" };
+        }),
+    } as unknown as GitOps;
+    const generations = new CiGenerations();
+    const coordinator = new CommitChecksCoordinator(
+        gitOps,
+        [provider],
+        {},
+        { generations, now: () => clock },
+    );
+    return {
+        getRequiredChecks,
+        accountKey,
+        setAdminRequired: (names: string[]) => {
+            adminRequired = names;
+        },
+        advance: (ms: number) => {
+            clock += ms;
+        },
+        /** Lets `skip` more account reads through, then holds every later one until released. */
+        holdAccountReads: (skip = 0) => {
+            holdFromRead = accountReads + skip + 1;
+            let release = () => {};
+            holdAccount = new Promise<void>((resolve) => {
+                release = () => {
+                    holdAccount = undefined;
+                    resolve();
+                };
+            });
+            return release;
+        },
+        readDefaultBranch: gitOps.readDefaultBranch as ReturnType<typeof vi.fn>,
+        getDetailCalls: () => (provider.getDetail as ReturnType<typeof vi.fn>).mock.calls.length,
+        signInAs: (next: string) => {
+            account = next;
+        },
+        /** Holds the next Git read only; later reads are not held. */
+        holdGitRead: () => {
+            let release = () => {};
+            holdGit = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            return release;
+        },
+        /** Holds the next detail read only; a retry is not held. */
+        holdDetailRead: () => {
+            let release = () => {};
+            holdDetail = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            return release;
+        },
+        holdAdminRead: () => {
+            let release = () => {};
+            holdAdmin = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            return release;
+        },
+        /** Holds the next rule read; the provider learns who is signed in only on release. */
+        holdRuleRead: () => {
+            let release = () => {};
+            holdRule = new Promise<void>((resolve) => {
+                release = () => {
+                    holdRule = undefined;
+                    resolve();
+                };
+            });
+            return release;
+        },
+        bumpLifecycle: () => generations.bumpLifecycle(),
+        continueFailedScan,
+        releaseScan,
+        detail: (onScanUpdate?: (detail: CommitCiDetail) => void) =>
+            coordinator.getDetail("abc", {}, generations.capture("/repo"), onScanUpdate),
+    };
+}
+
+describe("rules are isolated when", () => {
+    it("rules are isolated when the current token account changes before the auth event", async () => {
+        const c = setup();
+        expect((await c.detail())?.requiredStatus).toBe("known");
+
+        c.signInAs("reader");
+        const asReader = await c.detail();
+
+        expect(asReader?.requiredStatus, "reader must not inherit admin's known rule").toBe(
+            "unknown",
+        );
+    });
+
+    it("an account change while only the rules read is pending cannot publish the old account", async () => {
+        const c = setup();
+        const release = c.holdAdminRead();
+        const pending = c.detail();
+        await vi.waitFor(() => expect(c.getRequiredChecks).toHaveBeenCalledTimes(1));
+
+        c.signInAs("reader");
+        release();
+        const published = await pending;
+
+        expect(published?.requiredStatus, "old admin result must be discarded or reread").not.toBe(
+            "known",
+        );
+    });
+
+    it("a switch during the Git read, then back, cannot reuse another account's known rule", async () => {
+        const c = setup("reader");
+        const release = c.holdGitRead();
+        const pending = c.detail();
+        await vi.waitFor(() => expect(c.readDefaultBranch).toHaveBeenCalledTimes(1));
+
+        c.signInAs("admin");
+        release();
+        await pending;
+        c.signInAs("reader");
+        const backAsReader = await c.detail();
+
+        expect(
+            backAsReader?.requiredStatus,
+            "reader must not reuse admin rule cached during git await",
+        ).toBe("unknown");
+    });
+
+    it("a switch after the rules settle, while the detail is pending, cannot publish the old account's rule", async () => {
+        const c = setup();
+        const release = c.holdDetailRead();
+        const pending = c.detail();
+        await vi.waitFor(() => expect(c.getRequiredChecks).toHaveBeenCalledTimes(1));
+        await vi.waitFor(() => expect(c.getDetailCalls()).toBe(1));
+        // Let the admin rules settle before the switch.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        c.signInAs("reader");
+        release();
+        const published = await pending;
+
+        expect(
+            published?.requiredStatus,
+            "new account detail must not be decorated with old account rules",
+        ).toBe("unknown");
+    });
+
+    it("the served detail names the default branch whose rules were applied", async () => {
+        const c = setup();
+
+        expect((await c.detail())?.defaultBranch).toBe("trunk");
+    });
+
+    it("an overflow update with no account switch carries the account's rule", async () => {
+        const c = setup("admin", true);
+        const updates: CommitCiDetail[] = [];
+        expect((await c.detail((d) => updates.push(d)))?.requiredStatus).toBe("known");
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(1));
+
+        c.releaseScan();
+
+        await vi.waitFor(() => expect(updates.map((d) => d.requiredStatus)).toEqual(["known"]));
+    });
+
+    it("an overflow update after an account switch cannot publish the old account's rule", async () => {
+        const c = setup("admin", true);
+        const updates: CommitCiDetail[] = [];
+        expect((await c.detail((d) => updates.push(d)))?.requiredStatus).toBe("known");
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(1));
+
+        c.signInAs("reader");
+        c.releaseScan();
+        // The control test above shows an unswitched update lands well inside this window.
+        await new Promise((resolve) => setTimeout(resolve, 30));
+
+        expect(
+            updates.some((d) => d.requiredStatus === "known"),
+            "reader must not receive the admin rules on an overflow update",
+        ).toBe(false);
+    });
+
+    it("overflow updates after the one hour boundary reread changed merge rules", async () => {
+        const c = setup("admin", true);
+        const updates: CommitCiDetail[] = [];
+        expect((await c.detail((d) => updates.push(d)))?.requiredStatus).toBe("known");
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(1));
+
+        c.setAdminRequired([]);
+        c.advance(61 * 60 * 1000);
+        c.releaseScan();
+        await vi.waitFor(() => expect(updates).toHaveLength(1));
+
+        const late = updates[0].runs[0].jobs.find((job) => job.id === "late");
+        expect(late?.required, "expired required rule must not mark a new update").toBe("no");
+    });
+
+    it("an account switch while the publish confirmation waits cannot publish the old account's rule", async () => {
+        const c = setup("admin", true);
+        const updates: CommitCiDetail[] = [];
+        expect((await c.detail((d) => updates.push(d)))?.requiredStatus).toBe("known");
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(1));
+        const readsBefore = c.accountKey.mock.calls.length;
+
+        // The update's rule read confirms the account once (cache hit, no fetch); every later
+        // read, the confirmation just before publishing, is held.
+        const release = c.holdAccountReads(1);
+        c.releaseScan();
+        await vi.waitFor(() => expect(c.accountKey.mock.calls.length).toBeGreaterThan(readsBefore));
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        c.signInAs("reader");
+        release();
+        await new Promise((resolve) => setTimeout(resolve, 30));
+
+        expect(
+            updates.some((d) => d.requiredStatus === "known"),
+            "reader must not receive admin marks while confirmation awaits",
+        ).toBe(false);
+    });
+
+    it("a switch after the account check, before the provider reads its session, is not cached for the first account", async () => {
+        const c = setup("reader");
+        const release = c.holdRuleRead();
+        const pending = c.detail();
+        await vi.waitFor(() => expect(c.getRequiredChecks).toHaveBeenCalledTimes(1));
+
+        c.signInAs("admin");
+        release();
+        await pending;
+        c.signInAs("reader");
+        const backAsReader = await c.detail();
+
+        expect(
+            backAsReader?.requiredStatus,
+            "reader must not reuse the admin rule fetched under the reader's key",
+        ).toBe("unknown");
+    });
+
+    it("an overflow update is dropped when CI settings change while its rule is reread", async () => {
+        const c = setup("admin", true);
+        const updates: CommitCiDetail[] = [];
+        expect((await c.detail((d) => updates.push(d)))?.requiredStatus).toBe("known");
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(1));
+        const gitReads = c.readDefaultBranch.mock.calls.length;
+
+        const release = c.holdGitRead();
+        c.releaseScan();
+        await vi.waitFor(() =>
+            expect(c.readDefaultBranch.mock.calls.length).toBeGreaterThan(gitReads),
+        );
+        c.bumpLifecycle();
+        release();
+        // The control test above shows an unchanged update lands well inside this window.
+        await new Promise((resolve) => setTimeout(resolve, 30));
+
+        expect(updates, "an update begun before the settings change must not publish").toEqual([]);
+    });
+
+    it("a slow first overflow update cannot overwrite a later one", async () => {
+        const c = setup("admin", true, true);
+        const updates: CommitCiDetail[] = [];
+        expect((await c.detail((d) => updates.push(d)))?.requiredStatus).toBe("known");
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(1));
+
+        // The first page's update waits on its Git read; the second page's does not.
+        const release = c.holdGitRead();
+        c.releaseScan();
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(updates).toHaveLength(1));
+        release();
+        // The control test above shows an unswitched update lands well inside this window.
+        await new Promise((resolve) => setTimeout(resolve, 30));
+
+        expect(
+            updates.at(-1)?.runs[0].jobs.map((job) => job.id),
+            "the last published update must keep the second page's job",
+        ).toContain("late-2");
+    });
+});

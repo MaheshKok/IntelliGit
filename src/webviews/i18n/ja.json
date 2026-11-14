@@ -545,5 +545,10 @@
     "commit.checks.tab.actionUncertain": "リクエストは送信された可能性があります。更新しています",
     "commit.checks.tab.writeScopeHelpGithub": "このリポジトリでワークフローを再実行またはキャンセルする権限がありません。",
     "commit.checks.tab.writeScopeHelpGitlab": "GitLab トークンは読み取り専用です。再実行やキャンセルには api スコープ付きのトークンを作成してください。",
-    "commit.checks.tab.writeActionsHelp": "これができるトークンの入手方法"
+    "commit.checks.tab.writeActionsHelp": "これができるトークンの入手方法",
+    "commit.checks.tab.blocksMerge": "マージをブロック",
+    "commit.checks.tab.optional": "任意",
+    "commit.checks.tab.requiredUnknown": "必須: 不明",
+    "commit.checks.tab.requiredScope": "{branch} の必須チェック",
+    "commit.checks.tab.defaultBranchUnknown": "既定のブランチが不明です — git remote set-head origin --auto を実行してください"
 }

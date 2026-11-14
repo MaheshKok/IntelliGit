@@ -565,5 +565,10 @@
     "commit.checks.tab.actionUncertain": "O pedido pode ter sido enviado; a atualizar",
     "commit.checks.tab.writeScopeHelpGithub": "Não tem permissão para executar novamente ou cancelar workflows neste repositório.",
     "commit.checks.tab.writeScopeHelpGitlab": "O seu token do GitLab é só de leitura. Crie um com o âmbito api para executar novamente ou cancelar.",
-    "commit.checks.tab.writeActionsHelp": "Como obter um token que o permita"
+    "commit.checks.tab.writeActionsHelp": "Como obter um token que o permita",
+    "commit.checks.tab.blocksMerge": "bloqueia o merge",
+    "commit.checks.tab.optional": "opcional",
+    "commit.checks.tab.requiredUnknown": "obrigatório: desconhecido",
+    "commit.checks.tab.requiredScope": "verificações obrigatórias de {branch}",
+    "commit.checks.tab.defaultBranchUnknown": "ramo predefinido desconhecido — execute git remote set-head origin --auto"
 }

@@ -74,6 +74,30 @@ export function stateLabel(state: CiState | CommitCheckState): string {
     return t(STATE_KEYS[state] ?? "commit.checks.state.unknown");
 }
 
+/** States in which a required check keeps a merge blocked: failed, or not finished yet. */
+const BLOCKING_STATES: ReadonlySet<CiState | CommitCheckState> = new Set([
+    "failure",
+    "cancelled",
+    "timed_out",
+    "action_required",
+    "queued",
+    "running",
+    "pending",
+]);
+
+/**
+ * Whether a job or check gets the "blocks merge" tag: required, and failed or unfinished.
+ *
+ * @param required - The job's or check's required mark; only "yes" can block.
+ * @param state - Its execution or badge state.
+ */
+export function blocksMerge(
+    required: "yes" | "no" | "unknown" | undefined,
+    state: CiState | CommitCheckState,
+): boolean {
+    return required === "yes" && BLOCKING_STATES.has(state);
+}
+
 /**
  * Earliest start and latest end over a set of runs, for the header's overall duration.
  *

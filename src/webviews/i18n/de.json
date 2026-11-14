@@ -555,5 +555,10 @@
     "commit.checks.tab.actionUncertain": "Die Anfrage wurde möglicherweise gesendet; wird aktualisiert",
     "commit.checks.tab.writeScopeHelpGithub": "Sie haben keine Berechtigung, Workflows in diesem Repository erneut auszuführen oder abzubrechen.",
     "commit.checks.tab.writeScopeHelpGitlab": "Ihr GitLab-Token ist schreibgeschützt. Erstellen Sie eines mit dem Bereich api, um erneut auszuführen oder abzubrechen.",
-    "commit.checks.tab.writeActionsHelp": "So erhalten Sie ein Token, das das darf"
+    "commit.checks.tab.writeActionsHelp": "So erhalten Sie ein Token, das das darf",
+    "commit.checks.tab.blocksMerge": "blockiert Merge",
+    "commit.checks.tab.optional": "optional",
+    "commit.checks.tab.requiredUnknown": "erforderlich: unbekannt",
+    "commit.checks.tab.requiredScope": "erforderliche Prüfungen von {branch}",
+    "commit.checks.tab.defaultBranchUnknown": "Standardbranch unbekannt – führen Sie git remote set-head origin --auto aus"
 }

@@ -51,4 +51,13 @@ export const checksStyles = {
         fontVariantNumeric: "tabular-nums",
         whiteSpace: "nowrap",
     },
+    tag: {
+        border: "1px solid currentColor",
+        borderRadius: 3,
+        padding: "0 4px",
+        fontSize: 11,
+        lineHeight: "14px",
+        whiteSpace: "nowrap",
+        flexShrink: 0,
+    },
 } satisfies Record<string, React.CSSProperties>;

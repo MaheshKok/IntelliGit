@@ -59,6 +59,30 @@ it in a narrower pane.
 The tab asks for detail only while it is open. A reply for a commit or repository that
 is no longer selected, or an older reply for the same commit, is dropped.
 
+### Required and optional checks
+
+A required job or check that failed or has not finished yet carries a red **blocks
+merge** tag. A GitLab job that is allowed to fail (`allow_failure`) carries a muted
+**optional** tag. When IntelliGit cannot tell which checks are required, the header says
+**required: unknown**; that is a fact about what the provider shares, not an error.
+
+- The rule is read for the repository's default branch, which IntelliGit takes from
+  `origin/HEAD` every time, never from a cache or a guessed `main`. The header names
+  that branch (**required checks from trunk**), whatever branch the run was on. When
+  `origin/HEAD` is missing, the header says so: run `git remote set-head origin --auto`
+  to set it.
+- GitHub: a check is required when the branch's rulesets or its branch protection name
+  it. Both are always read. A branch with no protection keeps the answer complete; when
+  your token may not read the protection settings, the header shows
+  **required: unknown** and only the ruleset checks can carry the tag.
+- GitLab: with **Pipelines must succeed** on in the project's merge request settings,
+  every job not allowed to fail is required. When the project setting cannot be read,
+  the header shows **required: unknown**.
+- Bitbucket Cloud and Bitbucket Server / Data Center always show **required: unknown**
+  in this release.
+- The rule is kept in memory for one hour per repository and branch; signing in or out
+  drops it. A network or server error is not kept, so the next look asks again.
+
 ### Write actions
 
 On GitHub and GitLab the tab can **Re-run failed** jobs of a failed run, **Re-run job**

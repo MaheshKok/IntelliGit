@@ -919,8 +919,12 @@ async function flushMicrotasks(): Promise<void> {
     await Promise.resolve();
 }
 
-/** A Checks tab detail whose failed-job overflow scan never ends. */
-async function endlessScanDetail(hash: string): Promise<CommitCiDetail> {
+/**
+ * A Checks tab detail with a failed-job overflow scan in `scan` state. A scan page posted
+ * before its read's reply should be "done": a running page stays shown over the read's older
+ * reply and keeps the re-read ladder going.
+ */
+async function scanDetail(hash: string, scan: "running" | "done"): Promise<CommitCiDetail> {
     const { NO_CI_CAPABILITIES } = await import("../../../src/shared/ci/capabilities");
     return {
         hash,
@@ -934,7 +938,7 @@ async function endlessScanDetail(hash: string): Promise<CommitCiDetail> {
                 state: "failure",
                 jobs: [],
                 jobsCoverage: { reason: "pageBound", shown: 1000 },
-                failedScan: { state: "running", found: 0 },
+                failedScan: { state: scan, found: 0 },
             },
         ],
         runsCoverage: "full",
@@ -2448,7 +2452,7 @@ describe("view providers integration", () => {
                 resolveWebviewView: (view: object, context: object, token: object) => void;
             };
             const hash = "a".repeat(40);
-            const page = await endlessScanDetail(hash);
+            const page = await scanDetail(hash, "done");
             const getDetail = vi
                 .spyOn(graph!, "getCommitCiDetail")
                 .mockImplementation(async (...args) => {
@@ -5843,7 +5847,7 @@ describe("view providers integration", () => {
             );
             const getDetail = vi
                 .spyOn(provider, "getCommitCiDetail")
-                .mockImplementation(async (hash: string) => endlessScanDetail(hash));
+                .mockImplementation(async (hash: string) => scanDetail(hash, "running"));
             const retired = createWebviewView();
             provider.resolveWebviewView(
                 retired.view as unknown as object,
@@ -5900,7 +5904,7 @@ describe("view providers integration", () => {
                 { ciRepoKey: () => "/repo" } as unknown as object,
             );
             const hash = "a".repeat(40);
-            const page = await endlessScanDetail(hash);
+            const page = await scanDetail(hash, "done");
             // The coordinator itself is replaced, so both the handler adapter and
             // `getCommitCiDetail` must hand the page callback on for it to arrive.
             const commitChecks = (

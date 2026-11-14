@@ -255,6 +255,26 @@ describe("GitLabProvider.getDetail", () => {
         expect(gl.headersSeen.every((h) => h["PRIVATE-TOKEN"] === TOKEN)).toBe(true);
     });
 
+    it("allow_failure marks optional", async () => {
+        const pipelineJobs = [
+            job(21, "failed", { name: "flaky", allow_failure: true }),
+            job(22, "failed", { name: "strict", allow_failure: false }),
+            job(23, "success", { name: "plain" }),
+        ];
+        const gl = fakeGitLab(
+            state({ jobsByPipeline: new Map([[PIPELINE_ID, pipelineJobs]]), statuses: [] }),
+        );
+
+        const detail = await provider(gl).getDetail(ref, SHA);
+
+        expect(detail.runs[0].jobs.map((j) => [j.name, j.optional])).toEqual([
+            ["flaky", true],
+            ["strict", undefined],
+            ["plain", undefined],
+        ]);
+        expect(provider(gl).capabilities.optionalJobs).toBe(true);
+    });
+
     it("maps every GitLab pipeline and job status to its CI state", async () => {
         const cases: [string, string][] = [
             ["created", "queued"],

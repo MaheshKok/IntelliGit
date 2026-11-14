@@ -545,5 +545,10 @@
     "commit.checks.tab.actionUncertain": "请求可能已发送；正在刷新",
     "commit.checks.tab.writeScopeHelpGithub": "你没有权限在此仓库中重新运行或取消工作流。",
     "commit.checks.tab.writeScopeHelpGitlab": "你的 GitLab 令牌是只读的。请创建一个具有 api 范围的令牌以重新运行或取消。",
-    "commit.checks.tab.writeActionsHelp": "如何获取具有此权限的令牌"
+    "commit.checks.tab.writeActionsHelp": "如何获取具有此权限的令牌",
+    "commit.checks.tab.blocksMerge": "阻止合并",
+    "commit.checks.tab.optional": "可选",
+    "commit.checks.tab.requiredUnknown": "必需: 未知",
+    "commit.checks.tab.requiredScope": "来自 {branch} 的必需检查",
+    "commit.checks.tab.defaultBranchUnknown": "默认分支未知 — 请运行 git remote set-head origin --auto"
 }

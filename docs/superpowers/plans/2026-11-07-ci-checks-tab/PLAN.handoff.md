@@ -9,51 +9,44 @@
 - Phase 5: accepted 6898d332, manual; owner OK 2026-11-12 (merged as #420, 86088cab).
 - Phase 6: accepted 69e809bb, verification incomplete (squash-merged as #422, 51b0c3ab).
 - Phase 7: accepted 6fef8c59, manual; owner OK 2026-11-12 (squash-merged as #424, 36bef4be).
-- Phase 8: accepted b5a56002, manual; owner OK 2026-11-13 ("A: fix by hand").
+- Phase 8: accepted b5a56002, manual; owner OK 2026-11-13 (squash-merged as #426, 7941c809).
+- Phase 9: accepted 37ba9d13, manual: finished by hand; elephant OK 2026-11-14 after the owner's answer "C: track in #432" (PR #430, not merged yet).
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 8 state
-- Built (0.43.10, e356954d): POST helper, `writeFor` through the request gate, GitHub/GitLab `runAction`, `ciActions.ts`, fence re-post and re-read, header buttons, cancel confirm, labels, 14 webview strings in 11 locales, README, CHANGELOG, e2e spec, coverage manifest entry.
-- Fix round 1 (dc2b08a2): sign-in recheck after the fence write, busy action released on invalidation or repo/commit change, header keyed per commit, redundant `notSeen` guard dropped.
-- Takeover (after round 2's review): the fence write (`beforeSend`) now runs inside the admitted request-gate callback (`WriteJson` 5th argument; `writeFor` awaits it, then rechecks sign-in, then sends; both providers pass it through). So a cooldown refuses before any fence, and the live-repository and provider-generation guard runs after any queue wait. `send()` maps ENOTFOUND, EAI_AGAIN and ECONNREFUSED to `RequestNotSentError` (fence deleted). Tests: commitChecksProviders.test.ts "a queued write runs its pre-send check once admitted…" and "a cooldown starting during the credential lookup…" (both providers), http.test.ts "a DNS or connection refusal…" and "a rejected beforeSend sends nothing". Five mutants on a copy all red.
-- Fix round 2 (0be960b4), review findings 1-5 and 7:
-  - `writeFor` captures the context before queueing and throws `RequestNotSentError` (superseded) inside the admitted gate callback when the sign-in or settings changed; the fence is removed (`ciActions.ts`).
-  - `coordinator.actionGuard(ctx, liveRepoKey)` replaces `isCurrentContext`: it holds the provider generation captured at the start and reads the live repository at the check. `runCiAction` takes the live repository as a 5th argument; the host passes `() => source.repoKey()`.
-  - `redactError` (normalize.ts) removes the provider's token from a write failure at each provider's write boundary; class, status and headers stay.
-  - `send()` turns a synchronous throw while building the request (Node's invalid-header rejection) into `RequestNotSentError`; `runCiAction` treats it as a definite failure and deletes the fence.
-  - A 401 (before or after the fence) returns outcome `signedOut` with the sign-in message, after dropping the commit from every cache and fetching again; the pane asks for the detail again, which is the existing signed-out detail with its Sign in button. Nothing is retried.
-- Mutations on a copy, all red naming a test: gate recheck removed, live repository ignored, provider generation ignored, redaction off, sync catch removed, 401 outcome back to failed, no reload after 401, not-sent branch removed, superseded message dropped.
-- Hand fix (b5a56002): `send()` settles once on a cut-off or missing response, and "never sent" is read from the socket (never connected) instead of a code list alone. Real-Node tests in httpWire.test.ts.
-- Phase 18's delete list now names `answerCiActionMessage`'s switch check and the switch-off half of the ciActionHandler.test.ts test.
+## Phase 9: accepted at 37ba9d13, started at b5a56002
+- The branch's real base is ca0271a6 (main after Phase 8's squash merge 7941c809 plus a docs commit); b5a56002 is not its ancestor.
+- Built (0.43.11): C2 required-checks read for GitHub (rulesets, paginated, union with classic protection) and GitLab (`only_allow_merge_if_pipeline_succeeds`); "blocks merge" / "optional" tags and the header's "required: unknown"; `RequiredChecksCache` (requiredChecks.ts, L1, 1 h); `readDefaultBranch` (origin/HEAD, no "main" fallback); CI_DETAIL_CONTRACT_VERSION 4 -> 5.
+- Fix round 1: protection's 403 always maps to partial/unknown; the rules cache is keyed by account; K21's hour pinned by literal ms.
+- Fix round 2 (review pending again): `getDetail` now runs the detail read and the required read under ONE `withAccount` attempt (the detail fetch no longer has its own nested loop), so a switch at any point rereads both and no account's rule marks another's detail. `readRequired` takes that attempt's account and confirm: it confirms after the Git read (before any provider request) and again after the fetch, so a rejected fetch is evicted from the cache; only an account change rejects, everything else stays `unknown`. The served detail carries `defaultBranch` (never stored), and the header shows "required checks from {branch}" (`ci-header-required-scope`; new key `commit.checks.tab.requiredScope`, 12 locales plus the CSV row). Round 1's cancelled-tag gap is pinned by an all-states table test.
+- Takeover (review pending again): a failed-job overflow scan update now confirms the attempt's account before it is published, so an account switch after the first answer cannot hand the old account's required marks to the new one; the stale update is dropped (the auth event refreshes the surface). Pinned by two tests in phase9Review.test.ts (a control that an unswitched update arrives, and the switched case).
 
 ## Decisions and why
-- Takeover: the fence moved into the gate callback instead of deleting a fence the gate refused, because plan §6 says a cooldown writes no fence at all; it holds one gate slot for the fence write. DNS/refused codes are a fixed list, not "socket never connected", because a reused keep-alive socket emits no connect event.
-- Finding 6 (GitHub `summaryMissed` makes a finished execution incomplete) is not in Phase 8's diff: it came in with Phase 7 (36bef4be, in base accf570d) and Phase 8 touches neither it nor `githubJobLog.test.ts`. The reviewer saw it by diffing against 6fef8c59. Left unchanged; see "Found outside scope".
-- Redaction mutates the thrown error's message in place instead of rebuilding it, so `RequestGateCooldownError` and its `until` survive.
-- The live repository is a function argument, not a coordinator field: the coordinator is per window and never knew which repository the pane shows.
-- The 401 outcome re-reads through the host instead of marking the pane signed out locally, so one source of truth (the detail's `signInHost`) drives the Sign in button.
+- `cancelled` counts as blocking, with failure, timed_out, action_required, queued, running and pending: a cancelled required check does not satisfy branch protection.
+- `defaultBranchUnknown` and `defaultBranch` are non-persisted detail fields (no contract version bump).
+- Cache key uses `provider.keyFor(ref)` plus the account.
+- A 403 with `retry-after` or `x-ratelimit-remaining: 0` on the rules read is transient (rejects, not cached). On the protection read every 403 maps per C2, so a rate-limited protection read caches partial/unknown for an hour.
+- Account change during a detail read: `withAccount` retries both reads, then gives an unavailable detail (no old-account answer is published).
 
 ## Open risks
-- Finding 7 (exact-worktree GitNexus detect_changes) is still unrun: `.gitnexus/run.cjs` is missing in the worktree and `detect-changes --repo <worktree>` answers "Repository not found" (only the two main checkouts are registered). Indexing the worktree would add a third entry to the shared registry; not done. Changed symbols by hand: runCiAction, refused (new), CommitChecksCoordinator.actionGuard (replaces isCurrentContext, one caller), writeFor, send, createHttpRequestJson users, GitHubProvider.runAction, GitLabProvider.runAction, useCiAction, ciActionAccess, answerCiActionMessage.
-- Phase 8 e2e spec not run locally (runs on CI).
-- Fable R1 (hand fix): a 502/504 from a gateway after the provider ran the action deletes the fence (K30 step 2, PLAN.md:333, treats every 5xx as definite), so a second click could start a second GitLab job. Owner's call; not changed.
-- `bun run test` (takeover): 8 failed / 8012 passed; the 8 are commit-list-column-resize.test.tsx, also red at base accf570d under Node v26.5.0.
+- GitNexus impact/detect_changes not run (worktree guard). Callers checked by hand: coordinator.getDetail/clear, provider capability maps, CheckTree/ChecksHeader.
+- The overflow scan's job pages themselves still run under whichever account is signed in when they are read; only their publication is now fenced by the account. Caching of scan pages is Phase 6 code and was not changed.
+- `bun run test`: 10 failed, the same 10 as before: 8 commit-list-column-resize (Node v26.5.0, no `localStorage`), tsconfigCoverage and screenshotComparatorMeta (worktree without its own node_modules).
+- Phase 9 e2e not run locally.
 
-## Next phase: 9
+## Next phase: 10
 
 ## Found outside scope
-- Phase 7 code: githubProvider.ts:513 marks a finished execution incomplete when an optional failure-summary lookup fails (`summaryMissed`), and githubJobLog.test.ts pins it. A reviewer says this contradicts the completion contract (plan lines 288/316); decide in a Phase 7 follow-up.
-- commit-list-column-resize.test.tsx fails under Node v26.5.0 (no global `localStorage`); red on base accf570d (8 tests).
-- tsconfigCoverage.test.ts and screenshotComparatorMeta.test.ts fail in a worktree without its own node_modules; pass with it.
-- l10n audit lists 13 pre-existing hardcoded-string candidates (non-blocking).
+- Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails; decide in a Phase 7 follow-up.
+- commit-list-column-resize.test.tsx fails under Node v26.5.0 (no global `localStorage`).
+- tsconfigCoverage.test.ts and screenshotComparatorMeta.test.ts fail in a worktree without its own node_modules.
+- l10n audit lists pre-existing hardcoded-string candidates (non-blocking).
 - knip hint: `tests/integration/shelf/selectedRemovalCrashWorker.ts` can leave `ignoreUnresolved`.
 - diffBudgets.test.ts "large compute" timing budget is load-sensitive.
 - GitHub carryScans treats two missing `runAttempt` values as the same run.
 - Extract detailOf/flatDetail into a shared module when Phase 17 adds a third provider detail.
-- `bun run package` can pack ignored `output/` leftovers; a copy under $TMPDIR/phase-run hits the socket-path limit unless TMPDIR is short.
+- `bun run package` can pack ignored `output/` leftovers.
 - noRepositoryMode.ts registers a placeholder `refreshBadges`, so a token change there clears no cache.
-- GitNexus registry holds two "IntelliGit" entries and no worktrees; the CLI cannot check a worktree.
+- GitNexus registry holds two "IntelliGit" entries and no worktrees.
 - Bitbucket detail reads (Phases 17/18) should pass the ETag store when they add metadata fetches.
-- The repo-wide `.gitignore` rules `logs` and `*.log` hide any future fixture folder named `logs`.
-- impeccable hook flags a placeholder `<img>` at commitChecksTab.integration.test.tsx:1261 (pre-existing test markup).
-- `git archive` run from a subfolder of a worktree packs only that subfolder; base copies need `git -C <root>`.
+- impeccable flags a placeholder `<img>` in commitChecksTab.integration.test.tsx (pre-existing test markup).
+- The worktree has no node_modules, so `node_modules/.bin/*` fails here; call the main checkout's binaries.
