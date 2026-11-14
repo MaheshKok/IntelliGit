@@ -262,9 +262,11 @@ export class CommitChecksCoordinator {
             async (account, checkedFetch, confirm) => {
                 // Read beside the detail and applied at serve time, so the detail cache never holds it.
                 const required = this.readRequired(match, account, confirm);
-                const markRequired = async (served: CommitCiDetail): Promise<CommitCiDetail> => {
-                    const rule = await required;
-                    return rule
+                const markRequired = (
+                    served: CommitCiDetail,
+                    rule: Awaited<typeof required>,
+                ): CommitCiDetail =>
+                    rule
                         ? applyRequired(
                               served,
                               rule.checks,
@@ -272,7 +274,6 @@ export class CommitChecksCoordinator {
                               rule.defaultBranch,
                           )
                         : served;
-                };
                 const scan: CiFailedScanHooks | undefined = continueFailedScan && {
                     continueScan: async (cursor) => {
                         try {
@@ -285,17 +286,20 @@ export class CommitChecksCoordinator {
                     onUpdate:
                         onScanUpdate &&
                         ((update) => {
-                            // The rule was read for this attempt's account: an update that lands
-                            // after a switch (or whose rule read was dropped for one) publishes nothing.
-                            void markRequired(update)
-                                .then(async (marked) => {
-                                    await confirm();
-                                    return marked;
-                                })
-                                .then(onScanUpdate, () => undefined);
+                            void (async () => {
+                                // Re-read through the 1 h cache (K21), so an update after the hour
+                                // carries the current rule, not the one the scan started with.
+                                const rule = await this.readRequired(match, account, confirm);
+                                const marked = markRequired(update, rule);
+                                await confirm();
+                                // No await from the account check to the publish, so the account
+                                // just confirmed is the one that receives the update.
+                                if (!this.isCurrent(ctx, providerGeneration)) return;
+                                onScanUpdate(marked);
+                            })().catch(() => undefined);
                         }),
                 };
-                const [detail] = await Promise.all([
+                const [detail, rule] = await Promise.all([
                     this.detailService.getOrFetch(
                         `${this.snapshotKey(match, account, hash)}#detail`,
                         checkedFetch,
@@ -306,7 +310,7 @@ export class CommitChecksCoordinator {
                     ),
                     required,
                 ]);
-                return markRequired(detail);
+                return markRequired(detail, rule);
             },
             unavailable,
         );

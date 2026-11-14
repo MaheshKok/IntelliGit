@@ -51,6 +51,11 @@ const OVERFLOW_DETAIL: CommitCiDetailData = {
 /** One provider whose merge rule depends on who is signed in, and a switch for who that is. */
 function setup(startAs = "admin", overflow = false) {
     let account = startAs;
+    let adminRequired = ["build"];
+    let clock = Date.now();
+    let holdAccount: Promise<void> | undefined;
+    let accountReads = 0;
+    let holdFromRead = Infinity;
     let holdAdmin: Promise<void> | undefined;
     let holdGit: Promise<void> | undefined;
     let holdDetail: Promise<void> | undefined;
@@ -76,14 +81,22 @@ function setup(startAs = "admin", overflow = false) {
     const getRequiredChecks = vi.fn(async (): Promise<RequiredChecks> => {
         const asker = account;
         if (asker === "admin" && holdAdmin) await holdAdmin;
-        return asker === "admin" ? { status: "known", names: ["build"] } : { status: "unknown" };
+        return asker === "admin"
+            ? { status: "known", names: adminRequired }
+            : { status: "unknown" };
+    });
+    const accountKey = vi.fn(async () => {
+        accountReads += 1;
+        if (accountReads >= holdFromRead) await holdAccount;
+        // Like VS Code's getSession, the answer is the account signed in when the read returns.
+        return `account-${account}`;
     });
     const provider: CommitChecksProvider = {
         id: "github",
         capabilities: { ...NO_CI_CAPABILITIES, requiredChecks: true },
         match: () => ghRef,
         keyFor: () => "github:github.com:octo/app",
-        accountKey: async () => `account-${account}`,
+        accountKey,
         getChecks: vi.fn(),
         getDetail: vi.fn(async () => {
             const wait = holdDetail;
@@ -103,9 +116,33 @@ function setup(startAs = "admin", overflow = false) {
         }),
     } as unknown as GitOps;
     const generations = new CiGenerations();
-    const coordinator = new CommitChecksCoordinator(gitOps, [provider], {}, { generations });
+    const coordinator = new CommitChecksCoordinator(
+        gitOps,
+        [provider],
+        {},
+        { generations, now: () => clock },
+    );
     return {
         getRequiredChecks,
+        accountKey,
+        setAdminRequired: (names: string[]) => {
+            adminRequired = names;
+        },
+        advance: (ms: number) => {
+            clock += ms;
+        },
+        /** Lets `skip` more account reads through, then holds every later one until released. */
+        holdAccountReads: (skip = 0) => {
+            holdFromRead = accountReads + skip + 1;
+            let release = () => {};
+            holdAccount = new Promise<void>((resolve) => {
+                release = () => {
+                    holdAccount = undefined;
+                    resolve();
+                };
+            });
+            return release;
+        },
         readDefaultBranch: gitOps.readDefaultBranch as ReturnType<typeof vi.fn>,
         getDetailCalls: () => (provider.getDetail as ReturnType<typeof vi.fn>).mock.calls.length,
         signInAs: (next: string) => {
@@ -236,6 +273,44 @@ describe("rules are isolated when", () => {
         expect(
             updates.some((d) => d.requiredStatus === "known"),
             "reader must not receive the admin rules on an overflow update",
+        ).toBe(false);
+    });
+
+    it("overflow updates after the one hour boundary reread changed merge rules", async () => {
+        const c = setup("admin", true);
+        const updates: CommitCiDetail[] = [];
+        expect((await c.detail((d) => updates.push(d)))?.requiredStatus).toBe("known");
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(1));
+
+        c.setAdminRequired([]);
+        c.advance(61 * 60 * 1000);
+        c.releaseScan();
+        await vi.waitFor(() => expect(updates).toHaveLength(1));
+
+        const late = updates[0].runs[0].jobs.find((job) => job.id === "late");
+        expect(late?.required, "expired required rule must not mark a new update").toBe("no");
+    });
+
+    it("an account switch while the publish confirmation waits cannot publish the old account's rule", async () => {
+        const c = setup("admin", true);
+        const updates: CommitCiDetail[] = [];
+        expect((await c.detail((d) => updates.push(d)))?.requiredStatus).toBe("known");
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(1));
+        const readsBefore = c.accountKey.mock.calls.length;
+
+        // The update's rule read confirms the account once (cache hit, no fetch); every later
+        // read, the confirmation just before publishing, is held.
+        const release = c.holdAccountReads(1);
+        c.releaseScan();
+        await vi.waitFor(() => expect(c.accountKey.mock.calls.length).toBeGreaterThan(readsBefore));
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        c.signInAs("reader");
+        release();
+        await new Promise((resolve) => setTimeout(resolve, 30));
+
+        expect(
+            updates.some((d) => d.requiredStatus === "known"),
+            "reader must not receive admin marks while confirmation awaits",
         ).toBe(false);
     });
 });
