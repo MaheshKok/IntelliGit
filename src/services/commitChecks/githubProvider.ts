@@ -325,9 +325,8 @@ export class GitHubProvider implements CommitChecksProvider {
      * C2: the union of the branch's ruleset `required_status_checks` and its branch
      * protection's `contexts`/`checks`. Both are read every time. Protection answering 404
      * "Branch not protected" adds nothing and keeps the result known; any other refusal of
-     * either read leaves `partial` (some names were read) or `unknown`; protection's 403
-     * always maps this way. A server error, a network failure or a rate-limited rules read
-     * rejects.
+     * either read leaves `partial` (some names were read) or `unknown`. A server error, a
+     * network failure or a rate-limited read of either endpoint rejects.
      */
     async getRequiredChecks(ref: ProviderRepoRef, branch: string): Promise<RequiredChecks> {
         const session = await openSession("");
@@ -362,11 +361,9 @@ export class GitHubProvider implements CommitChecksProvider {
         if (protection.status === "fulfilled") {
             readProtectionNames(protection.value).forEach((item) => names.add(item));
         } else if (!isNotProtected(protection.reason)) {
-            // C2: every 403 on protection is a refusal, a rate-limited one included, so the
-            // rule names already read are kept instead of thrown away.
-            const forbidden =
-                protection.reason instanceof HttpError && protection.reason.statusCode === 403;
-            if (!forbidden && !isRefusal(protection.reason)) {
+            // A 403 that says "slow down" (retry-after, or no quota left) rejects so the hour
+            // cache drops it and the request gate's pause holds; any other 403 is a refusal.
+            if (!isRefusal(protection.reason)) {
                 throw redactError(protection.reason, session.accessToken);
             }
             known = false;

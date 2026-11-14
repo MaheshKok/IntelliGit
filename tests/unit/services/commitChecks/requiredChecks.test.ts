@@ -33,6 +33,7 @@ import {
     RequiredChecksCache,
     type RequiredChecks,
 } from "../../../../src/services/commitChecks/requiredChecks";
+import { CommitChecksRequestGateRegistry } from "../../../../src/services/commitChecks/requestGate";
 import { NO_CI_CAPABILITIES } from "../../../../src/shared/ci/capabilities";
 
 const GH_REPO = "https://api.github.com/repos/octo/app";
@@ -545,6 +546,128 @@ describe("CommitChecksCoordinator required checks", () => {
         expect(c.readDefaultBranch).not.toHaveBeenCalled();
         expect(detail?.requiredStatus).toBeUndefined();
         expect(detail?.runs[0].jobs[0].required).toBeUndefined();
+    });
+});
+
+/**
+ * The real GitHub provider's rule read behind the real request gate, wired as activation wires
+ * it (commitChecksProviders.ts), inside the real coordinator and its hour cache, on one clock.
+ * Rulesets always answer `build`; protection gives `protectionAnswers` in order, the last one
+ * repeating. Only the run detail is stubbed, so `requests` holds the two rule endpoints only.
+ */
+function gatedGitHub(protectionAnswers: Answer[]) {
+    let clock = 1_000_000;
+    const now = () => clock;
+    const registry = new CommitChecksRequestGateRegistry("Paused for rate limiting.", now);
+    const requests: string[] = [];
+    let protectionReads = 0;
+    const fetchJson: FetchJson = (url) =>
+        registry.run("github", url, async () => {
+            requests.push(url);
+            const answer =
+                protectionAnswers[Math.min(protectionReads++, protectionAnswers.length - 1)];
+            if (answer instanceof Error) throw answer;
+            return answer;
+        });
+    const fetchWithMeta: FetchJsonWithMeta = (url) =>
+        registry.run("github", url, async () => {
+            requests.push(url);
+            return { statusCode: 200, headers: {}, body: [statusRule("build")] };
+        });
+    const provider = new GitHubProvider(fetchJson, undefined, fetchWithMeta, (url) =>
+        registry.cooldownEnd("github", url),
+    );
+    provider.getDetail = vi.fn(async () =>
+        detailData([ciJob("build"), ciJob("deploy"), ciJob("lint")]),
+    );
+    const gitOps = {
+        getRemotes: vi.fn(async () => ["origin"]),
+        getRemoteUrl: vi.fn(async () => "https://github.com/octo/app.git"),
+        readDefaultBranch: vi.fn(async () => ({ name: "trunk", tipHash: "t1" })),
+    } as unknown as GitOps;
+    const generations = new CiGenerations();
+    const coordinator = new CommitChecksCoordinator(gitOps, [provider], {}, { generations, now });
+    return {
+        requests,
+        advance: (ms: number) => {
+            clock += ms;
+        },
+        detail: () => coordinator.getDetail("abc", {}, generations.capture("/repo")),
+    };
+}
+
+const jobMarks = (detail: CommitCiDetail | undefined) =>
+    detail?.runs[0].jobs.map((job) => [job.name, job.required]);
+
+describe("a rate-limited protection read (owner's decision B, 2026-11-14)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        signedIn();
+    });
+
+    it.each([
+        [
+            "a 403 with retry-after and quota left",
+            new HttpError(403, "HTTP 403: You have exceeded a secondary rate limit", {
+                "retry-after": "60",
+                "x-ratelimit-remaining": "4000",
+            }),
+        ],
+        [
+            "a 403 with no quota left and a reset time",
+            new HttpError(403, "HTTP 403: API rate limit exceeded", {
+                "x-ratelimit-remaining": "0",
+                // The fake clock starts at 1 000 s, so the quota resets 60 s later.
+                "x-ratelimit-reset": "1060",
+            }),
+        ],
+    ])(
+        "%s is not saved, and GitHub is not asked again until the pause ends",
+        async (_, limited) => {
+            const gh = gatedGitHub([limited, protection(["deploy"])]);
+
+            const first = await gh.detail();
+            expect(first?.requiredStatus, "the rate-limited answer must not be shown as read").toBe(
+                "unknown",
+            );
+
+            gh.advance(10_000);
+            const asked = gh.requests.length;
+            const paused = await gh.detail();
+            expect(gh.requests.length - asked, "no request may reach GitHub during the pause").toBe(
+                0,
+            );
+            expect(paused?.requiredStatus).toBe("unknown");
+
+            gh.advance(51_000);
+            const after = await gh.detail();
+            expect(after?.requiredStatus, "the rule must be read again once the pause ends").toBe(
+                "known",
+            );
+            expect(jobMarks(after), "both requests' names must be required").toEqual([
+                ["build", "yes"],
+                ["deploy", "yes"],
+                ["lint", "no"],
+            ]);
+        },
+    );
+
+    it("a plain 403 with quota left and no retry-after stays partial and is saved for the hour", async () => {
+        const gh = gatedGitHub([FORBIDDEN, protection(["deploy"])]);
+
+        const first = await gh.detail();
+        gh.advance(10_000);
+        const asked = gh.requests.length;
+        const later = await gh.detail();
+        gh.advance(3_589_999);
+        await gh.detail();
+
+        expect(first?.requiredStatus).toBe("partial");
+        expect(later?.requiredStatus).toBe("partial");
+        expect(gh.requests.length - asked, "the saved partial answer is used for the hour").toBe(0);
+        gh.advance(1);
+        await gh.detail();
+        expect(gh.requests.length - asked, "the hour's end reads both endpoints again").toBe(2);
     });
 });
 

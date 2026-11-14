@@ -41,7 +41,7 @@ function providerWith(protectionError: HttpError) {
     return new GitHubProvider(fetchJson, undefined, fetchWithMeta);
 }
 
-describe("C2 every protection 403", () => {
+describe("C2 protection 403s", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.getSession.mockResolvedValue({
@@ -52,26 +52,25 @@ describe("C2 every protection 403", () => {
         });
     });
 
-    it("C2 every protection 403 retains readable rules as partial", async () => {
+    // Owner's decision B (2026-11-14): a protection 403 that says "slow down" is not a refusal.
+    it("a protection 403 with no quota left rejects instead of saving partial", async () => {
         const limited = new HttpError(403, "HTTP 403: API rate limit exceeded", {
             "x-ratelimit-remaining": "0",
         });
 
-        await expect(providerWith(limited).getRequiredChecks(ghRef, "trunk")).resolves.toEqual({
-            status: "partial",
-            names: ["build"],
-        });
+        await expect(providerWith(limited).getRequiredChecks(ghRef, "trunk")).rejects.toThrow(
+            "API rate limit exceeded",
+        );
     });
 
-    it("C2 every protection 403 with a retry-after header also maps instead of throwing", async () => {
+    it("a protection 403 with a retry-after header rejects instead of saving partial", async () => {
         const secondary = new HttpError(403, "HTTP 403: secondary rate limit", {
             "retry-after": "60",
         });
 
-        await expect(providerWith(secondary).getRequiredChecks(ghRef, "trunk")).resolves.toEqual({
-            status: "partial",
-            names: ["build"],
-        });
+        await expect(providerWith(secondary).getRequiredChecks(ghRef, "trunk")).rejects.toThrow(
+            "secondary rate limit",
+        );
     });
 });
 
