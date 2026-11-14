@@ -102,7 +102,7 @@ export async function runCiAction(
             await failFence(deps, start);
             return err.superseded ? changed : failed(getErrorMessage(err));
         }
-        if (!(err instanceof HttpError)) {
+        if (!definiteHttpFailure(err)) {
             await refetch(deps, hash, ctx);
             return { outcome: "uncertain" };
         }
@@ -155,7 +155,8 @@ function beforeOf(
 
 /**
  * The click-time detail the fence's baseline comes from, read fresh so it never predates an
- * external re-run. A failed fresh read is served from the cache, so it throws instead.
+ * external re-run. A failed fresh read (served from the cache, or with nothing cached the
+ * provider's unavailable detail) throws instead, carrying the provider's error.
  */
 async function freshBaseline(
     deps: CiActionDeps,
@@ -163,12 +164,23 @@ async function freshBaseline(
     ctx: CiOperationContext,
 ): Promise<CommitCiDetail | undefined> {
     const detail = await deps.coordinator.getDetail(hash, { force: true }, ctx);
-    if (detail?.refreshError !== undefined) {
+    if (detail?.refreshError !== undefined || detail?.outcome === "unavailable") {
         throw new Error(
-            detail.refreshError || vscode.l10n.t("Remote data changed. Reload and try again."),
+            detail.refreshError ||
+                detail.error ||
+                vscode.l10n.t("Remote data changed. Reload and try again."),
         );
     }
     return detail;
+}
+
+/**
+ * Whether a sent request's error is a definite refusal: an HTTP status below 500. Anything
+ * without a status, or a server-side (5xx) status, leaves the effect unknown, since the provider
+ * may have started the action before failing.
+ */
+function definiteHttpFailure(err: unknown): err is HttpError {
+    return err instanceof HttpError && err.statusCode < 500;
 }
 
 function failed(message: string): CiActionOutcome {

@@ -532,6 +532,7 @@
     "commit.checks.tab.logFailed": "无法加载日志：{error}",
     "commit.checks.tab.logTruncated": "此日志已在 50 MB 处截断——请在浏览器中打开以查看其余部分",
     "commit.checks.tab.rerunFailed": "重新运行失败的作业",
+    "commit.checks.tab.rerunFailedAndCanceled": "重新运行失败和已取消的作业",
     "commit.checks.tab.rerunJob": "重新运行作业",
     "commit.checks.tab.cancelRun": "取消运行",
     "commit.checks.tab.confirmCancel": "确认取消",

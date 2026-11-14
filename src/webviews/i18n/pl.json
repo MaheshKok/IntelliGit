@@ -562,6 +562,7 @@
     "commit.checks.tab.logFailed": "Nie można wczytać dziennika: {error}",
     "commit.checks.tab.logTruncated": "Ten dziennik obcięto przy 50 MB — otwórz go w przeglądarce, aby zobaczyć resztę",
     "commit.checks.tab.rerunFailed": "Uruchom ponownie nieudane",
+    "commit.checks.tab.rerunFailedAndCanceled": "Uruchom ponownie nieudane i anulowane",
     "commit.checks.tab.rerunJob": "Uruchom zadanie ponownie",
     "commit.checks.tab.cancelRun": "Anuluj uruchomienie",
     "commit.checks.tab.confirmCancel": "Potwierdź anulowanie",

@@ -532,6 +532,7 @@
     "commit.checks.tab.logFailed": "로그를 불러올 수 없습니다: {error}",
     "commit.checks.tab.logTruncated": "이 로그는 50MB에서 잘렸습니다. 나머지는 브라우저에서 여세요",
     "commit.checks.tab.rerunFailed": "실패한 작업 다시 실행",
+    "commit.checks.tab.rerunFailedAndCanceled": "실패 및 취소된 작업 다시 실행",
     "commit.checks.tab.rerunJob": "작업 다시 실행",
     "commit.checks.tab.cancelRun": "실행 취소",
     "commit.checks.tab.confirmCancel": "취소 확인",

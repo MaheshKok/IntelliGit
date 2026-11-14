@@ -552,6 +552,7 @@
     "commit.checks.tab.logFailed": "Não foi possível carregar o registo: {error}",
     "commit.checks.tab.logTruncated": "Este registo foi cortado a 50 MB — abra-o no navegador para ver o resto",
     "commit.checks.tab.rerunFailed": "Executar novamente os que falharam",
+    "commit.checks.tab.rerunFailedAndCanceled": "Executar novamente os que falharam e os cancelados",
     "commit.checks.tab.rerunJob": "Executar a tarefa novamente",
     "commit.checks.tab.cancelRun": "Cancelar execução",
     "commit.checks.tab.confirmCancel": "Confirmar cancelamento",

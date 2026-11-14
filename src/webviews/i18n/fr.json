@@ -552,6 +552,7 @@
     "commit.checks.tab.logFailed": "Impossible de charger le journal : {error}",
     "commit.checks.tab.logTruncated": "Ce journal a été coupé à 50 Mo — ouvrez-le dans le navigateur pour voir la suite",
     "commit.checks.tab.rerunFailed": "Relancer les échecs",
+    "commit.checks.tab.rerunFailedAndCanceled": "Relancer les échecs et les annulés",
     "commit.checks.tab.rerunJob": "Relancer le job",
     "commit.checks.tab.cancelRun": "Annuler l’exécution",
     "commit.checks.tab.confirmCancel": "Confirmer l’annulation",

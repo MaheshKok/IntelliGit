@@ -542,6 +542,7 @@
     "commit.checks.tab.logFailed": "Das Protokoll konnte nicht geladen werden: {error}",
     "commit.checks.tab.logTruncated": "Dieses Protokoll wurde bei 50 MB abgeschnitten – öffnen Sie es im Browser, um den Rest zu sehen",
     "commit.checks.tab.rerunFailed": "Fehlgeschlagene erneut ausführen",
+    "commit.checks.tab.rerunFailedAndCanceled": "Fehlgeschlagene und abgebrochene erneut ausführen",
     "commit.checks.tab.rerunJob": "Job erneut ausführen",
     "commit.checks.tab.cancelRun": "Lauf abbrechen",
     "commit.checks.tab.confirmCancel": "Abbruch bestätigen",

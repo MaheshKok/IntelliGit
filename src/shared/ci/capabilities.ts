@@ -20,7 +20,7 @@ export interface ProviderCiCapabilities {
     readonly annotations: boolean;
     /**
      * Re-run the failed jobs of a run. GitLab's pipeline retry, which this maps to there,
-     * also restarts canceled jobs, the same as GitLab's own Retry button.
+     * also restarts canceled jobs; `rerunFailedLabel` names that on the button.
      */
     readonly rerunFailed: boolean;
     /** Re-run one job. */
@@ -37,6 +37,8 @@ export interface ProviderCiCapabilities {
     readonly attemptHistory: boolean;
     /** l10n key of the 403 explanation for write actions. */
     readonly writeScopeHelp?: string;
+    /** l10n key of the re-run button when the retry restarts more than failed jobs; unset = "Re-run failed". */
+    readonly rerunFailedLabel?: string;
 }
 
 /**

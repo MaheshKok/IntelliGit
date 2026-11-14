@@ -192,6 +192,7 @@
     "commit.checks.tab.logFailed": "Could not load the log: {error}",
     "commit.checks.tab.logTruncated": "This log was cut at 50 MB — open it in the browser for the rest",
     "commit.checks.tab.rerunFailed": "Re-run failed",
+    "commit.checks.tab.rerunFailedAndCanceled": "Re-run failed and canceled",
     "commit.checks.tab.rerunJob": "Re-run job",
     "commit.checks.tab.cancelRun": "Cancel run",
     "commit.checks.tab.confirmCancel": "Confirm cancel",

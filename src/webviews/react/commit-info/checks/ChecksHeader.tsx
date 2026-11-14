@@ -126,7 +126,7 @@ function HeaderActions({
         <>
             {canRerun ? (
                 <ActionButton
-                    label={t("commit.checks.tab.rerunFailed")}
+                    label={t(capabilities.rerunFailedLabel ?? "commit.checks.tab.rerunFailed")}
                     target={{ action: "rerunFailed", runId: run.id }}
                     busy={busy}
                     onClick={send}

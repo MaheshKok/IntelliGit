@@ -491,6 +491,126 @@ describe("CI write actions", () => {
         expect(storedFences(workspace)).toEqual([]);
     });
 
+    const SENT_TO = [
+        { name: "GitHub", make: github, served: GITHUB_FAILED, runId: "77" },
+        { name: "GitLab", make: gitlab, served: GITLAB_FAILED, runId: "300" },
+    ] as const;
+
+    it.each(SENT_TO)(
+        "a 403 whose body times out still removes the fence on $name",
+        async (target) => {
+            vi.mocked(https.request).mockImplementation(((
+                _url: string,
+                _options: unknown,
+                onAnswer: (res: unknown) => void,
+            ) => {
+                let timeout: (() => void) | undefined;
+                const req = Object.assign(new EventEmitter(), {
+                    setTimeout: vi.fn((_ms: number, callback?: () => void) => {
+                        if (callback) timeout = callback;
+                    }),
+                    destroy: vi.fn((error: Error) => req.emit("error", error)),
+                    end: vi.fn(() => {
+                        req.emit(
+                            "socket",
+                            Object.assign(new EventEmitter(), { connecting: false }),
+                        );
+                        const res = Object.assign(new EventEmitter(), {
+                            statusCode: 403,
+                            headers: {},
+                        });
+                        onAnswer(res);
+                        // The idle timeout fires mid-body: the request errors before the response does.
+                        queueMicrotask(() => {
+                            timeout?.();
+                            res.emit("error", new Error("aborted"));
+                            res.emit("close");
+                        });
+                    }),
+                });
+                return req;
+            }) as unknown as typeof https.request);
+            const { deps, ctx, fences } = windowOver(
+                target.make({ current: target.served }, httpRequestJson),
+            );
+
+            const outcome = await runCiAction(
+                deps,
+                HASH,
+                { action: "rerunFailed", runId: target.runId },
+                ctx,
+            );
+
+            expect(
+                { outcome: outcome.outcome, fenced: fences.isFenced(HASH) },
+                "a received 403 is a refusal even if its body times out",
+            ).toEqual({ outcome: "forbidden", fenced: false });
+        },
+    );
+
+    it("a 5xx after the request was sent is uncertain: the fence stays and the detail is fetched again", async () => {
+        for (const target of SENT_TO) {
+            for (const status of [500, 502, 503, 504]) {
+                const write = vi.fn(async () => {
+                    throw new HttpError(status, `HTTP ${status}: upstream error`, {});
+                });
+                const provider = target.make({ current: target.served }, write);
+                const { deps, ctx, fences, coordinator } = windowOver(provider);
+                const invalidate = vi.spyOn(coordinator, "invalidate");
+
+                const outcome = await runCiAction(
+                    deps,
+                    HASH,
+                    { action: "rerunFailed", runId: target.runId },
+                    ctx,
+                );
+
+                expect(
+                    {
+                        outcome,
+                        fenced: fences.isFenced(HASH),
+                        invalidated: invalidate.mock.calls.length,
+                        fetches: vi.mocked(provider.getDetail).mock.calls.length,
+                    },
+                    `${target.name} ${status}: the server may have started the action before failing`,
+                ).toEqual({
+                    outcome: { outcome: "uncertain" },
+                    fenced: true,
+                    invalidated: 1,
+                    fetches: 2,
+                });
+                expect(write, "an unknown outcome is never retried").toHaveBeenCalledTimes(1);
+            }
+        }
+    });
+
+    it("a redirect or other 4xx after the request was sent is still a definite failure and removes the fence", async () => {
+        // A POST that is redirected was not run, so a 3xx is as definite as a 4xx.
+        for (const [target, status] of SENT_TO.flatMap((t) =>
+            [302, 404, 499].map((s) => [t, s] as const),
+        )) {
+            const write = vi.fn(async () => {
+                throw new HttpError(status, `HTTP ${status}`, {});
+            });
+            const { deps, ctx, fences, workspace } = windowOver(
+                target.make({ current: target.served }, write),
+            );
+
+            const outcome = await runCiAction(
+                deps,
+                HASH,
+                { action: "rerunFailed", runId: target.runId },
+                ctx,
+            );
+
+            expect(
+                { outcome: outcome.outcome, fenced: fences.isFenced(HASH) },
+                `${target.name} ${status} is a definite refusal`,
+            ).toEqual({ outcome: "failed", fenced: false });
+            expect(storedFences(workspace)).toEqual([]);
+        }
+    });
+
     it("401 removes the fence, rereads the detail and enters the sign-in state", async () => {
         const write = vi.fn(async () => {
             throw new HttpError(401, "HTTP 401: Bad credentials", {});
@@ -596,6 +716,20 @@ describe("CI write actions", () => {
             { outcome: outcome.outcome, fenced: fences.isFenced(HASH) },
             "the 403 status line decided the outcome before the body was cut off",
         ).toEqual({ outcome: "forbidden", fenced: false });
+    });
+
+    it("a real transport whose 503 body is cut off stays uncertain and keeps the fence", async () => {
+        cutOffTransport(503);
+        const { deps, ctx, fences } = windowOver(
+            github({ current: GITHUB_FAILED }, httpRequestJson),
+        );
+
+        const outcome = await runCiAction(deps, HASH, { action: "rerunFailed", runId: "77" }, ctx);
+
+        expect(
+            { outcome: outcome.outcome, fenced: fences.isFenced(HASH) },
+            "a cut-off 503 is the same unknown outcome as a whole 503",
+        ).toEqual({ outcome: "uncertain", fenced: true });
     });
 
     it("a write the gate dropped because the sign-in changed shows stale data and removes the fence", async () => {
@@ -817,6 +951,51 @@ describe("CI write actions", () => {
         });
         expect(calls, "nothing is sent").toEqual([]);
         expect(storedFences(workspace), "no fence is written").toEqual([]);
+    });
+
+    it("a failed refresh with no error text still stops the action before any write", async () => {
+        const calls: WriteCall[] = [];
+        const served: Served = { current: GITHUB_FAILED };
+        const { deps, ctx, coordinator, workspace } = windowOver(
+            github(served, recordingWrite(calls)),
+        );
+        await coordinator.getDetail(HASH, {}, ctx);
+        served.current = { ...GITHUB_FAILED, outcome: "unavailable" };
+
+        const outcome = await runCiAction(deps, HASH, { action: "rerunFailed", runId: "77" }, ctx);
+
+        expect(outcome).toEqual({
+            outcome: "failed",
+            message: "Remote data changed. Reload and try again.",
+        });
+        expect(calls, "an empty refreshError still marks the cached copy as stale").toEqual([]);
+        expect(storedFences(workspace)).toEqual([]);
+    });
+
+    it("a failed fresh read with nothing cached shows the provider's error and sends nothing", async () => {
+        const calls: WriteCall[] = [];
+        const { deps, ctx, workspace } = windowOver(
+            github(
+                {
+                    current: {
+                        ...GITHUB_FAILED,
+                        outcome: "unavailable",
+                        runs: [],
+                        error: "The host did not answer.",
+                    },
+                },
+                recordingWrite(calls),
+            ),
+        );
+
+        const outcome = await runCiAction(deps, HASH, { action: "rerunFailed", runId: "77" }, ctx);
+
+        expect(outcome, "the user sees why the read failed, not a stale-data message").toEqual({
+            outcome: "failed",
+            message: "The host did not answer.",
+        });
+        expect(calls).toEqual([]);
+        expect(storedFences(workspace)).toEqual([]);
     });
 
     it("restart while waiting shows waiting, never the old failure", async () => {

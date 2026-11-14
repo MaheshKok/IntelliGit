@@ -562,6 +562,7 @@
     "commit.checks.tab.logFailed": "Не удалось загрузить журнал: {error}",
     "commit.checks.tab.logTruncated": "Этот журнал обрезан на 50 МБ — откройте его в браузере, чтобы увидеть остальное",
     "commit.checks.tab.rerunFailed": "Перезапустить неудачные",
+    "commit.checks.tab.rerunFailedAndCanceled": "Перезапустить неудачные и отменённые",
     "commit.checks.tab.rerunJob": "Перезапустить задание",
     "commit.checks.tab.cancelRun": "Отменить запуск",
     "commit.checks.tab.confirmCancel": "Подтвердить отмену",

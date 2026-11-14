@@ -230,6 +230,8 @@ export class GitLabProvider implements CommitChecksProvider {
         rerunJob: true,
         cancel: true,
         writeScopeHelp: "commit.checks.tab.writeScopeHelpGitlab",
+        // POST pipelines/:id/retry restarts failed and canceled jobs.
+        rerunFailedLabel: "commit.checks.tab.rerunFailedAndCanceled",
     });
     /**
      * GitLab's runner writes a job's verdict as "ERROR: ...", often after a section marker and a

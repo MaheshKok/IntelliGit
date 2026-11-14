@@ -532,6 +532,7 @@
     "commit.checks.tab.logFailed": "ログを読み込めませんでした: {error}",
     "commit.checks.tab.logTruncated": "このログは 50 MB で切り詰められました。残りはブラウザーで開いてください",
     "commit.checks.tab.rerunFailed": "失敗したジョブを再実行",
+    "commit.checks.tab.rerunFailedAndCanceled": "失敗およびキャンセルされたジョブを再実行",
     "commit.checks.tab.rerunJob": "ジョブを再実行",
     "commit.checks.tab.cancelRun": "実行をキャンセル",
     "commit.checks.tab.confirmCancel": "キャンセルを確定",

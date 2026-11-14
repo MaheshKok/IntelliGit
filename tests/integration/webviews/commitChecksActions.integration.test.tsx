@@ -197,6 +197,20 @@ function openPane(detail: CommitCiDetail) {
 }
 
 describe("Checks tab write actions", () => {
+    it("the header's Re-run failed targets the run of the selected job", () => {
+        const first = { ...run("failure", [job("first-failed", "failure")]), id: "first" };
+        const second = { ...run("failure", [job("second-failed", "failure")]), id: "second" };
+        const { container } = openPane(failedDetail({ runs: [first, second] }));
+        click(
+            container.querySelector<HTMLElement>(
+                '[data-testid="ci-job-row"][data-name="second-failed"]',
+            ) ?? undefined,
+        );
+        click(button(container, "Re-run failed"));
+        expect(posted("runCiAction"), "the action targets the run the header now names").toEqual([
+            expect.objectContaining({ action: "rerunFailed", runId: "second" }),
+        ]);
+    });
     it("cancel needs confirm, then refreshes", () => {
         const { container } = openPane(runningDetail());
         expect(button(container, "Re-run failed"), "no re-run while running").toBeUndefined();
@@ -229,6 +243,38 @@ describe("Checks tab write actions", () => {
         const after = posted("requestCommitCiDetail");
         expect(after.length, "the detail is asked for again").toBe(before + 1);
         expect(after.at(-1), "through the host's refilled caches").not.toHaveProperty("force");
+    });
+
+    it("GitLab's re-run button says it also restarts canceled jobs; GitHub's does not", () => {
+        const gitlab = openPane(
+            failedDetail({
+                provider: "gitlab",
+                capabilities: {
+                    ...WRITE_CAPABILITIES,
+                    rerunFailedLabel: "commit.checks.tab.rerunFailedAndCanceled",
+                },
+            }),
+        );
+        expect(
+            button(gitlab.container, "Re-run failed and canceled"),
+            "GitLab's pipeline retry restarts canceled jobs too, so its label says so",
+        ).toBeDefined();
+        expect(
+            button(gitlab.container, "Re-run failed"),
+            "GitLab never shows the short label",
+        ).toBeUndefined();
+        click(button(gitlab.container, "Re-run failed and canceled"));
+        expect(posted("runCiAction")).toEqual([
+            expect.objectContaining({ action: "rerunFailed", runId: "77" }),
+        ]);
+        act(() => gitlab.root.unmount());
+
+        const github = openPane(failedDetail());
+        expect(
+            button(github.container, "Re-run failed"),
+            "GitHub keeps the short label",
+        ).toBeDefined();
+        expect(button(github.container, "Re-run failed and canceled")).toBeUndefined();
     });
 
     it("forbidden keeps the tree", () => {

@@ -70,6 +70,12 @@ describe("provider capabilities", () => {
                 );
             }
             expect(provider.capabilities.writeScopeHelp, provider.id).toBe(scopeHelp[provider.id]);
+            expect(
+                provider.capabilities.rerunFailedLabel,
+                `${provider.id}: only GitLab's retry also restarts canceled jobs`,
+            ).toBe(
+                provider.id === "gitlab" ? "commit.checks.tab.rerunFailedAndCanceled" : undefined,
+            );
             expect(provider.runAction === undefined, `${provider.id}.runAction`).toBe(
                 !on.includes("cancel"),
             );

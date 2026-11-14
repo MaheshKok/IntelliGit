@@ -221,6 +221,22 @@ describe("httpRequestJson", () => {
         }) as unknown as typeof https.request);
     }
 
+    it("a timeout after a 403 response head keeps the definite refusal", async () => {
+        const req = makeRequest();
+        const res = makeResponse(403);
+        stubRequest(req, res);
+        const promise = httpRequestJson("POST", "https://api.test/runs/1/cancel", {});
+        // The server sent its refusal but stalls before finishing the body.
+        req.timeoutCallback?.();
+        res.emit("error", new Error("aborted"));
+        res.emit("close");
+
+        await expect(
+            promise,
+            "a body timeout cannot erase an already received 403",
+        ).rejects.toMatchObject({ name: "HttpError", statusCode: 403 });
+    });
+
     it("sends one POST with its JSON body and resolves the 2xx body", async () => {
         const req = makeRequest();
         const res = makeResponse(201);

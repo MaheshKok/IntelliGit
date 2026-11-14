@@ -250,6 +250,7 @@ function send(
         // Read from this request's own socket; undefined until Node hands one over.
         let connected: boolean | undefined;
         let answered = false;
+        let cutOffReply: ((error: Error) => void) | undefined;
         const onAnswer = (res: http.IncomingMessage): void => {
             answered = true;
             const statusCode = res.statusCode ?? 0;
@@ -276,6 +277,7 @@ function send(
                 if (statusCode >= 300) answer();
                 else settle(() => reject(error));
             };
+            cutOffReply = cutOff;
             res.on("error", cutOff);
             res.on("close", () =>
                 cutOff(new Error("The connection closed before the response ended.")),
@@ -300,6 +302,12 @@ function send(
             if (socket.connecting) socket.once("connect", () => (connected = true));
         });
         req.on("error", (error: NodeJS.ErrnoException) => {
+            // A timeout or reset mid-body reaches the request before the response: once a reply
+            // arrived, its status decides, as for any cut-off body.
+            if (cutOffReply) {
+                cutOffReply(error);
+                return;
+            }
             // A socket that was handed over and never connected sent nothing; once it connected,
             // even a refusal code (re-emitted by a proxy agent) may follow a sent request.
             const neverSent =

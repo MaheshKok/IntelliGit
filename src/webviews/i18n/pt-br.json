@@ -552,6 +552,7 @@
     "commit.checks.tab.logFailed": "Não foi possível carregar o log: {error}",
     "commit.checks.tab.logTruncated": "Este log foi cortado em 50 MB — abra-o no navegador para ver o restante",
     "commit.checks.tab.rerunFailed": "Executar novamente os que falharam",
+    "commit.checks.tab.rerunFailedAndCanceled": "Executar novamente os que falharam e os cancelados",
     "commit.checks.tab.rerunJob": "Executar o job novamente",
     "commit.checks.tab.cancelRun": "Cancelar execução",
     "commit.checks.tab.confirmCancel": "Confirmar cancelamento",
