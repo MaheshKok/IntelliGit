@@ -17,6 +17,7 @@
 - Built (0.43.11): C2 required-checks read for GitHub (rulesets, paginated, union with classic protection) and GitLab (`only_allow_merge_if_pipeline_succeeds`); "blocks merge" / "optional" tags and the header's "required: unknown"; `RequiredChecksCache` (requiredChecks.ts, L1, 1 h); `readDefaultBranch` (origin/HEAD, no "main" fallback); CI_DETAIL_CONTRACT_VERSION 4 -> 5.
 - Fix round 1: protection's 403 always maps to partial/unknown; the rules cache is keyed by account; K21's hour pinned by literal ms.
 - Fix round 2 (review pending again): `getDetail` now runs the detail read and the required read under ONE `withAccount` attempt (the detail fetch no longer has its own nested loop), so a switch at any point rereads both and no account's rule marks another's detail. `readRequired` takes that attempt's account and confirm: it confirms after the Git read (before any provider request) and again after the fetch, so a rejected fetch is evicted from the cache; only an account change rejects, everything else stays `unknown`. The served detail carries `defaultBranch` (never stored), and the header shows "required checks from {branch}" (`ci-header-required-scope`; new key `commit.checks.tab.requiredScope`, 12 locales plus the CSV row). Round 1's cancelled-tag gap is pinned by an all-states table test.
+- Takeover (review pending again): a failed-job overflow scan update now confirms the attempt's account before it is published, so an account switch after the first answer cannot hand the old account's required marks to the new one; the stale update is dropped (the auth event refreshes the surface). Pinned by two tests in phase9Review.test.ts (a control that an unswitched update arrives, and the switched case).
 
 ## Decisions and why
 - `cancelled` counts as blocking, with failure, timed_out, action_required, queued, running and pending: a cancelled required check does not satisfy branch protection.
@@ -27,6 +28,7 @@
 
 ## Open risks
 - GitNexus impact/detect_changes not run (worktree guard). Callers checked by hand: coordinator.getDetail/clear, provider capability maps, CheckTree/ChecksHeader.
+- The overflow scan's job pages themselves still run under whichever account is signed in when they are read; only their publication is now fenced by the account. Caching of scan pages is Phase 6 code and was not changed.
 - `bun run test`: 10 failed, the same 10 as before: 8 commit-list-column-resize (Node v26.5.0, no `localStorage`), tsconfigCoverage and screenshotComparatorMeta (worktree without its own node_modules).
 - Phase 9 e2e not run locally.
 

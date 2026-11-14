@@ -285,8 +285,14 @@ export class CommitChecksCoordinator {
                     onUpdate:
                         onScanUpdate &&
                         ((update) => {
-                            // A rule read dropped for an account switch publishes nothing.
-                            void markRequired(update).then(onScanUpdate, () => undefined);
+                            // The rule was read for this attempt's account: an update that lands
+                            // after a switch (or whose rule read was dropped for one) publishes nothing.
+                            void markRequired(update)
+                                .then(async (marked) => {
+                                    await confirm();
+                                    return marked;
+                                })
+                                .then(onScanUpdate, () => undefined);
                         }),
                 };
                 const [detail] = await Promise.all([

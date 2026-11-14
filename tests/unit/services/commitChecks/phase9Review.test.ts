@@ -6,7 +6,7 @@ import type {
     CommitChecksProvider,
     ProviderRepoRef,
 } from "../../../../src/services/commitChecks/types";
-import type { CommitCiDetailData } from "../../../../src/types";
+import type { CommitCiDetail, CommitCiDetailData } from "../../../../src/types";
 import type { GitOps } from "../../../../src/git/operations";
 
 vi.mock("vscode", () => ({
@@ -32,12 +32,47 @@ const DETAIL: CommitCiDetailData = {
     otherChecksCoverage: "full",
 };
 
+/** A detail whose only run stopped at the job page bound, so a failed-job scan continues it. */
+const OVERFLOW_DETAIL: CommitCiDetailData = {
+    ...DETAIL,
+    runs: [
+        {
+            id: "1",
+            name: "CI",
+            attempt: 1,
+            state: "failure",
+            jobs: [],
+            jobsCoverage: { reason: "pageBound", shown: 1000 },
+        },
+    ],
+    scanCursors: [{ runId: "1", runAttempt: 1, runName: "CI", url: "page-11" }],
+} as CommitCiDetailData;
+
 /** One provider whose merge rule depends on who is signed in, and a switch for who that is. */
-function setup(startAs = "admin") {
+function setup(startAs = "admin", overflow = false) {
     let account = startAs;
     let holdAdmin: Promise<void> | undefined;
     let holdGit: Promise<void> | undefined;
     let holdDetail: Promise<void> | undefined;
+    let releaseScan = () => {};
+    const scanHeld = new Promise<void>((resolve) => {
+        releaseScan = resolve;
+    });
+    const continueFailedScan = vi.fn(async () => {
+        await scanHeld;
+        return {
+            failed: [
+                {
+                    id: "late",
+                    logicalId: "job\0CI\0build",
+                    name: "build",
+                    checkName: "build",
+                    state: "failure" as const,
+                    steps: [],
+                },
+            ],
+        };
+    });
     const getRequiredChecks = vi.fn(async (): Promise<RequiredChecks> => {
         const asker = account;
         if (asker === "admin" && holdAdmin) await holdAdmin;
@@ -54,9 +89,10 @@ function setup(startAs = "admin") {
             const wait = holdDetail;
             holdDetail = undefined;
             await wait;
-            return DETAIL;
+            return overflow ? OVERFLOW_DETAIL : DETAIL;
         }),
         getRequiredChecks,
+        ...(overflow ? { continueFailedScan } : {}),
     };
     const gitOps = {
         getRemotes: vi.fn(async () => ["origin"]),
@@ -97,7 +133,10 @@ function setup(startAs = "admin") {
             });
             return release;
         },
-        detail: () => coordinator.getDetail("abc", {}, generations.capture("/repo")),
+        continueFailedScan,
+        releaseScan,
+        detail: (onScanUpdate?: (detail: CommitCiDetail) => void) =>
+            coordinator.getDetail("abc", {}, generations.capture("/repo"), onScanUpdate),
     };
 }
 
@@ -170,5 +209,33 @@ describe("rules are isolated when", () => {
         const c = setup();
 
         expect((await c.detail())?.defaultBranch).toBe("trunk");
+    });
+
+    it("an overflow update with no account switch carries the account's rule", async () => {
+        const c = setup("admin", true);
+        const updates: CommitCiDetail[] = [];
+        expect((await c.detail((d) => updates.push(d)))?.requiredStatus).toBe("known");
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(1));
+
+        c.releaseScan();
+
+        await vi.waitFor(() => expect(updates.map((d) => d.requiredStatus)).toEqual(["known"]));
+    });
+
+    it("an overflow update after an account switch cannot publish the old account's rule", async () => {
+        const c = setup("admin", true);
+        const updates: CommitCiDetail[] = [];
+        expect((await c.detail((d) => updates.push(d)))?.requiredStatus).toBe("known");
+        await vi.waitFor(() => expect(c.continueFailedScan).toHaveBeenCalledTimes(1));
+
+        c.signInAs("reader");
+        c.releaseScan();
+        // The control test above shows an unswitched update lands well inside this window.
+        await new Promise((resolve) => setTimeout(resolve, 30));
+
+        expect(
+            updates.some((d) => d.requiredStatus === "known"),
+            "reader must not receive the admin rules on an overflow update",
+        ).toBe(false);
     });
 });
