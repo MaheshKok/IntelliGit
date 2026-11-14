@@ -362,7 +362,9 @@ export class GitHubProvider implements CommitChecksProvider {
             readProtectionNames(protection.value).forEach((item) => names.add(item));
         } else if (!isNotProtected(protection.reason)) {
             // A 403 that says "slow down" (retry-after, or no quota left) rejects so the hour
-            // cache drops it and the request gate's pause holds; any other 403 is a refusal.
+            // cache drops it; any other 403 is a refusal. The request gate pauses only when
+            // GitHub gives a usable wait time: a no-quota 403 with no usable reset gets no pause
+            // yet (#432).
             if (!isRefusal(protection.reason)) {
                 throw redactError(protection.reason, session.accessToken);
             }
