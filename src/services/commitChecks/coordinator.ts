@@ -754,8 +754,10 @@ function floorDetail(snapshot: CommitChecksSnapshot, provider: ProviderId): Comm
             source: item.source,
             url: item.url,
         })),
-        // A snapshot reports no truncation.
-        otherChecksCoverage: "full",
+        // A snapshot names no reason for its unread remainder; "pageBound" is the usual one.
+        otherChecksCoverage: snapshot.partial
+            ? { reason: "pageBound", shown: snapshot.items.length }
+            : "full",
         error: snapshot.error,
         signInHost: snapshot.signInHost,
     };

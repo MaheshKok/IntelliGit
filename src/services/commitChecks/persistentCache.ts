@@ -7,7 +7,8 @@ import { isCommitChecksSnapshot } from "../../shared/ci/persistedShape";
 import type { CommitChecksSnapshot } from "../../types";
 import type { CiActionFenceView } from "./ciActionFence";
 
-const SCHEMA_VERSION = 1;
+// 2: snapshots carry `partial`; a version 1 snapshot may be a cut list that looks whole.
+const SCHEMA_VERSION = 2;
 const DEFAULT_STORAGE_KEY = "intelligit.commitChecks.cache.v1";
 const DEFAULT_MAX_ENTRIES = 2_000;
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -311,8 +312,9 @@ export class CommitChecksPersistentCache {
     }
 }
 
-/** Returns true for a complete snapshot or a no-check snapshot. */
+/** Returns true for a complete snapshot or a no-check snapshot that was read in full. */
 export function isPersistableSnapshot(snapshot: CommitChecksSnapshot): boolean {
+    if (snapshot.partial) return false;
     return snapshot.state === "none" || isCompleteSnapshot(snapshot);
 }
 

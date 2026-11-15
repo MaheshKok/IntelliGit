@@ -276,10 +276,14 @@ export class BitbucketServerProvider implements CommitChecksProvider {
                 : await this.fetchJson(url, headers);
             if (!isStatusPage(raw)) break;
             rows.push(...raw.values);
-            start =
-                raw.isLastPage === false && typeof raw.nextPageStart === "number"
-                    ? raw.nextPageStart
-                    : undefined;
+            if (raw.isLastPage !== false) {
+                start = undefined;
+            } else if (typeof raw.nextPageStart === "number") {
+                start = raw.nextPageStart;
+            } else {
+                // A page that is not the last but names no next start leaves the rest unread.
+                return { rows, truncated: true };
+            }
         }
         return { rows, truncated: start !== undefined };
     }

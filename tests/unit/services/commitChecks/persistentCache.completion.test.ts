@@ -339,13 +339,13 @@ describe("CommitChecksPersistentCache completion and queue", () => {
             snapshot: snapshot("failure"),
             fetchedAt: 1_000,
             lastAccessedAt: 1_000,
-            schemaVersion: 1,
+            schemaVersion: 2,
             ...fields,
         });
         await badEntriesReadAsMissAndGetReplaced(
             (state) =>
                 new CommitChecksPersistentCache(state, { storageKey: STORE, now: () => 1_000 }),
-            (entries) => ({ schemaVersion: 1, entries, unconfirmed: {} }),
+            (entries) => ({ schemaVersion: 2, entries, unconfirmed: {} }),
             entry({ key: OLDER_KEY }),
             [
                 ["null entry", null],

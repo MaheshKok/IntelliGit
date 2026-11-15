@@ -251,6 +251,8 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             if (!isStatusPage(raw)) break;
             rows.push(...raw.values);
             url = normalizeBitbucketCloudNextUrl(raw.next);
+            // A next link that is present but refused or malformed leaves its page unread.
+            if (url === undefined && raw.next != null) return { rows, truncated: true };
         }
         return { rows, truncated: url !== undefined };
     }

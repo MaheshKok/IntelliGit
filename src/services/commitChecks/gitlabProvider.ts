@@ -463,7 +463,7 @@ export class GitLabProvider implements CommitChecksProvider {
         const token = await this.readToken(gitLabRef.host, hash);
         if (typeof token !== "string") return token;
 
-        const url = `${projectApiUrl(gitLabRef)}/repository/commits/${encodeURIComponent(hash)}/statuses?per_page=100`;
+        const url = `${projectApiUrl(gitLabRef)}/repository/commits/${encodeURIComponent(hash)}/statuses?per_page=${CI_PAGE_SIZE}`;
         const commitKey = `${this.keyFor(ref)}@${hash}`;
         const conditional = this.etags?.forCommit(commitKey);
 
@@ -492,6 +492,9 @@ export class GitLabProvider implements CommitChecksProvider {
             state,
             summary: summaryForItems(items, state),
             items,
+            // Only the first page is read, so a full one may hide more statuses. Following the
+            // pages needs the response headers this read does not get.
+            ...(raw.length >= CI_PAGE_SIZE && { partial: true }),
         };
         this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot));
         return snapshot;
