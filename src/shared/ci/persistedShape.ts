@@ -106,6 +106,7 @@ export const isCommitChecksSnapshot = shape<CommitChecksSnapshot>({
     summary: isString,
     items: listOf(checkItem),
     error: optionalString,
+    partial: optional(isBoolean),
     signInHost: optionalString,
 });
 

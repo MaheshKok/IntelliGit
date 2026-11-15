@@ -1,5 +1,13 @@
 import React from "react";
 import { VscChevronDown, VscChevronRight } from "react-icons/vsc";
+import {
+    alsoRed,
+    compare,
+    historyChecksOf,
+    type CiHistory,
+    type CiHistoryCheck,
+    type CiHistoryTag,
+} from "../../../../shared/ci/history";
 import { ELAPSED_TICK_MS, isOverdue } from "../../../../shared/ci/timing";
 import type { CiCoverage, CiJob, CiRun, CommitCiDetail } from "../../../../types";
 import { StateIcon } from "../../commit-list/CommitChecksPopover";
@@ -17,6 +25,12 @@ import { checksStyles } from "./checksStyles";
 
 interface CheckTreeProps {
     detail: CommitCiDetail;
+    /** The commit shown; a commit that is the default branch's tip gets no "also red" tag. */
+    hash?: string;
+    /** The snapshots the history tags compare with; absent until the host answers. */
+    history?: CiHistory;
+    /** The history answer found no default branch, or another one than the detail's. */
+    defaultBranchUnknown?: boolean;
     selectedJobId: string | null;
     onSelectJob: (job: CiJob) => void;
     onOpenUrl: (url: string) => void;
@@ -29,11 +43,34 @@ interface CheckTreeProps {
  */
 export function CheckTree({
     detail,
+    hash,
+    history,
+    defaultBranchUnknown,
     selectedJobId,
     onSelectJob,
     onOpenUrl,
     onRefresh,
 }: CheckTreeProps): React.ReactElement {
+    const historyCurrent = historyChecksOf(detail);
+    // A history answer with no default branch, or another one than the detail's, leaves required
+    // status unknown (§8): no blocks-merge tags.
+    const blocks: typeof blocksMerge = (required, state) =>
+        !defaultBranchUnknown && blocksMerge(required, state);
+    // A name is proven unique in the commit only when every population the join counts is whole.
+    const complete =
+        detail.runsCoverage === "full" &&
+        detail.otherChecksCoverage === "full" &&
+        detail.runs.every((run) => run.jobsCoverage === "full");
+    const tagsFor = (check: CiHistoryCheck): React.ReactElement | null =>
+        history ? (
+            <HistoryTags
+                check={check}
+                current={historyCurrent}
+                complete={complete}
+                history={history}
+                hash={hash}
+            />
+        ) : null;
     // Keyed by job id; a job not in the map follows its default (expanded when it failed).
     const [expanded, setExpanded] = React.useState<ReadonlyMap<string, boolean>>(new Map());
     const isExpanded = (job: CiJob): boolean => expanded.get(job.id) ?? job.state === "failure";
@@ -71,6 +108,8 @@ export function CheckTree({
                     onSelectJob={onSelectJob}
                     onOpenUrl={onOpenUrl}
                     onRefresh={onRefresh}
+                    tagsFor={tagsFor}
+                    blocks={blocks}
                 />
             ))}
             {detail.otherChecks.length > 0 && detail.runs.length > 0 ? (
@@ -98,7 +137,8 @@ export function CheckTree({
                     ) : (
                         <span style={nameStyle}>{check.name}</span>
                     )}
-                    {blocksMerge(check.required, check.state) ? <BlocksMergeTag /> : null}
+                    {blocks(check.required, check.state) ? <BlocksMergeTag /> : null}
+                    {tagsFor(check)}
                     {check.durationMs !== undefined ? (
                         <span data-testid="ci-check-duration" style={checksStyles.muted}>
                             {formatCiDurationMs(check.durationMs)}
@@ -130,6 +170,8 @@ function RunGroup({
     onSelectJob,
     onOpenUrl,
     onRefresh,
+    tagsFor,
+    blocks,
 }: {
     run: CiRun;
     now: number;
@@ -140,6 +182,8 @@ function RunGroup({
     onSelectJob: (job: CiJob) => void;
     onOpenUrl: (url: string) => void;
     onRefresh: () => void;
+    tagsFor: (check: CiHistoryCheck) => React.ReactElement | null;
+    blocks: typeof blocksMerge;
 }): React.ReactElement {
     return (
         <div>
@@ -210,7 +254,12 @@ function RunGroup({
                             <StateIcon state={badgeStateOf(job.state)} />
                             <span style={checksStyles.visuallyHidden}>{stateLabel(job.state)}</span>
                             <span style={nameStyle}>{job.name}</span>
-                            {blocksMerge(job.required, job.state) ? <BlocksMergeTag /> : null}
+                            {blocks(job.required, job.state) ? <BlocksMergeTag /> : null}
+                            {tagsFor({
+                                logicalId: job.logicalId,
+                                name: job.checkName,
+                                state: job.state,
+                            })}
                             {job.optional ? (
                                 <span
                                     data-testid="ci-tag-optional"
@@ -328,6 +377,64 @@ function BlocksMergeTag(): React.ReactElement {
         >
             {t("commit.checks.tab.blocksMerge")}
         </span>
+    );
+}
+
+const HISTORY_TAGS: Record<CiHistoryTag, { key: string; color: string }> = {
+    new: { key: "commit.checks.tab.history.new", color: JETBRAINS_UI.color.deleted },
+    still: { key: "commit.checks.tab.history.still", color: JETBRAINS_UI.color.modified },
+    fixed: { key: "commit.checks.tab.history.fixed", color: JETBRAINS_UI.color.added },
+    unknown: { key: "commit.checks.tab.history.unknown", color: JETBRAINS_UI.color.muted },
+};
+
+/**
+ * "new" / "still" / "fixed" / "unknown" against the first parent, and "also red on <branch>"
+ * against the default branch's tip, named as `origin/HEAD` names it. A snapshot the host could
+ * not read tags nothing. While the commit's own checks are only partly listed, nothing can be
+ * matched (a hidden check may share the name): a failed check is "unknown", with no other tag.
+ */
+function HistoryTags({
+    check,
+    current,
+    complete,
+    history,
+    hash,
+}: {
+    check: CiHistoryCheck;
+    current: readonly CiHistoryCheck[];
+    complete: boolean;
+    history: CiHistory;
+    hash: string | undefined;
+}): React.ReactElement {
+    const parentItems = history.parent?.items;
+    // A partly read snapshot is as unfit to prove a unique name as a partly listed commit is.
+    const tag = parentItems
+        ? compare(check, current, complete && !history.parent?.partial ? parentItems : [])
+        : null;
+    const tip = history.defaultBranch;
+    const red =
+        complete && !tip?.partial && tip?.items && tip.tipHash !== hash
+            ? alsoRed(check, current, tip.items)
+            : false;
+    return (
+        <>
+            {tag ? (
+                <span
+                    data-testid={`ci-tag-${tag}`}
+                    style={{ ...checksStyles.tag, color: HISTORY_TAGS[tag].color }}
+                >
+                    {t(HISTORY_TAGS[tag].key)}
+                </span>
+            ) : null}
+            {red && tip ? (
+                <span
+                    data-testid="ci-tag-also-red"
+                    style={{ ...checksStyles.tag, color: JETBRAINS_UI.color.deleted }}
+                >
+                    {t("commit.checks.tab.history.alsoRed", { branch: tip.name })}
+                </span>
+            ) : null}
+        </>
     );
 }
 

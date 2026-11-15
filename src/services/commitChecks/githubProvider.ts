@@ -439,7 +439,9 @@ export class GitHubProvider implements CommitChecksProvider {
             false,
             this.etags?.forCommit(commitKey),
         );
-        this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot));
+        // A partial snapshot is never persisted, so it is read again at every poll: it stays
+        // on conditional requests like an unfinished one.
+        this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot) && !snapshot.partial);
         return snapshot;
     }
 
@@ -503,17 +505,15 @@ export class GitHubProvider implements CommitChecksProvider {
             CI_MAX_PAGES,
             (url) => this.allowNext(ref, url, repositoryId),
         );
-        const { snapshot, checkRunIds, summaries } = await this.fetchSnapshot(
-            ref,
-            hash,
-            session,
-            true,
-            conditional,
-        );
+        const {
+            snapshot,
+            atSuiteLimit: refLimited,
+            checkRunIds,
+            summaries,
+        } = await this.fetchSnapshot(ref, hash, session, true, conditional);
         if (snapshot.state === "unavailable") return flatDetail(snapshot);
         // At GitHub's suite limit the snapshot is partial whether or not a job is missing from
         // it: the flat list reports the gap, and a missing job is looked up in its own suite.
-        const refLimited = await this.refAtSuiteLimit(ref, hash, session, conditional);
         const inOwnSuite = async (run: GitHubWorkflowRun, missing: readonly string[]) => {
             const suiteId = readId(run.check_suite_id);
             if (!refLimited || suiteId === undefined) return false;
@@ -812,6 +812,8 @@ export class GitHubProvider implements CommitChecksProvider {
         conditional?: EtagStore,
     ): Promise<{
         snapshot: CommitChecksSnapshot;
+        /** Whether the commit has as many check suites as GitHub lists check runs from. */
+        atSuiteLimit: boolean;
         checkRunIds: ReadonlySet<string>;
         summaries: ReadonlyMap<string, string>;
     }> {
@@ -836,6 +838,7 @@ export class GitHubProvider implements CommitChecksProvider {
             const reason = rejected.find(isCredentialRejection) ?? rejected[0];
             return {
                 snapshot: failedSnapshot(hash, ref.host, reason, session.accessToken),
+                atSuiteLimit: false,
                 checkRunIds: new Set(),
                 summaries: new Map(),
             };
@@ -843,13 +846,29 @@ export class GitHubProvider implements CommitChecksProvider {
 
         const checkRuns =
             checkRunsResult.status === "fulfilled" ? checkRunsResult.value : undefined;
+        const snapshot = normalizeGithubChecks(
+            hash,
+            checkRuns,
+            statusesResult.status === "fulfilled" ? statusesResult.value : undefined,
+            this.ciCdPattern,
+        );
+        // At GitHub's suite limit older suites are left out of the listing. A lookup that fails
+        // cannot prove the listing whole: the detail fails with it, the badge turns partial.
+        let atSuiteLimit = false;
+        let limitUnknown = false;
+        try {
+            atSuiteLimit = await this.refAtSuiteLimit(ref, hash, session, conditional);
+        } catch (err) {
+            if (requireBoth) throw err;
+            limitUnknown = true;
+        }
         return {
-            snapshot: normalizeGithubChecks(
-                hash,
-                checkRuns,
-                statusesResult.status === "fulfilled" ? statusesResult.value : undefined,
-                this.ciCdPattern,
-            ),
+            atSuiteLimit,
+            // The one endpoint that failed may hold a check sharing a name with one that was read.
+            snapshot:
+                rejected.length === 1 || atSuiteLimit || limitUnknown
+                    ? { ...snapshot, partial: true }
+                    : snapshot,
             checkRunIds: new Set(readCheckRuns(checkRuns).flatMap((run) => readId(run.id) ?? [])),
             summaries: new Map(
                 readCheckRuns(checkRuns).flatMap((run) => {

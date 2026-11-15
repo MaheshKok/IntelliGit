@@ -5,6 +5,7 @@ import type { CommitDetail, ThemeFolderIconMap, ThemeIconFont, ThemeTreeIcon } f
 import type {
     CancelCommitCiDetailMessage,
     CiActionResultMessage,
+    CiHistoryMessage,
     CiLogPreviewMessage,
     CiLogResultMessage,
     CommitCiDetailInvalidatedMessage,
@@ -12,6 +13,7 @@ import type {
     OpenChecksTabMessage,
     OpenCiLogMessage,
     RunCiActionMessage,
+    RequestCiHistoryMessage,
     OpenCommitChecksSettingsMessage,
     PreviewCiLogMessage,
     RequestCommitCiDetailMessage,
@@ -42,6 +44,7 @@ export type CommitInfoOutbound =
     | PreviewCiLogMessage
     | OpenCiLogMessage
     | RunCiActionMessage
+    | RequestCiHistoryMessage
     | OpenCommitChecksSettingsMessage
     | {
           /** Request to open a CI run, job or check URL outside the webview. */
@@ -93,4 +96,5 @@ export type CommitInfoInbound =
     | CiLogPreviewMessage
     | CiLogResultMessage
     | CiActionResultMessage
+    | CiHistoryMessage
     | OpenChecksTabMessage;

@@ -35,7 +35,7 @@
  * comment on the commit-checks trap).
  */
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -71,6 +71,7 @@ import { createFakeExtensionUri } from "../../visual/recorder/commitInfoVscodeDo
 import { throwingDouble } from "../../visual/recorder/throwingDouble";
 import { toGitEnvironment } from "../../visual/recorder/recordingGitEnvironment";
 import { buildProviderOptions } from "../../visual/recorder/recordCommitGraphWebviewFixture";
+import { setE2eControlChannelActive } from "../../../src/e2e/activationState";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 import { CredentialStore } from "../../../src/services/commitChecks/credentialStore";
@@ -744,5 +745,100 @@ describe("CommitGraphViewProvider default branch scope (#226)", () => {
             "the bottom graph opened scoped to the checked-out branch; it must open on every " +
                 "branch until the user clicks one in its branch column",
         ).toContain(workspace.commits.featureCommit3);
+    });
+});
+
+describe("CommitGraphViewProvider Checks tab history after a webview reload", () => {
+    beforeEach(() => setE2eControlChannelActive(true));
+    afterEach(() => setE2eControlChannelActive(false));
+
+    it("a reload's ready drops a history reply that was asked in the retired webview context", async () => {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            { ...buildProviderOptions("card"), ciRepoKey: () => "/repo" },
+        );
+        const { webviewView, posted, receiveMessage } =
+            createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+
+        let release!: (history: unknown) => void;
+        const retired = new Promise<unknown>((resolve) => (release = resolve));
+        const ciHistory = vi
+            .spyOn(
+                (provider as unknown as { commitChecks: { ciHistory: () => unknown } })
+                    .commitChecks,
+                "ciHistory",
+            )
+            .mockReturnValueOnce(retired as never)
+            .mockResolvedValue({ parent: null, defaultBranch: null } as never);
+        // Request ids restart at 1 in a reloaded webview, so both requests carry the same id.
+        const request = {
+            type: "requestCiHistory",
+            requestId: 1,
+            repoKey: "/repo",
+            hash: "a".repeat(40),
+            parents: ["b".repeat(40)],
+        };
+        const first = receiveMessage(request);
+        await flushMicrotasks();
+        await receiveMessage({ type: "ready" });
+        await receiveMessage(request);
+        release({ parent: null, defaultBranch: null });
+        await first;
+
+        expect(ciHistory).toHaveBeenCalledTimes(2);
+        const replies = posted.filter(
+            (message) => isRecord(message) && message.type === "ciHistory",
+        );
+        expect(replies, "only the reloaded context's reply is posted").toHaveLength(1);
+    });
+
+    it("a replaced view's late ready does not discard the current context's history reply", async () => {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            { ...buildProviderOptions("card"), ciRepoKey: () => "/repo" },
+        );
+        const retired = createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(retired.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const current = createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(current.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await current.receiveMessage({ type: "ready" });
+
+        let release!: (history: unknown) => void;
+        const pending = new Promise<unknown>((resolve) => (release = resolve));
+        vi.spyOn(
+            (provider as unknown as { commitChecks: { ciHistory: () => unknown } }).commitChecks,
+            "ciHistory",
+        ).mockReturnValue(pending as never);
+        const asked = current.receiveMessage({
+            type: "requestCiHistory",
+            requestId: 1,
+            repoKey: "/repo",
+            hash: "a".repeat(40),
+            parents: ["b".repeat(40)],
+        });
+        await flushMicrotasks();
+        await retired.receiveMessage({ type: "ready" });
+        release({ parent: null, defaultBranch: null });
+        await asked;
+
+        const replies = current.posted.filter(
+            (message) => isRecord(message) && message.type === "ciHistory",
+        );
+        expect(
+            replies,
+            "current context must receive its valid history despite retired ready",
+        ).toHaveLength(1);
     });
 });

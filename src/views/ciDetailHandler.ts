@@ -13,6 +13,7 @@ import { snapshotOf, withoutSnapshot } from "../services/commitChecks/detailServ
 import type { CommitChecksFetchOptions } from "../services/commitChecks/service";
 import type { CiActionRequest, CiLogJob } from "../services/commitChecks/types";
 import { isValidGitHash } from "../services/gitHelpers";
+import type { CiHistory } from "../shared/ci/history";
 import { PENDING_CHECK_RETRY_DELAYS_MS } from "../shared/ci/pollSchedule";
 import type { CommitCiDetail } from "../types";
 import type { CommitCiDetailMessage } from "../webviews/protocol/commitCiMessages";
@@ -32,6 +33,8 @@ export interface CommitCiDetailSource {
     logs?: CiLogAccess;
     /** CI write actions and their fences; absent = the host answers no action message. */
     actions?: CiActionAccess;
+    /** The snapshots the history tags compare with; absent = the host answers no history request. */
+    history?: (parents: readonly string[]) => Promise<CiHistory>;
 }
 
 /** A host's way to run CI write actions for the repository it shows. */

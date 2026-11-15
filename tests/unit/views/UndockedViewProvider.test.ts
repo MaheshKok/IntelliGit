@@ -903,6 +903,80 @@ describe("UndockedViewProvider Checks tab loops", () => {
         });
     });
 
+    it("a panel reload drops a history reply that was asked in the retired webview context", async () => {
+        await withLoopHarness(async ({ provider }) => {
+            const panel = openTestPanel(provider);
+            const posted = attachPostedMessageRecorder(panel);
+            let release!: (history: unknown) => void;
+            const retired = new Promise<unknown>((resolve) => (release = resolve));
+            const ciHistory = vi
+                .spyOn(
+                    (provider as unknown as { commitChecks: { ciHistory: () => unknown } })
+                        .commitChecks,
+                    "ciHistory",
+                )
+                .mockReturnValueOnce(retired as never)
+                .mockResolvedValue({ parent: null, defaultBranch: null } as never);
+            // Request ids restart at 1 in a reloaded webview, so both requests carry the same id.
+            const request = {
+                type: "requestCiHistory",
+                requestId: 1,
+                repoKey: "/repo-a",
+                hash: HASH_A,
+                parents: [HASH_B],
+            };
+            const first = panel.receiveMessage(request);
+            await vi.advanceTimersByTimeAsync(0);
+            // Only the generation matters here: ready's repository startup needs a real workspace.
+            await panel.receiveMessage({ type: "ready" }).catch(() => undefined);
+            await panel.receiveMessage(request);
+            release({ parent: null, defaultBranch: null });
+            await first;
+
+            expect(ciHistory).toHaveBeenCalledTimes(2);
+            const replies = posted.filter(
+                (message) => (message as { type?: string }).type === "ciHistory",
+            );
+            expect(replies, "only the reloaded context's reply is posted").toHaveLength(1);
+        });
+    });
+
+    it("a closed panel's late ready does not discard the current panel's history reply", async () => {
+        await withLoopHarness(async ({ provider }) => {
+            const retired = openTestPanel(provider);
+            retired.dispose();
+            const panel = openTestPanel(provider);
+            const posted = attachPostedMessageRecorder(panel);
+            let release!: (history: unknown) => void;
+            const pending = new Promise<unknown>((resolve) => (release = resolve));
+            vi.spyOn(
+                (provider as unknown as { commitChecks: { ciHistory: () => unknown } })
+                    .commitChecks,
+                "ciHistory",
+            ).mockReturnValue(pending as never);
+            const asked = panel.receiveMessage({
+                type: "requestCiHistory",
+                requestId: 1,
+                repoKey: "/repo-a",
+                hash: HASH_A,
+                parents: [HASH_B],
+            });
+            await vi.advanceTimersByTimeAsync(0);
+            // Only the generation matters here: ready's repository startup needs a real workspace.
+            await retired.receiveMessage({ type: "ready" }).catch(() => undefined);
+            release({ parent: null, defaultBranch: null });
+            await asked;
+
+            const replies = posted.filter(
+                (message) => (message as { type?: string }).type === "ciHistory",
+            );
+            expect(
+                replies,
+                "current context must receive its valid history despite retired ready",
+            ).toHaveLength(1);
+        });
+    });
+
     it("closing the panel stops its Checks tab loop", async () => {
         await withLoopHarness(async ({ provider, getDetail }) => {
             const panel = openTestPanel(provider);

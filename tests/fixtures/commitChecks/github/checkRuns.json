@@ -1,0 +1,53 @@
+{
+    "total_count": 2,
+    "check_runs": [
+        {
+            "id": 30001,
+            "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "node_id": "CR_kwDOAAAAAAAAB1E",
+            "external_id": "",
+            "url": "https://api.github.com/repos/o/r/check-runs/30001",
+            "html_url": "https://github.com/o/r/actions/runs/700/job/30001",
+            "details_url": "https://github.com/o/r/actions/runs/700/job/30001",
+            "status": "completed",
+            "conclusion": "failure",
+            "started_at": "2026-11-07T10:00:00Z",
+            "completed_at": "2026-11-07T10:04:00Z",
+            "output": {
+                "title": "unit-tests failed",
+                "summary": "",
+                "text": null,
+                "annotations_count": 1,
+                "annotations_url": "https://api.github.com/repos/o/r/check-runs/30001/annotations"
+            },
+            "name": "unit-tests",
+            "check_suite": { "id": 900 },
+            "app": { "id": 15368, "slug": "github-actions", "name": "GitHub Actions" },
+            "pull_requests": []
+        },
+        {
+            "id": 30002,
+            "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "node_id": "CR_kwDOAAAAAAAAB1I",
+            "external_id": "",
+            "url": "https://api.github.com/repos/o/r/check-runs/30002",
+            "html_url": "https://github.com/o/r/actions/runs/700/job/30002",
+            "details_url": "https://github.com/o/r/actions/runs/700/job/30002",
+            "status": "completed",
+            "conclusion": "success",
+            "started_at": "2026-11-07T10:00:00Z",
+            "completed_at": "2026-11-07T10:01:00Z",
+            "output": {
+                "title": null,
+                "summary": null,
+                "text": null,
+                "annotations_count": 0,
+                "annotations_url": "https://api.github.com/repos/o/r/check-runs/30002/annotations"
+            },
+            "name": "lint",
+            "check_suite": { "id": 900 },
+            "app": { "id": 15368, "slug": "github-actions", "name": "GitHub Actions" },
+            "pull_requests": []
+        }
+    ]
+}

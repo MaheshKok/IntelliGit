@@ -5399,7 +5399,8 @@ describe("view providers integration", () => {
                 activeHashes[0],
                 activeHashes[0],
             ]);
-            expect(httpGetJsonSpy).toHaveBeenCalledTimes(28);
+            // Per fetch: check runs, statuses and the one-item check-suite count.
+            expect(httpGetJsonSpy).toHaveBeenCalledTimes(42);
             expect(githubProviderKeys).toEqual(
                 Array(14).fill("github:github.com:owner/repository-0"),
             );
@@ -5515,7 +5516,8 @@ describe("view providers integration", () => {
             expect(fetchesByHash.size).toBe(activeHashes.length);
             expect([...fetchesByHash.values()].every((count) => count <= 4)).toBe(true);
             expect(githubProviderCalls.length).toBeLessThanOrEqual(48);
-            expect(httpGetJsonSpy.mock.calls.length).toBeLessThanOrEqual(96);
+            // Three requests per fetch: check runs, statuses and the check-suite count.
+            expect(httpGetJsonSpy.mock.calls.length).toBeLessThanOrEqual(144);
 
             const providerCallsAfterFinalRetry = githubProviderCalls.length;
             const httpCallsAfterFinalRetry = httpGetJsonSpy.mock.calls.length;

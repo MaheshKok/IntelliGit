@@ -210,12 +210,12 @@ describe("CommitCiDetailService", () => {
         expect(fetchDetail).toHaveBeenCalledTimes(1);
     });
 
-    it("the detail contract version is 6: details carry and accept 6, and an older entry is a miss", async () => {
-        expect(CI_DETAIL_CONTRACT_VERSION).toBe(6);
+    it("the detail contract version is 7: details carry and accept 7, and an older entry is a miss", async () => {
+        expect(CI_DETAIL_CONTRACT_VERSION).toBe(7);
         const state = memento();
         await service(state, () => 1_000).service.getOrFetch(KEY, async () => detail(), SERVE);
         const saved = state.values.get(STORAGE_KEY) as { entries: { contractVersion: number }[] };
-        expect(saved.entries.map((entry) => entry.contractVersion)).toEqual([6]);
+        expect(saved.entries.map((entry) => entry.contractVersion)).toEqual([7]);
 
         const written = (contractVersion: number) => {
             const stored = memento();
@@ -235,9 +235,15 @@ describe("CommitCiDetailService", () => {
         };
         const fetchDetail = vi.fn(async () => detail({ outcome: "success" }));
         await expect(
-            service(written(6), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
+            service(written(7), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
         ).resolves.toMatchObject({ outcome: "failure" });
         expect(fetchDetail).not.toHaveBeenCalled();
+        // Version 6 entries could hold a cut list saved as fully covered (before Phase 11).
+        await expect(
+            service(written(6), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
+        ).resolves.toMatchObject({ outcome: "success" });
+        expect(fetchDetail).toHaveBeenCalledTimes(1);
+        fetchDetail.mockClear();
         // Version 5 entries were read before running runs and jobs carried their usual duration.
         await expect(
             service(written(5), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),

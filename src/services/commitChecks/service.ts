@@ -304,6 +304,8 @@ export class CommitChecksService {
         const ageMs = this.now() - entry.fetchedAt;
         // A re-run or cancel the provider has not shown yet: any answer may be the old one.
         if (this.fences?.isFenced(entry.snapshot.hash)) return ageMs < this.pendingTtlMs;
+        // A list read in part is read again, so a recovered provider can make it whole.
+        if (entry.snapshot.partial) return ageMs < this.pendingTtlMs;
         if (isCompleteSnapshot(entry.snapshot)) return true;
         const { state } = entry.snapshot;
         if (state === "none") return ageMs < this.noneTtlMs;

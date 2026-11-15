@@ -553,5 +553,10 @@
     "commit.checks.tab.overdue": "지연됨",
     "commit.checks.tab.requiredUnknown": "필수: 알 수 없음",
     "commit.checks.tab.requiredScope": "{branch}의 필수 검사",
-    "commit.checks.tab.defaultBranchUnknown": "기본 브랜치를 알 수 없음 — git remote set-head origin --auto를 실행하세요"
+    "commit.checks.tab.defaultBranchUnknown": "기본 브랜치를 알 수 없음 — git remote set-head origin --auto를 실행하세요",
+    "commit.checks.tab.history.new": "새로 발생",
+    "commit.checks.tab.history.still": "계속",
+    "commit.checks.tab.history.fixed": "수정됨",
+    "commit.checks.tab.history.unknown": "알 수 없음",
+    "commit.checks.tab.history.alsoRed": "{branch}에서도 실패"
 }

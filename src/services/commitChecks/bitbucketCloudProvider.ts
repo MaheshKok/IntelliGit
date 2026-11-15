@@ -187,8 +187,13 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         const commitKey = `${this.keyFor(ref)}@${hash}`;
 
         let rows: BitbucketStatus[];
+        let truncated: boolean;
         try {
-            rows = await this.fetchAllPages(first, headers, this.etags?.forCommit(commitKey));
+            ({ rows, truncated } = await this.fetchAllPages(
+                first,
+                headers,
+                this.etags?.forCommit(commitKey),
+            ));
         } catch (err) {
             const message = getErrorMessage(err);
             if (/\bHTTP (401|403)\b/i.test(message)) {
@@ -213,8 +218,11 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             state,
             summary: summaryForItems(items, state),
             items,
+            ...(truncated ? { partial: true } : {}),
         };
-        this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot));
+        // A partial snapshot is never persisted, so it is read again at every poll: it stays
+        // on conditional requests like an unfinished one.
+        this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot) && !snapshot.partial);
         return snapshot;
     }
 
@@ -228,13 +236,14 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
      * @param headers - The auth headers to send on every page request.
      * @param conditional - The conditional-request store, for a commit still running at its
      *   last read; the `next` link is in the body, so a 304's stored body keeps it.
-     * @returns All status rows gathered across the fetched pages.
+     * @returns All status rows gathered across the fetched pages, and whether a page was left
+     *   unread (the bound was hit, or a page was not a status page).
      */
     private async fetchAllPages(
         firstUrl: string,
         headers: Record<string, string>,
         conditional: EtagStore | undefined,
-    ): Promise<BitbucketStatus[]> {
+    ): Promise<{ rows: BitbucketStatus[]; truncated: boolean }> {
         const rows: BitbucketStatus[] = [];
         let url: string | undefined = firstUrl;
         for (let page = 0; url && page < MAX_PAGES; page++) {
@@ -244,8 +253,10 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             if (!isStatusPage(raw)) break;
             rows.push(...raw.values);
             url = normalizeBitbucketCloudNextUrl(raw.next);
+            // A next link that is present but refused or malformed leaves its page unread.
+            if (url === undefined && raw.next != null) return { rows, truncated: true };
         }
-        return rows;
+        return { rows, truncated: url !== undefined };
     }
 }
 

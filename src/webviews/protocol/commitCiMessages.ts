@@ -1,6 +1,7 @@
 // Checks tab messages shared by every webview that renders the commit details pane
 // (the Git Log panel, the standalone Changed Files view and the undocked window).
 
+import type { CiHistory } from "../../shared/ci/history";
 import type { CiAction, CommitCiDetail } from "../../types";
 
 /** Host's reply to {@link RequestCommitCiDetailMessage}. */
@@ -75,6 +76,17 @@ export interface CiActionResultMessage {
 }
 
 /**
+ * Host's reply to {@link RequestCiHistoryMessage}: the snapshots the Checks tab compares the
+ * commit's checks with, read for this request.
+ */
+export interface CiHistoryMessage extends CiHistory {
+    type: "ciHistory";
+    requestId: number;
+    repoKey: string;
+    hash: string;
+}
+
+/**
  * Checks tab messages a webview sends to its host. Declared inline so the E2E coverage
  * manifest test, which reads outbound unions from source, sees every discriminant.
  */
@@ -137,6 +149,16 @@ type CommitCiOutbound =
           runId: string;
           /** Set for `rerunJob` only. */
           jobId?: string;
+      }
+    | {
+          /** Checks tab asks for the parent's and the default branch tip's snapshots. */
+          type: "requestCiHistory";
+          /** Monotonic per webview; only the reply to the newest one renders. */
+          requestId: number;
+          repoKey: string;
+          hash: string;
+          /** The commit's parents from the row the webview shows; only the first is compared. */
+          parents: string[];
       };
 
 /** Checks tab asks its host for a commit's CI detail. */
@@ -162,3 +184,5 @@ export type PreviewCiLogMessage = Extract<CommitCiOutbound, { type: "previewCiLo
 export type OpenCiLogMessage = Extract<CommitCiOutbound, { type: "openCiLog" }>;
 /** Checks tab asks to run a CI write action. */
 export type RunCiActionMessage = Extract<CommitCiOutbound, { type: "runCiAction" }>;
+/** Checks tab asks for the snapshots its history tags compare with. */
+export type RequestCiHistoryMessage = Extract<CommitCiOutbound, { type: "requestCiHistory" }>;

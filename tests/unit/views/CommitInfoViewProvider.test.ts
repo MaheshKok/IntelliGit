@@ -722,3 +722,86 @@ describe("CommitInfoViewProvider redundant setCommitDetail post", () => {
         ).toEqual(["b08ddf03", "70fa5286"]);
     });
 });
+
+describe("CommitInfoViewProvider Checks tab history after a webview reload", () => {
+    beforeEach(() => setE2eControlChannelActive(true));
+    afterEach(() => setE2eControlChannelActive(false));
+
+    it("a reload's ready drops a history reply that was asked in the retired webview context", async () => {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        const view = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await view.receiveMessage({ type: "ready" });
+        let release!: (history: unknown) => void;
+        const retired = new Promise<unknown>((resolve) => (release = resolve));
+        const history = vi
+            .fn()
+            .mockReturnValueOnce(retired)
+            .mockResolvedValue({
+                parent: null,
+                defaultBranch: { name: "new-tip", tipHash: "c".repeat(40), items: [] },
+            });
+        provider.setCiSource({
+            enabled: true,
+            repoKey: () => "/repo",
+            getDetail: vi.fn(),
+            history,
+        });
+        // Request ids restart at 1 in a reloaded webview, so both requests carry the same id.
+        const request = {
+            type: "requestCiHistory",
+            requestId: 1,
+            repoKey: "/repo",
+            hash: "a".repeat(40),
+            parents: ["b".repeat(40)],
+        };
+        const first = view.receiveMessage(request);
+        await flushMicrotasks();
+        await view.receiveMessage({ type: "ready" });
+        await view.receiveMessage(request);
+        release({
+            parent: null,
+            defaultBranch: { name: "old-tip", tipHash: "d".repeat(40), items: [] },
+        });
+        await first;
+        const replies = view.posted.filter(
+            (message) => isRecord(message) && message.type === "ciHistory",
+        );
+        expect(replies, "only the reloaded context's reply is posted").toHaveLength(1);
+    });
+
+    it("a replaced view's late ready does not discard the current context's history reply", async () => {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        const retired = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(retired.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const current = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(current.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await current.receiveMessage({ type: "ready" });
+        let release!: (history: unknown) => void;
+        const pending = new Promise<unknown>((resolve) => (release = resolve));
+        provider.setCiSource({
+            enabled: true,
+            repoKey: () => "/repo",
+            getDetail: vi.fn(),
+            history: vi.fn().mockReturnValue(pending),
+        });
+        const asked = current.receiveMessage({
+            type: "requestCiHistory",
+            requestId: 1,
+            repoKey: "/repo",
+            hash: "a".repeat(40),
+            parents: ["b".repeat(40)],
+        });
+        await flushMicrotasks();
+        await retired.receiveMessage({ type: "ready" });
+        release({ parent: null, defaultBranch: null });
+        await asked;
+        const replies = current.posted.filter(
+            (message) => isRecord(message) && message.type === "ciHistory",
+        );
+        expect(
+            replies,
+            "current context must receive its valid history despite retired ready",
+        ).toHaveLength(1);
+    });
+});

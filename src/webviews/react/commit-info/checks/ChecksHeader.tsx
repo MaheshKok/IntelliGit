@@ -16,6 +16,7 @@ import type { CiActionTarget } from "./useCiAction";
  */
 export function ChecksHeader({
     detail,
+    defaultBranchUnknown,
     actionRun,
     busy = null,
     onAction,
@@ -23,6 +24,12 @@ export function ChecksHeader({
     onOpenUrl,
 }: {
     detail: CommitCiDetail | null | undefined;
+    /**
+     * Whether the history read found no `origin/HEAD`, so neither "also red on" nor required
+     * checks can be shown; read after the detail, it overrides the detail's flag. Undefined
+     * until history answers.
+     */
+    defaultBranchUnknown?: boolean;
     /** The run the header's actions target. */
     actionRun?: CiRun;
     /** The action in flight; every action button waits for it. */
@@ -44,6 +51,8 @@ export function ChecksHeader({
               })
             : undefined;
     const url = shownRun?.url;
+    // A missing default branch leaves no required checks to read (§8), whatever the older detail said.
+    const branchUnknown = defaultBranchUnknown ?? detail?.defaultBranchUnknown;
     return (
         <div data-testid="ci-header" style={headerStyle}>
             {detail ? (
@@ -58,17 +67,19 @@ export function ChecksHeader({
                             {runLine}
                         </span>
                     ) : null}
-                    {!detail.capabilities.requiredChecks || detail.requiredStatus !== "known" ? (
+                    {branchUnknown ||
+                    !detail.capabilities.requiredChecks ||
+                    detail.requiredStatus !== "known" ? (
                         <span data-testid="ci-header-required" style={runLineStyle}>
                             {t("commit.checks.tab.requiredUnknown")}
                         </span>
                     ) : null}
-                    {detail.defaultBranch ? (
+                    {detail.defaultBranch && !branchUnknown ? (
                         <span data-testid="ci-header-required-scope" style={runLineStyle}>
                             {t("commit.checks.tab.requiredScope", { branch: detail.defaultBranch })}
                         </span>
                     ) : null}
-                    {detail.defaultBranchUnknown ? (
+                    {branchUnknown ? (
                         <span data-testid="ci-header-default-branch" style={runLineStyle}>
                             {t("commit.checks.tab.defaultBranchUnknown")}
                         </span>

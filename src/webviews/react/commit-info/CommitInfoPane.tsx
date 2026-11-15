@@ -297,6 +297,7 @@ export function CommitInfoPane({
                     <ChecksTab
                         repoKey={ciRepoKey}
                         hash={detail.hash}
+                        parentHashes={detail.parentHashes}
                         enabled={commitChecksEnabled}
                     />
                 ) : (

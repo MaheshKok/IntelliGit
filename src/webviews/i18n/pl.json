@@ -583,5 +583,10 @@
     "commit.checks.tab.overdue": "opóźnione",
     "commit.checks.tab.requiredUnknown": "wymagane: nieznane",
     "commit.checks.tab.requiredScope": "wymagane kontrole z {branch}",
-    "commit.checks.tab.defaultBranchUnknown": "domyślna gałąź nieznana — uruchom git remote set-head origin --auto"
+    "commit.checks.tab.defaultBranchUnknown": "domyślna gałąź nieznana — uruchom git remote set-head origin --auto",
+    "commit.checks.tab.history.new": "nowy",
+    "commit.checks.tab.history.still": "nadal",
+    "commit.checks.tab.history.fixed": "naprawiony",
+    "commit.checks.tab.history.unknown": "nieznany",
+    "commit.checks.tab.history.alsoRed": "również czerwony na {branch}"
 }

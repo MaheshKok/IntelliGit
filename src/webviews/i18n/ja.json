@@ -553,5 +553,10 @@
     "commit.checks.tab.overdue": "超過",
     "commit.checks.tab.requiredUnknown": "必須: 不明",
     "commit.checks.tab.requiredScope": "{branch} の必須チェック",
-    "commit.checks.tab.defaultBranchUnknown": "既定のブランチが不明です — git remote set-head origin --auto を実行してください"
+    "commit.checks.tab.defaultBranchUnknown": "既定のブランチが不明です — git remote set-head origin --auto を実行してください",
+    "commit.checks.tab.history.new": "新規",
+    "commit.checks.tab.history.still": "継続",
+    "commit.checks.tab.history.fixed": "修正済み",
+    "commit.checks.tab.history.unknown": "不明",
+    "commit.checks.tab.history.alsoRed": "{branch} でも失敗"
 }

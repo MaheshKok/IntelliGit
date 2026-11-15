@@ -36,6 +36,7 @@ import {
 } from "./ciDetailHandler";
 import { answerCiLogMessage } from "./ciLogHandler";
 import { answerCiActionMessage, ciActionAccess, type CiActionOptions } from "./ciActionHandler";
+import { answerCiHistoryRequest } from "./ciHistoryHandler";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
 import { postWebviewMessage } from "./webviewDelivery";
@@ -275,6 +276,8 @@ export class UndockedViewProvider {
      * commit-detail cache is cleared, so a redundant-looking repost after either is never wrongly
      * suppressed. */
     private lastPostedPayload: string | undefined;
+    /** Advances on every `ready`; a reload keeps this panel, so a reply is told apart by it. */
+    private webviewGeneration = 0;
     private themeChangeDisposables: vscode.Disposable[] = [];
     // Commit-panel state
     private files: WorkingFile[] = [];
@@ -452,6 +455,7 @@ export class UndockedViewProvider {
             generations: this.ciGenerations,
             getDetail: (hash, options, ctx, onScanUpdate) =>
                 this.commitChecks.getDetail(hash, options, ctx, onScanUpdate),
+            history: (parents) => this.commitChecks.ciHistory(parents),
             ...(store && {
                 logs: {
                     store,
@@ -833,10 +837,15 @@ export class UndockedViewProvider {
                 msg.type === "cancelCommitCiDetail" ||
                 msg.type === "previewCiLog" ||
                 msg.type === "openCiLog" ||
-                msg.type === "runCiAction";
+                msg.type === "runCiAction" ||
+                msg.type === "requestCiHistory";
             if (ciMessage && this.panel !== panel) return;
-            // A window reload sends ready without reopening the panel and ends the old scan loop.
-            if (msg.type === "ready" && this.panel === panel) this.ciDetailLoops.dispose();
+            // A window reload sends ready without reopening the panel: it ends the old scan loop
+            // and orphans a history reply asked before it. A closed panel's late ready does neither.
+            if (msg.type === "ready" && this.panel === panel) {
+                this.webviewGeneration += 1;
+                this.ciDetailLoops.dispose();
+            }
             try {
                 if (isChangeWorkflowCommand(msg.type)) await this.handleChangeWorkflowMessage(msg);
                 else await this.handleMessage(msg);
@@ -1341,6 +1350,16 @@ export class UndockedViewProvider {
                 const panel = this.panel;
                 await answerCiActionMessage(this.ciDetailSource(), { ...msg }, (reply) => {
                     if (this.panel === panel) this.postToWebview(reply);
+                });
+                break;
+            }
+            case "requestCiHistory": {
+                const panel = this.panel;
+                const generation = this.webviewGeneration;
+                await answerCiHistoryRequest(this.ciDetailSource(), { ...msg }, (reply) => {
+                    if (this.panel === panel && generation === this.webviewGeneration) {
+                        this.postToWebview(reply);
+                    }
                 });
                 break;
             }
