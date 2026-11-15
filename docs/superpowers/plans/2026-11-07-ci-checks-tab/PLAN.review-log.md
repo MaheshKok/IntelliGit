@@ -1219,3 +1219,4 @@ FIX ROUND 2 phase 11: 2 findings fixed test-first. Red before fix: Graph/CommitI
 - F3 one-frame stale tags: test "a replacement detail never commits the previous history answer's tags" red before fix: "expected [ [ 'new', 'also red on trunk' ], [] ] to not deep equally contain [ 'new', 'also red on trunk' ]"; fix useCiHistory keeps each answer's requested detail and renders only for that detail. Mutation (drop the detail check) -> same red.
 - F4 GitNexus: CLI refused by the worktree-isolation guard; not routed around; text-search caller review instead.
 - Proof: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build exit 0; test 10 failed / 8212 passed of 8222 (known 10); build:prod and package exit 0.
+PHASE 11: HALT review still failing after takeover
