@@ -1265,3 +1265,9 @@ PHASE 11: HALT review still failing after takeover
 - Fix: `fetchSnapshot` reads `refAtSuiteLimit` and marks `partial` at the limit (a failed count read marks the badge partial, fails the detail); `readDetail` reuses it. One extra single-item request per GitHub badge fetch; view-providers budgets and httpEtag route/counts updated.
 - Regression: githubDetail.test.ts "at 1000/1001 check suites the badge snapshot a parent comparison reads is partial" red before ("expected undefined to be true"), green after; plus "a failing check-suite count cannot prove the badge snapshot whole".
 - Gates: history, touched, format, lint, lint:strict, architecture, react-doctor, typecheck, build exit 0; bun run test 11 failed (known set plus load-sensitive diffBudgets).
+
+## Phase 11 fix round 2 (third review, finding: partial snapshots lose conditional polling)
+- Cause: every provider passed `isCompleteSnapshot(snapshot)` to `etags.noteCommit`; a finished but partial snapshot counted as complete, so the next poll sent no If-None-Match although partial snapshots are never persisted and are read again at every poll.
+- Fix: `isCompleteSnapshot(snapshot) && !snapshot.partial` in the GitHub, GitLab, Bitbucket Cloud and Bitbucket Server providers.
+- Test: tests/unit/services/commitChecks/ciPartialEtag.test.ts (4 cases). With the four edits reverted on a copy all 4 are red ("expected [] to have a length of N but got +0": 3 for GitHub, 1 for the others); with the fix all 4 are green.
+- Gates: ciHistory.test.ts, format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build exit 0; `bun run test` 10 failed (known set), 8242 passed of 8252.

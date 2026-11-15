@@ -25,6 +25,7 @@
   (iii) Checked: package.json 0.43.13 and the CHANGELOG groundwork line are in place; the phase slice says Patch bump.
   (iv) Pre-existing, not Phase 11's work: #437 (Bitbucket Cloud follows a next link to another port with the token) and #438 (a broken next page from GitHub or Bitbucket Server is read as the end of the list). The CHANGELOG-sentence test on repro/405-1 is the stale-copy mix-up, not a bug. All 5 tests on repro/405-1 fail on both 3fa214d8 and b1f93bab.
 - Fix round 1 of the third review (commit after c26a7abd): `fetchSnapshot` now reads the check-suite count (`refAtSuiteLimit`) and marks the snapshot `partial` at 1 000 suites, or when that count cannot be read on the badge path (the detail path still fails with it). `readDetail` reuses the result instead of asking twice. Cost: one `check-suites?per_page=1` request per GitHub badge fetch (3 instead of 2); view-providers integration budgets 28 -> 42 and 96 -> 144, httpEtag route and counts updated. Test "at 1000 check suites the badge snapshot a parent comparison reads is partial: true" was red ("expected undefined to be true") before the fix.
+- Fix round 2 of the third review (commit after 52f31913): all four providers now call `etags.noteCommit(commitKey, isCompleteSnapshot(snapshot) && !snapshot.partial)`, so a partial snapshot (never persisted, read again every poll) stays on If-None-Match. Test file tests/unit/services/commitChecks/ciPartialEtag.test.ts, 4 cases (GitHub suite limit, GitLab full page, Bitbucket Cloud refused next, Bitbucket Server no nextPageStart): all red with the fix reverted on a copy ("expected [] to have a length of N but got +0" on the third poll), green after.
 
 ## Decisions and why
 - Header rule: `branchUnknown = history flag ?? detail flag`; history saying missing makes required unknown and drops the scope line; never the other direction.
@@ -41,7 +42,7 @@
 - GitNexus impact not run (worktree-isolation guard); CheckTree and ChecksHeader each have one caller (ChecksTab.tsx). LOW, not graph-checked.
 - Two same-named jobs in different workflows always give "unknown". Phase 11 e2e not run locally (Gate E runs on CI).
 - Snapshot schema bump 2 and detail contract 7 empty every user's persisted check and detail caches once on upgrade (refetch); an old and a new window sharing globalState overwrite each other's payload until both update.
-- `bun run test`: 10 failed, 8234 passed of 8244; the known set (commit-list-column-resize, tsconfigCoverage, screenshotComparatorMeta).
+- `bun run test`: 10 failed, 8242 passed of 8252; the known set (commit-list-column-resize, tsconfigCoverage, screenshotComparatorMeta).
 
 ## Next phase: 12
 ## Found outside scope
@@ -51,8 +52,7 @@
 - l10n audit pre-existing hardcoded-string candidates; knip hint on selectedRemovalCrashWorker.ts.
 - GitHub carryScans treats two missing `runAttempt` values as the same run.
 - Extract detailOf/flatDetail into a shared module when Phase 17 adds a third provider detail.
-- `bun run package` can pack ignored `output/` leftovers.
-- noRepositoryMode.ts registers a placeholder `refreshBadges`.
+- `bun run package` can pack ignored `output/` leftovers; noRepositoryMode.ts registers a placeholder `refreshBadges`.
 - GitNexus registry holds two "IntelliGit" entries; main checkout index stale.
 - Bitbucket detail reads (Phases 17/18) should pass the ETag store.
 - Worktree node_modules lacks .bin; mutation copies use rsync (excluding node_modules/.git) plus a node_modules link to the main checkout.

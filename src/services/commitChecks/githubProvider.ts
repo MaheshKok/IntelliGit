@@ -439,7 +439,9 @@ export class GitHubProvider implements CommitChecksProvider {
             false,
             this.etags?.forCommit(commitKey),
         );
-        this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot));
+        // A partial snapshot is never persisted, so it is read again at every poll: it stays
+        // on conditional requests like an unfinished one.
+        this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot) && !snapshot.partial);
         return snapshot;
     }
 

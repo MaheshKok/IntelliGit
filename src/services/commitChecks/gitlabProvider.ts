@@ -496,7 +496,9 @@ export class GitLabProvider implements CommitChecksProvider {
             // pages needs the response headers this read does not get.
             ...(raw.length >= CI_PAGE_SIZE && { partial: true }),
         };
-        this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot));
+        // A partial snapshot is never persisted, so it is read again at every poll: it stays
+        // on conditional requests like an unfinished one.
+        this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot) && !snapshot.partial);
         return snapshot;
     }
 
