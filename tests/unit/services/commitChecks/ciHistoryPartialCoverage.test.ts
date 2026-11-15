@@ -93,7 +93,6 @@ describe("partial coverage reaches every cache and detail", () => {
                 next: "https://evil.example/2.0/more",
             }),
             store(),
-            /./,
         );
         const snapshot = await provider.getChecks(
             { host: "bitbucket.org", workspace: "o", repo: "r" } as never,
@@ -109,7 +108,6 @@ describe("partial coverage reaches every cache and detail", () => {
                 isLastPage: false,
             }),
             store(),
-            /./,
         );
         const snapshot = await provider.getChecks(
             { host: "bb.example", project: "P", repo: "r" } as never,
@@ -122,17 +120,13 @@ describe("partial coverage reaches every cache and detail", () => {
 
     it("the floor detail of a partial snapshot does not claim full flat coverage", async () => {
         // An endless chain of allowed pages: the page bound leaves the rest unread.
-        const provider = new BitbucketCloudProvider(
-            async (url: string) => {
-                const page = Number(new URL(url).searchParams.get("page") ?? "1");
-                return {
-                    values: [{ key: `k${page}`, name: `ci-${page}`, state: "FAILED" }],
-                    next: `https://api.bitbucket.org/2.0/repositories/o/r/commit/${HASH}/statuses?page=${page + 1}`,
-                };
-            },
-            store(),
-            /./,
-        );
+        const provider = new BitbucketCloudProvider(async (url: string) => {
+            const page = Number(new URL(url).searchParams.get("page") ?? "1");
+            return {
+                values: [{ key: `k${page}`, name: `ci-${page}`, state: "FAILED" }],
+                next: `https://api.bitbucket.org/2.0/repositories/o/r/commit/${HASH}/statuses?page=${page + 1}`,
+            };
+        }, store());
         const coordinator = new CommitChecksCoordinator(
             {
                 getRemotes: async () => ["origin"],

@@ -501,8 +501,16 @@ describe("snapshot logical identity per provider", () => {
     });
 
     it("GitHub check runs and statuses name no workflow, so items carry no logicalId", async () => {
-        const provider = new GitHubProvider(async (url: string) =>
-            url.includes("/check-runs") ? checkRunsFixture : { statuses: [] },
+        // The check-suite count goes through the metadata fetch; answering it keeps the test offline.
+        const provider = new GitHubProvider(
+            async (url: string) =>
+                url.includes("/check-runs") ? checkRunsFixture : { statuses: [] },
+            undefined,
+            async () => ({
+                statusCode: 200,
+                headers: {},
+                body: { total_count: 1, check_suites: [] },
+            }),
         );
         const ref = { host: "github.com", owner: "o", repo: "r" } as ProviderRepoRef;
         const result = await provider.getChecks(ref, "a".repeat(40));

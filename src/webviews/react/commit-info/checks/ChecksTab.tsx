@@ -149,6 +149,7 @@ export function ChecksTab({
                             detail={loaded}
                             hash={hash}
                             history={history}
+                            defaultBranchUnknown={defaultBranchUnknown}
                             selectedJobId={selectedJob?.id ?? null}
                             onSelectJob={(job) => setPicked({ commitKey, jobId: job.id })}
                             onOpenUrl={openUrl}

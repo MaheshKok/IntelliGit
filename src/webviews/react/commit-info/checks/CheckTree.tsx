@@ -29,6 +29,8 @@ interface CheckTreeProps {
     hash?: string;
     /** The snapshots the history tags compare with; absent until the host answers. */
     history?: CiHistory;
+    /** The history answer found no default branch, or another one than the detail's. */
+    defaultBranchUnknown?: boolean;
     selectedJobId: string | null;
     onSelectJob: (job: CiJob) => void;
     onOpenUrl: (url: string) => void;
@@ -43,15 +45,17 @@ export function CheckTree({
     detail,
     hash,
     history,
+    defaultBranchUnknown,
     selectedJobId,
     onSelectJob,
     onOpenUrl,
     onRefresh,
 }: CheckTreeProps): React.ReactElement {
     const historyCurrent = historyChecksOf(detail);
-    // A history answer with no default branch leaves required status unknown (§8): no blocks-merge tags.
+    // A history answer with no default branch, or another one than the detail's, leaves required
+    // status unknown (§8): no blocks-merge tags.
     const blocks: typeof blocksMerge = (required, state) =>
-        history?.defaultBranch !== null && blocksMerge(required, state);
+        !defaultBranchUnknown && blocksMerge(required, state);
     // A name is proven unique in the commit only when every population the join counts is whole.
     const complete =
         detail.runsCoverage === "full" &&

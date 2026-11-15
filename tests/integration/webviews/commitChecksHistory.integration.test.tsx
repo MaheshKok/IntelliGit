@@ -296,7 +296,7 @@ describe("Checks tab history tags", () => {
         expect(line(), "the newer known branch must retire the unknown line").toBeNull();
     });
 
-    it("a history answer with no default branch makes required status unknown over a known detail", () => {
+    it("a history answer with no default branch, or another one than the detail's, makes required status unknown over a known detail", () => {
         const { container } = mount(
             <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,
         );
@@ -326,6 +326,24 @@ describe("Checks tab history tags", () => {
         expect(header("ci-header-required"), "known before history answers").toBeUndefined();
         expect(header("ci-header-required-scope")).toBe("required checks from trunk");
         expect(blocksMergeTags(), "required failed jobs and checks block merge").toBe(4);
+        answerHistory(lastHistoryRequest(), HISTORY);
+        expect(
+            blocksMergeTags(),
+            "a history answer for the detail's own default branch keeps the tags",
+        ).toBe(4);
+        // origin/HEAD moved to another branch between the detail's read and this comparison's.
+        answerHistory(lastHistoryRequest(), {
+            ...HISTORY,
+            defaultBranch: { ...HISTORY.defaultBranch!, name: "main" },
+        });
+        expect(
+            header("ci-header-required"),
+            "a default branch other than the detail's must make required status unknown",
+        ).toBe("required: unknown");
+        expect(
+            blocksMergeTags(),
+            "a default branch other than the detail's must drop every blocks-merge tag",
+        ).toBe(0);
         // origin/HEAD was removed between the detail's read and this comparison's read.
         answerHistory(lastHistoryRequest(), { ...HISTORY, defaultBranch: null });
         expect(
