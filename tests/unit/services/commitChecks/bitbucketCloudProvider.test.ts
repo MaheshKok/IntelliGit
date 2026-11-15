@@ -502,6 +502,7 @@ describe("BitbucketCloudProvider.getChecks — pagination", () => {
     it.each([
         ["plain http", "http://api.bitbucket.org/2.0/more"],
         ["a password alone", "https://:pass@api.bitbucket.org/2.0/more"],
+        ["a user name alone", "https://user@api.bitbucket.org/2.0/more"],
         ["a path outside /2.0/", "https://api.bitbucket.org/1.0/more"],
         ["a path climbing out of /2.0/", "https://api.bitbucket.org/2.0/../secret"],
         ["a host ending in the API host", "https://evilapi.bitbucket.org/2.0/more"],
