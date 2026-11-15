@@ -276,6 +276,8 @@ export class UndockedViewProvider {
      * commit-detail cache is cleared, so a redundant-looking repost after either is never wrongly
      * suppressed. */
     private lastPostedPayload: string | undefined;
+    /** Advances on every `ready`; a reload keeps this panel, so a reply is told apart by it. */
+    private webviewGeneration = 0;
     private themeChangeDisposables: vscode.Disposable[] = [];
     // Commit-panel state
     private files: WorkingFile[] = [];
@@ -1193,6 +1195,8 @@ export class UndockedViewProvider {
                 // `postCommitDetailState()` re-send what the webview already has --
                 // reintroducing the duplicate post this guard exists to remove.
                 this.lastPostedPayload = undefined;
+                // A history reply asked before this reload must not reach the new context.
+                this.webviewGeneration += 1;
                 this.postToWebview({
                     type: "setViewVisibility",
                     visible: this.panel?.visible ?? false,
@@ -1349,8 +1353,11 @@ export class UndockedViewProvider {
             }
             case "requestCiHistory": {
                 const panel = this.panel;
+                const generation = this.webviewGeneration;
                 await answerCiHistoryRequest(this.ciDetailSource(), { ...msg }, (reply) => {
-                    if (this.panel === panel) this.postToWebview(reply);
+                    if (this.panel === panel && generation === this.webviewGeneration) {
+                        this.postToWebview(reply);
+                    }
                 });
                 break;
             }

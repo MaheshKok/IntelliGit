@@ -45,6 +45,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
      * resolved or the cache is cleared, so a redundant-looking repost after either is never
      * wrongly suppressed. */
     private lastPostedPayload: string | undefined;
+    /** Advances on every `ready`; a reload keeps this webview object, so a reply is told apart by it. */
+    private webviewGeneration = 0;
     private ciSource?: CommitInfoCiSource;
     /** "Open in Checks" asked for before the webview could receive it, with the repository it
      * was asked in: a repository switch before the view is ready must not re-key it. */
@@ -109,6 +111,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     // following `postCurrentState()` re-send what the webview already has --
                     // reintroducing the duplicate post this guard exists to remove.
                     this.lastPostedPayload = undefined;
+                    // A history reply asked before this reload must not reach the new context.
+                    this.webviewGeneration += 1;
                     // A reload ends the old scan loop; a replaced view's late ready must not.
                     if (this.view === webviewView) this.ciDetailLoops.dispose();
                     try {
@@ -236,9 +240,14 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         switch (msg.type) {
             case "requestCiHistory":
                 if (!this.ciSource || this.view !== view) return;
-                await answerCiHistoryRequest(this.ciSource, { ...msg }, (reply) => {
-                    if (this.view === view) this.postToWebview(reply);
-                });
+                {
+                    const generation = this.webviewGeneration;
+                    await answerCiHistoryRequest(this.ciSource, { ...msg }, (reply) => {
+                        if (this.view === view && generation === this.webviewGeneration) {
+                            this.postToWebview(reply);
+                        }
+                    });
+                }
                 return;
             case "runCiAction":
                 if (!this.ciSource || this.view !== view) return;

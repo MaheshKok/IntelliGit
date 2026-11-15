@@ -209,6 +209,41 @@ describe("Checks tab history tags", () => {
         expect(tagsOf(container, "broke-here")).toEqual([]);
     });
 
+    it("going A, B, A again shows no tags until the newest A reply arrives", () => {
+        const { container, root } = mount(
+            <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,
+        );
+        showDetail(container);
+        answerHistory(lastHistoryRequest());
+        expect(tagsOf(container, "broke-here")).toEqual(["new", "also red on trunk"]);
+        act(() =>
+            root.render(
+                <CommitInfoPane detail={commit(TIP)} ciRepoKey="/repo" commitChecksEnabled />,
+            ),
+        );
+        showDetail(container);
+        act(() =>
+            root.render(
+                <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,
+            ),
+        );
+        showDetail(container);
+        expect(tagsOf(container, "broke-here")).toEqual([]);
+        answerHistory(lastHistoryRequest());
+        expect(tagsOf(container, "broke-here")).toEqual(["new", "also red on trunk"]);
+    });
+
+    it("a fresh detail after a sign-in invalidation shows no tags from the old account", () => {
+        const { container } = mount(
+            <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,
+        );
+        showDetail(container);
+        answerHistory(lastHistoryRequest());
+        send({ type: "commitCiDetailInvalidated" });
+        showDetail(container);
+        expect(tagsOf(container, "broke-here")).toEqual([]);
+    });
+
     it("an unread parent snapshot and a root commit tag nothing", () => {
         const { container } = mount(
             <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,

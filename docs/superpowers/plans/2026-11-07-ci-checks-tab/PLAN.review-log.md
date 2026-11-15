@@ -1195,3 +1195,19 @@ PHASE 10: ACCEPTED 38b89a65
 - Mutations (scratchpad mutate_cr.py), restored and byte-checked: C1 coverage check removed -> the cut-list test red; C2 repository id dropped -> the repository-id link test red; each `Tests 1 failed | 33 passed (34)`.
 - Gate G: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build exit 0; `bun run test` `Tests 10 failed | 8154 passed (8164)`: the 8 commit-list-column-resize, tsconfigCoverage and screenshotComparatorMeta (this worktree's incomplete node_modules; both green on clean exports of 63b8ea88 and eda69315 with a full install). Timing files 41/41.
 PHASE 10: ACCEPTED 8ff6422d
+
+## Phase 11: built, review pending (commit 350f627c9ac3ae75fe1d23a687061a0a46d0112f; started at 8ff6422d, real base 2d44491c)
+- Builder: Opus phase lane, test-first. Codex review, fix routing, seal and final verifier not run here (the workflow runs them).
+- Tests added: tests/unit/services/commitChecks/ciHistory.test.ts (25), tests/unit/views/ciHistoryHandler.test.ts (11), tests/integration/webviews/commitChecksHistory.integration.test.tsx (6); 42 pass.
+- Mutations (copies under /tmp/phase-run/PLAN, mutate.py): 15/15 red, each naming its expected test; control (no mutation) 42 passed. Covered: missing parent -> new, first name match, execution-id join, name-only join, parent-only uniqueness, second parent on merges, also-red read from the parent (host and tab), also-red ignoring the tip's state, unread snapshot -> empty list, switch ignored, world change ignored, older reply rendered, default-branch-unknown line dropped, also-red on the tip itself.
+- Gate L (l10n, 6 steps): all exit 0. Gate U (impeccable detect, 6 UI files): exit 0 (regex-only).
+- Gate G: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build pass; `bun run test` Tests 10 failed | 8196 passed (8206), the known set (8 commit-list-column-resize on Node v26.5.0, tsconfigCoverage, screenshotComparatorMeta); build:prod exit 0; package exit 0 (88 files, verifyVsixPackage passed).
+- Pre-commit hook (knip) caught an unused export `CiHistorySnapshot`; unexported it, typecheck re-run exit 0, then the hook passed in full (gitleaks, prettier, eslint, knip, depcruise, l10n, typecheck, build, package).
+- GitNexus impact/detect-changes: CLI refused by the worktree-isolation guard, not routed around; substitute text-search caller review plus typecheck; edits additive; risk assumed LOW, unverified by graph.
+- Decisions: pure functions in src/shared/ci/history.ts (webview may not import src/services); unknown only for red checks; unread snapshot -> items null; root commit no tags; first parent on merges; no also-red on the tip itself; re-request on every detail answer; GitHub/GitLab snapshot items carry no logical id (joined by unique name).
+
+## Phase 11 fix round 1 (builder)
+- Findings: stale stored history answer (A-B-A, sign-in invalidation); history reply from a retired webview context after a reload (all three hosts); name fallback blocked when only the parent carries a logical id; duplicate current logical ids joined instead of unknown.
+- Red before fix (7 tests): "going A, B, A again" and "a fresh detail after a sign-in invalidation" expected [] received ['new','also red on trunk']; CommitInfo, CommitGraph and Undocked provider reload tests expected 1 reply, got 2; "only the parent carries a logical identity" expected 'new', got 'unknown'; "two current checks with one logical identity" expected 'unknown', got 'new'.
+- Fix: useCiHistory.ts clears the answer per request and checks requestId; `webviewGeneration` in the three view providers; join() in src/shared/ci/history.ts.
+- After: the 6 touched test files pass (111 tests). Proof chain: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build pass; test 10 failed / 8204 passed of 8214 (the same 10 known failures); build:prod and package run alone, exit 0.

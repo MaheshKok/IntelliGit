@@ -5,8 +5,9 @@
  *
  * A check is matched across commits by its logical identity when both sides carry one; an
  * execution id (job or check-run id) names one execution and never matches across commits.
- * Without a logical identity, the name must match exactly one parent item and exactly one
- * check of the current commit (Codex R3 #11); anything else is no match.
+ * An identity must be carried by exactly one parent item and exactly one check of the current
+ * commit. When either side has none, the name must match exactly one parent item and exactly
+ * one check of the current commit (Codex R3 #11); anything else is no match.
  */
 
 import type { CiState, CommitCheckItem, CommitCheckState, CommitCiDetailData } from "../../types";
@@ -52,11 +53,17 @@ export function join(
 ): CommitCheckItem | undefined {
     if (check.logicalId !== undefined) {
         const byId = parent.filter((item) => item.logicalId === check.logicalId);
-        if (byId.length > 0) return byId.length === 1 ? byId[0] : undefined;
+        if (byId.length > 0) {
+            const sameIdNow = current.filter((other) => other.logicalId === check.logicalId);
+            return byId.length === 1 && sameIdNow.length === 1 ? byId[0] : undefined;
+        }
     }
-    // An item with another logical id is another check, even under the same name.
+    // Another logical id on both sides is another check, even under the same name; a name
+    // fallback is only for a pair where one side carries no identity.
     const byName = parent.filter(
-        (item) => item.logicalId === undefined && item.name === check.name,
+        (item) =>
+            item.name === check.name &&
+            (item.logicalId === undefined || check.logicalId === undefined),
     );
     const sameNameNow = current.filter((other) => other.name === check.name).length;
     return byName.length === 1 && sameNameNow === 1 ? byName[0] : undefined;

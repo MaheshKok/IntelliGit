@@ -118,6 +118,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
      * resolved or the commit-detail cache is cleared, so a redundant-looking repost after either
      * is never wrongly suppressed. */
     private lastPostedPayload: string | undefined;
+    /** Advances on every `ready`; a reload keeps this webview object, so a reply is told apart by it. */
+    private webviewGeneration = 0;
     private reviewPromptSeq = 0;
     /** The single outstanding review card, if one is on screen; answers from any other ID are stale. */
     private pendingReviewPrompt?: {
@@ -383,6 +385,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         // the final `postCommitDetailState()` re-send what the webview already
                         // has -- reintroducing the duplicate post this guard exists to remove.
                         this.lastPostedPayload = undefined;
+                        // A history reply asked before this reload must not reach the new context.
+                        this.webviewGeneration += 1;
                         // A reload ends the old scan loop; a replaced view's late ready must not.
                         if (this.view === webviewView) this.ciDetailLoops.dispose();
                         this.postToWebview({
@@ -526,11 +530,14 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         const repoKey = this.options.ciRepoKey;
                         if (!repoKey || this.view !== webviewView) break;
                         const view = webviewView;
+                        const generation = this.webviewGeneration;
                         await answerCiHistoryRequest(
                             this.ciDetailSource(repoKey),
                             { ...msg },
                             (reply) => {
-                                if (this.view === view) this.postToWebview(reply);
+                                if (this.view === view && generation === this.webviewGeneration) {
+                                    this.postToWebview(reply);
+                                }
                             },
                         );
                         break;

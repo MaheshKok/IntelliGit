@@ -29,6 +29,10 @@ export function useCiHistory(
     const parentsKey = parents.join(",");
 
     useEffect(() => {
+        // A new request, or a detail that went away, retires the stored answer: it may hold the
+        // previous account's or a previous visit's tags.
+        setAnswer(null);
+        newest.current = null;
         if (!detail) return;
         const requestId = ++lastRequestId;
         newest.current = requestId;
@@ -52,6 +56,11 @@ export function useCiHistory(
     }, []);
 
     const history =
-        answer && answer.repoKey === repoKey && answer.hash === hash ? answer : undefined;
+        answer &&
+        answer.requestId === newest.current &&
+        answer.repoKey === repoKey &&
+        answer.hash === hash
+            ? answer
+            : undefined;
     return { history, defaultBranchUnknown: history?.defaultBranch === null };
 }

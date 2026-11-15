@@ -132,6 +132,29 @@ describe("compare", () => {
     it("a running job gets no tag", () => {
         expect(tag(job("CI", "unit", "running"), [item("unit", "failure")])).toBeNull();
     });
+
+    it("only the parent carries a logical identity → the unique name still matches", () => {
+        const flat: CiHistoryCheck = { name: "unit", state: "failure" };
+        const parent = [item("unit", "success", { logicalId: jobId("CI", "unit") })];
+        expect(tag(flat, parent)).toBe("new");
+    });
+
+    it("two parent items with the same name and different identities → unknown for a flat check", () => {
+        const flat: CiHistoryCheck = { name: "unit", state: "failure" };
+        const parent = [
+            item("unit", "success", { logicalId: jobId("CI", "unit") }),
+            item("unit", "failure", { logicalId: jobId("Nightly", "unit") }),
+        ];
+        expect(tag(flat, parent)).toBe("unknown");
+    });
+
+    it("two current checks with one logical identity → unknown for both", () => {
+        const first = job("CI", "unit", "failure");
+        const second = job("CI", "unit", "failure");
+        const parent = [item("unit", "success", { logicalId: jobId("CI", "unit") })];
+        expect(tag(first, parent, [first, second])).toBe("unknown");
+        expect(tag(second, parent, [first, second])).toBe("unknown");
+    });
 });
 
 describe("alsoRed", () => {
