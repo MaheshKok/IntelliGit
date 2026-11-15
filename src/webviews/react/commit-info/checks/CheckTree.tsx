@@ -52,9 +52,20 @@ export function CheckTree({
     // A history answer with no default branch leaves required status unknown (§8): no blocks-merge tags.
     const blocks: typeof blocksMerge = (required, state) =>
         history?.defaultBranch !== null && blocksMerge(required, state);
+    // A name is proven unique in the commit only when every population the join counts is whole.
+    const complete =
+        detail.runsCoverage === "full" &&
+        detail.otherChecksCoverage === "full" &&
+        detail.runs.every((run) => run.jobsCoverage === "full");
     const tagsFor = (check: CiHistoryCheck): React.ReactElement | null =>
         history ? (
-            <HistoryTags check={check} current={historyCurrent} history={history} hash={hash} />
+            <HistoryTags
+                check={check}
+                current={historyCurrent}
+                complete={complete}
+                history={history}
+                hash={hash}
+            />
         ) : null;
     // Keyed by job id; a job not in the map follows its default (expanded when it failed).
     const [expanded, setExpanded] = React.useState<ReadonlyMap<string, boolean>>(new Map());
@@ -375,23 +386,27 @@ const HISTORY_TAGS: Record<CiHistoryTag, { key: string; color: string }> = {
 /**
  * "new" / "still" / "fixed" / "unknown" against the first parent, and "also red on <branch>"
  * against the default branch's tip, named as `origin/HEAD` names it. A snapshot the host could
- * not read tags nothing.
+ * not read tags nothing. While the commit's own checks are only partly listed, nothing can be
+ * matched (a hidden check may share the name): a failed check is "unknown", with no other tag.
  */
 function HistoryTags({
     check,
     current,
+    complete,
     history,
     hash,
 }: {
     check: CiHistoryCheck;
     current: readonly CiHistoryCheck[];
+    complete: boolean;
     history: CiHistory;
     hash: string | undefined;
 }): React.ReactElement {
     const parentItems = history.parent?.items;
-    const tag = parentItems ? compare(check, current, parentItems) : null;
+    const tag = parentItems ? compare(check, current, complete ? parentItems : []) : null;
     const tip = history.defaultBranch;
-    const red = tip?.items && tip.tipHash !== hash ? alsoRed(check, current, tip.items) : false;
+    const red =
+        complete && tip?.items && tip.tipHash !== hash ? alsoRed(check, current, tip.items) : false;
     return (
         <>
             {tag ? (

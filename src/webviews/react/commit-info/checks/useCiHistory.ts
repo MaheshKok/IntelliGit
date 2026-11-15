@@ -30,7 +30,12 @@ export function useCiHistory(
         message: CiHistoryMessage;
         detail: CommitCiDetail;
     } | null>(null);
-    const newest = useRef<{ requestId: number; detail: CommitCiDetail } | null>(null);
+    const newest = useRef<{
+        requestId: number;
+        repoKey: string;
+        hash: string;
+        detail: CommitCiDetail;
+    } | null>(null);
     const parentsKey = parents.join(",");
 
     useEffect(() => {
@@ -40,7 +45,7 @@ export function useCiHistory(
         newest.current = null;
         if (!detail) return;
         const requestId = ++lastRequestId;
-        newest.current = { requestId, detail };
+        newest.current = { requestId, repoKey, hash, detail };
         getVsCodeApi<RequestCiHistoryMessage>().postMessage({
             type: "requestCiHistory",
             requestId,
@@ -54,7 +59,14 @@ export function useCiHistory(
         const onMessage = (event: MessageEvent<unknown>): void => {
             const data = event.data as Partial<CiHistoryMessage> | null;
             const request = newest.current;
-            if (data?.type !== "ciHistory" || !request || data.requestId !== request.requestId) {
+            // The whole identity of the request must match before the stored answer is replaced.
+            if (
+                data?.type !== "ciHistory" ||
+                !request ||
+                data.requestId !== request.requestId ||
+                data.repoKey !== request.repoKey ||
+                data.hash !== request.hash
+            ) {
                 return;
             }
             setAnswer({ message: data as CiHistoryMessage, detail: request.detail });

@@ -147,7 +147,10 @@ function answerHistory(request: HistoryRequest, history: CiHistory = HISTORY): v
     });
 }
 
-function showDetail(container: HTMLElement): void {
+function showDetail(
+    container: HTMLElement,
+    build: (hash: string) => CommitCiDetail = detail,
+): void {
     const request = posted<{ type: string; requestId: number; hash: string }>(
         "requestCommitCiDetail",
     ).at(-1)!;
@@ -156,7 +159,7 @@ function showDetail(container: HTMLElement): void {
         requestId: request.requestId,
         repoKey: "/repo",
         hash: request.hash,
-        detail: detail(request.hash),
+        detail: build(request.hash),
     });
     expect(container.querySelector('[data-testid="checks-tab"]')?.getAttribute("data-state")).toBe(
         "detail",
@@ -367,6 +370,94 @@ describe("Checks tab history tags", () => {
             "new",
             "also red on trunk",
         ]);
+    });
+
+    it.each([
+        ["repository", { repoKey: "/other" }],
+        ["hash", { hash: TIP }],
+    ])(
+        "a reply for another %s with the accepted request id keeps the accepted tags",
+        (_n, extra) => {
+            const { container } = mount(
+                <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,
+            );
+            showDetail(container);
+            const request = lastHistoryRequest();
+            answerHistory(request);
+            expect(tagsOf(container, "broke-here")).toEqual(["new", "also red on trunk"]);
+            send({
+                type: "ciHistory",
+                requestId: request.requestId,
+                repoKey: "/repo",
+                hash: request.hash,
+                ...HISTORY,
+                ...extra,
+                parent: { hash: PARENT, items: [] },
+                defaultBranch: null,
+            });
+            expect(
+                tagsOf(container, "broke-here"),
+                "a foreign reply must be ignored, not stored over the accepted history",
+            ).toEqual(["new", "also red on trunk"]);
+        },
+    );
+
+    it("an obsolete request's reply after the accepted answer keeps the accepted tags", () => {
+        const { container } = mount(
+            <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,
+        );
+        showDetail(container);
+        const older = lastHistoryRequest();
+        showDetail(container);
+        answerHistory(lastHistoryRequest());
+        expect(tagsOf(container, "broke-here")).toEqual(["new", "also red on trunk"]);
+        answerHistory(older, { parent: { hash: PARENT, items: [] }, defaultBranch: null });
+        expect(
+            tagsOf(container, "broke-here"),
+            "an obsolete reply must not replace the accepted history",
+        ).toEqual(["new", "also red on trunk"]);
+    });
+
+    it.each([
+        [
+            "runs",
+            (hash: string): CommitCiDetail => ({
+                ...detail(hash),
+                runsCoverage: { reason: "pageBound", shown: 1 },
+            }),
+        ],
+        [
+            "jobs",
+            (hash: string): CommitCiDetail => {
+                const full = detail(hash);
+                return {
+                    ...full,
+                    runs: full.runs.map((run) => ({
+                        ...run,
+                        jobsCoverage: { reason: "pageBound", shown: 4 },
+                    })),
+                };
+            },
+        ],
+        [
+            "otherChecks",
+            (hash: string): CommitCiDetail => ({
+                ...detail(hash),
+                otherChecksCoverage: { reason: "pageBound", shown: 0 },
+            }),
+        ],
+    ])("partial current %s coverage cannot prove a fallback name unique", (_n, build) => {
+        const { container } = mount(
+            <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,
+        );
+        showDetail(container, build);
+        answerHistory(lastHistoryRequest());
+        expect(
+            tagsOf(container, "broke-here"),
+            "an incomplete population cannot prove a unique-name match",
+        ).toEqual(["unknown"]);
+        expect(tagsOf(container, "was-broken")).toEqual(["unknown"]);
+        expect(tagsOf(container, "repaired")).toEqual([]);
     });
 
     it("no also-red tag when the commit is the default branch's tip", () => {

@@ -17,6 +17,7 @@
 ## Phase 11: review pending, started at 2d44491ccdfa81fd955af4833ee4bade874a5f34
 - Earlier commits: built 350f627c (0.43.13); fix 1 8ace3e72; fix 2 e0ee196e; takeover a4017dc0; halt c87668db; owner answer 17562890.
 - Wave re-run (owner answer "2: re-run the wave", 2026-11-15): the rebuild commit on top of 17562890 fixes the open Codex finding: once a history answer says the default branch is missing, the header shows "required: unknown", drops the "required checks from <branch>" scope line, and the tree drops every blocks-merge tag (§8). Regression "a history answer with no default branch makes required status unknown over a known detail"; 3 mutations red (log).
+- Fix round 1 (this wave): history reply stored only when requestId, repoKey and hash all match the newest request (useCiHistory.ts); CheckTree tags nothing but "unknown" on a failed check while runsCoverage, any run's jobsCoverage or otherChecksCoverage is not "full". Codex finding 1 (answer history outside E2E) DECLINED, see Decisions.
 - Built: each failed check is tagged "new" / "still" / "unknown", a passed one "fixed", against the first parent; "also red on {branch}" against the default branch tip read from origin/HEAD on every request (K22); "default branch unknown" when origin/HEAD is missing.
 - Pure logic `join` / `compare` / `alsoRed` / `historyChecksOf` in src/shared/ci/history.ts; host read `readCiHistory` in src/services/commitChecks/ciHistory.ts; message `requestCiHistory` / `ciHistory` answered by src/views/ciHistoryHandler.ts in all three hosts; tab hook useCiHistory.ts; tags in CheckTree.tsx.
 - Takeover recap: header unknown line follows the history answer once it arrives; Bitbucket snapshot items carry no logicalId (fixtures); each history answer renders only for the detail it was asked for.
@@ -27,7 +28,8 @@
 - Bitbucket snapshot items get no logicalId (APIs name no workflow or pipeline); Phase 18 may set `"status\0" + key` on both sides.
 - Pure functions in src/shared/ci/history.ts (webview may not import src/services).
 - "unknown" only on a red check without a unique match; root commit no tags; merge commit first parent only; no also-red tag on the tip itself; unreadable snapshot gives `items: null`.
-- The handler answers only while isE2eControlChannelActive is on; Phase 18 removes the switch check.
+- The handler answers only while isE2eControlChannelActive is on; Phase 18 removes the switch check. Declined again in fix round 1: the tab is hidden outside E2E (checksTabState.ts:47-49), so the webview never asks, and the guard stops a forged message from starting a provider fetch while the tab is hidden, as ciDetailHandler.ts:99 does; no "source enabled" state exists to gate on. Needs the owner only if the reviewer repeats it.
+- Partial coverage: tags are withheld (red check -> "unknown", no also-red) rather than guessed, because a hidden workflow, job or flat check may share the name.
 
 ## Open risks
 - GitNexus impact/detect-changes not run (worktree-isolation guard refused the CLI before); substitute: CheckTree and ChecksHeader each have one caller (ChecksTab.tsx). Risk assumed LOW, not graph-checked.
