@@ -1003,6 +1003,41 @@ describe("GitHubProvider.getDetail", () => {
         },
     );
 
+    it.each([
+        [999, undefined],
+        [1000, true],
+        [1001, true],
+    ])(
+        "at %i check suites the badge snapshot a parent comparison reads is partial: %s",
+        async (checkSuiteCount, partial) => {
+            const gh = fakeGitHub(state({ checkSuiteCount }));
+            const snapshot = await new GitHubProvider(
+                gh.fetchJson,
+                undefined,
+                gh.fetchWithMeta,
+            ).getChecks(ref, SHA);
+            expect(snapshot.partial, "GitHub's suite limit leaves older suites out").toBe(partial);
+        },
+    );
+
+    it("a failing check-suite count cannot prove the badge snapshot whole: partial, not an error", async () => {
+        const gh = fakeGitHub(
+            state({
+                fail: (url) =>
+                    new URL(url).pathname.endsWith("/check-suites")
+                        ? new HttpError(503, "HTTP 503", {})
+                        : undefined,
+            }),
+        );
+        const snapshot = await new GitHubProvider(
+            gh.fetchJson,
+            undefined,
+            gh.fetchWithMeta,
+        ).getChecks(ref, SHA);
+        expect(snapshot.state).not.toBe("unavailable");
+        expect(snapshot.partial).toBe(true);
+    });
+
     it("below the suite limit with every job in the snapshot, the flat list is full and the detail is saved", async () => {
         const gh = fakeGitHub(
             state({

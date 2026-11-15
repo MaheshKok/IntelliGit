@@ -333,15 +333,27 @@ describe("partly read provider snapshots", () => {
             total_count: 1,
             check_runs: [{ id: 1, name: "unit-tests", status: "completed", conclusion: "success" }],
         };
-        const statusDown = new GitHubProvider(async (url: string) => {
-            if (url.includes("/check-runs")) return checkRuns;
-            throw new Error("HTTP 503");
+        // The check-suite count is read through the metadata fetch; one suite is under the limit.
+        const suites = async () => ({
+            statusCode: 200,
+            headers: {},
+            body: { total_count: 1, check_suites: [] },
         });
+        const statusDown = new GitHubProvider(
+            async (url: string) => {
+                if (url.includes("/check-runs")) return checkRuns;
+                throw new Error("HTTP 503");
+            },
+            undefined,
+            suites,
+        );
         const partial = await statusDown.getChecks(ref, hash);
         expect(partial.items.map((i) => i.name)).toEqual(["unit-tests"]);
         expect(partial.partial).toBe(true);
-        const whole = new GitHubProvider(async (url: string) =>
-            url.includes("/check-runs") ? checkRuns : { statuses: [] },
+        const whole = new GitHubProvider(
+            async (url: string) => (url.includes("/check-runs") ? checkRuns : { statuses: [] }),
+            undefined,
+            suites,
         );
         expect((await whole.getChecks(ref, hash)).partial).toBeUndefined();
     });

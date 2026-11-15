@@ -1259,3 +1259,9 @@ PHASE 11: HALT review still failing after takeover
 - Mutation (copy mut-11-build-2, 60 s cap): version back to 6 -> 2 failed | 73 passed (75): "a version 6 entry must be a miss after a restart ...", "a detail saved before partial coverage was kept must not certify new: expected [ 'new', 'also red on trunk' ] to deeply equal [ 'unknown' ]", "the detail contract version is 7 ...: expected 6 to be 7".
 - (iii) checked: package.json 0.43.13, CHANGELOG groundwork line present, slice Done-when says Patch bump.
 - Gate G (/tmp/phase-run/PLAN/p11v7-gateg.sh): focused (incl. ciHistory.test.ts), format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; `bun run test` Tests 10 failed | 8234 passed (8244), the known set (8 commit-list-column-resize, tsconfigCoverage, screenshotComparatorMeta). Gate L: no string changed. Gate U: no UI change. Gate E: CI.
+
+## Phase 11: fix round 1 (third review), built, review pending
+- Finding: GitHub `fetchSnapshot` never applied the 1 000 check-suite limit, so a suite-limited parent read as complete (failed job tagged "new", snapshot persisted).
+- Fix: `fetchSnapshot` reads `refAtSuiteLimit` and marks `partial` at the limit (a failed count read marks the badge partial, fails the detail); `readDetail` reuses it. One extra single-item request per GitHub badge fetch; view-providers budgets and httpEtag route/counts updated.
+- Regression: githubDetail.test.ts "at 1000/1001 check suites the badge snapshot a parent comparison reads is partial" red before ("expected undefined to be true"), green after; plus "a failing check-suite count cannot prove the badge snapshot whole".
+- Gates: history, touched, format, lint, lint:strict, architecture, react-doctor, typecheck, build exit 0; bun run test 11 failed (known set plus load-sensitive diffBudgets).

@@ -517,6 +517,9 @@ function githubSnapshotRoute(checkRuns: readonly unknown[]) {
             };
         }
         if (parsed.pathname.endsWith("/status")) return { body: { statuses: [] } };
+        if (parsed.pathname.endsWith("/check-suites")) {
+            return { body: { total_count: 1, check_suites: [] } };
+        }
         throw new Error(`unrouted ${url}`);
     };
 }
@@ -541,10 +544,11 @@ describe("providers use the store only for requests about incomplete commits", (
         );
         expect(
             conditionalOf(sent.slice(before)).map((request) => request.url),
-            "both snapshot requests of the still-running commit are conditional",
+            "every snapshot request of the still-running commit, the suite count included, is conditional",
         ).toEqual([
             `${GITHUB}/commits/${SHA}/check-runs?per_page=100&filter=latest&page=1`,
             `${GITHUB}/commits/${SHA}/status?per_page=100&page=1`,
+            `${GITHUB}/commits/${SHA}/check-suites?per_page=1`,
         ]);
         expect(third).toEqual(first);
     });
@@ -586,7 +590,8 @@ describe("providers use the store only for requests about incomplete commits", (
         const before = sent.length;
         const polled = await github.getChecks(githubRef, SHA);
 
-        expect(conditionalOf(sent.slice(before))).toHaveLength(3);
+        // Two check-run pages, the status page and the suite count.
+        expect(conditionalOf(sent.slice(before))).toHaveLength(4);
         expect(polled.items).toHaveLength(150);
     });
 
