@@ -15,28 +15,25 @@
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
 ## Phase 11: review pending, started at 2d44491ccdfa81fd955af4833ee4bade874a5f34
-- Built 350f627c (0.43.13); fix round 1 8ace3e72; fix round 2 e0ee196e; takeover a4017dc0; halt recorded c87668db. The "started at" was corrected on 2026-11-15 from 8ff6422d (not an ancestor of HEAD) to the real base 2d44491c, the docs commit on bc063074.
-- Owner answer after the takeover halt (2026-11-15, "2: re-run the wave"): re-run wave 11; the next build must fix all of this open Codex finding, then go through review as usual:
-  (a) `src/webviews/react/commit-info/checks/ChecksHeader.tsx:67` reads only `detail.requiredStatus`. A completed history answer that says the default branch is missing must make required status "unknown" and drop every required / "blocks merge" tag. Rule: frozen spec §8 (`PLAN.phase-11.md:488`), "no required tags (required status \"unknown\")".
-  (b) `ChecksHeader.tsx:72-76`: the "required on <branch>" scope line comes from the older detail and must also go once history says the branch is missing. Same rule.
-  (c) Regression test, one direction: the detail first says the branch is known and required checks are known, then a history answer says the branch is missing. Expected: "required: unknown" shown, no required tags, no scope line. Mutation: put the `detail.requiredStatus`-only read back; the red line must name the assertion. The existing unknown->known tests stay green.
+- Earlier commits: built 350f627c (0.43.13); fix 1 8ace3e72; fix 2 e0ee196e; takeover a4017dc0; halt c87668db; owner answer 17562890.
+- Wave re-run (owner answer "2: re-run the wave", 2026-11-15): the rebuild commit on top of 17562890 fixes the open Codex finding: once a history answer says the default branch is missing, the header shows "required: unknown", drops the "required checks from <branch>" scope line, and the tree drops every blocks-merge tag (§8). Regression "a history answer with no default branch makes required status unknown over a known detail"; 3 mutations red (log).
 - Built: each failed check is tagged "new" / "still" / "unknown", a passed one "fixed", against the first parent; "also red on {branch}" against the default branch tip read from origin/HEAD on every request (K22); "default branch unknown" when origin/HEAD is missing.
 - Pure logic `join` / `compare` / `alsoRed` / `historyChecksOf` in src/shared/ci/history.ts; host read `readCiHistory` in src/services/commitChecks/ciHistory.ts; message `requestCiHistory` / `ciHistory` answered by src/views/ciHistoryHandler.ts in all three hosts; tab hook useCiHistory.ts; tags in CheckTree.tsx.
-- Takeover (4 findings): (1) the header's "default branch unknown" line now follows the history answer once it arrives (`defaultBranchUnknown ?? detail.defaultBranchUnknown`; the hook returns undefined until a reply is shown), so a known branch retires the detail's older flag; (2) fixture-backed Bitbucket Cloud and Server cases in ciHistory.test.ts pin that their snapshot items carry no logicalId and join by unique name (ambiguous when doubled on either side); (3) useCiHistory stores each answer with the detail object it was asked for and renders it only for that same detail, so a replacement detail's first frame shows no previous tags (closes the old one-frame risk); (4) GitNexus impact/detect-changes still refused by the worktree-isolation guard, not routed around.
-- Rounds 1-2 recap: per-request id and detail clearing in the hook; hosts' `webviewGeneration` advanced only by the current view's `ready`; `join` logical id only when unique on both sides, name fallback counts every same-named parent item.
+- Takeover recap: header unknown line follows the history answer once it arrives; Bitbucket snapshot items carry no logicalId (fixtures); each history answer renders only for the detail it was asked for.
 
 ## Decisions and why
-- Bitbucket snapshot items get no logicalId: the build-statuses APIs name no workflow or pipeline, and §9's join rule sets logicalId on snapshot items only where the API gives one. Current flat checks (historyChecksOf) carry none either, so the unique-name fallback joins them. Phase 18 sets `"status\0" + key` on its detail's flat checks; it may then also set it on the snapshot items so both sides match by key.
-- Pure functions in src/shared/ci/history.ts (webview may not import src/services); host read at the plan's path.
-- "unknown" only on a red check without a unique match; root commit no tags; merge commit first parent only; no also-red tag on the tip itself.
-- A snapshot that cannot be read gives `items: null` (no tags), never an empty list.
+- Header rule: `branchUnknown = history flag ?? detail flag`; true -> required unknown and no scope line. One direction only (history saying missing); a history answer saying the branch is known does not turn a detail's unknown required status into known, since required status comes from the detail's own read.
+- Tree rule: blocks-merge tags need `history?.defaultBranch !== null`; before history answers the detail's own required marks stand.
+- Bitbucket snapshot items get no logicalId (APIs name no workflow or pipeline); Phase 18 may set `"status\0" + key` on both sides.
+- Pure functions in src/shared/ci/history.ts (webview may not import src/services).
+- "unknown" only on a red check without a unique match; root commit no tags; merge commit first parent only; no also-red tag on the tip itself; unreadable snapshot gives `items: null`.
 - The handler answers only while isE2eControlChannelActive is on; Phase 18 removes the switch check.
 
 ## Open risks
-- GitNexus CLI refused by the worktree-isolation guard again (takeover); substitute: text search shows one caller each for useCiHistory and ChecksHeader (ChecksTab.tsx) and one Bitbucket mapper (bitbucketShared.ts toStatusItem, untouched). Risk assumed LOW, not graph-checked.
-- Two same-named jobs in different workflows on GitHub/GitLab/Bitbucket always give "unknown" (snapshot has no workflow name).
+- GitNexus impact/detect-changes not run (worktree-isolation guard refused the CLI before); substitute: CheckTree and ChecksHeader each have one caller (ChecksTab.tsx). Risk assumed LOW, not graph-checked.
+- Two same-named jobs in different workflows always give "unknown" (snapshot has no workflow name).
 - Phase 11 e2e not run locally.
-- `bun run test` after the takeover: 10 failed, 8212 passed of 8222; the same known set (8 commit-list-column-resize on Node v26.5.0, tsconfigCoverage, screenshotComparatorMeta). build:prod and package then exit 0.
+- `bun run test`: 10 failed, 8213 passed of 8223; the known set (8 commit-list-column-resize on Node v26.5.0, tsconfigCoverage, screenshotComparatorMeta).
 - Undocked's `ready` bumps the generation in its message wrapper; a direct `handleMessage({type:"ready"})` would skip it (none does today).
 
 ## Next phase: 12
@@ -52,4 +49,4 @@
 - noRepositoryMode.ts registers a placeholder `refreshBadges`, so a token change there clears no cache.
 - GitNexus registry holds two "IntelliGit" entries; the main checkout's index is stale (64d390b).
 - Bitbucket detail reads (Phases 17/18) should pass the ETag store when they add metadata fetches.
-- The worktree's node_modules lacks .bin; bun resolves the main checkout's by walking up, so a copy outside the checkout must link the main checkout's node_modules.
+- The worktree's node_modules lacks .bin; a copy outside the checkout must link the main checkout's node_modules. A plain `git ls-files | tar` copy is refused by the worktree-isolation guard; rsync excluding node_modules/.git works.

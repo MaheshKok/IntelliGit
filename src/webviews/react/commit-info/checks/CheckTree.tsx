@@ -49,6 +49,9 @@ export function CheckTree({
     onRefresh,
 }: CheckTreeProps): React.ReactElement {
     const historyCurrent = historyChecksOf(detail);
+    // A history answer with no default branch leaves required status unknown (§8): no blocks-merge tags.
+    const blocks: typeof blocksMerge = (required, state) =>
+        history?.defaultBranch !== null && blocksMerge(required, state);
     const tagsFor = (check: CiHistoryCheck): React.ReactElement | null =>
         history ? (
             <HistoryTags check={check} current={historyCurrent} history={history} hash={hash} />
@@ -91,6 +94,7 @@ export function CheckTree({
                     onOpenUrl={onOpenUrl}
                     onRefresh={onRefresh}
                     tagsFor={tagsFor}
+                    blocks={blocks}
                 />
             ))}
             {detail.otherChecks.length > 0 && detail.runs.length > 0 ? (
@@ -118,7 +122,7 @@ export function CheckTree({
                     ) : (
                         <span style={nameStyle}>{check.name}</span>
                     )}
-                    {blocksMerge(check.required, check.state) ? <BlocksMergeTag /> : null}
+                    {blocks(check.required, check.state) ? <BlocksMergeTag /> : null}
                     {tagsFor(check)}
                     {check.durationMs !== undefined ? (
                         <span data-testid="ci-check-duration" style={checksStyles.muted}>
@@ -152,6 +156,7 @@ function RunGroup({
     onOpenUrl,
     onRefresh,
     tagsFor,
+    blocks,
 }: {
     run: CiRun;
     now: number;
@@ -163,6 +168,7 @@ function RunGroup({
     onOpenUrl: (url: string) => void;
     onRefresh: () => void;
     tagsFor: (check: CiHistoryCheck) => React.ReactElement | null;
+    blocks: typeof blocksMerge;
 }): React.ReactElement {
     return (
         <div>
@@ -233,7 +239,7 @@ function RunGroup({
                             <StateIcon state={badgeStateOf(job.state)} />
                             <span style={checksStyles.visuallyHidden}>{stateLabel(job.state)}</span>
                             <span style={nameStyle}>{job.name}</span>
-                            {blocksMerge(job.required, job.state) ? <BlocksMergeTag /> : null}
+                            {blocks(job.required, job.state) ? <BlocksMergeTag /> : null}
                             {tagsFor({
                                 logicalId: job.logicalId,
                                 name: job.checkName,

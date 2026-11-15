@@ -291,6 +291,51 @@ describe("Checks tab history tags", () => {
         expect(line(), "the newer known branch must retire the unknown line").toBeNull();
     });
 
+    it("a history answer with no default branch makes required status unknown over a known detail", () => {
+        const { container } = mount(
+            <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,
+        );
+        const request = posted<{ requestId: number }>("requestCommitCiDetail").at(-1)!;
+        const known = detail(HASH);
+        send({
+            type: "commitCiDetail",
+            requestId: request.requestId,
+            repoKey: "/repo",
+            hash: HASH,
+            detail: {
+                ...known,
+                capabilities: { ...known.capabilities, requiredChecks: true },
+                requiredStatus: "known",
+                defaultBranch: "trunk",
+                runs: known.runs.map((run) => ({
+                    ...run,
+                    jobs: run.jobs.map((each) => ({ ...each, required: "yes" as const })),
+                })),
+                otherChecks: [{ ...item("lint", "failure"), required: "yes" }],
+            },
+        });
+        const header = (id: string): string | null | undefined =>
+            container.querySelector(`[data-testid="${id}"]`)?.textContent;
+        const blocksMergeTags = (): number =>
+            container.querySelectorAll('[data-testid="ci-tag-blocks-merge"]').length;
+        expect(header("ci-header-required"), "known before history answers").toBeUndefined();
+        expect(header("ci-header-required-scope")).toBe("required checks from trunk");
+        expect(blocksMergeTags(), "required failed jobs and checks block merge").toBe(4);
+        // origin/HEAD was removed between the detail's read and this comparison's read.
+        answerHistory(lastHistoryRequest(), { ...HISTORY, defaultBranch: null });
+        expect(
+            header("ci-header-required"),
+            "a missing default branch must make required status unknown",
+        ).toBe("required: unknown");
+        expect(blocksMergeTags(), "a missing default branch must drop every blocks-merge tag").toBe(
+            0,
+        );
+        expect(
+            header("ci-header-required-scope"),
+            "a missing default branch must drop the required scope line",
+        ).toBeUndefined();
+    });
+
     it("a replacement detail never commits the previous history answer's tags", () => {
         let host: HTMLElement | null = null;
         const frames: string[][] = [];
