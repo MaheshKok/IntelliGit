@@ -807,8 +807,12 @@ describe("openRevisionRangeFileDiff", () => {
 
         await openRevisionRangeFileDiff(from, to, { path: "line\nname", status: "M" }, gitOps);
 
-        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("line\nname", from);
-        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("line\nname", to);
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("line\nname", from, {
+            listedName: true,
+        });
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("line\nname", to, {
+            listedName: true,
+        });
         expect(mocks.executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
             expect.anything(),

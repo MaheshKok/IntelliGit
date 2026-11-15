@@ -19,7 +19,7 @@ import {
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { assertListedRepoRelativePath } from "../utils/repoRelativePath";
 import { EMPTY_TREE_HASH } from "../utils/constants";
-import type { CiChangedFile } from "../types";
+import type { CiRangeDiffFile } from "../types";
 import { rangeDiffSides } from "./commitChecks/changedSinceGreen";
 import { exceedsDiffBudget } from "../diff/diffBudgets";
 import {
@@ -944,7 +944,7 @@ export async function openCommitFileDiff(
 export async function openRevisionRangeFileDiff(
     fromRev: string,
     toRev: string,
-    file: CiChangedFile,
+    file: CiRangeDiffFile,
     gitOps: Pick<GitOps, "getFileContentAtRef">,
 ): Promise<void> {
     if (!isValidGitHash(fromRev) || !isValidGitHash(toRev)) {
@@ -962,7 +962,9 @@ export async function openRevisionRangeFileDiff(
         toRev,
     );
     const read = (side: { path: string; rev: string } | null): Promise<string> =>
-        side ? gitOps.getFileContentAtRef(side.path, side.rev) : Promise.resolve("");
+        side
+            ? gitOps.getFileContentAtRef(side.path, side.rev, { listedName: true })
+            : Promise.resolve("");
     const [leftContent, rightContent] = await Promise.all([read(left), read(right)]);
     const shortFrom = fromRev.slice(0, 8);
     const shortTo = toRev.slice(0, 8);

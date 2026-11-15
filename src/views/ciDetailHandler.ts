@@ -20,7 +20,7 @@ import type {
 } from "../services/commitChecks/changedSinceGreen";
 import type { CiHistory } from "../shared/ci/history";
 import { PENDING_CHECK_RETRY_DELAYS_MS } from "../shared/ci/pollSchedule";
-import type { CiChangedFile, CommitCiDetail } from "../types";
+import type { CiRangeDiffFile, CommitCiDetail } from "../types";
 import type { CommitCiDetailMessage } from "../webviews/protocol/commitCiMessages";
 
 /** What a host offers to answer a Checks tab request. */
@@ -52,7 +52,7 @@ export interface CommitCiDetailSource {
         repoKey: string,
     ) => Promise<ChangedSinceGreen | undefined>;
     /** Opens a file's diff between two revisions; absent = the host opens none. */
-    openRangeDiff?: (fromRev: string, toRev: string, file: CiChangedFile) => Promise<void>;
+    openRangeDiff?: (fromRev: string, toRev: string, file: CiRangeDiffFile) => Promise<void>;
 }
 
 /** A host's way to run CI write actions for the repository it shows. */

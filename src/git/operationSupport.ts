@@ -149,3 +149,23 @@ export function assertRepoRelativeGitPath(filePath: string): string {
     }
     return segments.join("/");
 }
+
+/**
+ * Containment check for a name Git itself listed (`diff --name-status -z`): the name is data, so
+ * line breaks, edge whitespace and backslashes stay as Git wrote them. A NUL byte, an absolute
+ * path and `..` traversal are still rejected.
+ *
+ * @throws When the path is empty, absolute, holds a NUL byte, or leaves the repository.
+ */
+export function assertListedGitPath(filePath: string): string {
+    if (!filePath || filePath.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(filePath)) {
+        throw new Error(`Rejected non-relative path: ${filePath}`);
+    }
+    if (filePath.includes("\0")) {
+        throw new Error(`Rejected path containing control characters: ${filePath}`);
+    }
+    if (filePath.split("/").some((segment) => segment === "..")) {
+        throw new Error(`Rejected path escaping repo root: ${filePath}`);
+    }
+    return filePath;
+}

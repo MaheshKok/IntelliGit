@@ -1305,3 +1305,9 @@ Dropped findings: none.
 WORKTREE 0 12: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/repro-PLAN-1 repro/PLAN-1
 
 Phase 12 fix round 1: findings 1-6 fixed test-first (each regression test red before, green after), 7 checked (CheckTree and CHANGELOG diffs are Phase 12 only, no change), 8 not run (no .gitnexus in this worktree). 7 mutations on copies all red at a named test. Gates green except bun run test (commit-list-column-resize, 8, red at base).
+
+## Phase 12: fix round 2 (builder)
+- Findings 1-4 fixed test-first; 5 and 6 need no change (Phase 12's diff against base 90731f87 holds only the flaky tag and the 0.43.14 entry; the reviewer's copy compared against b9d710d6).
+- Red before fix: (1) rangeDiffRealGit "a line break": `Rejected path containing control characters`, plus leading/trailing space and backslash cases: `git show <rev>:lead.txt ... does not exist`; (2) coordinator "counts a loaded ancestor that failed then passed": `expected [] to deeply equal [ { runId: '1', ...} ]`; (3) changedSinceGreen "a partly listed current commit stops at an unprovable red name match": `expected { ... } to deeply equal { lastGreen: null, ... }`; (4) no separate red run, covered by mutation.
+- Mutations (8, on copies): 1a listedName ignored, 1b NUL check off, 2a attempt read stubbed, 2b memo off, 2c failure kept, 3 old red skip, 4a counts dropped, 4b rename source skip dropped: each red at a named test.
+- Gates: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package green. bun run test: 17 files red in the full run (load timeouts at 30 s plus commit-list-column-resize, red at base); the 16 other files rerun alone: 64 files, 965 tests green.

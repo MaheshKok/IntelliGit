@@ -9,6 +9,7 @@ import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
 import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type { CiHistory } from "../../shared/ci/history";
 import type {
+    CiAttemptHistory,
     CiRun,
     CiState,
     CommitChecksSnapshot,
@@ -76,6 +77,9 @@ class AccountChangedError extends Error {}
  */
 export const DEFAULT_COMMIT_CHECKS_TTL_MS = 15_000;
 
+/** How long an ancestor's attempt histories are reused by later badge requests. */
+const ATTEMPT_HISTORY_TTL_MS = 60_000;
+
 /** Tunable behavior for the coordinator; all fields default to the prior Phase-0 behavior. */
 export interface CommitChecksCoordinatorOptions {
     /** When false, every request returns a none snapshot without touching the network. */
@@ -122,6 +126,11 @@ export class CommitChecksCoordinator {
     private readonly trace?: CiTrace;
     private readonly fixture?: CommitChecksCoordinatorOptions["fixture"];
     private readonly requiredChecks: RequiredChecksCache;
+    private readonly now: () => number;
+    private readonly attemptReads = new Map<
+        string,
+        { at: number; read: Promise<CiAttemptHistory[]> }
+    >();
     private resolvedProvider = false;
     private providerMatch: ProviderMatch | null = null;
     private providerGeneration = 0;
@@ -158,6 +167,7 @@ export class CommitChecksCoordinator {
         this.trace = options.trace;
         this.fixture = options.fixture;
         this.requiredChecks = new RequiredChecksCache(options.now);
+        this.now = options.now ?? Date.now;
     }
 
     /** Drops shared cached snapshots and details; called after credential/settings changes. */
@@ -166,6 +176,7 @@ export class CommitChecksCoordinator {
         this.service.clear();
         this.detailService.clear();
         this.requiredChecks.clear();
+        this.attemptReads.clear();
     }
 
     /** Clears only the memoized provider/ref, preserving shared cached snapshots. */
@@ -249,7 +260,14 @@ export class CommitChecksCoordinator {
                     hash,
                     items,
                     ...(items && snapshot?.partial && { partial: true as const }),
-                    attempts: detail?.attemptHistory ?? [],
+                    // A cached detail already holds its re-runs; a commit whose checks are cached
+                    // but whose detail was never opened asks the provider (§9), so a job that
+                    // failed then passed there still counts.
+                    attempts: detail
+                        ? (detail.attemptHistory ?? [])
+                        : items
+                          ? await this.readAttemptHistory(hash)
+                          : [],
                 };
             }),
         );
@@ -275,9 +293,41 @@ export class CommitChecksCoordinator {
                 cachedChecks: (hash) => this.cachedSnapshot(hash),
                 cachedDetail: (hash) => this.cachedDetail(hash, repoKey),
                 diffNameStatus: (from, to) => this.gitOps.diffNameStatus(from, to),
+                diffNumstat: (from, to) => this.gitOps.diffNumstat(from, to),
             },
             request,
         );
+    }
+
+    /**
+     * A commit's attempt histories from the provider, remembered briefly per account so repeated
+     * badge requests share one read. Empty when the provider lists no re-runs, the repository or
+     * account changed meanwhile, or the read failed (a failure is not remembered).
+     */
+    private async readAttemptHistory(hash: string): Promise<CiAttemptHistory[]> {
+        const providerGeneration = this.providerGeneration;
+        try {
+            const match = await this.resolveEnabledMatch();
+            if (!match?.provider.capabilities.attemptHistory) return [];
+            const { provider, ref } = match;
+            if (!provider.getAttemptHistory) return [];
+            const key = this.snapshotKey(match, await this.readAccount(match), hash);
+            const now = this.now();
+            const kept = this.attemptReads.get(key);
+            let read = kept && now - kept.at < ATTEMPT_HISTORY_TTL_MS ? kept.read : undefined;
+            if (!read) {
+                const fresh = provider.getAttemptHistory(ref, hash);
+                this.attemptReads.set(key, { at: now, read: fresh });
+                fresh.catch(() => {
+                    if (this.attemptReads.get(key)?.read === fresh) this.attemptReads.delete(key);
+                });
+                read = fresh;
+            }
+            const answer = await read;
+            return providerGeneration === this.providerGeneration ? answer : [];
+        } catch {
+            return [];
+        }
     }
 
     /**

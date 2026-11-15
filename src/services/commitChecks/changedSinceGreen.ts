@@ -7,6 +7,7 @@
 import { historyChecksOf, matchCheck, type CiHistoryCheck } from "../../shared/ci/history";
 import type {
     CiChangedFile,
+    CiRangeDiffFile,
     CommitChecksSnapshot,
     CommitCiDetailData,
     CommitFile,
@@ -45,6 +46,8 @@ export interface ChangedSinceGreenDeps {
     cachedDetail(hash: string): Promise<CommitCiDetailData | undefined>;
     /** `git diff --name-status -M -z <from> <to> --` output. */
     diffNameStatus(from: string, to: string): Promise<string>;
+    /** `git diff --numstat -M -z <from> <to> --` output: the line counts of the same files. */
+    diffNumstat(from: string, to: string): Promise<string>;
 }
 
 /**
@@ -68,9 +71,9 @@ const STATUSES: ReadonlySet<string> = new Set(["A", "M", "D", "R", "C", "T"]);
  * Parses `git diff --name-status -z`: fields are NUL-separated, so any byte but NUL survives
  * in a name. A rename or copy row carries its source path before its destination.
  */
-export function parseNameStatusZ(output: string): CiChangedFile[] {
+export function parseNameStatusZ(output: string): CiRangeDiffFile[] {
     const fields = output.split("\0");
-    const files: CiChangedFile[] = [];
+    const files: CiRangeDiffFile[] = [];
     for (let index = 0; index < fields.length;) {
         const code = fields[index++];
         if (!code) continue;
@@ -89,9 +92,34 @@ export function parseNameStatusZ(output: string): CiChangedFile[] {
     return files;
 }
 
+/**
+ * Parses `git diff --numstat -M -z` into line counts by destination path. A record is
+ * `added TAB deleted TAB path NUL`; a rename or copy leaves the path empty and follows with the
+ * source and destination as two more fields. A binary file counts `-` and is taken as 0.
+ */
+export function parseNumstatZ(
+    output: string,
+): Map<string, { additions: number; deletions: number }> {
+    const fields = output.split("\0");
+    const counts = new Map<string, { additions: number; deletions: number }>();
+    for (let index = 0; index < fields.length;) {
+        const record = /^(\S+)\t(\S+)\t([\s\S]*)$/.exec(fields[index++]);
+        if (!record) continue;
+        const [, added, deleted, inline] = record;
+        let path: string | undefined = inline;
+        if (inline === "") {
+            index++; // the rename's source; the counts belong to its destination
+            path = fields[index++];
+        }
+        if (path === undefined) break;
+        counts.set(path, { additions: Number(added) || 0, deletions: Number(deleted) || 0 });
+    }
+    return counts;
+}
+
 /** Which path at which revision each side of the two-revision diff shows; `null` = empty. */
 export function rangeDiffSides(
-    file: CiChangedFile,
+    file: CiRangeDiffFile,
     fromRev: string,
     toRev: string,
 ): { left: { path: string; rev: string } | null; right: { path: string; rev: string } | null } {
@@ -133,16 +161,28 @@ export async function changedSinceGreen(
         const match = matchCheck(check, current, snapshot.items);
         if (match === "ambiguous")
             return { lastGreen: null, unknownReason: "ambiguous", files: [] };
-        if (match === "none" || match.state !== "success") continue;
-        // A green found by name alone, in a current commit that cannot prove the name unique.
+        if (match === "none") continue;
+        // A match by name alone, in a current commit that cannot prove the name unique, may be
+        // another job's: red or green, the walk cannot step over it.
         if (!nameProvesJob && match.logicalId !== request.logicalCheckId) {
             return { lastGreen: null, unknownReason: "ambiguous", files: [] };
         }
+        if (match.state !== "success") continue;
         // A list read in part cannot prove a name unique: only an identity match counts there.
         if (snapshot.partial && match.logicalId === undefined) continue;
         // react-doctor-disable-next-line react-doctor/async-await-in-loop
-        const output = await deps.diffNameStatus(hash, request.hash);
-        return { lastGreen: hash, files: parseNameStatusZ(output) };
+        const [names, numstat] = await Promise.all([
+            deps.diffNameStatus(hash, request.hash),
+            deps.diffNumstat(hash, request.hash),
+        ]);
+        const counts = parseNumstatZ(numstat);
+        return {
+            lastGreen: hash,
+            files: parseNameStatusZ(names).map((file) => ({
+                ...file,
+                ...(counts.get(file.path) ?? { additions: 0, deletions: 0 }),
+            })),
+        };
     }
     return { lastGreen: null, files: [] };
 }

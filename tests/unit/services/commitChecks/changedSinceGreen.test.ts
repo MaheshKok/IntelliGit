@@ -128,6 +128,7 @@ function deps(
             diffs.push([from, to]);
             return gitOps.diffNameStatus(from, to);
         },
+        diffNumstat: (from, to) => gitOps.diffNumstat(from, to),
     };
 }
 
@@ -168,9 +169,10 @@ describe("changedSinceGreen", () => {
         const answer = await changedSinceGreen(cache, request(selected));
 
         expect(answer.lastGreen).toBe(green);
+        // The frozen §14 contract is CommitFile[]: line counts ride with each file.
         expect(answer.files).toEqual([
-            { path: "b.txt", status: "A" },
-            { path: "c.txt", status: "A" },
+            { path: "b.txt", status: "A", additions: 1, deletions: 0 },
+            { path: "c.txt", status: "A", additions: 1, deletions: 0 },
         ]);
         expect(cache.diffs).toEqual([[green, selected]]);
     });
@@ -279,6 +281,7 @@ describe("changedSinceGreen", () => {
                 getRemotes: async () => ["origin"],
                 getRemoteUrl: async () => "https://github.com/o/r",
                 diffNameStatus: (from: string, to: string) => gitOps.diffNameStatus(from, to),
+                diffNumstat: (from: string, to: string) => gitOps.diffNumstat(from, to),
             } as never,
             [provider],
         );
@@ -317,6 +320,7 @@ describe("changedSinceGreen", () => {
                 getRemotes: async () => ["origin"],
                 getRemoteUrl: async () => "https://github.com/o/r",
                 diffNameStatus: (from: string, to: string) => gitOps.diffNameStatus(from, to),
+                diffNumstat: (from: string, to: string) => gitOps.diffNumstat(from, to),
             } as never,
             [provider],
             {},
@@ -361,6 +365,26 @@ describe("changedSinceGreen", () => {
         ).resolves.toEqual({ lastGreen: null, unknownReason: "ambiguous", files: [] });
     });
 
+    it("a partly listed current commit stops at an unprovable red name match", async () => {
+        const olderGreen = commit("older green, matched by identity");
+        const red = commit("red, an item without an identity");
+        const selected = commit("selected");
+        const snapshots = { [olderGreen]: [item("success", CI)], [red]: [item("failure")] };
+        const whole = detail(selected);
+        const partlyListed = { ...whole, runsCoverage: { reason: "pageBound" as const, shown: 1 } };
+
+        // Over a whole commit the red name match is plain history: the walk goes on to the green.
+        await expect(
+            changedSinceGreen(deps(snapshots, whole), request(selected)),
+        ).resolves.toMatchObject({ lastGreen: olderGreen });
+        // A hidden workflow may hold another job of that name, so the red may not be this job's
+        // run: stepping over it to an older green would name the wrong commit.
+        await expect(
+            changedSinceGreen(deps(snapshots, partlyListed), request(selected)),
+            "an ambiguous ancestor must stop the walk, even when its visible match is red",
+        ).resolves.toEqual({ lastGreen: null, unknownReason: "ambiguous", files: [] });
+    });
+
     it("add/delete/rename map to the right sides", async () => {
         const body = Array.from({ length: 20 }, (_, i) => `line ${i}\n`).join("");
         await write("kept.txt", "kept\n");
@@ -388,7 +412,14 @@ describe("changedSinceGreen", () => {
             left: { path: "gone.txt", rev: green },
             right: null,
         });
-        expect(byPath["new/name.txt"]).toMatchObject({ status: "R", oldPath: "old/name.txt" });
+        expect(byPath["new/name.txt"]).toMatchObject({
+            status: "R",
+            oldPath: "old/name.txt",
+            additions: 0,
+            deletions: 0,
+        });
+        expect(byPath["added.txt"]).toMatchObject({ additions: 1, deletions: 0 });
+        expect(byPath["gone.txt"]).toMatchObject({ additions: 0, deletions: 1 });
         expect(rangeDiffSides(byPath["new/name.txt"], green, selected)).toEqual({
             left: { path: "old/name.txt", rev: green },
             right: { path: "new/name.txt", rev: selected },
@@ -406,7 +437,7 @@ describe("changedSinceGreen", () => {
         ];
         for (const name of names) {
             // react-doctor-disable-next-line react-doctor/async-await-in-loop
-            await write(name, `${name}\n`);
+            await write(name, "one line\n");
         }
         const selected = commit("selected");
         const cache = deps({ [green]: [item("success", CI)] }, detail(selected));
@@ -415,6 +446,31 @@ describe("changedSinceGreen", () => {
 
         expect(answer.files.map((f) => f.path).sort()).toEqual([...names].sort());
         expect(answer.files.every((f) => f.status === "A")).toBe(true);
+        // A tab or newline in a name must not shift the line counts onto the wrong file.
+        expect(answer.files.every((f) => f.additions === 1 && f.deletions === 0)).toBe(true);
+    });
+
+    it("a binary file and an edited renamed file carry their counts", async () => {
+        const body = Array.from({ length: 20 }, (_, i) => `line ${i}\n`).join("");
+        await writeFile(path.join(root, "image.bin"), Buffer.from([0, 1, 2, 3]));
+        await write("old.txt", body);
+        const green = commit("green");
+        await writeFile(path.join(root, "image.bin"), Buffer.from([0, 9, 8, 7, 6]));
+        await rm(path.join(root, "old.txt"));
+        await write("new.txt", `${body}extra\n`);
+        const selected = commit("selected");
+        const cache = deps({ [green]: [item("success", CI)] }, detail(selected));
+
+        const answer = await changedSinceGreen(cache, request(selected));
+        const byPath = Object.fromEntries(answer.files.map((f) => [f.path, f]));
+
+        expect(byPath["image.bin"]).toMatchObject({ status: "M", additions: 0, deletions: 0 });
+        expect(byPath["new.txt"]).toMatchObject({
+            status: "R",
+            oldPath: "old.txt",
+            additions: 1,
+            deletions: 0,
+        });
     });
 
     it("same job name in two workflows with different last-green commits", async () => {

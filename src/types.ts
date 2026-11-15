@@ -380,12 +380,13 @@ export interface CommitFile {
     icon?: ThemeTreeIcon;
 }
 
-/** A file changed between two revisions; `oldPath` is the source of a rename or copy. */
-export interface CiChangedFile {
-    path: string;
-    status: CommitFile["status"];
+/** A file changed between two revisions, as `CommitFile` plus `oldPath`, the source of a rename or copy. */
+export interface CiChangedFile extends CommitFile {
     oldPath?: string;
 }
+
+/** What opening a file's two-revision diff needs. */
+export type CiRangeDiffFile = Pick<CiChangedFile, "path" | "status" | "oldPath">;
 
 /**
  * Full commit detail payload sent to panes that render metadata and changed files.

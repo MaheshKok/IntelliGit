@@ -16,35 +16,31 @@
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
 ## Phase 12: review pending, started at b9d710d60cb6a5b929ad4ef7e32c1293090b550b
-- Effective base 90731f87 (Phase 11 squash-merged, then the Phase 12 slice rewritten as groundwork); b9d710d6 is not its ancestor. Not a halt.
-- Built (journeys 10, 11): attempt histories per (runId, logicalId) (GitHub `filter=all&per_page=100` for runs past attempt 1, GitLab `include_retried=true`), `flaky n/m` tag with "(estimated)" when the provider has no attempt history (O3), "Changed since last green" (cache-only first-parent walk inside the loaded commits, `git diff --name-status -M -z`, `openCiRangeDiff` opens `vscode.diff`). Contract version 8 (K32).
-- Files: src/shared/ci/history.ts (flaky, flakyLineOf), src/services/commitChecks/{ciHistory,changedSinceGreen,coordinator,githubProvider,gitlabProvider}.ts, src/git/operations.ts diffNameStatus, src/services/diffService.ts openRevisionRangeFileDiff, src/views/ciChangedSinceGreenHandler.ts, three hosts, useChangedSinceGreen.ts, CheckJobDetail.tsx, CheckTree.tsx, ChecksTab.tsx.
-- Tests: changedSinceGreen.test.ts (real git), ciHistory.test.ts, ciChangedSinceGreenHandler.test.ts, commitChecksChangedSinceGreen.integration.test.tsx, CommitInfoViewProvider.test.ts, ciFixture.test.ts; E2E tests/e2e/ciChangedSinceGreen.spec.ts (CI only).
-- Mutations: 36 on a copy, all red at a named assertion (log entry "Phase 12: built, review pending").
-- Fix round 1 (8 findings, each with a test red before the fix): (1) cache-only reads use `getCached` with a `cacheOnly` option that stops before any fetcher is installed in the shared in-flight map (snapshot and detail services); (2) `assertListedRepoRelativePath` lets a Git-listed name hold a newline, used only by `openRevisionRangeFileDiff`; (3) `nameProvesJob` in changedSinceGreen: a name-only green in a partly listed current commit answers "ambiguous"; (4) a reply must match the full request identity (repo, hash, job, scope, check), not the id alone; (5) `detail` is a hook dependency so Refresh asks again, the same job keeps its answer on screen meanwhile; (6) `getAttemptHistory(ref, hash)` on both providers and in the contract (shares helpers with getDetail); (7) CheckTree.tsx and CHANGELOG diffs checked against 02881057: flaky-only and the 0.43.14 entry, no change; (8) GitNexus not run, see risks.
-- Fix round 1 proof: 7 mutations on copies, each red at a named test (service cacheOnly throw removed, line-break flag off, nameProvesJob off, id-only reply check, `detail` dropped from deps, both getAttemptHistory stubbed to []).
+- Effective base 90731f87 (Phase 11 squash-merged, then the Phase 12 slice rewritten as groundwork); b9d710d6 is not its ancestor. Not a halt. A diff against b9d710d6 shows Phase 11's CHANGELOG date (2026-11-14 to 2026-11-15) and CheckTree changes that were made in the squash merge and the groundwork rewrite, not by Phase 12.
+- Built (journeys 10, 11): attempt histories per (runId, logicalId), `flaky n/m` tag ("(estimated)" without provider attempt history, O3), "Changed since last green" (cache-only first-parent walk, `git diff --name-status -M -z` plus `--numstat`, `openCiRangeDiff` opens `vscode.diff`). Contract version 8 (K32).
+- Fix round 1 (36c1f1b9): cache-only reads cannot join the shared in-flight map; listed names may hold a newline; `nameProvesJob`; reply identity; `detail` hook dependency; `getAttemptHistory` on both providers.
+- Fix round 2 (6 findings, each test red before the fix except where noted): (1) `GitOps.getFileContentAtRef(path, ref, {listedName: true})` keeps a Git-listed name byte for byte (newline, edge spaces, backslash) and still refuses NUL, absolute and `..`; only `openRevisionRangeFileDiff` passes it; real-Git test tests/unit/services/rangeDiffRealGit.test.ts. (2) `ciHistory(parents, line)` asks the provider's `getAttemptHistory` for a loaded ancestor whose checks are cached but whose detail is not (provider must have the capability; 60 s per-account memo, failures not remembered, cleared by `clear()`). (3) changedSinceGreen checks `nameProvesJob` before skipping a red name match. (4) `CiChangedFile extends CommitFile` (additions, deletions from `git diff --numstat -M -z`, binary = 0); `CiRangeDiffFile` is the open-diff subset. (5) CheckTree.tsx and (6) CHANGELOG.md: checked against base 90731f87, Phase 12's diff holds only the flaky tag and the 0.43.14 entry; no change. Finding 4 had no separate pre-fix red run (its proof is mutation 4a/4b below).
+- Fix round 2 proof: 8 mutations on copies, each red at a named test (listedName ignored, NUL check off, attempt read stubbed, memo off, failure kept, red name skip restored, counts dropped, rename source skip dropped).
 
 ## Decisions and why
-- File list is a plain button list, not CommitChangedFilesPanel: that panel needs a whole CommitDetail and tree state; plan step 5 is "[ASSUMED] where props allow". CiChangedFile carries path, oldPath, status only (no line counts), unlike the plan's "CommitFile[]".
-- The standalone Changed Files view has no commit list, so its host sends the Git Log graphs' loaded commits (`loadedCommits()` on both graph providers); the graph webviews send their own.
+- File list is a plain button list, not CommitChangedFilesPanel: that panel needs a whole CommitDetail and tree state; plan step 5 is "[ASSUMED] where props allow".
+- The standalone Changed Files view has no commit list, so its host sends the Git Log graphs' loaded commits; the graph webviews send their own.
 - scopeName = the run's name. Flaky tag only when the commit's run, job and flat lists are whole (same rule as Phase 11 tags).
-- E2E fixture seam gained a per-commit `details` map: one shared detail would make every ancestor red.
-- Lint fixes: readDetail's attempt read moved to `readAttemptHistory`; graph host's two new cases to `handleChangedSinceGreenMessage`; ChecksTab helpers `toLoadedLine`, `changedSinceGreenJob` (complexity limits).
-- Handlers answer only while isE2eControlChannelActive is on (as Phase 11); switch-off tested for both.
+- Ancestor attempt reads go to the provider (spec fetching rule), only for ancestors whose snapshot is cached; alternative (cached details only) leaves flaky counts wrong for ancestors never opened in Checks.
+- Handlers answer only while isE2eControlChannelActive is on (as Phase 11).
 
 ## Open risks
-- Local `bun run test` is never fully green: Node 26.5.0 reds commit-list-column-resize (8), Node 24.3.0 reds updateWithLocalChanges symlink EEXIST (1); both red at 90731f87. diffBudgets "large compute" is load-sensitive (green alone). CI uses Node 22, not installed here (homebrew node@22 resolves to 26).
+- Local `bun run test` is never fully green: Node 26.5.0 reds commit-list-column-resize (8, red at 90731f87); under load 16 other files time out at 30 s and pass alone (rerun: 64 files, 965 tests green).
+- A badge request on a long loaded line now sends up to one attempt-history read per cached ancestor (memoized 60 s); the provider request gate bounds concurrency. Not measured against a real forge.
 - GitNexus impact and detect-changes not run: the worktree has no `.gitnexus`; run both in an indexed checkout before merge.
-- Gates in fix round 1: every step green except `bun run test`, whose only red file is commit-list-column-resize (8 tests, red at the base).
 - Gate E not run locally; the new spec runs on CI.
 - Contract 8 empties persisted CI detail caches once on upgrade (refetch).
 
 ## Next phase: 13
 ## Found outside scope
 - Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
-- tests/integration/git/updateWithLocalChanges.integration.test.ts fails on Node 24.3.0 (EEXIST on symlinkSync after rmSync); commit-list-column-resize fails on Node 26.
-- l10n audit pre-existing hardcoded-string candidates; GitNexus registry holds two "IntelliGit" entries, main checkout index stale.
+- tests/integration/git/updateWithLocalChanges.integration.test.ts fails on Node 24.3.0; commit-list-column-resize fails on Node 26.
 - GitHub carryScans treats two missing `runAttempt` values as the same run.
 - `bun run package` can pack ignored `output/` leftovers; noRepositoryMode.ts registers a placeholder `refreshBadges`.
-- Mutation copies must link the main checkout's node_modules; a copy has no .git or dist, so tests/unit/git reds there at baseline.
+- Mutation copies must link the main checkout's node_modules; a copy has no .git or dist.
 - GitLab snapshot could follow `x-next-page` pages if getChecks moved to `fetchWithMeta`.
