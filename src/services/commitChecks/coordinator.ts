@@ -68,9 +68,6 @@ const ACCOUNT_ATTEMPTS = 2;
 /** A fetch finished under another account than the one its cache key was built for. */
 class AccountChangedError extends Error {}
 
-/** The fetcher of a cache-only read: a rejected fetcher caches nothing and sends nothing. */
-const notCached = (): Promise<never> => Promise.reject(new Error("not cached"));
-
 /**
  * Default cache TTL for pending snapshots, aligned with the webview poll interval
  * (`PENDING_CHECK_REFRESH_MS`, 15s). Sub-poll bursts (scroll/re-render) serve cache while
@@ -289,7 +286,7 @@ export class CommitChecksCoordinator {
      */
     private cachedSnapshot(hash: string): Promise<CommitChecksSnapshot | undefined> {
         if (this.fixture?.(hash)) return this.getChecks(hash);
-        return this.fromCache((key) => this.service.getOrFetch(key, notCached), hash);
+        return this.fromCache((key) => this.service.getCached(key), hash);
     }
 
     /** A commit's cached detail (L1, then L2), or `undefined`; never asks the provider. */
@@ -301,7 +298,7 @@ export class CommitChecksCoordinator {
         if (seeded) return seeded.detail;
         return this.fromCache(
             (key, match) =>
-                this.detailService.getOrFetch(`${key}#detail`, notCached, {
+                this.detailService.getCached(`${key}#detail`, {
                     repoKey,
                     capabilities: match.provider.capabilities,
                 }),

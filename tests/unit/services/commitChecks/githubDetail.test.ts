@@ -279,6 +279,44 @@ describe("GitHubProvider.getDetail", () => {
         ]);
     });
 
+    it("getAttemptHistory answers the detail's histories without the detail's reads", async () => {
+        const runId = String(runFixture.id);
+        const rerun = job(1, "success", { run_attempt: 2, started_at: "2026-11-08T15:00:00Z" });
+        const firstTry = job(1, "failure", {
+            id: 999,
+            run_attempt: 1,
+            started_at: "2026-11-08T14:00:00Z",
+        });
+        const gh = fakeGitHub(
+            state({
+                runs: [run({ run_attempt: 2, conclusion: "success" })],
+                jobsByRun: new Map([[runId, [rerun]]]),
+                allJobsByRun: new Map([[runId, [rerun, firstTry]]]),
+            }),
+        );
+        const provider = new GitHubProvider(gh.fetchJson, undefined, gh.fetchWithMeta);
+        const inDetail = (await provider.getDetail(ref, SHA)).attemptHistory;
+        gh.log.length = 0;
+
+        const histories = await provider.getAttemptHistory(ref, SHA);
+
+        expect(histories).toEqual(inDetail);
+        expect(histories).toHaveLength(1);
+        expect(gh.log.some((url) => url.includes("/check-runs") || url.includes("/status"))).toBe(
+            false,
+        );
+        expect(gh.log.some((url) => url.includes("filter=latest"))).toBe(false);
+    });
+
+    it("getAttemptHistory is empty when signed out", async () => {
+        mocks.getSession.mockResolvedValue(undefined);
+        const gh = fakeGitHub(state());
+        const provider = new GitHubProvider(gh.fetchJson, undefined, gh.fetchWithMeta);
+
+        await expect(provider.getAttemptHistory(ref, SHA)).resolves.toEqual([]);
+        expect(gh.log).toEqual([]);
+    });
+
     it("a first-attempt run asks for no attempt history", async () => {
         const gh = fakeGitHub(state());
         const provider = new GitHubProvider(gh.fetchJson, undefined, gh.fetchWithMeta);

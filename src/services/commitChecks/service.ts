@@ -47,7 +47,15 @@ export interface CommitChecksServiceOptions {
 export interface CommitChecksFetchOptions {
     /** When true, bypasses fresh L1/L2 snapshots but retains in-flight de-duplication. */
     force?: boolean;
+    /**
+     * When true, a miss rejects before any fetch starts: nothing is put in the in-flight map for
+     * a concurrent caller to join. Set by `getCached`, never by a caller that wants an answer.
+     */
+    cacheOnly?: true;
 }
+
+/** The fetcher of a cache-only read; `cacheOnly` stops before it can run. */
+const neverFetched = (): Promise<never> => Promise.reject(new Error("not cached"));
 
 /** Shared in-memory commit-check cache and in-flight request de-dupe. */
 export class CommitChecksService {
@@ -160,6 +168,7 @@ export class CommitChecksService {
         }
         const newerInflight = this.inflight.get(key);
         if (newerInflight) return newerInflight;
+        if (options.cacheOnly) throw new Error("not cached");
         const generation = this.captureGeneration(key);
         const fenceEnds = this.fenceEndCount;
         const startedAt = this.now();
@@ -219,6 +228,20 @@ export class CommitChecksService {
             });
         this.inflight.set(key, request);
         return request;
+    }
+
+    /**
+     * A fresh cached snapshot (L1, then the persistent store), or `undefined` on a miss. Never
+     * starts a fetch, so a miss leaves the in-flight map as it was.
+     *
+     * @param key - Provider/repo/settings/commit cache key.
+     */
+    async getCached(key: string): Promise<CommitChecksSnapshot | undefined> {
+        try {
+            return await this.getOrFetch(key, neverFetched, { cacheOnly: true });
+        } catch {
+            return undefined;
+        }
     }
 
     /**

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { CiChangedFile } from "../../../../types";
+import type { CiChangedFile, CommitCiDetail } from "../../../../types";
 import type {
     ChangedSinceGreenMessage,
     CiLoadedCommit,
@@ -21,6 +21,24 @@ export interface ChangedSinceGreenJob {
     checkName: string;
     /** The graph's loaded commits; empty where the host supplies them. */
     loaded: readonly CiLoadedCommit[];
+    /** The detail the job was read from; a new one (Refresh, a re-poll) asks again. */
+    detail: CommitCiDetail;
+}
+
+type JobIdentity = Pick<
+    RequestChangedSinceGreenMessage,
+    "repoKey" | "hash" | "logicalCheckId" | "scopeName" | "checkName"
+>;
+
+/** Whether two messages are about the same job of the same commit in the same repository. */
+function isSameJob(a: JobIdentity, b: JobIdentity): boolean {
+    return (
+        a.repoKey === b.repoKey &&
+        a.hash === b.hash &&
+        a.logicalCheckId === b.logicalCheckId &&
+        a.scopeName === b.scopeName &&
+        a.checkName === b.checkName
+    );
 }
 
 /** The answer on screen: loading, or the last green commit and the files changed since. */
@@ -40,29 +58,40 @@ export function useChangedSinceGreen(job: ChangedSinceGreenJob): {
     openDiff: (file: CiChangedFile) => void;
 } {
     const [view, setView] = useState<ChangedSinceGreenView>({ status: "loading" });
-    const newest = useRef(0);
-    const { repoKey, hash, logicalCheckId, scopeName, checkName, loaded } = job;
+    const newest = useRef<RequestChangedSinceGreenMessage | null>(null);
+    const { repoKey, hash, logicalCheckId, scopeName, checkName, loaded, detail } = job;
 
+    // `detail` is a dependency on purpose: a Refresh or a re-poll replaces the detail the
+    // comparison was read for, so a Git failure shown earlier is asked again.
     useEffect(() => {
-        setView({ status: "loading" });
-        const requestId = ++lastRequestId;
-        newest.current = requestId;
-        getVsCodeApi<RequestChangedSinceGreenMessage>().postMessage({
+        const request: RequestChangedSinceGreenMessage = {
             type: "requestChangedSinceGreen",
-            requestId,
+            requestId: ++lastRequestId,
             repoKey,
             hash,
             logicalCheckId,
             scopeName,
             checkName,
             loaded: [...loaded],
-        });
-    }, [repoKey, hash, logicalCheckId, scopeName, checkName, loaded]);
+        };
+        // The same job asked again keeps its answer on screen until the new reply replaces it.
+        if (!newest.current || !isSameJob(newest.current, request)) setView({ status: "loading" });
+        newest.current = request;
+        getVsCodeApi<RequestChangedSinceGreenMessage>().postMessage(request);
+    }, [repoKey, hash, logicalCheckId, scopeName, checkName, loaded, detail]);
 
     useEffect(() => {
         const onMessage = (event: MessageEvent<unknown>): void => {
             const data = event.data as Partial<ChangedSinceGreenMessage> | null;
-            if (data?.type !== "changedSinceGreen" || data.requestId !== newest.current) return;
+            const asked = newest.current;
+            if (
+                data?.type !== "changedSinceGreen" ||
+                !asked ||
+                data.requestId !== asked.requestId ||
+                !isSameJob(asked, data as ChangedSinceGreenMessage)
+            ) {
+                return;
+            }
             const { lastGreen = null, unknownReason, error, files = [] } = data;
             setView({ status: "ready", lastGreen, unknownReason, error, files });
         };

@@ -17,6 +17,7 @@ import {
     type LoadedCommit,
 } from "../../../../src/services/commitChecks/changedSinceGreen";
 import { CommitChecksCoordinator } from "../../../../src/services/commitChecks/coordinator";
+import { CommitChecksService } from "../../../../src/services/commitChecks/service";
 import type { CommitChecksProvider } from "../../../../src/services/commitChecks/types";
 import { NO_CI_CAPABILITIES } from "../../../../src/shared/ci/capabilities";
 import { logicalCheckId } from "../../../../src/shared/ci/identity";
@@ -296,6 +297,68 @@ describe("changedSinceGreen", () => {
             `${uncached.slice(0, 7)} is not cached and must stay unasked`,
         ).not.toHaveBeenCalled();
         expect(getDetail).not.toHaveBeenCalled();
+    });
+
+    it("a cache-only miss cannot fail the badge request for the same commit", async () => {
+        const green = commit("green, cached");
+        const uncached = commit("not cached");
+        const selected = commit("selected");
+        const provider: CommitChecksProvider = {
+            id: "github",
+            capabilities: { ...NO_CI_CAPABILITIES, runs: true, jobs: true },
+            match: () => ({ host: "github.com", owner: "o", repo: "r" }) as never,
+            keyFor: () => "github:o/r",
+            getChecks: async (_ref, hash) => snapshot(hash, [item("success", CI)]),
+            getDetail: async (_ref, hash) => detail(hash),
+        };
+        const service = new CommitChecksService();
+        const coordinator = new CommitChecksCoordinator(
+            {
+                getRemotes: async () => ["origin"],
+                getRemoteUrl: async () => "https://github.com/o/r",
+                diffNameStatus: (from: string, to: string) => gitOps.diffNameStatus(from, to),
+            } as never,
+            [provider],
+            {},
+            { service },
+        );
+        const ctx = { repoKey: root, authGeneration: 0, lifecycleGeneration: 0 };
+        await coordinator.getChecks(green);
+        await coordinator.getDetail(selected, {}, ctx);
+        // A badge request for the uncached commit arrives while the cache-only read is running.
+        const read = service.getOrFetch.bind(service);
+        let badge: Promise<CommitChecksSnapshot> | undefined;
+        vi.spyOn(service, "getOrFetch").mockImplementation((key, fetch, ...rest) => {
+            const own = read(key, fetch, ...rest);
+            badge ??= read(key, async () => snapshot(uncached, [item("failure", CI)]));
+            void badge.catch(() => undefined);
+            return own;
+        });
+
+        await coordinator.changedSinceGreen(request(selected), root);
+
+        const [settled] = await Promise.allSettled([badge]);
+        expect(
+            settled.status,
+            "a cache miss must not install a rejecting fetch that real badge callers join",
+        ).toBe("fulfilled");
+    });
+
+    it("cannot prove a name fallback unique in a partly listed current commit", async () => {
+        const green = commit("green, an item without an identity");
+        const selected = commit("selected");
+        const snapshots = { [green]: [item("success")] };
+        const whole = detail(selected);
+        const partlyListed = { ...whole, runsCoverage: { reason: "pageBound" as const, shown: 1 } };
+
+        // The same walk over a whole commit finds the name unique, so the green is taken.
+        await expect(
+            changedSinceGreen(deps(snapshots, whole), request(selected)),
+        ).resolves.toMatchObject({ lastGreen: green });
+        // A hidden workflow may hold another job of that name: the name proves nothing.
+        await expect(
+            changedSinceGreen(deps(snapshots, partlyListed), request(selected)),
+        ).resolves.toEqual({ lastGreen: null, unknownReason: "ambiguous", files: [] });
     });
 
     it("add/delete/rename map to the right sides", async () => {

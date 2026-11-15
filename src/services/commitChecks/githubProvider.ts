@@ -44,7 +44,14 @@ import {
     summaryForItems,
     unavailableSnapshot,
 } from "./normalize";
-import { CI_MAX_PAGES, CI_PAGE_SIZE, isUnderApiPrefix, linkHeaderNext, paginate } from "./paginate";
+import {
+    CI_MAX_PAGES,
+    CI_PAGE_SIZE,
+    isUnderApiPrefix,
+    linkHeaderNext,
+    paginate,
+    type PaginateResult,
+} from "./paginate";
 import { RequestGateCooldownError } from "./requestGate";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import { UNKNOWN_REQUIRED, type RequiredChecks } from "./requiredChecks";
@@ -481,6 +488,56 @@ export class GitHubProvider implements CommitChecksProvider {
     }
 
     /**
+     * §9: the commit's attempt histories, one per run and logical job, for the runs past their
+     * first attempt; `getDetail` carries the same ones. Signed out is an empty answer; a failed
+     * read rejects.
+     */
+    async getAttemptHistory(ref: ProviderRepoRef, hash: string): Promise<CiAttemptHistory[]> {
+        const session = await openSession(hash);
+        if (!isSession(session)) {
+            if (session.state === "unavailable") throw new Error(session.error);
+            return [];
+        }
+        const gitHubRef = ref as GitHubRepoRef;
+        const fetch = (url: string) => this.fetchWithMeta(url, githubHeaders(session));
+        try {
+            const { runsPage, repositoryId } = await this.listRuns(fetch, gitHubRef, hash);
+            const runs = runsPage.items.flatMap((run) => {
+                const runId = readId(run.id);
+                if (runId === undefined) return [];
+                const runName = readString(run.name) || readString(run.display_title);
+                return [toRun(run, runId, runName, [], "full")];
+            });
+            const read = await this.readAttemptHistory(fetch, gitHubRef, runs, repositoryId);
+            return read.attemptHistory ?? [];
+        } catch (err) {
+            throw redactError(err, session.accessToken);
+        }
+    }
+
+    /** The commit's workflow runs and the repository id GitHub names them under. */
+    private async listRuns(
+        fetch: Parameters<typeof paginate>[0],
+        ref: GitHubRepoRef,
+        hash: string,
+    ): Promise<{ runsPage: PaginateResult<GitHubWorkflowRun>; repositoryId: string | undefined }> {
+        let repositoryId: string | undefined;
+        const runsPage = await paginate(
+            fetch,
+            `${repoApiUrl(ref)}/actions/runs?head_sha=${encodeURIComponent(hash)}&per_page=${CI_PAGE_SIZE}`,
+            linkHeaderNext,
+            (body) => {
+                const runs = readList<GitHubWorkflowRun>(body, "workflow_runs");
+                repositoryId ??= readId(runs[0]?.repository?.id);
+                return runs;
+            },
+            CI_MAX_PAGES,
+            (url) => this.allowNext(ref, url, repositoryId),
+        );
+        return { runsPage, repositoryId };
+    }
+
+    /**
      * One read of the detail: run list, snapshot, then each run's jobs and its attempt again.
      * GitHub can announce a re-run's attempt before its jobs and check runs catch up, so the
      * read counts only when the attempt is unchanged, every job reports the run's attempt and
@@ -495,19 +552,7 @@ export class GitHubProvider implements CommitChecksProvider {
         conditional: EtagStore | undefined,
     ): Promise<CiDetailFetch | undefined> {
         const fetch = (url: string) => this.fetchWithMeta(url, githubHeaders(session), conditional);
-        let repositoryId: string | undefined;
-        const runsPage = await paginate(
-            fetch,
-            `${repoApiUrl(ref)}/actions/runs?head_sha=${encodeURIComponent(hash)}&per_page=${CI_PAGE_SIZE}`,
-            linkHeaderNext,
-            (body) => {
-                const runs = readList<GitHubWorkflowRun>(body, "workflow_runs");
-                repositoryId ??= readId(runs[0]?.repository?.id);
-                return runs;
-            },
-            CI_MAX_PAGES,
-            (url) => this.allowNext(ref, url, repositoryId),
-        );
+        const { runsPage, repositoryId } = await this.listRuns(fetch, ref, hash);
         const {
             snapshot,
             atSuiteLimit: refLimited,

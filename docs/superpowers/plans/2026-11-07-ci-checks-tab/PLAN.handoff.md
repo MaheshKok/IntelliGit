@@ -21,6 +21,8 @@
 - Files: src/shared/ci/history.ts (flaky, flakyLineOf), src/services/commitChecks/{ciHistory,changedSinceGreen,coordinator,githubProvider,gitlabProvider}.ts, src/git/operations.ts diffNameStatus, src/services/diffService.ts openRevisionRangeFileDiff, src/views/ciChangedSinceGreenHandler.ts, three hosts, useChangedSinceGreen.ts, CheckJobDetail.tsx, CheckTree.tsx, ChecksTab.tsx.
 - Tests: changedSinceGreen.test.ts (real git), ciHistory.test.ts, ciChangedSinceGreenHandler.test.ts, commitChecksChangedSinceGreen.integration.test.tsx, CommitInfoViewProvider.test.ts, ciFixture.test.ts; E2E tests/e2e/ciChangedSinceGreen.spec.ts (CI only).
 - Mutations: 36 on a copy, all red at a named assertion (log entry "Phase 12: built, review pending").
+- Fix round 1 (8 findings, each with a test red before the fix): (1) cache-only reads use `getCached` with a `cacheOnly` option that stops before any fetcher is installed in the shared in-flight map (snapshot and detail services); (2) `assertListedRepoRelativePath` lets a Git-listed name hold a newline, used only by `openRevisionRangeFileDiff`; (3) `nameProvesJob` in changedSinceGreen: a name-only green in a partly listed current commit answers "ambiguous"; (4) a reply must match the full request identity (repo, hash, job, scope, check), not the id alone; (5) `detail` is a hook dependency so Refresh asks again, the same job keeps its answer on screen meanwhile; (6) `getAttemptHistory(ref, hash)` on both providers and in the contract (shares helpers with getDetail); (7) CheckTree.tsx and CHANGELOG diffs checked against 02881057: flaky-only and the 0.43.14 entry, no change; (8) GitNexus not run, see risks.
+- Fix round 1 proof: 7 mutations on copies, each red at a named test (service cacheOnly throw removed, line-break flag off, nameProvesJob off, id-only reply check, `detail` dropped from deps, both getAttemptHistory stubbed to []).
 
 ## Decisions and why
 - File list is a plain button list, not CommitChangedFilesPanel: that panel needs a whole CommitDetail and tree state; plan step 5 is "[ASSUMED] where props allow". CiChangedFile carries path, oldPath, status only (no line counts), unlike the plan's "CommitFile[]".
@@ -32,7 +34,8 @@
 
 ## Open risks
 - Local `bun run test` is never fully green: Node 26.5.0 reds commit-list-column-resize (8), Node 24.3.0 reds updateWithLocalChanges symlink EEXIST (1); both red at 90731f87. diffBudgets "large compute" is load-sensitive (green alone). CI uses Node 22, not installed here (homebrew node@22 resolves to 26).
-- GitNexus impact and detect-changes not run: the worktree is not indexed.
+- GitNexus impact and detect-changes not run: the worktree has no `.gitnexus`; run both in an indexed checkout before merge.
+- Gates in fix round 1: every step green except `bun run test`, whose only red file is commit-list-column-resize (8 tests, red at the base).
 - Gate E not run locally; the new spec runs on CI.
 - Contract 8 empties persisted CI detail caches once on upgrade (refetch).
 

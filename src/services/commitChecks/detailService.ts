@@ -54,6 +54,9 @@ interface ScanRequester {
 /** This service's clear count, the key's invalidate count and the store's clear generation. */
 type Generation = readonly [number, number, string | undefined];
 
+/** The fetcher of a cache-only read; `cacheOnly` stops before it can run. */
+const neverFetched = (): Promise<never> => Promise.reject(new Error("not cached"));
+
 /**
  * When a served detail's snapshot was built, counted across the window. Every snapshot is of the
  * key's current entry, so a higher number never holds older data, whichever entry it came from.
@@ -247,6 +250,7 @@ export class CommitCiDetailService {
         }
         const newerInflight = this.inflight.get(key);
         if (newerInflight) return newerInflight;
+        if (options.cacheOnly) throw new Error("not cached");
         const generation = this.captureGeneration(key);
         let fenceEnds = this.fenceEndCount;
         const fenceSequence = this.fences?.sequence();
@@ -328,6 +332,21 @@ export class CommitCiDetailService {
             });
         this.inflight.set(key, request);
         return request;
+    }
+
+    /**
+     * A fresh cached detail (L1, then the persistent store) with the read-time values attached,
+     * or `undefined` on a miss. Never starts a fetch, so a miss leaves the in-flight map as it was.
+     *
+     * @param key - Detail cache key (`<snapshot key>#detail`).
+     * @param serve - Capabilities and repository attached to the served detail.
+     */
+    async getCached(key: string, serve: CiDetailServeContext): Promise<CommitCiDetail | undefined> {
+        try {
+            return await this.getOrFetch(key, neverFetched, serve, { cacheOnly: true });
+        } catch {
+            return undefined;
+        }
     }
 
     /**

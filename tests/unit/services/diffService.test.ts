@@ -139,6 +139,7 @@ import {
     compareEditorFileWithRevision,
     createReadonlyDiffUri,
     openCommitFileDiff,
+    openRevisionRangeFileDiff,
     registerReadonlyDiffContentProvider,
     showEditorFileDiff,
 } from "../../../src/services/diffService";
@@ -789,5 +790,43 @@ describe("diffService", () => {
         expect(mocks.showInformationMessage).toHaveBeenCalledWith(
             "No file-level patch found for src/a.ts in abcdef12.",
         );
+    });
+});
+
+describe("openRevisionRangeFileDiff", () => {
+    const from = "a".repeat(40);
+    const to = "b".repeat(40);
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.executeCommand.mockResolvedValue(undefined);
+    });
+
+    it("opens a valid Git filename that holds a line break", async () => {
+        const gitOps = makeGitOps();
+
+        await openRevisionRangeFileDiff(from, to, { path: "line\nname", status: "M" }, gitOps);
+
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("line\nname", from);
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("line\nname", to);
+        expect(mocks.executeCommand).toHaveBeenCalledWith(
+            "vscode.diff",
+            expect.anything(),
+            expect.anything(),
+            expect.stringContaining("line\nname"),
+        );
+    });
+
+    it.each([
+        ["a NUL byte", "bad\0name"],
+        ["an absolute path", "/etc/passwd"],
+        ["a path that leaves the repository", "../outside.txt"],
+    ])("still refuses %s", async (_what, file) => {
+        const gitOps = makeGitOps();
+
+        await expect(
+            openRevisionRangeFileDiff(from, to, { path: file, status: "M" }, gitOps),
+        ).rejects.toThrow();
+        expect(gitOps.getFileContentAtRef).not.toHaveBeenCalled();
     });
 });

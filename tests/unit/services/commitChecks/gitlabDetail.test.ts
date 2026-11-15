@@ -229,6 +229,40 @@ describe("GitLabProvider.getDetail", () => {
         ]);
     });
 
+    it("getAttemptHistory answers the detail's histories without the detail's reads", async () => {
+        const retry = job(31, "success", { name: "unit", created_at: "2026-11-08T15:00:00Z" });
+        const firstTry = job(42, "failed", { name: "unit", created_at: "2026-11-08T14:00:00Z" });
+        const gl = fakeGitLab(
+            state({
+                jobsByPipeline: new Map([[PIPELINE_ID, [retry]]]),
+                retriedByPipeline: new Map([[PIPELINE_ID, [retry, firstTry]]]),
+            }),
+        );
+        const gitlab = provider(gl);
+        const inDetail = (await gitlab.getDetail(ref, SHA)).attemptHistory;
+        gl.log.length = 0;
+
+        const histories = await gitlab.getAttemptHistory(ref, SHA);
+
+        expect(histories).toEqual(inDetail);
+        expect(histories).toHaveLength(1);
+        expect(gl.log.some((url) => url.includes("/statuses"))).toBe(false);
+        expect(gl.log.some((url) => url.includes("scope[]"))).toBe(false);
+    });
+
+    it("getAttemptHistory is empty without a token", async () => {
+        const gl = fakeGitLab(state());
+        const gitlab = new GitLabProvider(
+            gl.fetchJson,
+            tokenStore(null),
+            undefined,
+            gl.fetchWithMeta,
+        );
+
+        await expect(gitlab.getAttemptHistory(ref, SHA)).resolves.toEqual([]);
+        expect(gl.log).toEqual([]);
+    });
+
     it("maps pipeline → jobs", async () => {
         // API order is not stage order: a retried build job has the highest id.
         const pipelineJobs = [

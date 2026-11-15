@@ -118,6 +118,12 @@ export async function changedSinceGreen(
     // Without the selected commit's checks no match can be proven unique on its side.
     if (!detail) return { lastGreen: null, unknownReason: "ambiguous", files: [] };
     const current = historyChecksOf(detail);
+    // A name proves the job only when every list the current commit's checks come from was read
+    // whole; a hidden workflow, job or flat check may hold another one of that name.
+    const nameProvesJob =
+        detail.runsCoverage === "full" &&
+        detail.otherChecksCoverage === "full" &&
+        detail.runs.every((run) => run.jobsCoverage === "full");
     for (const hash of firstParentLine(request.hash, request.loaded)) {
         // Serial: the walk stops at the first green or ambiguous ancestor.
         // react-doctor-disable-next-line react-doctor/async-await-in-loop
@@ -128,6 +134,10 @@ export async function changedSinceGreen(
         if (match === "ambiguous")
             return { lastGreen: null, unknownReason: "ambiguous", files: [] };
         if (match === "none" || match.state !== "success") continue;
+        // A green found by name alone, in a current commit that cannot prove the name unique.
+        if (!nameProvesJob && match.logicalId !== request.logicalCheckId) {
+            return { lastGreen: null, unknownReason: "ambiguous", files: [] };
+        }
         // A list read in part cannot prove a name unique: only an identity match counts there.
         if (snapshot.partial && match.logicalId === undefined) continue;
         // react-doctor-disable-next-line react-doctor/async-await-in-loop

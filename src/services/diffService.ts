@@ -17,6 +17,7 @@ import {
     isValidGitHash,
 } from "./gitHelpers";
 import { assertRepoRelativePath } from "../utils/fileOps";
+import { assertListedRepoRelativePath } from "../utils/repoRelativePath";
 import { EMPTY_TREE_HASH } from "../utils/constants";
 import type { CiChangedFile } from "../types";
 import { rangeDiffSides } from "./commitChecks/changedSinceGreen";
@@ -952,10 +953,10 @@ export async function openRevisionRangeFileDiff(
     const { left, right } = rangeDiffSides(
         {
             ...file,
-            path: assertRepoRelativePath(file.path),
+            path: assertListedRepoRelativePath(file.path),
             ...(file.oldPath === undefined
                 ? {}
-                : { oldPath: assertRepoRelativePath(file.oldPath) }),
+                : { oldPath: assertListedRepoRelativePath(file.oldPath) }),
         },
         fromRev,
         toRev,

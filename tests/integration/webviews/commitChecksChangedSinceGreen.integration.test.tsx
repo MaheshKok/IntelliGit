@@ -350,3 +350,40 @@ describe("Checks tab changed since last green", () => {
         expect(section(container)).toBeNull();
     });
 });
+
+describe("Checks tab changed since last green: request identity and Refresh", () => {
+    it.each([
+        ["repository", { repoKey: "/other" }],
+        ["hash", { hash: "e".repeat(40) }],
+        ["job identity", { logicalCheckId: "job\0CI\0other" }],
+        ["check name", { checkName: "other" }],
+        ["workflow name", { scopeName: "Deploy" }],
+    ])("a matching request id with the wrong %s is rejected", (_what, wrong) => {
+        const container = mountPane();
+        showDetail(container, detail(true));
+        answerChanged(lastChangedRequest(), { lastGreen: P2, ...wrong });
+        expect(section(container)).toBeNull();
+        expect(container.textContent).toContain("Looking for the last passing run");
+    });
+
+    it("Refresh retries changed-since-green after a Git failure", () => {
+        const container = mountPane();
+        showDetail(container, detail(true));
+        answerChanged(lastChangedRequest(), { lastGreen: null, error: "bad object" });
+        expect(section(container)?.textContent).toBe("Could not compare: bad object");
+
+        act(() =>
+            container.querySelector<HTMLButtonElement>('button[aria-label="Refresh"]')!.click(),
+        );
+        showDetail(container, detail(true));
+
+        expect(posted("requestChangedSinceGreen")).toHaveLength(2);
+        answerChanged(lastChangedRequest(), {
+            lastGreen: P2,
+            files: [{ path: "a.ts", status: "M" }],
+        });
+        expect(section(container)?.textContent).toContain(
+            `Changed since last green (${P2.slice(0, 7)})`,
+        );
+    });
+});

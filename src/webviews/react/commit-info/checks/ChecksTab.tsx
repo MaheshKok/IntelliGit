@@ -79,11 +79,12 @@ function toLoadedLine(
 function changedSinceGreenJob(
     repoKey: string,
     hash: string,
+    detail: CommitCiDetail | undefined,
     run: CiRun | undefined,
     job: CiJob | undefined,
     loaded: readonly CiLoadedCommit[] | undefined,
 ): ChangedSinceGreenJob | null {
-    if (job?.state !== "failure" || !run) return null;
+    if (job?.state !== "failure" || !run || !detail) return null;
     return {
         repoKey,
         hash,
@@ -91,6 +92,7 @@ function changedSinceGreenJob(
         scopeName: run.name,
         checkName: job.checkName,
         loaded: loaded ?? NO_COMMITS,
+        detail,
     };
 }
 
@@ -154,6 +156,7 @@ export function ChecksTab({
     const changedSinceGreen = changedSinceGreenJob(
         repoKey,
         hash,
+        loaded,
         selectedRun,
         selectedJob,
         loadedLine,
