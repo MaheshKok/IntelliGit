@@ -444,6 +444,60 @@ describe("BitbucketCloudProvider.getChecks — pagination", () => {
 
         expect(fetchJson).toHaveBeenCalledTimes(1);
     });
+
+    // Issue #437: `hostname` drops the port, so a link on another port carried the token.
+    it("Cloud continuation on another port is refused before requesting it", async () => {
+        const fetch = vi.fn(async () => ({
+            values: [{ key: "unit", name: "unit", state: "FAILED" }],
+            next: "https://api.bitbucket.org:444/2.0/more",
+        }));
+        const snapshot = await new BitbucketCloudProvider(
+            fetch,
+            storeWithToken("bb-token"),
+        ).getChecks(bbRef, "a".repeat(40));
+        expect(
+            fetch,
+            "K33 same port is required before forwarding authentication",
+        ).toHaveBeenCalledTimes(1);
+        expect(snapshot.partial, "a refused continuation leaves unread work").toBe(true);
+    });
+
+    it.each(["https://api.bitbucket.org/2.0/more", "https://api.bitbucket.org:443/2.0/more"])(
+        "follows a default-port continuation %s",
+        async (next) => {
+            const fetch = vi
+                .fn<FetchJson>()
+                .mockResolvedValueOnce({
+                    values: [{ key: "unit", name: "unit", state: "FAILED" }],
+                    next,
+                })
+                .mockResolvedValueOnce({
+                    values: [{ key: "lint", name: "lint", state: "SUCCESSFUL" }],
+                });
+            const snapshot = await new BitbucketCloudProvider(
+                fetch,
+                storeWithToken("bb-token"),
+            ).getChecks(bbRef, "a".repeat(40));
+            expect(fetch, "a default-port continuation is followed").toHaveBeenCalledTimes(2);
+            expect(snapshot.partial, "a fully read default-port chain is complete").toBeUndefined();
+        },
+    );
+
+    it("refuses a continuation carrying user info", async () => {
+        const fetch = vi.fn(async () => ({
+            values: [{ key: "unit", name: "unit", state: "FAILED" }],
+            next: "https://user:pass@api.bitbucket.org/2.0/more",
+        }));
+        const snapshot = await new BitbucketCloudProvider(
+            fetch,
+            storeWithToken("bb-token"),
+        ).getChecks(bbRef, "a".repeat(40));
+        expect(
+            fetch,
+            "K33 no user info is allowed before forwarding authentication",
+        ).toHaveBeenCalledTimes(1);
+        expect(snapshot.partial, "a refused user-info continuation leaves unread work").toBe(true);
+    });
 });
 
 // BitbucketCloudProvider.getChecks — empty / malformed responses
