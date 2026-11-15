@@ -798,4 +798,47 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
         );
         expect(replies, "only the reloaded context's reply is posted").toHaveLength(1);
     });
+
+    it("a replaced view's late ready does not discard the current context's history reply", async () => {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            { ...buildProviderOptions("card"), ciRepoKey: () => "/repo" },
+        );
+        const retired = createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(retired.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const current = createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(current.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await current.receiveMessage({ type: "ready" });
+
+        let release!: (history: unknown) => void;
+        const pending = new Promise<unknown>((resolve) => (release = resolve));
+        vi.spyOn(
+            (provider as unknown as { commitChecks: { ciHistory: () => unknown } }).commitChecks,
+            "ciHistory",
+        ).mockReturnValue(pending as never);
+        const asked = current.receiveMessage({
+            type: "requestCiHistory",
+            requestId: 1,
+            repoKey: "/repo",
+            hash: "a".repeat(40),
+            parents: ["b".repeat(40)],
+        });
+        await flushMicrotasks();
+        await retired.receiveMessage({ type: "ready" });
+        release({ parent: null, defaultBranch: null });
+        await asked;
+
+        const replies = current.posted.filter(
+            (message) => isRecord(message) && message.type === "ciHistory",
+        );
+        expect(
+            replies,
+            "current context must receive its valid history despite retired ready",
+        ).toHaveLength(1);
+    });
 });

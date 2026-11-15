@@ -16,6 +16,7 @@
 
 ## Phase 11: review pending, built 350f627c, fix round 1 committed after it (started at 8ff6422d1f29149a80f29c155327481695f34649)
 - Fix round 1 (4 findings, each test red before the fix): useCiHistory clears the stored answer when a request starts or the detail goes away and renders it only for the newest request id; all three hosts (CommitInfo, CommitGraph, Undocked) keep a `webviewGeneration` advanced on `ready`, captured when a history request starts and checked before posting; `join` matches a logical id only when exactly one parent item AND exactly one current check carry it, and allows the unique-name fallback when either side has no logical id.
+- Fix round 2 (2 findings, each test red before the fix): `webviewGeneration` advances only when the `ready` comes from the current view/panel (CommitInfo, CommitGraph in the `ready` case; Undocked in the message wrapper that already checks `this.panel === panel`), so a retired view's late ready no longer drops the current history reply; `join`'s name fallback counts every same-named parent item (identified ones of another workflow included) before accepting the one left, so an unidentified green `unit` plus an identified red `Release/unit` gives "unknown", not "new".
 - 8ff6422d is not an ancestor of HEAD; the real base is 2d44491c (main after #435 plus the Phase 11 groundwork docs commit).
 - Built (0.43.13): each failed check is tagged "new" / "still" / "unknown", a passed one "fixed", against the first parent; "also red on {branch}" against the default branch tip read from origin/HEAD on every request (K22); "default branch unknown" when origin/HEAD is missing.
 - Pure logic `join` / `compare` / `alsoRed` / `historyChecksOf` in src/shared/ci/history.ts; host read `readCiHistory` in src/services/commitChecks/ciHistory.ts (coordinator `ciHistory`); message `requestCiHistory` / `ciHistory` answered by src/views/ciHistoryHandler.ts in all three hosts; tab hook useCiHistory.ts; tags in CheckTree.tsx; 5 strings in 12 locales + CSV; README section; CHANGELOG 0.43.13.
@@ -36,7 +37,9 @@
 - Two same-named jobs in different workflows on GitHub/GitLab always give "unknown" (snapshot has no workflow name). Correct per the join rule, but users with duplicate job names see no new/still.
 - Phase 11 e2e not run locally. impeccable detect is regex-only (exit 0 on 6 UI files).
 - The history hook still shows the stale answer for one commit before its effect clears it; the requestId check cannot close that frame (the ref moves in the same effect). No test sees it, as effects flush inside act.
-- `bun run test` after fix round 1: 10 failed, 8204 passed of 8214; 10 failures, the known set (8 commit-list-column-resize on Node v26.5.0, tsconfigCoverage, screenshotComparatorMeta). build:prod and package then run separately: both exit 0.
+- `bun run test` after fix round 2: 10 failed, 8208 passed of 8218; the same known set (8 commit-list-column-resize on Node v26.5.0, tsconfigCoverage, screenshotComparatorMeta). build:prod and package then run separately: both exit 0.
+- Undocked's `ready` now bumps the generation in the message wrapper, not in `handleMessage`; a caller that invokes `handleMessage({type:"ready"})` directly would skip the bump (none does today).
+- No mutation batch and no GitNexus impact run in round 2; the red-before-fix runs are the evidence.
 
 ## Next phase: 12
 

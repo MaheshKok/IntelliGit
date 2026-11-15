@@ -840,8 +840,12 @@ export class UndockedViewProvider {
                 msg.type === "runCiAction" ||
                 msg.type === "requestCiHistory";
             if (ciMessage && this.panel !== panel) return;
-            // A window reload sends ready without reopening the panel and ends the old scan loop.
-            if (msg.type === "ready" && this.panel === panel) this.ciDetailLoops.dispose();
+            // A window reload sends ready without reopening the panel: it ends the old scan loop
+            // and orphans a history reply asked before it. A closed panel's late ready does neither.
+            if (msg.type === "ready" && this.panel === panel) {
+                this.webviewGeneration += 1;
+                this.ciDetailLoops.dispose();
+            }
             try {
                 if (isChangeWorkflowCommand(msg.type)) await this.handleChangeWorkflowMessage(msg);
                 else await this.handleMessage(msg);
@@ -1195,8 +1199,6 @@ export class UndockedViewProvider {
                 // `postCommitDetailState()` re-send what the webview already has --
                 // reintroducing the duplicate post this guard exists to remove.
                 this.lastPostedPayload = undefined;
-                // A history reply asked before this reload must not reach the new context.
-                this.webviewGeneration += 1;
                 this.postToWebview({
                     type: "setViewVisibility",
                     visible: this.panel?.visible ?? false,

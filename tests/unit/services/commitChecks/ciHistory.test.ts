@@ -148,6 +148,17 @@ describe("compare", () => {
         expect(tag(flat, parent)).toBe("unknown");
     });
 
+    it("a fallback name repeated by another identified parent is ambiguous across the whole commit", () => {
+        // The parent holds an unidentified green `unit` and an identified red `Release/unit`;
+        // the identified current `CI/unit` cannot tell which one it is.
+        const ci = job("CI", "unit", "failure");
+        const parent = [
+            item("unit", "success"),
+            item("unit", "failure", { logicalId: jobId("Release", "unit") }),
+        ];
+        expect(tag(ci, parent)).toBe("unknown");
+    });
+
     it("two current checks with one logical identity → unknown for both", () => {
         const first = job("CI", "unit", "failure");
         const second = job("CI", "unit", "failure");

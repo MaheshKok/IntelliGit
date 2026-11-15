@@ -385,10 +385,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         // the final `postCommitDetailState()` re-send what the webview already
                         // has -- reintroducing the duplicate post this guard exists to remove.
                         this.lastPostedPayload = undefined;
-                        // A history reply asked before this reload must not reach the new context.
-                        this.webviewGeneration += 1;
-                        // A reload ends the old scan loop; a replaced view's late ready must not.
-                        if (this.view === webviewView) this.ciDetailLoops.dispose();
+                        // A reload ends the old scan loop and orphans a history reply asked before
+                        // it; a replaced view's late ready must do neither to its successor.
+                        if (this.view === webviewView) {
+                            this.webviewGeneration += 1;
+                            this.ciDetailLoops.dispose();
+                        }
                         this.postToWebview({
                             type: "setViewVisibility",
                             visible: webviewView.visible,

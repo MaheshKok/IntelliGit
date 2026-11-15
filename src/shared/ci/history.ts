@@ -58,15 +58,17 @@ export function join(
             return byId.length === 1 && sameIdNow.length === 1 ? byId[0] : undefined;
         }
     }
-    // Another logical id on both sides is another check, even under the same name; a name
-    // fallback is only for a pair where one side carries no identity.
-    const byName = parent.filter(
-        (item) =>
-            item.name === check.name &&
-            (item.logicalId === undefined || check.logicalId === undefined),
-    );
+    // The name fallback's scope is the whole commit: every same-named parent item counts, an
+    // identified one of another workflow included. Only then is the one left a match, and
+    // another logical id on both sides is another check, even under the same name.
+    const byName = parent.filter((item) => item.name === check.name);
     const sameNameNow = current.filter((other) => other.name === check.name).length;
-    return byName.length === 1 && sameNameNow === 1 ? byName[0] : undefined;
+    const [only] = byName;
+    return byName.length === 1 &&
+        sameNameNow === 1 &&
+        (only.logicalId === undefined || check.logicalId === undefined)
+        ? only
+        : undefined;
 }
 
 /**
