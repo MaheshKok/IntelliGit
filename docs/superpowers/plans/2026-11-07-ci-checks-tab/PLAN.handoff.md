@@ -12,9 +12,10 @@
 - Phase 8: accepted b5a56002, manual; owner OK 2026-11-13 (squash-merged as #426, 7941c809).
 - Phase 9: accepted 37ba9d13, manual: finished by hand; elephant OK 2026-11-14 after the owner's answer "C: track in #432" (squash-merged as #430, 63b8ea88).
 - Phase 10: accepted 8ff6422d, manual: finished by hand after the takeover halt, owner answer "A" 2026-11-14 (squash-merged as #435, bc063074). Its open risks stand; details in this file's git history.
+- Phase 11: accepted b9d710d6, verification incomplete.
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 11: review pending, started at 2d44491ccdfa81fd955af4833ee4bade874a5f34
+## Phase 11: accepted b9d710d6, verification incomplete, started at 2d44491ccdfa81fd955af4833ee4bade874a5f34
 - Earlier commits: built 350f627c; fix 1 8ace3e72; fix 2 e0ee196e; takeover a4017dc0; halt c87668db; owner answer 17562890; wave re-run ca89903e; fix 1 f4856222; fix 2 e2da990e.
 - Second-run takeover (after e2da990e): partial coverage in GitLab, Bitbucket Cloud and Server; `floorDetail` pageBound; partial never persisted; snapshot schema 2. Tests in ciHistoryPartialCoverage.test.ts (7 red before).
 - Built: each failed check is tagged "new" / "still" / "unknown", a passed one "fixed", against the first parent; "also red on {branch}" against the default branch tip read from origin/HEAD on every request (K22); "default branch unknown" when origin/HEAD is missing. Partial parent: failed job "unknown"; partial tip: no also-red.
