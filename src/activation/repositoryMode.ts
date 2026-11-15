@@ -420,6 +420,8 @@ export async function activateRepositoryMode(
     commitInfo.setCiSource({
         ...commitGraph.ciDetailSource(() => repoRoot),
         enabled: commitCheckSettings.enabled,
+        // Either graph's selection fills this view; both show the same repository's history.
+        loadedCommits: () => [...commitGraph.loadedCommits(), ...sidebarGraph.loadedCommits()],
     });
     sidebarGraph.onOpenCommitInChecks((hash) => commitInfo.openChecksTab(hash));
     const commitPanel = new CommitPanelViewProvider(

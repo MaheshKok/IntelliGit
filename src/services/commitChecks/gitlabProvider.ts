@@ -46,6 +46,7 @@ import { RequestGateCooldownError } from "./requestGate";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import { UNKNOWN_REQUIRED, type RequiredChecks } from "./requiredChecks";
 import { uniqueJobDurations, type UsualDuration } from "./ciTiming";
+import { attemptHistories, type CiAttemptRun } from "./ciHistory";
 import {
     hasUnfinishedWork,
     isCompleteDetail,
@@ -110,6 +111,7 @@ interface GitLabJob {
     web_url?: unknown;
     started_at?: unknown;
     finished_at?: unknown;
+    created_at?: unknown;
     allow_failure?: unknown;
     /** Seconds the job ran, with a fraction; null while it runs. */
     duration?: unknown;
@@ -238,6 +240,7 @@ export class GitLabProvider implements CommitChecksProvider {
         requiredChecks: true,
         optionalJobs: true,
         usualDuration: true,
+        attemptHistory: true,
         writeScopeHelp: "commit.checks.tab.writeScopeHelpGitlab",
         // POST pipelines/:id/retry restarts failed and canceled jobs.
         rerunFailedLabel: "commit.checks.tab.rerunFailedAndCanceled",
@@ -556,6 +559,7 @@ export class GitLabProvider implements CommitChecksProvider {
         const runs: CiRun[] = [];
         const cutRuns = new Set<string>();
         const scanCursors: CiFailedScanCursor[] = [];
+        const attemptRuns: CiAttemptRun[] = [];
         let retriedMidRead = false;
         let sessionOnly = false;
         for (const listed of pipelines.items) {
@@ -589,6 +593,19 @@ export class GitLabProvider implements CommitChecksProvider {
             const jobs = inStageOrder(jobsPage.items).map((job) => toJob(job, runName));
             const run = toRun(pipeline, runId, runName, jobs, jobsPage.coverage);
             runs.push(run);
+            // Retried jobs carry no attempt number, so their history is ordered by creation.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            const attempts = await pages(
+                `${base}/pipelines/${encodeURIComponent(runId)}/jobs?include_retried=true&per_page=${CI_PAGE_SIZE}`,
+                (body) =>
+                    readArray<GitLabJob>(body).map((job) => ({
+                        ...toJob(job, runName),
+                        ...(optionalString(job.created_at) !== undefined && {
+                            createdAt: optionalString(job.created_at),
+                        }),
+                    })),
+            );
+            attemptRuns.push({ runId, coverage: attempts.coverage, jobs: attempts.items });
             if (jobsPage.coverage !== "full") cutRuns.add(runId);
             if (run.state === "failure" && jobsPage.next) {
                 // The failed-only collection is read from its first page; jobs already shown
@@ -622,6 +639,9 @@ export class GitLabProvider implements CommitChecksProvider {
             ...(retriedMidRead && { complete: false }),
             ...(sessionOnly && { sessionOnly }),
             ...(scanCursors.length > 0 && { scanCursors }),
+            ...(attemptRuns.length > 0 && {
+                attemptHistory: attemptHistories(attemptRuns, "createdAt"),
+            }),
         };
     }
 

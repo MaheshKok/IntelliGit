@@ -74,6 +74,8 @@ function jobsPageUrl(runId: unknown, page: number): string {
 interface FakeGitHub {
     runs: Run[];
     jobsByRun: Map<string, Job[]>;
+    /** `filter=all`: every attempt's jobs; defaults to `jobsByRun`. */
+    allJobsByRun?: Map<string, Job[]>;
     /** Check runs besides the jobs' own; GitHub lists every Actions job as a check run too. */
     checkRuns: Record<string, unknown>[];
     /** False models a snapshot that has not caught up with the listed jobs yet. */
@@ -170,7 +172,11 @@ function fakeGitHub(state: FakeGitHub) {
         if (found) return { statusCode: 200, headers: {}, body: found };
         const jobsMatch = /\/actions\/runs\/(\d+)\/jobs$/.exec(parsed.pathname);
         if (jobsMatch) {
-            const all = state.jobsByRun.get(jobsMatch[1]) ?? [];
+            const byRun =
+                parsed.searchParams.get("filter") === "all"
+                    ? (state.allJobsByRun ?? state.jobsByRun)
+                    : state.jobsByRun;
+            const all = byRun.get(jobsMatch[1]) ?? [];
             const slice = all.slice((page - 1) * 100, page * 100);
             const link =
                 state.nextLink?.(url, page) ??
@@ -229,6 +235,60 @@ describe("GitHubProvider.getDetail", () => {
 
     afterEach(() => {
         vi.useRealTimers();
+    });
+
+    it("attempt requests carry per_page=100", async () => {
+        const runId = String(runFixture.id);
+        const rerun = job(1, "success", { run_attempt: 2, started_at: "2026-11-08T15:00:00Z" });
+        const firstTry = job(1, "failure", {
+            id: 999,
+            run_attempt: 1,
+            started_at: "2026-11-08T14:00:00Z",
+        });
+        const gh = fakeGitHub(
+            state({
+                runs: [run({ run_attempt: 2, conclusion: "success" })],
+                jobsByRun: new Map([[runId, [rerun]]]),
+                allJobsByRun: new Map([[runId, [rerun, firstTry]]]),
+            }),
+        );
+        const provider = new GitHubProvider(gh.fetchJson, undefined, gh.fetchWithMeta);
+
+        const detail = await provider.getDetail(ref, SHA);
+
+        const attemptUrls = gh.log.filter(
+            (url) => url.includes("/jobs?") && new URL(url).searchParams.get("filter") === "all",
+        );
+        expect(attemptUrls).toHaveLength(1);
+        expect(new URL(attemptUrls[0]).searchParams.get("per_page")).toBe("100");
+        expect(provider.capabilities.attemptHistory).toBe(true);
+        expect(detail.attemptHistory).toEqual([
+            {
+                runId,
+                logicalId: logicalCheckId({ kind: "job", scope: "Code OSS", name: "job 1" }),
+                attempts: [
+                    expect.objectContaining({ attempt: 1, executionId: "999", state: "failure" }),
+                    expect.objectContaining({
+                        attempt: 2,
+                        executionId: String(rerun.id),
+                        state: "success",
+                    }),
+                ],
+                coverage: "full",
+            },
+        ]);
+    });
+
+    it("a first-attempt run asks for no attempt history", async () => {
+        const gh = fakeGitHub(state());
+        const provider = new GitHubProvider(gh.fetchJson, undefined, gh.fetchWithMeta);
+
+        const detail = await provider.getDetail(ref, SHA);
+
+        expect(gh.log.some((url) => url.includes("filter=all") && url.includes("/jobs?"))).toBe(
+            false,
+        );
+        expect(detail.attemptHistory).toBeUndefined();
     });
 
     it("maps runs, jobs, steps", async () => {

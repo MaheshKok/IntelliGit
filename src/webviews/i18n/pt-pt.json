@@ -578,5 +578,13 @@
     "commit.checks.tab.history.still": "persistente",
     "commit.checks.tab.history.fixed": "corrigido",
     "commit.checks.tab.history.unknown": "desconhecido",
-    "commit.checks.tab.history.alsoRed": "também vermelho em {branch}"
+    "commit.checks.tab.history.alsoRed": "também vermelho em {branch}",
+    "commit.checks.tab.history.flaky": "instável {n}/{m}",
+    "commit.checks.tab.history.flakyEstimated": "instável {n}/{m} (estimado)",
+    "commit.checks.tab.history.flakyEstimatedTooltip": "estimado a partir dos commits carregados; as reexecuções não são contadas para este fornecedor",
+    "commit.checks.tab.changedSinceGreen": "Alterado desde o último verde ({hash})",
+    "commit.checks.tab.changedSinceGreenNone": "Nenhuma execução aprovada desta tarefa no histórico carregado",
+    "commit.checks.tab.changedSinceGreenAmbiguous": "Não é possível identificar esta tarefa em commits anteriores",
+    "commit.checks.tab.changedSinceGreenFailed": "Não foi possível comparar: {error}",
+    "commit.checks.tab.changedSinceGreenLoading": "A procurar a última execução aprovada…"
 }

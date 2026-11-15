@@ -2,10 +2,33 @@
 // snapshots the webview compares with, shared by every host that renders the details pane.
 
 import { isE2eControlChannelActive } from "../e2e/activationState";
+import type { LoadedCommit } from "../services/commitChecks/changedSinceGreen";
 import type { CiOperationContext } from "../services/commitChecks/ciGenerations";
 import { isValidGitHash } from "../services/gitHelpers";
 import type { CiHistoryMessage } from "../webviews/protocol/commitCiMessages";
 import type { CommitCiDetailSource } from "./ciDetailHandler";
+
+/**
+ * Validates the Git Log's loaded commits a webview sends: each a valid hash with valid parent
+ * hashes, since a walk over them names revisions to Git.
+ *
+ * @throws When the list or one of its commits is malformed.
+ */
+export function readLoadedCommits(value: unknown): LoadedCommit[] {
+    if (!Array.isArray(value)) throw new Error("Invalid loaded commits.");
+    return value.map((commit: unknown) => {
+        const { hash, parents } = (commit ?? {}) as Record<string, unknown>;
+        if (
+            typeof hash !== "string" ||
+            !isValidGitHash(hash) ||
+            !Array.isArray(parents) ||
+            !parents.every((p) => typeof p === "string" && isValidGitHash(p))
+        ) {
+            throw new Error("Invalid loaded commit.");
+        }
+        return { hash, parents: parents as string[] };
+    });
+}
 
 /**
  * Validates a `requestCiHistory` message and posts the first parent's and the default branch
@@ -22,7 +45,7 @@ export async function answerCiHistoryRequest(
     msg: Record<string, unknown>,
     post: (reply: CiHistoryMessage) => void,
 ): Promise<void> {
-    const { requestId, repoKey, hash, parents } = msg;
+    const { requestId, repoKey, hash, parents, loaded = [] } = msg;
     if (typeof requestId !== "number" || !Number.isSafeInteger(requestId)) {
         throw new Error("Invalid CI history request id.");
     }
@@ -35,6 +58,7 @@ export async function answerCiHistoryRequest(
     ) {
         throw new Error("Invalid CI history parents.");
     }
+    const line = { hash, loaded: readLoadedCommits(loaded) };
     if (!isE2eControlChannelActive()) return;
     const history = source.history;
     if (!history || repoKey !== source.repoKey()) return;
@@ -43,7 +67,7 @@ export async function answerCiHistoryRequest(
         authGeneration: 0,
         lifecycleGeneration: 0,
     };
-    const answer = await history(parents);
+    const answer = await history(parents, line);
     const currentRepoKey = source.repoKey();
     const current = source.generations
         ? source.generations.isCurrent(ctx, currentRepoKey)

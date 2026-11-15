@@ -111,8 +111,9 @@ function App(): React.ReactElement {
                 case "ciLogResult":
                 case "ciActionResult":
                 case "ciHistory":
-                    // useCommitCiDetail, the job's log panel, the action buttons and the history
-                    // tags listen for their own messages.
+                case "changedSinceGreen":
+                    // useCommitCiDetail, the job's log panel, the action buttons, the history
+                    // tags and the changed-since-green list listen for their own messages.
                     return;
                 default: {
                     const exhaustive: never = msg;

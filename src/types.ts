@@ -380,6 +380,13 @@ export interface CommitFile {
     icon?: ThemeTreeIcon;
 }
 
+/** A file changed between two revisions; `oldPath` is the source of a rename or copy. */
+export interface CiChangedFile {
+    path: string;
+    status: CommitFile["status"];
+    oldPath?: string;
+}
+
 /**
  * Full commit detail payload sent to panes that render metadata and changed files.
  *

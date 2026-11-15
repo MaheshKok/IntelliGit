@@ -570,6 +570,24 @@ export class GitOps {
         return readDefaultBranch((args) => this.executor.run(args));
     }
 
+    /**
+     * NUL-separated `git diff --name-status -M` between two commits, so every byte but NUL of
+     * a file name survives. Callers pass validated hashes; `--end-of-options` still keeps
+     * either from being read as an option.
+     */
+    diffNameStatus(from: string, to: string): Promise<string> {
+        return this.executor.run([
+            "diff",
+            "--name-status",
+            "-M",
+            "-z",
+            "--end-of-options",
+            from,
+            to,
+            "--",
+        ]);
+    }
+
     /** Reads a validated remote URL so host services can inspect provider metadata. */
     async getRemoteUrl(remote: string): Promise<string | null> {
         assertValidRemoteName(remote);

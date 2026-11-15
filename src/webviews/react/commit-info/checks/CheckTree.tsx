@@ -3,13 +3,15 @@ import { VscChevronDown, VscChevronRight } from "react-icons/vsc";
 import {
     alsoRed,
     compare,
+    flaky,
+    flakyLineOf,
     historyChecksOf,
     type CiHistory,
     type CiHistoryCheck,
     type CiHistoryTag,
 } from "../../../../shared/ci/history";
 import { ELAPSED_TICK_MS, isOverdue } from "../../../../shared/ci/timing";
-import type { CiCoverage, CiJob, CiRun, CommitCiDetail } from "../../../../types";
+import type { CiAttemptHistory, CiCoverage, CiJob, CiRun, CommitCiDetail } from "../../../../types";
 import { StateIcon } from "../../commit-list/CommitChecksPopover";
 import { t } from "../../shared/i18n";
 import { JETBRAINS_UI } from "../../shared/tokens";
@@ -69,6 +71,8 @@ export function CheckTree({
                 complete={complete}
                 history={history}
                 hash={hash}
+                attempts={detail.attemptHistory ?? NO_ATTEMPTS}
+                attemptsCounted={detail.capabilities.attemptHistory}
             />
         ) : null;
     // Keyed by job id; a job not in the map follows its default (expanded when it failed).
@@ -387,11 +391,14 @@ const HISTORY_TAGS: Record<CiHistoryTag, { key: string; color: string }> = {
     unknown: { key: "commit.checks.tab.history.unknown", color: JETBRAINS_UI.color.muted },
 };
 
+const NO_ATTEMPTS: readonly CiAttemptHistory[] = [];
+
 /**
- * "new" / "still" / "fixed" / "unknown" against the first parent, and "also red on <branch>"
- * against the default branch's tip, named as `origin/HEAD` names it. A snapshot the host could
- * not read tags nothing. While the commit's own checks are only partly listed, nothing can be
- * matched (a hidden check may share the name): a failed check is "unknown", with no other tag.
+ * "new" / "still" / "fixed" / "unknown" against the first parent, "also red on <branch>"
+ * against the default branch's tip, named as `origin/HEAD` names it, and "flaky n/m" over the
+ * loaded first-parent line (§9). A snapshot the host could not read tags nothing. While the
+ * commit's own checks are only partly listed, nothing can be matched (a hidden check may share
+ * the name): a failed check is "unknown", with no other tag.
  */
 function HistoryTags({
     check,
@@ -399,13 +406,28 @@ function HistoryTags({
     complete,
     history,
     hash,
+    attempts,
+    attemptsCounted,
 }: {
     check: CiHistoryCheck;
     current: readonly CiHistoryCheck[];
     complete: boolean;
     history: CiHistory;
     hash: string | undefined;
+    /** The commit's own attempt histories. */
+    attempts: readonly CiAttemptHistory[];
+    /** The provider lists re-runs; otherwise the flaky tag is an estimate (O3). */
+    attemptsCounted: boolean;
 }): React.ReactElement {
+    // A flat check has no logical id, so no attempt history is its own; isolated reds still count.
+    const flakyCount =
+        complete && history.line
+            ? flaky(
+                  check.logicalId ?? "",
+                  flakyLineOf(check, current, attempts, history.line),
+                  attemptsCounted,
+              )
+            : null;
     const parentItems = history.parent?.items;
     // A partly read snapshot is as unfit to prove a unique name as a partly listed commit is.
     const tag = parentItems
@@ -432,6 +454,24 @@ function HistoryTags({
                     style={{ ...checksStyles.tag, color: JETBRAINS_UI.color.deleted }}
                 >
                     {t("commit.checks.tab.history.alsoRed", { branch: tip.name })}
+                </span>
+            ) : null}
+            {flakyCount ? (
+                <span
+                    data-testid="ci-tag-flaky"
+                    title={
+                        flakyCount.attemptsCounted
+                            ? undefined
+                            : t("commit.checks.tab.history.flakyEstimatedTooltip")
+                    }
+                    style={{ ...checksStyles.tag, color: JETBRAINS_UI.color.modified }}
+                >
+                    {t(
+                        flakyCount.attemptsCounted
+                            ? "commit.checks.tab.history.flaky"
+                            : "commit.checks.tab.history.flakyEstimated",
+                        { n: String(flakyCount.n), m: String(flakyCount.m) },
+                    )}
                 </span>
             ) : null}
         </>

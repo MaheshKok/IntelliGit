@@ -127,6 +127,32 @@ new ones. GitHub's and GitLab's per-commit check lists do not name the workflow 
 so the parent's check is matched by name instead, and only when exactly one check on the
 parent and exactly one on the commit carry that name; anything else is **unknown**.
 
+### Flaky jobs
+
+A job carries **flaky n/m** when, along the first-parent line of the commits the Git Log has
+loaded, it flaked on `n` of the `m` commits where it passed or failed. A commit counts when the
+job failed there between two commits where it passed, or when it failed and then passed on a
+re-run of the same commit. A commit that meets both counts once. The older commits' results
+come from the cache only, so scrolling the Git Log further back lengthens the line.
+
+GitHub and GitLab list re-runs: a GitHub run started again (`run_attempt` above 1) is read
+with `filter=all`, and a GitLab pipeline with `include_retried=true`, 100 jobs per page. Each
+run or pipeline keeps its own history per job, so two workflows with a job of the same name
+never mix. For providers that cannot list re-runs the tag reads **flaky n/m (estimated)**, and
+its tooltip says **estimated from loaded commits; re-runs not counted for this provider**.
+
+### Changed since last green
+
+A failed job's detail lists **Changed since last green (a1b2c3d)**: the files changed between
+the newest first-parent ancestor, inside the loaded Git Log, where the same job passed, and the
+selected commit (`git diff --name-status -M`). Clicking a file opens a read-only diff of its two
+versions; an added file has an empty left side, a deleted one an empty right side, and a
+renamed one its old name on the left. Older commits' results come from the cache only, so
+nothing is asked of the provider. With no such ancestor it says **No passing run of this job in
+the loaded history**; when the job cannot be told apart from another of the same name in older
+commits it says **Cannot match this job in older commits**; a Git failure shows **Could not
+compare: &lt;error&gt;**. This works for every provider.
+
 ### Write actions
 
 On GitHub and GitLab the tab can **Re-run failed** jobs of a failed run, **Re-run job**

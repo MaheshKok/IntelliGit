@@ -80,6 +80,38 @@ describe("readE2eCiFixture", () => {
             E2E_CI_FIXTURE_KEY,
         );
     });
+
+    it("serves a commit's own seeded detail where one is seeded, else the shared one", () => {
+        setE2eControlChannelActive(true);
+        const other = "b".repeat(40);
+        const green = { ...seededDetail(), outcome: "success" as const, otherChecks: [] };
+        const store = memento({
+            detail: seededDetail(),
+            details: { [other]: green },
+            capabilities: NO_CI_CAPABILITIES,
+        });
+        expect(readE2eCiFixture(store, other)?.detail).toMatchObject({
+            hash: other,
+            outcome: "success",
+        });
+        expect(readE2eCiFixture(store, HASH)?.detail.outcome).toBe("failure");
+        expect(() =>
+            readE2eCiFixture(
+                memento({
+                    detail: seededDetail(),
+                    details: { [other]: { outcome: 3 } },
+                    capabilities: NO_CI_CAPABILITIES,
+                }),
+                other,
+            ),
+        ).toThrow(E2E_CI_FIXTURE_KEY);
+        expect(() =>
+            readE2eCiFixture(
+                memento({ detail: seededDetail(), details: "x", capabilities: NO_CI_CAPABILITIES }),
+                HASH,
+            ),
+        ).toThrow(E2E_CI_FIXTURE_KEY);
+    });
 });
 
 describe("readE2eCiFixtureLog", () => {

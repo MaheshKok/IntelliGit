@@ -49,7 +49,7 @@ describe("answerCiHistoryRequest", () => {
         const { source: s, history } = source();
         const post = vi.fn<(reply: CiHistoryMessage) => void>();
         await answerCiHistoryRequest(s, request({ parents: [PARENT, "d".repeat(40)] }), post);
-        expect(history).toHaveBeenCalledWith([PARENT, "d".repeat(40)]);
+        expect(history).toHaveBeenCalledWith([PARENT, "d".repeat(40)], { hash: HASH, loaded: [] });
         expect(post).toHaveBeenCalledWith({
             type: "ciHistory",
             requestId: 4,
@@ -57,6 +57,16 @@ describe("answerCiHistoryRequest", () => {
             hash: HASH,
             ...HISTORY,
         });
+    });
+
+    it("passes the loaded commits on, for the flaky line", async () => {
+        const { source: s, history } = source();
+        const loaded = [
+            { hash: HASH, parents: [PARENT] },
+            { hash: PARENT, parents: [] },
+        ];
+        await answerCiHistoryRequest(s, request({ loaded }), vi.fn());
+        expect(history).toHaveBeenCalledWith([PARENT], { hash: HASH, loaded });
     });
 
     it("answers nothing while the switch is off", async () => {
@@ -131,6 +141,9 @@ describe("answerCiHistoryRequest", () => {
         ["hash", { hash: "not-a-hash" }],
         ["parents", { parents: PARENT }],
         ["parent hash", { parents: ["--upload-pack=x"] }],
+        ["loaded list", { loaded: HASH }],
+        ["loaded hash", { loaded: [{ hash: "-x", parents: [] }] }],
+        ["loaded parent", { loaded: [{ hash: HASH, parents: ["--output=x"] }] }],
     ])("rejects a malformed %s", async (_name, extra) => {
         const { source: s, history } = source();
         await expect(answerCiHistoryRequest(s, request(extra), vi.fn())).rejects.toThrow();

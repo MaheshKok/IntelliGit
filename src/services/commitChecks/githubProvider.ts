@@ -8,6 +8,7 @@ import * as vscode from "vscode";
 import type {
     CiAction,
     CiActionEvidence,
+    CiAttemptHistory,
     CiCoverage,
     CiFlatCheck,
     CiJob,
@@ -48,6 +49,7 @@ import { RequestGateCooldownError } from "./requestGate";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import { UNKNOWN_REQUIRED, type RequiredChecks } from "./requiredChecks";
 import { spanMs, uniqueJobDurations, type UsualDuration } from "./ciTiming";
+import { attemptHistories, type CiAttemptRun } from "./ciHistory";
 import {
     hasUnfinishedWork,
     isCompleteDetail,
@@ -200,6 +202,7 @@ export class GitHubProvider implements CommitChecksProvider {
         cancel: true,
         requiredChecks: true,
         usualDuration: true,
+        attemptHistory: true,
         writeScopeHelp: "commit.checks.tab.writeScopeHelpGithub",
     });
     /** GitHub Actions prefixes each error annotation line of a log with this marker. */
@@ -534,6 +537,7 @@ export class GitHubProvider implements CommitChecksProvider {
         // Every run as read, hidden jobs included, so a hidden job's check run is no flat check.
         const readRuns: CiRun[] = [];
         const scanCursors: CiFailedScanCursor[] = [];
+        const consistentRuns: CiRun[] = [];
         for (const run of runsPage.items) {
             const runId = readId(run.id);
             if (runId === undefined) continue;
@@ -587,6 +591,7 @@ export class GitHubProvider implements CommitChecksProvider {
             const next = ciRun.state === "failure" ? jobsPage.next : undefined;
             if (consistent) {
                 runs.push(ciRun);
+                consistentRuns.push(ciRun);
                 if (next) {
                     scanCursors.push({
                         runId,
@@ -624,7 +629,38 @@ export class GitHubProvider implements CommitChecksProvider {
             // A missed failure text is read again later rather than saved missing.
             ...((rerun || summaryMissed) && { complete: false }),
             ...(scanCursors.length > 0 && { scanCursors }),
+            ...(await this.readAttemptHistory(fetch, ref, consistentRuns, repositoryId)),
         };
+    }
+
+    /**
+     * Every attempt's jobs (`filter=all`) of each run past its first attempt, as one attempt
+     * history per run and job (§9); a run on its first attempt has none worth a request.
+     */
+    private async readAttemptHistory(
+        fetch: Parameters<typeof paginate>[0],
+        ref: GitHubRepoRef,
+        runs: readonly CiRun[],
+        repositoryId: string | undefined,
+    ): Promise<{ attemptHistory?: CiAttemptHistory[] }> {
+        const attemptRuns: CiAttemptRun[] = [];
+        for (const run of runs.filter((candidate) => (candidate.attempt ?? 1) > 1)) {
+            // Serial, like every other pager of this read.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            const attempts = await paginate(
+                fetch,
+                `${repoApiUrl(ref)}/actions/runs/${run.id}/jobs?filter=all&per_page=${CI_PAGE_SIZE}`,
+                linkHeaderNext,
+                (body) =>
+                    readList<GitHubWorkflowJob>(body, "jobs").map((job) => toJob(job, run.name)),
+                CI_MAX_PAGES,
+                (url) => this.allowNext(ref, url, repositoryId),
+            );
+            attemptRuns.push({ runId: run.id, coverage: attempts.coverage, jobs: attempts.items });
+        }
+        return attemptRuns.length > 0
+            ? { attemptHistory: attemptHistories(attemptRuns, "runAttempt") }
+            : {};
     }
 
     /**

@@ -2,7 +2,7 @@
 // (the Git Log panel, the standalone Changed Files view and the undocked window).
 
 import type { CiHistory } from "../../shared/ci/history";
-import type { CiAction, CommitCiDetail } from "../../types";
+import type { CiAction, CiChangedFile, CommitCiDetail } from "../../types";
 
 /** Host's reply to {@link RequestCommitCiDetailMessage}. */
 export interface CommitCiDetailMessage {
@@ -87,6 +87,31 @@ export interface CiHistoryMessage extends CiHistory {
 }
 
 /**
+ * Host's reply to {@link RequestChangedSinceGreenMessage}: the newest loaded first-parent
+ * ancestor where the job passed and the files changed since; `lastGreen` is `null` when there
+ * is none, with `unknownReason` when the job cannot be matched, or `error` when Git failed.
+ */
+export interface ChangedSinceGreenMessage {
+    type: "changedSinceGreen";
+    requestId: number;
+    repoKey: string;
+    hash: string;
+    logicalCheckId: string;
+    scopeName: string | null;
+    checkName: string;
+    lastGreen: string | null;
+    unknownReason?: "ambiguous";
+    error?: string;
+    files: CiChangedFile[];
+}
+
+/** One loaded Git Log commit with its parents, first parent first. */
+export interface CiLoadedCommit {
+    hash: string;
+    parents: string[];
+}
+
+/**
  * Checks tab messages a webview sends to its host. Declared inline so the E2E coverage
  * manifest test, which reads outbound unions from source, sees every discriminant.
  */
@@ -159,6 +184,31 @@ type CommitCiOutbound =
           hash: string;
           /** The commit's parents from the row the webview shows; only the first is compared. */
           parents: string[];
+          /** The Git Log's loaded commits; their first-parent line is counted for "flaky". */
+          loaded?: CiLoadedCommit[];
+      }
+    | {
+          /** Checks tab asks which files changed since a failed job last passed. */
+          type: "requestChangedSinceGreen";
+          requestId: number;
+          repoKey: string;
+          hash: string;
+          logicalCheckId: string;
+          scopeName: string | null;
+          checkName: string;
+          /** The Git Log's loaded commits; the walk never leaves them. */
+          loaded: CiLoadedCommit[];
+      }
+    | {
+          /** Checks tab asks its host to diff a file between the last green and the commit. */
+          type: "openCiRangeDiff";
+          requestId: number;
+          repoKey: string;
+          fromRev: string;
+          toRev: string;
+          path: string;
+          oldPath?: string;
+          status: CiChangedFile["status"];
       };
 
 /** Checks tab asks its host for a commit's CI detail. */
@@ -186,3 +236,10 @@ export type OpenCiLogMessage = Extract<CommitCiOutbound, { type: "openCiLog" }>;
 export type RunCiActionMessage = Extract<CommitCiOutbound, { type: "runCiAction" }>;
 /** Checks tab asks for the snapshots its history tags compare with. */
 export type RequestCiHistoryMessage = Extract<CommitCiOutbound, { type: "requestCiHistory" }>;
+/** Checks tab asks which files changed since a failed job last passed. */
+export type RequestChangedSinceGreenMessage = Extract<
+    CommitCiOutbound,
+    { type: "requestChangedSinceGreen" }
+>;
+/** Checks tab asks to diff a file between two revisions. */
+export type OpenCiRangeDiffMessage = Extract<CommitCiOutbound, { type: "openCiRangeDiff" }>;

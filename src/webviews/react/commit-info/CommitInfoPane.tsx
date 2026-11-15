@@ -18,7 +18,7 @@ import {
     collectDirPaths,
     type TreeEntry as GenericTreeEntry,
 } from "../shared/fileTree";
-import { ChecksTab } from "./checks/ChecksTab";
+import { ChecksTab, type ChecksLoadedCommit } from "./checks/ChecksTab";
 import {
     isChecksTabEnabled,
     OPEN_CHECKS_TAB_EVENT,
@@ -90,6 +90,8 @@ interface CommitInfoPaneProps {
     ciRepoKey?: string;
     /** False when CI checks are turned off in settings; the Checks tab then says so. */
     commitChecksEnabled?: boolean;
+    /** The commits the graph beside this pane loaded; absent where the host supplies them. */
+    loadedCommits?: readonly ChecksLoadedCommit[];
 }
 
 const VISUALLY_HIDDEN_STYLE: React.CSSProperties = {
@@ -161,6 +163,7 @@ export function CommitInfoPane({
     onOpenDiff,
     ciRepoKey,
     commitChecksEnabled = true,
+    loadedCommits,
 }: CommitInfoPaneProps): React.ReactElement {
     const [expandedDirsState, setExpandedDirsState] = useState<CommitScopedExpandedDirs>({
         commitHash: null,
@@ -299,6 +302,7 @@ export function CommitInfoPane({
                         hash={detail.hash}
                         parentHashes={detail.parentHashes}
                         enabled={commitChecksEnabled}
+                        loadedCommits={loadedCommits}
                     />
                 ) : (
                     <CommitChangedFilesPanel

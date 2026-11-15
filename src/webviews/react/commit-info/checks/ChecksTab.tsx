@@ -1,6 +1,7 @@
 import React from "react";
 import { VscLoading } from "react-icons/vsc";
-import type { CiJob, CiRun, CommitCiDetail } from "../../../../types";
+import type { CiJob, CiRun, Commit, CommitCiDetail } from "../../../../types";
+import type { CiLoadedCommit } from "../../../protocol/commitCiMessages";
 import { SPIN_KEYFRAMES } from "../../shared/components/iconStyles";
 import { t } from "../../shared/i18n";
 import { getVsCodeApi } from "../../shared/vscodeApi";
@@ -10,6 +11,7 @@ import { ChecksHeader } from "./ChecksHeader";
 import { checksStyles } from "./checksStyles";
 import { useCiAction, type CiActionTarget, type CiActionView } from "./useCiAction";
 import { useCiHistory } from "./useCiHistory";
+import type { ChangedSinceGreenJob } from "./useChangedSinceGreen";
 import { useCommitCiDetail } from "./useCommitCiDetail";
 
 type ChecksTabMessage =
@@ -18,6 +20,11 @@ type ChecksTabMessage =
     | { type: "openCommitChecksSettings" };
 
 type ChecksTabState = "loading" | "none" | "disabled" | "signedOut" | "unavailable" | "detail";
+
+/** A commit of the graph beside the pane, as the Checks tab walks it. */
+export type ChecksLoadedCommit = Pick<Commit, "hash" | "parentHashes">;
+
+const NO_COMMITS: readonly CiLoadedCommit[] = [];
 
 // Two columns (tree 340 px, job detail beside it) once the pane is wide enough; one below 760 px.
 const LAYOUT_CSS = `${SPIN_KEYFRAMES}
@@ -62,6 +69,31 @@ function rerunJobTarget(
     return { action: "rerunJob", runId: run.id, jobId: job.id };
 }
 
+function toLoadedLine(
+    commits: readonly ChecksLoadedCommit[] | undefined,
+): CiLoadedCommit[] | undefined {
+    return commits?.map((commit) => ({ hash: commit.hash, parents: commit.parentHashes }));
+}
+
+/** "Changed since last green" asks only about a failed job. */
+function changedSinceGreenJob(
+    repoKey: string,
+    hash: string,
+    run: CiRun | undefined,
+    job: CiJob | undefined,
+    loaded: readonly CiLoadedCommit[] | undefined,
+): ChangedSinceGreenJob | null {
+    if (job?.state !== "failure" || !run) return null;
+    return {
+        repoKey,
+        hash,
+        logicalCheckId: job.logicalId,
+        scopeName: run.name,
+        checkName: job.checkName,
+        loaded: loaded ?? NO_COMMITS,
+    };
+}
+
 /**
  * The Checks tab body: requests the selected commit's CI detail while shown and renders
  * the header, the run, job and step tree and the selected job, or the state that
@@ -72,13 +104,17 @@ export function ChecksTab({
     hash,
     parentHashes,
     enabled,
+    loadedCommits,
 }: {
     repoKey: string;
     hash: string;
     /** The commit's parents, first parent first; its checks are compared with the first. */
     parentHashes: readonly string[];
     enabled: boolean;
+    /** The graph's loaded commits; absent where the host supplies them. */
+    loadedCommits?: readonly ChecksLoadedCommit[];
 }): React.ReactElement {
+    const loadedLine = React.useMemo(() => toLoadedLine(loadedCommits), [loadedCommits]);
     const { detail, refresh, reload } = useCommitCiDetail(repoKey, enabled ? hash : null, true);
     const action = useCiAction(repoKey, hash, reload);
     // A job id is unique only inside one commit, so a pick counts only for the commit it was made on.
@@ -91,7 +127,13 @@ export function ChecksTab({
         [],
     );
     const loaded = state === "detail" ? detail! : undefined;
-    const { history, defaultBranchUnknown } = useCiHistory(repoKey, hash, parentHashes, loaded);
+    const { history, defaultBranchUnknown } = useCiHistory(
+        repoKey,
+        hash,
+        parentHashes,
+        loaded,
+        loadedLine,
+    );
     const selectedJob =
         loaded &&
         (loaded.runs.flatMap((run) => run.jobs).find((job) => job.id === selectedJobId) ??
@@ -109,6 +151,13 @@ export function ChecksTab({
             : null;
     const actionRun = selectedRun ?? loaded?.runs[0];
     const rerunJob = rerunJobTarget(loaded, selectedRun, selectedJob);
+    const changedSinceGreen = changedSinceGreenJob(
+        repoKey,
+        hash,
+        selectedRun,
+        selectedJob,
+        loadedLine,
+    );
 
     return (
         <div
@@ -170,6 +219,7 @@ export function ChecksTab({
                                           }
                                         : null
                                 }
+                                changedSinceGreen={changedSinceGreen}
                                 onOpenUrl={openUrl}
                             />
                         ) : null}

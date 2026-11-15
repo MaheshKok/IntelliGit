@@ -558,5 +558,13 @@
     "commit.checks.tab.history.still": "持續",
     "commit.checks.tab.history.fixed": "已修復",
     "commit.checks.tab.history.unknown": "未知",
-    "commit.checks.tab.history.alsoRed": "{branch} 上也失敗"
+    "commit.checks.tab.history.alsoRed": "{branch} 上也失敗",
+    "commit.checks.tab.history.flaky": "不穩定 {n}/{m}",
+    "commit.checks.tab.history.flakyEstimated": "不穩定 {n}/{m}（估計）",
+    "commit.checks.tab.history.flakyEstimatedTooltip": "根據已載入的提交估計；此提供者不計算重新執行",
+    "commit.checks.tab.changedSinceGreen": "自上次通過以來的變更 ({hash})",
+    "commit.checks.tab.changedSinceGreenNone": "已載入的歷史中沒有此作業的通過執行",
+    "commit.checks.tab.changedSinceGreenAmbiguous": "無法在較早的提交中比對此作業",
+    "commit.checks.tab.changedSinceGreenFailed": "無法比較：{error}",
+    "commit.checks.tab.changedSinceGreenLoading": "正在尋找上次通過的執行…"
 }

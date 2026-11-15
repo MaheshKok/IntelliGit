@@ -578,5 +578,13 @@
     "commit.checks.tab.history.still": "toujours",
     "commit.checks.tab.history.fixed": "corrigé",
     "commit.checks.tab.history.unknown": "inconnu",
-    "commit.checks.tab.history.alsoRed": "également en rouge sur {branch}"
+    "commit.checks.tab.history.alsoRed": "également en rouge sur {branch}",
+    "commit.checks.tab.history.flaky": "instable {n}/{m}",
+    "commit.checks.tab.history.flakyEstimated": "instable {n}/{m} (estimé)",
+    "commit.checks.tab.history.flakyEstimatedTooltip": "estimé à partir des commits chargés ; les relances ne sont pas comptées pour ce fournisseur",
+    "commit.checks.tab.changedSinceGreen": "Modifié depuis le dernier succès ({hash})",
+    "commit.checks.tab.changedSinceGreenNone": "Aucune exécution réussie de ce job dans l'historique chargé",
+    "commit.checks.tab.changedSinceGreenAmbiguous": "Impossible de retrouver ce job dans les commits plus anciens",
+    "commit.checks.tab.changedSinceGreenFailed": "Impossible de comparer : {error}",
+    "commit.checks.tab.changedSinceGreenLoading": "Recherche de la dernière exécution réussie…"
 }

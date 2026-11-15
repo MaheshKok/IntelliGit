@@ -558,5 +558,13 @@
     "commit.checks.tab.history.still": "持续",
     "commit.checks.tab.history.fixed": "已修复",
     "commit.checks.tab.history.unknown": "未知",
-    "commit.checks.tab.history.alsoRed": "{branch} 上也失败"
+    "commit.checks.tab.history.alsoRed": "{branch} 上也失败",
+    "commit.checks.tab.history.flaky": "不稳定 {n}/{m}",
+    "commit.checks.tab.history.flakyEstimated": "不稳定 {n}/{m}（估计）",
+    "commit.checks.tab.history.flakyEstimatedTooltip": "根据已加载的提交估计；此提供程序不计算重新运行",
+    "commit.checks.tab.changedSinceGreen": "自上次通过以来的更改 ({hash})",
+    "commit.checks.tab.changedSinceGreenNone": "已加载的历史中没有此作业的通过运行",
+    "commit.checks.tab.changedSinceGreenAmbiguous": "无法在较早的提交中匹配此作业",
+    "commit.checks.tab.changedSinceGreenFailed": "无法比较：{error}",
+    "commit.checks.tab.changedSinceGreenLoading": "正在查找上次通过的运行…"
 }
