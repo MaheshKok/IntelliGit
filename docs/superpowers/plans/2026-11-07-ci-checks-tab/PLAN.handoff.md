@@ -16,7 +16,7 @@
 
 ## Phase 11: review pending, started at 2d44491ccdfa81fd955af4833ee4bade874a5f34
 - Earlier commits: built 350f627c; fix 1 8ace3e72; fix 2 e0ee196e; takeover a4017dc0; halt c87668db; owner answer 17562890; wave re-run ca89903e; fix 1 f4856222; fix 2 e2da990e.
-- Takeover (this wave, commit after e2da990e): closes the 6 open review findings on partial coverage. GitLab marks a full first status page (100 rows) `partial`; Bitbucket Cloud marks a present but refused or malformed `next` link truncated; Bitbucket Server marks `isLastPage:false` with no numeric `nextPageStart` truncated; `floorDetail` turns `partial` into `otherChecksCoverage: {reason:"pageBound", shown}`; a partial snapshot is never persisted and its L1 entry expires on the pending TTL; persisted schema version 2 drops every pre-flag (version 1) entry. Regression file tests/unit/services/commitChecks/ciHistoryPartialCoverage.test.ts: 7 tests red before, green after; 7 mutations red at their named tests.
+- Second-run takeover (after e2da990e): partial coverage in GitLab, Bitbucket Cloud and Server; `floorDetail` pageBound; partial never persisted; snapshot schema 2. Tests in ciHistoryPartialCoverage.test.ts (7 red before).
 - Built: each failed check is tagged "new" / "still" / "unknown", a passed one "fixed", against the first parent; "also red on {branch}" against the default branch tip read from origin/HEAD on every request (K22); "default branch unknown" when origin/HEAD is missing. Partial parent: failed job "unknown"; partial tip: no also-red.
 - Pure logic in src/shared/ci/history.ts; host read `readCiHistory` in src/services/commitChecks/ciHistory.ts; message `requestCiHistory` / `ciHistory` answered by src/views/ciHistoryHandler.ts in all three hosts; tab hook useCiHistory.ts; tags in CheckTree.tsx.
 - Second halt: takeover b1f93bab, halt recorded 9bc5b0d8. Owner answer after it (2026-11-15, "1: approve, re-run"):
@@ -25,7 +25,8 @@
   (iii) Checked: package.json 0.43.13 and the CHANGELOG groundwork line are in place; the phase slice says Patch bump.
   (iv) Pre-existing, not Phase 11's work: #437 (Bitbucket Cloud follows a next link to another port with the token) and #438 (a broken next page from GitHub or Bitbucket Server is read as the end of the list). The CHANGELOG-sentence test on repro/405-1 is the stale-copy mix-up, not a bug. All 5 tests on repro/405-1 fail on both 3fa214d8 and b1f93bab.
 - Fix round 1 of the third review (commit after c26a7abd): `fetchSnapshot` now reads the check-suite count (`refAtSuiteLimit`) and marks the snapshot `partial` at 1 000 suites, or when that count cannot be read on the badge path (the detail path still fails with it). `readDetail` reuses the result instead of asking twice. Cost: one `check-suites?per_page=1` request per GitHub badge fetch (3 instead of 2); view-providers integration budgets 28 -> 42 and 96 -> 144, httpEtag route and counts updated. Test "at 1000 check suites the badge snapshot a parent comparison reads is partial: true" was red ("expected undefined to be true") before the fix.
-- Fix round 2 of the third review (commit after 52f31913): all four providers now call `etags.noteCommit(commitKey, isCompleteSnapshot(snapshot) && !snapshot.partial)`, so a partial snapshot (never persisted, read again every poll) stays on If-None-Match. Test file tests/unit/services/commitChecks/ciPartialEtag.test.ts, 4 cases (GitHub suite limit, GitLab full page, Bitbucket Cloud refused next, Bitbucket Server no nextPageStart): all red with the fix reverted on a copy ("expected [] to have a length of N but got +0" on the third poll), green after.
+- Fix round 2 of the third review (commit after 52f31913): all four providers call `etags.noteCommit(commitKey, isCompleteSnapshot(snapshot) && !snapshot.partial)`; tests/unit/services/commitChecks/ciPartialEtag.test.ts, 4 cases red with the fix reverted.
+- Takeover of the third review (commit after 4f9972a2): 5 mutation-survivor findings in history.ts, ciHistory.ts and ciHistoryHandler.ts; tests only, no production change. Each mutant (alsoRed guard removed; `byId.length === 1` dropped; `action_required` removed from RED_STATES; defaultBranch.ts catch rethrows; no-generations branch `: true`) passes the tests at 4f9972a2 and fails exactly its new test after (6 new tests, 1 tightened).
 
 ## Decisions and why
 - Header rule: `branchUnknown = history flag ?? detail flag`; history saying missing makes required unknown and drops the scope line; never the other direction.
@@ -37,23 +38,22 @@
 - Takeover, legacy cache: schema bump, not a positive "read in full" marker. A pre-flag entry exists only as a version 1 payload, which is now a miss. The reviewer's check "restart with an old unflagged truncated parent" builds its entry through today's cache (version 2) with `partial` removed, which no current code path can write (every provider flags a cut list, partial is never persisted); it stays red by design. Needs the owner only if the reviewer repeats it.
 - `floorDetail` reason: snapshots name no reason, so "pageBound" is used for any partial snapshot.
 - Contract version 7 belongs to Phase 11 (owner order); K32's list (2, 3, 7, 9, 10, 12, ...) does not name 11, so Phase 12 bumps to 8. Plan text not amended.
+- Takeover, failing default-branch read: no `.catch` in readCiHistory. readDefaultBranch (defaultBranch.ts:30-32) already turns every git failure into null, so the test composes readCiHistory with the real reader and a rejecting git; removing that catch turns it red. A catch in readCiHistory would be handling for a case no production path reaches. The no-generations branch is kept and tested, because `ciGenerations` is optional in both provider option types and the three sibling handlers share the pattern.
 
 ## Open risks
 - GitNexus impact not run (worktree-isolation guard); CheckTree and ChecksHeader each have one caller (ChecksTab.tsx). LOW, not graph-checked.
 - Two same-named jobs in different workflows always give "unknown". Phase 11 e2e not run locally (Gate E runs on CI).
 - Snapshot schema bump 2 and detail contract 7 empty every user's persisted check and detail caches once on upgrade (refetch); an old and a new window sharing globalState overwrite each other's payload until both update.
-- `bun run test`: 10 failed, 8242 passed of 8252; the known set (commit-list-column-resize, tsconfigCoverage, screenshotComparatorMeta).
+- `bun run test`: 10 failed, 8248 passed of 8258; the known set (commit-list-column-resize, tsconfigCoverage, screenshotComparatorMeta).
+- Each review run so far is an open-ended mutation audit and samples new survivors; another round may list more.
 
 ## Next phase: 12
 ## Found outside scope
 - Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
-- commit-list-column-resize fails under Node v26.5.0; tsconfigCoverage and screenshotComparatorMeta fail in a worktree without its own node_modules.
-- operationBenchmark.test.ts fails in a full run, passes alone; diffBudgets "large compute" is load-sensitive.
-- l10n audit pre-existing hardcoded-string candidates; knip hint on selectedRemovalCrashWorker.ts.
+- commit-list-column-resize fails under Node v26.5.0; tsconfigCoverage and screenshotComparatorMeta fail in a worktree without its own node_modules; operationBenchmark.test.ts fails in a full run, passes alone; diffBudgets "large compute" is load-sensitive.
+- l10n audit pre-existing hardcoded-string candidates; knip hint on selectedRemovalCrashWorker.ts; GitNexus registry holds two "IntelliGit" entries, main checkout index stale.
 - GitHub carryScans treats two missing `runAttempt` values as the same run.
-- Extract detailOf/flatDetail into a shared module when Phase 17 adds a third provider detail.
+- Extract detailOf/flatDetail into a shared module when Phase 17 adds a third provider detail; Bitbucket detail reads (Phases 17/18) should pass the ETag store.
 - `bun run package` can pack ignored `output/` leftovers; noRepositoryMode.ts registers a placeholder `refreshBadges`.
-- GitNexus registry holds two "IntelliGit" entries; main checkout index stale.
-- Bitbucket detail reads (Phases 17/18) should pass the ETag store.
-- Worktree node_modules lacks .bin; mutation copies use rsync (excluding node_modules/.git) plus a node_modules link to the main checkout.
+- Worktree node_modules lacks .bin; mutation copies must link the main checkout's node_modules.
 - GitLab snapshot could follow `x-next-page` pages if getChecks moved to `fetchWithMeta` (needs the provider tests rewired).

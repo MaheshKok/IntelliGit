@@ -101,6 +101,23 @@ describe("answerCiHistoryRequest", () => {
         expect(post).not.toHaveBeenCalled();
     });
 
+    it("a host without generations drops the answer when the repository changed while it was read", async () => {
+        let repo = REPO;
+        const history = vi.fn(async () => {
+            repo = "/other";
+            return HISTORY;
+        });
+        const s: CommitCiDetailSource = {
+            ...source(history).source,
+            generations: undefined,
+            repoKey: () => repo,
+        };
+        const post = vi.fn();
+        await answerCiHistoryRequest(s, request(), post);
+        expect(history).toHaveBeenCalledTimes(1);
+        expect(post).not.toHaveBeenCalled();
+    });
+
     it("a host without history answers nothing", async () => {
         const { source: s } = source();
         const post = vi.fn();

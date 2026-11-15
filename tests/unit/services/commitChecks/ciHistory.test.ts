@@ -25,7 +25,10 @@ import { BitbucketCloudProvider } from "../../../../src/services/commitChecks/bi
 import { BitbucketServerProvider } from "../../../../src/services/commitChecks/bitbucketServerProvider";
 import { readCiHistory } from "../../../../src/services/commitChecks/ciHistory";
 import { CredentialStore } from "../../../../src/services/commitChecks/credentialStore";
-import type { DefaultBranch } from "../../../../src/services/commitChecks/defaultBranch";
+import {
+    readDefaultBranch,
+    type DefaultBranch,
+} from "../../../../src/services/commitChecks/defaultBranch";
 import { GitHubProvider } from "../../../../src/services/commitChecks/githubProvider";
 import { GitLabProvider } from "../../../../src/services/commitChecks/gitlabProvider";
 import type { ProviderRepoRef } from "../../../../src/services/commitChecks/types";
@@ -170,6 +173,26 @@ describe("compare", () => {
         expect(tag(first, parent, [first, second])).toBe("unknown");
         expect(tag(second, parent, [first, second])).toBe("unknown");
     });
+
+    it("two parent items with one logical identity → unknown", () => {
+        const failed = job("CI", "unit", "failure");
+        const parent = [
+            item("unit", "success", { logicalId: jobId("CI", "unit") }),
+            item("unit", "failure", { logicalId: jobId("CI", "unit") }),
+        ];
+        expect(tag(failed, parent)).toBe("unknown");
+    });
+
+    it.each(["failure", "timed_out", "action_required"] as const)(
+        "a check in state %s is red on either side",
+        (state) => {
+            const flat: CiHistoryCheck = { name: "unit", state };
+            expect(tag(flat, [item("unit", "failure")])).toBe("still");
+            expect(tag(flat, [item("unit", "success")])).toBe("new");
+            expect(tag({ name: "unit", state: "success" }, [item("unit", state)])).toBe("fixed");
+            expect(alsoRed(flat, [flat], [item("unit", state)])).toBe(true);
+        },
+    );
 });
 
 describe("alsoRed", () => {
@@ -183,7 +206,9 @@ describe("alsoRed", () => {
     });
 
     it("never for a check that passed or has no unique match on the tip", () => {
-        expect(alsoRed(job("CI", "unit", "success"), [], [item("unit", "failure")])).toBe(false);
+        // The passed check is its own current population, so the tip item is its unique match.
+        const passed = job("CI", "unit", "success");
+        expect(alsoRed(passed, [passed], [item("unit", "failure")])).toBe(false);
         const failed = job("CI", "unit", "failure");
         expect(alsoRed(failed, [failed], [item("unit", "failure"), item("unit", "failure")])).toBe(
             false,
@@ -303,6 +328,20 @@ describe("readCiHistory", () => {
         expect(partial.defaultBranch?.partial).toBe(true);
         const whole = await readCiHistory(d, [PARENT_2]);
         expect(whole.parent?.partial).toBeUndefined();
+    });
+
+    it("a failing git read of the default branch still answers the parent", async () => {
+        // The production reader: Git exits non-zero, which the executor turns into a rejection.
+        const d = {
+            ...deps(),
+            readDefaultBranch: () =>
+                readDefaultBranch(async () => {
+                    throw new Error("git exited 128");
+                }),
+        };
+        const history = await readCiHistory(d, [PARENT_1]);
+        expect(history.defaultBranch).toBeNull();
+        expect(history.parent).toEqual({ hash: PARENT_1, items: [item("check of 1", "success")] });
     });
 
     it("a throwing snapshot read gives null items", async () => {
