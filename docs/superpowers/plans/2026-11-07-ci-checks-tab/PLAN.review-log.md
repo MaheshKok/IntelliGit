@@ -1249,3 +1249,5 @@ PHASE 11: HALT review still failing after takeover
 - Mutations on copy mut-11-takeover-1: 7 of 7 red at their named test (a first Server mutation, `break`, was equivalent and was replaced by `start = undefined`).
 - Reviewer checks on the fixed copy: gitlab, floor, cache, cloud, server pass; "restart with an old" stays red by design (seeds its legacy entry through the current schema-2 cache, a state no current code writes); see handoff Decisions.
 - Gate G: bash /tmp/phase-run/PLAN/p11to-gateg.sh -> every step exit 0 except test: 10 failed / 8233 passed (8243), the known set. Gate E: CI. Gate L: n/a.
+WORKTREE 0 11: /private/tmp/phase-run/PLAN/repro-405-1 repro/405-1
+PHASE 11: HALT review still failing after takeover
