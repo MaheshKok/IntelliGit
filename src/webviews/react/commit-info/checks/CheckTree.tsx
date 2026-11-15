@@ -403,10 +403,15 @@ function HistoryTags({
     hash: string | undefined;
 }): React.ReactElement {
     const parentItems = history.parent?.items;
-    const tag = parentItems ? compare(check, current, complete ? parentItems : []) : null;
+    // A partly read snapshot is as unfit to prove a unique name as a partly listed commit is.
+    const tag = parentItems
+        ? compare(check, current, complete && !history.parent?.partial ? parentItems : [])
+        : null;
     const tip = history.defaultBranch;
     const red =
-        complete && tip?.items && tip.tipHash !== hash ? alsoRed(check, current, tip.items) : false;
+        complete && !tip?.partial && tip?.items && tip.tipHash !== hash
+            ? alsoRed(check, current, tip.items)
+            : false;
     return (
         <>
             {tag ? (

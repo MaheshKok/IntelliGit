@@ -18,6 +18,7 @@
 - Earlier commits: built 350f627c (0.43.13); fix 1 8ace3e72; fix 2 e0ee196e; takeover a4017dc0; halt c87668db; owner answer 17562890.
 - Wave re-run (owner answer "2: re-run the wave", 2026-11-15): the rebuild commit on top of 17562890 fixes the open Codex finding: once a history answer says the default branch is missing, the header shows "required: unknown", drops the "required checks from <branch>" scope line, and the tree drops every blocks-merge tag (§8). Regression "a history answer with no default branch makes required status unknown over a known detail"; 3 mutations red (log).
 - Fix round 1 (this wave): history reply stored only when requestId, repoKey and hash all match the newest request (useCiHistory.ts); CheckTree tags nothing but "unknown" on a failed check while runsCoverage, any run's jobsCoverage or otherChecksCoverage is not "full". Codex finding 1 (answer history outside E2E) DECLINED, see Decisions.
+- Fix round 2 (this wave): a snapshot read in part carries `partial` (types.ts CommitChecksSnapshot; GitHub one endpoint failed, Bitbucket Cloud/Server page bound or non-page cut the chain), readCiHistory passes it to the parent and default-tip entries, CheckTree gives a failed job "unknown" (green: no tag) for a partial parent and drops also-red for a partial tip. 4 regression tests (parent/tip, history flag, 3 providers) red before, 7 mutations red at their named tests.
 - Built: each failed check is tagged "new" / "still" / "unknown", a passed one "fixed", against the first parent; "also red on {branch}" against the default branch tip read from origin/HEAD on every request (K22); "default branch unknown" when origin/HEAD is missing.
 - Pure logic `join` / `compare` / `alsoRed` / `historyChecksOf` in src/shared/ci/history.ts; host read `readCiHistory` in src/services/commitChecks/ciHistory.ts; message `requestCiHistory` / `ciHistory` answered by src/views/ciHistoryHandler.ts in all three hosts; tab hook useCiHistory.ts; tags in CheckTree.tsx.
 - Takeover recap: header unknown line follows the history answer once it arrives; Bitbucket snapshot items carry no logicalId (fixtures); each history answer renders only for the detail it was asked for.
@@ -35,7 +36,8 @@
 - GitNexus impact/detect-changes not run (worktree-isolation guard refused the CLI before); substitute: CheckTree and ChecksHeader each have one caller (ChecksTab.tsx). Risk assumed LOW, not graph-checked.
 - Two same-named jobs in different workflows always give "unknown" (snapshot has no workflow name).
 - Phase 11 e2e not run locally.
-- `bun run test`: 10 failed, 8213 passed of 8223; the known set (8 commit-list-column-resize on Node v26.5.0, tsconfigCoverage, screenshotComparatorMeta).
+- A partial snapshot is cached and persisted like a whole one (the flag travels with it, persistedShape names it); a malformed Bitbucket page now marks the snapshot partial too.
+- `bun run test`: 10 failed, 8225 passed of 8235; the known set (8 commit-list-column-resize on Node v26.5.0, tsconfigCoverage, screenshotComparatorMeta).
 - Undocked's `ready` bumps the generation in its message wrapper; a direct `handleMessage({type:"ready"})` would skip it (none does today).
 
 ## Next phase: 12

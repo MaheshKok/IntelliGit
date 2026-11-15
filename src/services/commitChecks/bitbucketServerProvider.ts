@@ -204,8 +204,14 @@ export class BitbucketServerProvider implements CommitChecksProvider {
         const commitKey = `bitbucket-server:${host.toLowerCase()}@${hash}`;
 
         let rows: BitbucketStatus[];
+        let truncated: boolean;
         try {
-            rows = await this.fetchAllPages(host, hash, headers, this.etags?.forCommit(commitKey));
+            ({ rows, truncated } = await this.fetchAllPages(
+                host,
+                hash,
+                headers,
+                this.etags?.forCommit(commitKey),
+            ));
         } catch (err) {
             const message = getErrorMessage(err);
             if (/\bHTTP (401|403)\b/i.test(message)) {
@@ -229,6 +235,7 @@ export class BitbucketServerProvider implements CommitChecksProvider {
             state,
             summary: summaryForItems(items, state),
             items,
+            ...(truncated ? { partial: true } : {}),
         };
         this.etags?.noteCommit(commitKey, isCompleteSnapshot(snapshot));
         return snapshot;
@@ -248,14 +255,15 @@ export class BitbucketServerProvider implements CommitChecksProvider {
      * @param headers - The auth headers to send on every page request.
      * @param conditional - The conditional-request store, for a commit still running at its
      *   last read; `nextPageStart` is in the body, so a 304's stored body keeps it.
-     * @returns All status rows gathered across the fetched pages.
+     * @returns All status rows gathered across the fetched pages, and whether a page was left
+     *   unread (the bound was hit, or a page was not a status page).
      */
     private async fetchAllPages(
         host: string,
         hash: string,
         headers: Record<string, string>,
         conditional: EtagStore | undefined,
-    ): Promise<BitbucketStatus[]> {
+    ): Promise<{ rows: BitbucketStatus[]; truncated: boolean }> {
         const base = `https://${host}/rest/build-status/1.0/commits/${encodeURIComponent(hash)}`;
         const rows: BitbucketStatus[] = [];
         let start: number | undefined = 0;
@@ -273,6 +281,6 @@ export class BitbucketServerProvider implements CommitChecksProvider {
                     ? raw.nextPageStart
                     : undefined;
         }
-        return rows;
+        return { rows, truncated: start !== undefined };
     }
 }

@@ -460,6 +460,39 @@ describe("Checks tab history tags", () => {
         expect(tagsOf(container, "repaired")).toEqual([]);
     });
 
+    it("a partly read parent snapshot cannot prove a unique name: failed jobs are unknown, green ones untagged", () => {
+        const { container } = mount(
+            <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,
+        );
+        showDetail(container);
+        answerHistory(lastHistoryRequest(), {
+            ...HISTORY,
+            parent: { ...HISTORY.parent!, partial: true },
+        });
+        expect(
+            tagsOf(container, "broke-here"),
+            "an unread parent item may share the name, so new is not proven; the tip still answers also-red",
+        ).toEqual(["unknown", "also red on trunk"]);
+        expect(tagsOf(container, "was-broken")).toEqual(["unknown"]);
+        expect(tagsOf(container, "repaired")).toEqual([]);
+    });
+
+    it("a partly read default-tip snapshot cannot prove also-red, and leaves the parent tags alone", () => {
+        const { container } = mount(
+            <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,
+        );
+        showDetail(container);
+        answerHistory(lastHistoryRequest(), {
+            ...HISTORY,
+            defaultBranch: { ...HISTORY.defaultBranch!, partial: true },
+        });
+        expect(
+            tagsOf(container, "broke-here"),
+            "an unread tip item may share the name, so also red is not proven",
+        ).toEqual(["new"]);
+        expect(tagsOf(container, "was-broken")).toEqual(["still"]);
+    });
+
     it("no also-red tag when the commit is the default branch's tip", () => {
         const { container } = mount(
             <CommitInfoPane detail={commit(TIP)} ciRepoKey="/repo" commitChecksEnabled />,

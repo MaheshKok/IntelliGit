@@ -843,13 +843,15 @@ export class GitHubProvider implements CommitChecksProvider {
 
         const checkRuns =
             checkRunsResult.status === "fulfilled" ? checkRunsResult.value : undefined;
+        const snapshot = normalizeGithubChecks(
+            hash,
+            checkRuns,
+            statusesResult.status === "fulfilled" ? statusesResult.value : undefined,
+            this.ciCdPattern,
+        );
         return {
-            snapshot: normalizeGithubChecks(
-                hash,
-                checkRuns,
-                statusesResult.status === "fulfilled" ? statusesResult.value : undefined,
-                this.ciCdPattern,
-            ),
+            // The one endpoint that failed may hold a check sharing a name with one that was read.
+            snapshot: rejected.length === 1 ? { ...snapshot, partial: true } : snapshot,
             checkRunIds: new Set(readCheckRuns(checkRuns).flatMap((run) => readId(run.id) ?? [])),
             summaries: new Map(
                 readCheckRuns(checkRuns).flatMap((run) => {

@@ -22,10 +22,14 @@ export interface CiHistoryCheck {
     state: CiState | CommitCheckState;
 }
 
-/** A snapshot the host read for the comparison; `items` is `null` when it could not be read. */
+/**
+ * A snapshot the host read for the comparison; `items` is `null` when it could not be read.
+ * `partial` is set when only some items were read, so the list cannot prove a name unique.
+ */
 interface CiHistorySnapshot {
     hash: string;
     items: CommitCheckItem[] | null;
+    partial?: true;
 }
 
 /** The host's answer: the first parent's snapshot and the default branch tip's. */
@@ -33,7 +37,12 @@ export interface CiHistory {
     /** `null` for a root commit. */
     parent: CiHistorySnapshot | null;
     /** `null` when `origin/HEAD` or its tip is missing (shown as "default branch unknown"). */
-    defaultBranch: { name: string; tipHash: string; items: CommitCheckItem[] | null } | null;
+    defaultBranch: {
+        name: string;
+        tipHash: string;
+        items: CommitCheckItem[] | null;
+        partial?: true;
+    } | null;
 }
 
 const RED_STATES: ReadonlySet<string> = new Set(["failure", "timed_out", "action_required"]);

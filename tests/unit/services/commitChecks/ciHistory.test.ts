@@ -288,6 +288,23 @@ describe("readCiHistory", () => {
         expect(history.defaultBranch?.items).toBeNull();
     });
 
+    it("carries a partly read snapshot's flag to the parent and the default tip, and no flag otherwise", async () => {
+        const d = deps();
+        d.getChecks.mockImplementation(async (hash: string) => ({
+            ...snapshot(hash, [item("unit", "success")]),
+            ...(hash === PARENT_1 || hash === TIP ? { partial: true } : {}),
+        }));
+        const partial = await readCiHistory(d, [PARENT_1]);
+        expect(partial.parent).toEqual({
+            hash: PARENT_1,
+            items: [item("unit", "success")],
+            partial: true,
+        });
+        expect(partial.defaultBranch?.partial).toBe(true);
+        const whole = await readCiHistory(d, [PARENT_2]);
+        expect(whole.parent?.partial).toBeUndefined();
+    });
+
     it("a throwing snapshot read gives null items", async () => {
         const d = deps();
         d.getChecks.mockRejectedValue(new Error("boom"));
@@ -295,6 +312,90 @@ describe("readCiHistory", () => {
             hash: PARENT_1,
             items: null,
         });
+    });
+});
+
+// A snapshot is `partial` when not every item was read, so the history never treats it as the
+// whole population a name is unique in (K35).
+describe("partly read provider snapshots", () => {
+    const tokenStore = (): CredentialStore =>
+        new CredentialStore({
+            get: vi.fn(async () => "bb-token"),
+            store: vi.fn(),
+            delete: vi.fn(),
+            onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+        } as never);
+    const hash = "a".repeat(40);
+
+    it("GitHub: one endpoint failing marks the snapshot partial, both answering does not", async () => {
+        const ref = { host: "github.com", owner: "o", repo: "r" } as ProviderRepoRef;
+        const checkRuns = {
+            total_count: 1,
+            check_runs: [{ id: 1, name: "unit-tests", status: "completed", conclusion: "success" }],
+        };
+        const statusDown = new GitHubProvider(async (url: string) => {
+            if (url.includes("/check-runs")) return checkRuns;
+            throw new Error("HTTP 503");
+        });
+        const partial = await statusDown.getChecks(ref, hash);
+        expect(partial.items.map((i) => i.name)).toEqual(["unit-tests"]);
+        expect(partial.partial).toBe(true);
+        const whole = new GitHubProvider(async (url: string) =>
+            url.includes("/check-runs") ? checkRuns : { statuses: [] },
+        );
+        expect((await whole.getChecks(ref, hash)).partial).toBeUndefined();
+    });
+
+    it("Bitbucket Cloud: the page bound cutting a `next` chain marks the snapshot partial", async () => {
+        const ref = { host: "bitbucket.org", workspace: "o", repo: "r" } as ProviderRepoRef;
+        const chain = (last: number) => async (url: string) => {
+            const page = Number(new URL(url).searchParams.get("page") ?? "1");
+            return {
+                values: [{ key: `k${page}`, name: `n${page}`, state: "SUCCESSFUL" }],
+                next:
+                    page < last
+                        ? `https://api.bitbucket.org/2.0/repositories/o/r/commit/${hash}/statuses?page=${page + 1}`
+                        : undefined,
+            };
+        };
+        const cutProvider = new BitbucketCloudProvider(chain(6), tokenStore());
+        const cut = await cutProvider.getChecks(ref, hash);
+        expect(cut.items).toHaveLength(5);
+        expect(cut.partial).toBe(true);
+        // The flag survives the host's history read for both the parent and the default tip.
+        const history = await readCiHistory(
+            {
+                getChecks: (h) => cutProvider.getChecks(ref, h),
+                readDefaultBranch: async () => ({ name: "trunk", tipHash: "d".repeat(40) }),
+            },
+            ["b".repeat(40)],
+        );
+        expect(history.parent?.partial).toBe(true);
+        expect(history.defaultBranch?.partial).toBe(true);
+        const whole = await new BitbucketCloudProvider(chain(5), tokenStore()).getChecks(ref, hash);
+        expect(whole.items).toHaveLength(5);
+        expect(whole.partial).toBeUndefined();
+    });
+
+    it("Bitbucket Server: the page bound cutting a `nextPageStart` chain marks the snapshot partial", async () => {
+        const ref = { host: "bb.example.com", project: "P", repo: "r" } as ProviderRepoRef;
+        const chain = (last: number) => async (url: string) => {
+            const start = Number(new URL(url).searchParams.get("start") ?? "0");
+            const page = start / 100 + 1;
+            return {
+                values: [{ key: `k${page}`, name: `n${page}`, state: "SUCCESSFUL" }],
+                isLastPage: page >= last,
+                nextPageStart: start + 100,
+            };
+        };
+        const cut = await new BitbucketServerProvider(chain(6), tokenStore()).getChecks(ref, hash);
+        expect(cut.items).toHaveLength(5);
+        expect(cut.partial).toBe(true);
+        const whole = await new BitbucketServerProvider(chain(5), tokenStore()).getChecks(
+            ref,
+            hash,
+        );
+        expect(whole.partial).toBeUndefined();
     });
 });
 

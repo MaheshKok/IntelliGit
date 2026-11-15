@@ -14,13 +14,21 @@ export interface CiHistoryDeps {
     readDefaultBranch(): Promise<DefaultBranch | null>;
 }
 
-async function itemsOf(deps: CiHistoryDeps, hash: string): Promise<CommitCheckItem[] | null> {
+interface ReadItems {
+    items: CommitCheckItem[] | null;
+    partial?: true;
+}
+
+async function itemsOf(deps: CiHistoryDeps, hash: string): Promise<ReadItems> {
     try {
         const snapshot = await deps.getChecks(hash);
         // An unread snapshot is not "no checks": an empty list would tag every failure "unknown".
-        return snapshot.state === "unavailable" ? null : snapshot.items;
+        if (snapshot.state === "unavailable") return { items: null };
+        return snapshot.partial
+            ? { items: snapshot.items, partial: true }
+            : { items: snapshot.items };
     } catch {
-        return null;
+        return { items: null };
     }
 }
 
@@ -36,11 +44,11 @@ export async function readCiHistory(
     const [parent, defaultBranch] = await Promise.all([
         parentHash === undefined
             ? null
-            : itemsOf(deps, parentHash).then((items) => ({ hash: parentHash, items })),
+            : itemsOf(deps, parentHash).then((read) => ({ hash: parentHash, ...read })),
         deps
             .readDefaultBranch()
             .then(async (branch) =>
-                branch ? { ...branch, items: await itemsOf(deps, branch.tipHash) } : null,
+                branch ? { ...branch, ...(await itemsOf(deps, branch.tipHash)) } : null,
             ),
     ]);
     return { parent, defaultBranch };
