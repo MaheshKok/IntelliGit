@@ -21,6 +21,8 @@
 - Fix round 1 (36c1f1b9): cache-only reads cannot join the shared in-flight map; listed names may hold a newline; `nameProvesJob`; reply identity; `detail` hook dependency; `getAttemptHistory` on both providers.
 - Fix round 2 (6 findings, each test red before the fix except where noted): (1) `GitOps.getFileContentAtRef(path, ref, {listedName: true})` keeps a Git-listed name byte for byte (newline, edge spaces, backslash) and still refuses NUL, absolute and `..`; only `openRevisionRangeFileDiff` passes it; real-Git test tests/unit/services/rangeDiffRealGit.test.ts. (2) `ciHistory(parents, line)` asks the provider's `getAttemptHistory` for a loaded ancestor whose checks are cached but whose detail is not (provider must have the capability; 60 s per-account memo, failures not remembered, cleared by `clear()`). (3) changedSinceGreen checks `nameProvesJob` before skipping a red name match. (4) `CiChangedFile extends CommitFile` (additions, deletions from `git diff --numstat -M -z`, binary = 0); `CiRangeDiffFile` is the open-diff subset. (5) CheckTree.tsx and (6) CHANGELOG.md: checked against base 90731f87, Phase 12's diff holds only the flaky tag and the 0.43.14 entry; no change. Finding 4 had no separate pre-fix red run (its proof is mutation 4a/4b below).
 - Fix round 2 proof: 8 mutations on copies, each red at a named test (listedName ignored, NUL check off, attempt read stubbed, memo off, failure kept, red name skip restored, counts dropped, rename source skip dropped).
+- Takeover (round-2 review, 3 findings): (1) a cache-only read (`getCached`) in both CommitChecksService and CommitCiDetailService joined a running fetch at any of 3 points, so the walk waited for network data. Now one `joinable(key, options)` helper per service throws "not cached" for a cache-only read when a fetch is in flight (before the store read, during it, after it); an in-flight ancestor is skipped as uncached. (2) changedSinceGreen: a name-only match in a partial ancestor list now stops the walk with `unknownReason: "ambiguous"` for red and green alike (was: red skipped, green skipped, walk reached an older green). The old test "a partial ancestor list cannot prove a name match" expected the skip; it became the two-state test. (3) GitNexus: not runnable here (see Open risks).
+- Takeover proof: 10 new tests red on the pre-fix source, green after; 9 mutations on a copy (each of 3 join points x 2 services, each helper's throw, the partial stop) each red at a named test; the reviewer's own reviewer.phase12.test.ts passes 11/11 on the fixed copy.
 
 ## Decisions and why
 - File list is a plain button list, not CommitChangedFilesPanel: that panel needs a whole CommitDetail and tree state; plan step 5 is "[ASSUMED] where props allow".
@@ -28,11 +30,12 @@
 - scopeName = the run's name. Flaky tag only when the commit's run, job and flat lists are whole (same rule as Phase 11 tags).
 - Ancestor attempt reads go to the provider (spec fetching rule), only for ancestors whose snapshot is cached; alternative (cached details only) leaves flaky counts wrong for ancestors never opened in Checks.
 - Handlers answer only while isE2eControlChannelActive is on (as Phase 11).
+- A cache-only read that finds a stored copy while a refresh runs also misses (the refresh may replace that copy, and the existing code never served a stored copy early); the alternative, serving the stored copy, could hand the walk an answer the refresh is overturning.
 
 ## Open risks
 - Local `bun run test` is never fully green: Node 26.5.0 reds commit-list-column-resize (8, red at 90731f87); under load 16 other files time out at 30 s and pass alone (rerun: 64 files, 965 tests green).
 - A badge request on a long loaded line now sends up to one attempt-history read per cached ancestor (memoized 60 s); the provider request gate bounds concurrency. Not measured against a real forge.
-- GitNexus impact and detect-changes not run: the worktree has no `.gitnexus`; run both in an indexed checkout before merge.
+- GitNexus impact and detect-changes still not run (review finding 3, MINOR): the worktree has no `.gitnexus`, and the worktree-isolation guard refuses commands aimed at the main checkout. Root must run both in an indexed checkout before merge. Callers of the changed cache reads were checked by text search instead: only coordinator.ts cachedSnapshot and cachedDetail.
 - Gate E not run locally; the new spec runs on CI.
 - Contract 8 empties persisted CI detail caches once on upgrade (refetch).
 

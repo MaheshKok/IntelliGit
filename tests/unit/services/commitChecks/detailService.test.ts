@@ -85,6 +85,54 @@ describe("CommitCiDetailService", () => {
         expect(fetchDetail).toHaveBeenCalledTimes(1);
     });
 
+    it("a cache-only read never joins an in-flight fetch", async () => {
+        const { service: details } = service();
+        const pending = deferred<CommitCiDetailData>();
+        const started = deferred<void>();
+        const fetching = details.getOrFetch(
+            KEY,
+            () => {
+                started.resolve();
+                return pending.promise;
+            },
+            SERVE,
+        );
+        await started.promise;
+        const cached = details.getCached(KEY, SERVE);
+        pending.resolve(detail());
+        await fetching;
+
+        expect(
+            await cached,
+            "a cache-only miss must not wait for and take the network detail",
+        ).toBeUndefined();
+    });
+
+    it.each([
+        ["a stored entry", true],
+        ["an empty store", false],
+    ])(
+        "a cache-only read over %s never joins a refresh started during its store read",
+        async (_label, stored) => {
+            const state = memento();
+            if (stored) await service(state).service.getOrFetch(KEY, async () => detail(), SERVE);
+            const { service: details } = service(state);
+            const cached = details.getCached(KEY, SERVE);
+            const refresh = details.getOrFetch(
+                KEY,
+                async () => detail({ outcome: "success" }),
+                SERVE,
+                { force: true },
+            );
+
+            expect(
+                (await cached)?.outcome,
+                "a cache-only read must not take the refresh's network detail",
+            ).not.toBe("success");
+            await refresh;
+        },
+    );
+
     it("complete detail served from L1 without refetch", async () => {
         let now = 0;
         const { service: details } = service(memento(), () => now);

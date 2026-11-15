@@ -167,9 +167,12 @@ export async function changedSinceGreen(
         if (!nameProvesJob && match.logicalId !== request.logicalCheckId) {
             return { lastGreen: null, unknownReason: "ambiguous", files: [] };
         }
+        // A list read in part cannot prove a name unique: a hidden item of that name may be the
+        // job, so a name-only match there, red or green, stops the walk.
+        if (snapshot.partial && match.logicalId === undefined) {
+            return { lastGreen: null, unknownReason: "ambiguous", files: [] };
+        }
         if (match.state !== "success") continue;
-        // A list read in part cannot prove a name unique: only an identity match counts there.
-        if (snapshot.partial && match.logicalId === undefined) continue;
         // react-doctor-disable-next-line react-doctor/async-await-in-loop
         const [names, numstat] = await Promise.all([
             deps.diffNameStatus(hash, request.hash),

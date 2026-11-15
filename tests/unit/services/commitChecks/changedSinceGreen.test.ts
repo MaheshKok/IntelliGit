@@ -348,6 +348,73 @@ describe("changedSinceGreen", () => {
         ).toBe("fulfilled");
     });
 
+    it("a cache-only walk never waits for an ancestor's in-flight badge fetch", async () => {
+        const fetching = commit("ancestor, badge still fetching");
+        const selected = commit("selected");
+        const getChecks = vi.fn(async (_ref: unknown, hash: string) =>
+            snapshot(hash, [item("success", CI)]),
+        );
+        const provider: CommitChecksProvider = {
+            id: "github",
+            capabilities: { ...NO_CI_CAPABILITIES, runs: true, jobs: true },
+            match: () => ({ host: "github.com", owner: "o", repo: "r" }) as never,
+            keyFor: () => "github:o/r",
+            getChecks,
+            getDetail: async (_ref, hash) => detail(hash),
+        };
+        const service = new CommitChecksService();
+        const coordinator = new CommitChecksCoordinator(
+            {
+                getRemotes: async () => ["origin"],
+                getRemoteUrl: async () => "https://github.com/o/r",
+                diffNameStatus: (from: string, to: string) => gitOps.diffNameStatus(from, to),
+                diffNumstat: (from: string, to: string) => gitOps.diffNumstat(from, to),
+            } as never,
+            [provider],
+            {},
+            { service },
+        );
+        await coordinator.getDetail(
+            selected,
+            {},
+            { repoKey: root, authGeneration: 0, lifecycleGeneration: 0 },
+        );
+        let release!: (value: CommitChecksSnapshot) => void;
+        let started!: () => void;
+        const begun = new Promise<void>((done) => {
+            started = done;
+        });
+        getChecks.mockImplementationOnce(() => {
+            started();
+            return new Promise((done) => {
+                release = done;
+            });
+        });
+        const badge = coordinator.getChecks(fetching);
+        await begun;
+        const read = service.getCached.bind(service);
+        let reached!: () => void;
+        const walkRead = new Promise<void>((done) => {
+            reached = done;
+        });
+        vi.spyOn(service, "getCached").mockImplementation((key) => {
+            const answer = read(key);
+            reached();
+            return answer;
+        });
+
+        const walk = coordinator.changedSinceGreen(request(selected), root);
+        await walkRead;
+        // The badge's network answer lands only after the walk asked the cache.
+        release(snapshot(fetching, [item("success", CI)]));
+        await badge;
+
+        expect(
+            await walk,
+            "an ancestor uncached when the walk asked stays skipped, even while its badge fetches",
+        ).toEqual({ lastGreen: null, files: [] });
+    });
+
     it("cannot prove a name fallback unique in a partly listed current commit", async () => {
         const green = commit("green, an item without an identity");
         const selected = commit("selected");
@@ -522,16 +589,27 @@ describe("changedSinceGreen", () => {
         });
     });
 
-    it("a partial ancestor list cannot prove a name match", async () => {
-        const older = commit("older, green by name, read in part");
-        const selected = commit("selected");
-        const cache = deps({ [older]: [item("success")] }, detail(selected), [older]);
+    it.each(["failure", "success"] as const)(
+        "a partial ancestor's %s name match stops the walk before an older green",
+        async (state) => {
+            const olderGreen = commit("older green, matched by identity");
+            const partly = commit(`${state} by name, read in part`);
+            const selected = commit("selected");
+            const cache = deps(
+                { [olderGreen]: [item("success", CI)], [partly]: [item(state)] },
+                detail(selected),
+                [partly],
+            );
 
-        await expect(changedSinceGreen(cache, request(selected))).resolves.toEqual({
-            lastGreen: null,
-            files: [],
-        });
-    });
+            // A hidden item of that name may be the job: the walk cannot step over it.
+            await expect(changedSinceGreen(cache, request(selected))).resolves.toEqual({
+                lastGreen: null,
+                unknownReason: "ambiguous",
+                files: [],
+            });
+            expect(cache.diffs).toEqual([]);
+        },
+    );
 
     it("a git failure rejects", async () => {
         const green = commit("green");

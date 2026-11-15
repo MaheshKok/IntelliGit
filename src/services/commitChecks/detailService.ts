@@ -208,7 +208,7 @@ export class CommitCiDetailService {
             this.startScans(key, cached, this.captureGeneration(key));
             return served(cached);
         }
-        const inflight = this.inflight.get(key);
+        const inflight = this.joinable(key, options);
         if (inflight) return inflight;
         if (!options.force && this.persistentCache) {
             const readGeneration = this.captureGeneration(key);
@@ -225,7 +225,7 @@ export class CommitCiDetailService {
             ) {
                 // A forced refresh that started or finished during the read is newer than the
                 // saved copy; one still confirming its save is joined, never served early.
-                const running = this.inflight.get(key);
+                const running = this.joinable(key, options);
                 if (running) return running;
                 const newer = this.cache.get(key);
                 if (newer && newer !== cached) {
@@ -248,7 +248,7 @@ export class CommitCiDetailService {
                 }
             }
         }
-        const newerInflight = this.inflight.get(key);
+        const newerInflight = this.joinable(key, options);
         if (newerInflight) return newerInflight;
         if (options.cacheOnly) throw new Error("not cached");
         const generation = this.captureGeneration(key);
@@ -429,6 +429,16 @@ export class CommitCiDetailService {
     /** False once a clear() in any window, visible here, came after the entry was stored. */
     private isServable(entry: DetailEntry): boolean {
         return entry.storeGeneration === this.storeGeneration();
+    }
+
+    /** The fetch running for `key`, to join. A cache-only read never joins one: it misses. */
+    private joinable(
+        key: string,
+        options: CommitChecksFetchOptions,
+    ): Promise<ServedDetailData> | undefined {
+        const request = this.inflight.get(key);
+        if (request && options.cacheOnly) throw new Error("not cached");
+        return request;
     }
 
     private isFresh(entry: DetailEntry): boolean {
