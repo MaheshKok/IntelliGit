@@ -10,8 +10,8 @@ let lastRequestId = 0;
 /**
  * The parent's and default branch tip's snapshots the history tags compare with. Asked again
  * for every detail answer, so a parent that finishes later or a moved tip shows up; only the
- * reply to the newest request for the commit on screen is returned, with whether it found no
- * `origin/HEAD`.
+ * reply to the newest request for the detail on screen is returned, with whether it found no
+ * `origin/HEAD` (undefined until a reply is shown).
  *
  * @param repoKey - Repository the pane shows.
  * @param hash - The commit whose detail is shown.
@@ -23,9 +23,14 @@ export function useCiHistory(
     hash: string,
     parents: readonly string[],
     detail: CommitCiDetail | undefined,
-): { history: CiHistory | undefined; defaultBranchUnknown: boolean } {
-    const [answer, setAnswer] = useState<CiHistoryMessage | null>(null);
-    const newest = useRef<number | null>(null);
+): { history: CiHistory | undefined; defaultBranchUnknown: boolean | undefined } {
+    // Each answer keeps the detail it was asked for, so a replacement detail's first render,
+    // before the effect below retires the answer, never shows the previous answer's tags.
+    const [answer, setAnswer] = useState<{
+        message: CiHistoryMessage;
+        detail: CommitCiDetail;
+    } | null>(null);
+    const newest = useRef<{ requestId: number; detail: CommitCiDetail } | null>(null);
     const parentsKey = parents.join(",");
 
     useEffect(() => {
@@ -35,7 +40,7 @@ export function useCiHistory(
         newest.current = null;
         if (!detail) return;
         const requestId = ++lastRequestId;
-        newest.current = requestId;
+        newest.current = { requestId, detail };
         getVsCodeApi<RequestCiHistoryMessage>().postMessage({
             type: "requestCiHistory",
             requestId,
@@ -48,8 +53,11 @@ export function useCiHistory(
     useEffect(() => {
         const onMessage = (event: MessageEvent<unknown>): void => {
             const data = event.data as Partial<CiHistoryMessage> | null;
-            if (data?.type !== "ciHistory" || data.requestId !== newest.current) return;
-            setAnswer(data as CiHistoryMessage);
+            const request = newest.current;
+            if (data?.type !== "ciHistory" || !request || data.requestId !== request.requestId) {
+                return;
+            }
+            setAnswer({ message: data as CiHistoryMessage, detail: request.detail });
         };
         window.addEventListener("message", onMessage);
         return () => window.removeEventListener("message", onMessage);
@@ -57,10 +65,11 @@ export function useCiHistory(
 
     const history =
         answer &&
-        answer.requestId === newest.current &&
-        answer.repoKey === repoKey &&
-        answer.hash === hash
-            ? answer
+        answer.detail === detail &&
+        answer.message.requestId === newest.current?.requestId &&
+        answer.message.repoKey === repoKey &&
+        answer.message.hash === hash
+            ? answer.message
             : undefined;
-    return { history, defaultBranchUnknown: history?.defaultBranch === null };
+    return { history, defaultBranchUnknown: history ? history.defaultBranch === null : undefined };
 }

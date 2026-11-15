@@ -1,0 +1,24 @@
+{
+    "size": 2,
+    "limit": 100,
+    "isLastPage": true,
+    "start": 0,
+    "values": [
+        {
+            "state": "SUCCESSFUL",
+            "key": "BAMBOO-UNIT",
+            "name": "unit-tests",
+            "url": "https://bamboo.example.com/browse/PROJ-UNIT-41",
+            "description": "41 tests passed",
+            "dateAdded": 1793527200000
+        },
+        {
+            "state": "FAILED",
+            "key": "BAMBOO-LINT",
+            "name": "lint",
+            "url": "https://bamboo.example.com/browse/PROJ-LINT-41",
+            "description": "2 lint errors",
+            "dateAdded": 1793527260000
+        }
+    ]
+}

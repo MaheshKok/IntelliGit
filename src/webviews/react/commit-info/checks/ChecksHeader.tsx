@@ -16,7 +16,7 @@ import type { CiActionTarget } from "./useCiAction";
  */
 export function ChecksHeader({
     detail,
-    defaultBranchUnknown = false,
+    defaultBranchUnknown,
     actionRun,
     busy = null,
     onAction,
@@ -24,7 +24,10 @@ export function ChecksHeader({
     onOpenUrl,
 }: {
     detail: CommitCiDetail | null | undefined;
-    /** The history read found no `origin/HEAD`, so "also red on" cannot be shown. */
+    /**
+     * Whether the history read found no `origin/HEAD`, so "also red on" cannot be shown; read
+     * after the detail, it overrides the detail's flag. Undefined until history answers.
+     */
     defaultBranchUnknown?: boolean;
     /** The run the header's actions target. */
     actionRun?: CiRun;
@@ -71,7 +74,7 @@ export function ChecksHeader({
                             {t("commit.checks.tab.requiredScope", { branch: detail.defaultBranch })}
                         </span>
                     ) : null}
-                    {detail.defaultBranchUnknown || defaultBranchUnknown ? (
+                    {(defaultBranchUnknown ?? detail.defaultBranchUnknown) ? (
                         <span data-testid="ci-header-default-branch" style={runLineStyle}>
                             {t("commit.checks.tab.defaultBranchUnknown")}
                         </span>

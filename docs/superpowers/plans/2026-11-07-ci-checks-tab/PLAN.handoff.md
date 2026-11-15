@@ -11,42 +11,36 @@
 - Phase 7: accepted 6fef8c59, manual; owner OK 2026-11-12 (squash-merged as #424, 36bef4be).
 - Phase 8: accepted b5a56002, manual; owner OK 2026-11-13 (squash-merged as #426, 7941c809).
 - Phase 9: accepted 37ba9d13, manual: finished by hand; elephant OK 2026-11-14 after the owner's answer "C: track in #432" (squash-merged as #430, 63b8ea88).
-- Phase 10: accepted 8ff6422d, manual: finished by hand after the takeover halt, owner answer "A" 2026-11-14 (squash-merged as #435, bc063074). Its open risks (cross-window clear-token orderings, PLAN.md:764 out of scope) stand; details in this file's git history.
+- Phase 10: accepted 8ff6422d, manual: finished by hand after the takeover halt, owner answer "A" 2026-11-14 (squash-merged as #435, bc063074). Its open risks stand; details in this file's git history.
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 11: review pending, built 350f627c, fix round 1 committed after it (started at 8ff6422d1f29149a80f29c155327481695f34649)
-- Fix round 1 (4 findings, each test red before the fix): useCiHistory clears the stored answer when a request starts or the detail goes away and renders it only for the newest request id; all three hosts (CommitInfo, CommitGraph, Undocked) keep a `webviewGeneration` advanced on `ready`, captured when a history request starts and checked before posting; `join` matches a logical id only when exactly one parent item AND exactly one current check carry it, and allows the unique-name fallback when either side has no logical id.
-- Fix round 2 (2 findings, each test red before the fix): `webviewGeneration` advances only when the `ready` comes from the current view/panel (CommitInfo, CommitGraph in the `ready` case; Undocked in the message wrapper that already checks `this.panel === panel`), so a retired view's late ready no longer drops the current history reply; `join`'s name fallback counts every same-named parent item (identified ones of another workflow included) before accepting the one left, so an unidentified green `unit` plus an identified red `Release/unit` gives "unknown", not "new".
-- 8ff6422d is not an ancestor of HEAD; the real base is 2d44491c (main after #435 plus the Phase 11 groundwork docs commit).
-- Built (0.43.13): each failed check is tagged "new" / "still" / "unknown", a passed one "fixed", against the first parent; "also red on {branch}" against the default branch tip read from origin/HEAD on every request (K22); "default branch unknown" when origin/HEAD is missing.
-- Pure logic `join` / `compare` / `alsoRed` / `historyChecksOf` in src/shared/ci/history.ts; host read `readCiHistory` in src/services/commitChecks/ciHistory.ts (coordinator `ciHistory`); message `requestCiHistory` / `ciHistory` answered by src/views/ciHistoryHandler.ts in all three hosts; tab hook useCiHistory.ts; tags in CheckTree.tsx; 5 strings in 12 locales + CSV; README section; CHANGELOG 0.43.13.
-- Tests: ciHistory.test.ts 25, ciHistoryHandler.test.ts 11, commitChecksHistory.integration.test.tsx 6 (42 pass). 15 mutations on copies, all red naming the expected test (control 42 passed).
+## Phase 11: review pending, started at 8ff6422d1f29149a80f29c155327481695f34649
+- Built 350f627c (0.43.13); fix round 1 8ace3e72; fix round 2 e0ee196e; takeover commit follows e0ee196e. The real base is 2d44491c (8ff6422d is not an ancestor of HEAD).
+- Built: each failed check is tagged "new" / "still" / "unknown", a passed one "fixed", against the first parent; "also red on {branch}" against the default branch tip read from origin/HEAD on every request (K22); "default branch unknown" when origin/HEAD is missing.
+- Pure logic `join` / `compare` / `alsoRed` / `historyChecksOf` in src/shared/ci/history.ts; host read `readCiHistory` in src/services/commitChecks/ciHistory.ts; message `requestCiHistory` / `ciHistory` answered by src/views/ciHistoryHandler.ts in all three hosts; tab hook useCiHistory.ts; tags in CheckTree.tsx.
+- Takeover (4 findings): (1) the header's "default branch unknown" line now follows the history answer once it arrives (`defaultBranchUnknown ?? detail.defaultBranchUnknown`; the hook returns undefined until a reply is shown), so a known branch retires the detail's older flag; (2) fixture-backed Bitbucket Cloud and Server cases in ciHistory.test.ts pin that their snapshot items carry no logicalId and join by unique name (ambiguous when doubled on either side); (3) useCiHistory stores each answer with the detail object it was asked for and renders it only for that same detail, so a replacement detail's first frame shows no previous tags (closes the old one-frame risk); (4) GitNexus impact/detect-changes still refused by the worktree-isolation guard, not routed around.
+- Rounds 1-2 recap: per-request id and detail clearing in the hook; hosts' `webviewGeneration` advanced only by the current view's `ready`; `join` logical id only when unique on both sides, name fallback counts every same-named parent item.
 
 ## Decisions and why
-- Pure functions in src/shared/ci/history.ts, not plan §9's src/services/commitChecks/ciHistory.ts: the webview may not import src/services (architecture:check); the host read stays at the plan's path.
-- "unknown" only on a red check without a unique match; a green check without one gets no tag (journey 9 defines unknown for failed jobs only).
-- Join: logical id first (exactly one parent item and one current check carry it); else the name must match exactly one parent item (one with no logical id, or any when the current check has none) AND exactly one current check. Two different ids on both sides never fall back to the name. Execution ids never compared (K35).
-- A snapshot that cannot be read gives `items: null` (no tags), never an empty list, which would tag every red check "unknown".
-- Root commit: no parent, no tags. Merge commit: first parent only. No also-red tag on the default branch tip itself.
-- The tab re-asks on every detail answer, so a parent run that finishes later or a moved tip shows up; only the newest request's reply for the commit on screen is used.
-- GitHub and GitLab snapshot APIs name no workflow or pipeline, so their snapshot items carry no logical id and the parent is joined by unique name (fixture tests pin this).
-- The handler answers only while the Checks tab groundwork switch (isE2eControlChannelActive) is on, like the other Phase 11 groundwork; Phase 18 removes the switch check.
+- Bitbucket snapshot items get no logicalId: the build-statuses APIs name no workflow or pipeline, and §9's join rule sets logicalId on snapshot items only where the API gives one. Current flat checks (historyChecksOf) carry none either, so the unique-name fallback joins them. Phase 18 sets `"status\0" + key` on its detail's flat checks; it may then also set it on the snapshot items so both sides match by key.
+- Pure functions in src/shared/ci/history.ts (webview may not import src/services); host read at the plan's path.
+- "unknown" only on a red check without a unique match; root commit no tags; merge commit first parent only; no also-red tag on the tip itself.
+- A snapshot that cannot be read gives `items: null` (no tags), never an empty list.
+- The handler answers only while isE2eControlChannelActive is on; Phase 18 removes the switch check.
 
 ## Open risks
-- GitNexus CLI refused by the worktree-isolation guard; not routed around. Substitute: text-search caller review plus typecheck; every edit is additive (optional props, a new optional source method, new union members). Risk assumed LOW, not graph-checked; the reviewer should run impact/detect-changes.
-- Two same-named jobs in different workflows on GitHub/GitLab always give "unknown" (snapshot has no workflow name). Correct per the join rule, but users with duplicate job names see no new/still.
-- Phase 11 e2e not run locally. impeccable detect is regex-only (exit 0 on 6 UI files).
-- The history hook still shows the stale answer for one commit before its effect clears it; the requestId check cannot close that frame (the ref moves in the same effect). No test sees it, as effects flush inside act.
-- `bun run test` after fix round 2: 10 failed, 8208 passed of 8218; the same known set (8 commit-list-column-resize on Node v26.5.0, tsconfigCoverage, screenshotComparatorMeta). build:prod and package then run separately: both exit 0.
-- Undocked's `ready` now bumps the generation in the message wrapper, not in `handleMessage`; a caller that invokes `handleMessage({type:"ready"})` directly would skip the bump (none does today).
-- No mutation batch and no GitNexus impact run in round 2; the red-before-fix runs are the evidence.
+- GitNexus CLI refused by the worktree-isolation guard again (takeover); substitute: text search shows one caller each for useCiHistory and ChecksHeader (ChecksTab.tsx) and one Bitbucket mapper (bitbucketShared.ts toStatusItem, untouched). Risk assumed LOW, not graph-checked.
+- Two same-named jobs in different workflows on GitHub/GitLab/Bitbucket always give "unknown" (snapshot has no workflow name).
+- Phase 11 e2e not run locally.
+- `bun run test` after the takeover: 10 failed, 8212 passed of 8222; the same known set (8 commit-list-column-resize on Node v26.5.0, tsconfigCoverage, screenshotComparatorMeta). build:prod and package then exit 0.
+- Undocked's `ready` bumps the generation in its message wrapper; a direct `handleMessage({type:"ready"})` would skip it (none does today).
 
 ## Next phase: 12
 
 ## Found outside scope
-- Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails; decide in a Phase 7 follow-up.
-- commit-list-column-resize.test.tsx fails under Node v26.5.0 (no global `localStorage`); tsconfigCoverage.test.ts and screenshotComparatorMeta.test.ts fail in a worktree without its own node_modules.
-- operationBenchmark.test.ts fails in a full `bun run test` run and passes alone; diffBudgets.test.ts "large compute" timing budget is load-sensitive.
+- Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
+- commit-list-column-resize.test.tsx fails under Node v26.5.0 (no global `localStorage`); tsconfigCoverage and screenshotComparatorMeta fail in a worktree without its own node_modules.
+- operationBenchmark.test.ts fails in a full run and passes alone; diffBudgets.test.ts "large compute" is load-sensitive.
 - l10n audit lists pre-existing hardcoded-string candidates; knip hint on selectedRemovalCrashWorker.ts `ignoreUnresolved`.
 - GitHub carryScans treats two missing `runAttempt` values as the same run.
 - Extract detailOf/flatDetail into a shared module when Phase 17 adds a third provider detail.
@@ -54,4 +48,4 @@
 - noRepositoryMode.ts registers a placeholder `refreshBadges`, so a token change there clears no cache.
 - GitNexus registry holds two "IntelliGit" entries; the main checkout's index is stale (64d390b).
 - Bitbucket detail reads (Phases 17/18) should pass the ETag store when they add metadata fetches.
-- The worktree has no node_modules, so `node_modules/.bin/*` fails here; call the main checkout's binaries.
+- The worktree's node_modules lacks .bin; bun resolves the main checkout's by walking up, so a copy outside the checkout must link the main checkout's node_modules.

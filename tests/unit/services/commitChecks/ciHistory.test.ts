@@ -17,8 +17,12 @@ vi.mock("vscode", () => ({
     l10n: { t: interpolateL10n },
 }));
 
+import bitbucketCloudStatusesFixture from "../../../fixtures/commitChecks/bitbucket/cloudStatuses.json";
+import bitbucketServerStatusesFixture from "../../../fixtures/commitChecks/bitbucket/serverStatuses.json";
 import checkRunsFixture from "../../../fixtures/commitChecks/github/checkRuns.json";
 import gitlabStatusesFixture from "../../../fixtures/commitChecks/gitlab/statuses.json";
+import { BitbucketCloudProvider } from "../../../../src/services/commitChecks/bitbucketCloudProvider";
+import { BitbucketServerProvider } from "../../../../src/services/commitChecks/bitbucketServerProvider";
 import { readCiHistory } from "../../../../src/services/commitChecks/ciHistory";
 import { CredentialStore } from "../../../../src/services/commitChecks/credentialStore";
 import type { DefaultBranch } from "../../../../src/services/commitChecks/defaultBranch";
@@ -296,9 +300,54 @@ describe("readCiHistory", () => {
 
 // Recorded per provider (PLAN.md Phase 11): a snapshot item carries `logicalId` only where its
 // API names the workflow or pipeline. These fixtures follow the providers' documented response
-// shapes; neither names one, so GitHub and GitLab parents are joined by the unique name. A
-// logical id set here from the item's own name would make every job on both sides "unknown".
+// shapes; none names one, so GitHub, GitLab and both Bitbucket parents are joined by the unique
+// name. A logical id set here from the item's own name would make every job on both sides
+// "unknown".
 describe("snapshot logical identity per provider", () => {
+    const tokenStore = (): CredentialStore =>
+        new CredentialStore({
+            get: vi.fn(async () => "bb-token"),
+            store: vi.fn(),
+            delete: vi.fn(),
+            onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+        } as never);
+
+    /** The fixture parent joined by unique name: one match each, ambiguous when doubled. */
+    function expectUniqueNameJoin(parent: CommitCheckItem[]): void {
+        const unit = job("CI", "unit-tests", "failure");
+        expect(join(unit, [unit], parent)).toBe(parent.find((i) => i.name === "unit-tests"));
+        expect(tag(unit, parent)).toBe("new");
+        const flat: CiHistoryCheck = { name: "unit-tests", state: "failure" };
+        expect(tag(flat, parent)).toBe("new");
+        const twin = job("Nightly", "unit-tests", "failure");
+        expect(tag(unit, parent, [unit, twin])).toBe("unknown");
+        expect(tag(unit, [...parent, ...parent])).toBe("unknown");
+    }
+
+    it("Bitbucket Cloud build statuses name no pipeline, so items carry no logicalId", async () => {
+        const provider = new BitbucketCloudProvider(
+            async () => bitbucketCloudStatusesFixture,
+            tokenStore(),
+        );
+        const ref = { host: "bitbucket.org", workspace: "acme", repo: "repo" } as ProviderRepoRef;
+        const result = await provider.getChecks(ref, "a".repeat(40));
+        expect(result.items.map((i) => i.name)).toEqual(["unit-tests", "SonarCloud"]);
+        expect(result.items.map((i) => i.logicalId)).toEqual([undefined, undefined]);
+        expectUniqueNameJoin(result.items);
+    });
+
+    it("Bitbucket Server build statuses name no pipeline, so items carry no logicalId", async () => {
+        const provider = new BitbucketServerProvider(
+            async () => bitbucketServerStatusesFixture,
+            tokenStore(),
+        );
+        const ref = { host: "bb.example.com", project: "PROJ", repo: "repo" } as ProviderRepoRef;
+        const result = await provider.getChecks(ref, "a".repeat(40));
+        expect(result.items.map((i) => i.name)).toEqual(["unit-tests", "lint"]);
+        expect(result.items.map((i) => i.logicalId)).toEqual([undefined, undefined]);
+        expectUniqueNameJoin(result.items);
+    });
+
     it("GitHub check runs and statuses name no workflow, so items carry no logicalId", async () => {
         const provider = new GitHubProvider(async (url: string) =>
             url.includes("/check-runs") ? checkRunsFixture : { statuses: [] },

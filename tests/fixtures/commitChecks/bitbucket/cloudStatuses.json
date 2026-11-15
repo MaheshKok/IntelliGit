@@ -1,0 +1,31 @@
+{
+    "pagelen": 100,
+    "size": 2,
+    "page": 1,
+    "values": [
+        {
+            "type": "build",
+            "key": "JENKINS-UNIT",
+            "name": "unit-tests",
+            "state": "SUCCESSFUL",
+            "url": "https://ci.example.com/job/unit/41/",
+            "description": "41 tests passed",
+            "refname": "main",
+            "created_on": "2026-11-01T10:00:00.000000+00:00",
+            "updated_on": "2026-11-01T10:04:00.000000+00:00",
+            "commit": { "type": "commit", "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+        },
+        {
+            "type": "build",
+            "key": "SONARCLOUD",
+            "name": "SonarCloud",
+            "state": "FAILED",
+            "url": "https://sonarcloud.io/dashboard?id=acme_repo",
+            "description": "Quality gate failed",
+            "refname": "main",
+            "created_on": "2026-11-01T10:00:00.000000+00:00",
+            "updated_on": "2026-11-01T10:06:00.000000+00:00",
+            "commit": { "type": "commit", "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+        }
+    ]
+}

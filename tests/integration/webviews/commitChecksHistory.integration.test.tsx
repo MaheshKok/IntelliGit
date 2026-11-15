@@ -270,6 +270,60 @@ describe("Checks tab history tags", () => {
         expect(header()).toBe("default branch unknown — run git remote set-head origin --auto");
     });
 
+    it("a known default branch in the history answer retires the detail's older unknown line", () => {
+        const { container } = mount(
+            <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,
+        );
+        const request = posted<{ requestId: number }>("requestCommitCiDetail").at(-1)!;
+        send({
+            type: "commitCiDetail",
+            requestId: request.requestId,
+            repoKey: "/repo",
+            hash: HASH,
+            detail: { ...detail(HASH), defaultBranchUnknown: true },
+        });
+        const line = (): Element | null =>
+            container.querySelector('[data-testid="ci-header-default-branch"]');
+        expect(line(), "the detail's unknown line shows before history answers").not.toBeNull();
+        // origin/HEAD was set between the detail's read and this comparison's read.
+        answerHistory(lastHistoryRequest());
+        expect(tagsOf(container, "broke-here")).toEqual(["new", "also red on trunk"]);
+        expect(line(), "the newer known branch must retire the unknown line").toBeNull();
+    });
+
+    it("a replacement detail never commits the previous history answer's tags", () => {
+        let host: HTMLElement | null = null;
+        const frames: string[][] = [];
+        const { container } = mount(
+            <React.Profiler
+                id="history"
+                onRender={() => {
+                    const row = host?.querySelector(
+                        '[data-testid="ci-job-row"][data-name="broke-here"]',
+                    );
+                    frames.push(
+                        Array.from(row?.querySelectorAll('[data-testid^="ci-tag-"]') ?? []).map(
+                            (tag) => tag.textContent ?? "",
+                        ),
+                    );
+                }}
+            >
+                <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />
+            </React.Profiler>,
+        );
+        host = container;
+        showDetail(container);
+        answerHistory(lastHistoryRequest());
+        expect(tagsOf(container, "broke-here")).toEqual(["new", "also red on trunk"]);
+        frames.length = 0;
+        showDetail(container);
+        expect(frames.length, "the replacement detail rendered").toBeGreaterThan(0);
+        expect(frames, "no committed frame may borrow the previous answer").not.toContainEqual([
+            "new",
+            "also red on trunk",
+        ]);
+    });
+
     it("no also-red tag when the commit is the default branch's tip", () => {
         const { container } = mount(
             <CommitInfoPane detail={commit(TIP)} ciRepoKey="/repo" commitChecksEnabled />,
