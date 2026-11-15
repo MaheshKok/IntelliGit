@@ -498,6 +498,27 @@ describe("BitbucketCloudProvider.getChecks — pagination", () => {
         ).toHaveBeenCalledTimes(1);
         expect(snapshot.partial, "a refused user-info continuation leaves unread work").toBe(true);
     });
+
+    it.each([
+        ["plain http", "http://api.bitbucket.org/2.0/more"],
+        ["a password alone", "https://:pass@api.bitbucket.org/2.0/more"],
+        ["a path outside /2.0/", "https://api.bitbucket.org/1.0/more"],
+        ["a path climbing out of /2.0/", "https://api.bitbucket.org/2.0/../secret"],
+        ["a host ending in the API host", "https://evilapi.bitbucket.org/2.0/more"],
+    ])("refuses a continuation with %s", async (_label, next) => {
+        const fetch = vi.fn(async () => ({
+            values: [{ key: "unit", name: "unit", state: "FAILED" }],
+            next,
+        }));
+        const snapshot = await new BitbucketCloudProvider(
+            fetch,
+            storeWithToken("bb-token"),
+        ).getChecks(bbRef, "a".repeat(40));
+        expect(fetch, `K33 refuses ${next} before forwarding authentication`).toHaveBeenCalledTimes(
+            1,
+        );
+        expect(snapshot.partial, "a refused continuation leaves unread work").toBe(true);
+    });
 });
 
 // BitbucketCloudProvider.getChecks — empty / malformed responses
