@@ -1251,3 +1251,11 @@ PHASE 11: HALT review still failing after takeover
 - Gate G: bash /tmp/phase-run/PLAN/p11to-gateg.sh -> every step exit 0 except test: 10 failed / 8233 passed (8243), the known set. Gate E: CI. Gate L: n/a.
 WORKTREE 0 11: /private/tmp/phase-run/PLAN/repro-405-1 repro/405-1
 PHASE 11: HALT review still failing after takeover
+
+## Phase 11: built, review pending (third wave run after the owner's answer "1: approve, re-run", 2026-11-15; started at 2d44491c, built on 65ca07cc)
+- Builder: Opus phase lane, test-first; scope = owner answer (ii): open finding 1 (legacy version 6 detail). Codex review, fix routing, seal and final verifier not run here.
+- Fix: `CI_DETAIL_CONTRACT_VERSION` 6 -> 7 (src/shared/ci/contractVersion.ts), per the file's own rule.
+- Regression: commitChecksHistory.integration.test.tsx "a truncated detail saved under contract version 6 is a miss after a restart and cannot show new" (version 6 entry claiming full coverage, restarted CiDetailPersistentCache + CommitCiDetailService, fresh read with jobsCoverage pageBound, tags rendered). Red before: "a version 6 entry must be a miss after a restart: expected "vi.fn()" to be called 1 times, but got 0 times". detailService.test.ts contract test moved to 7 with a version 6 miss case.
+- Mutation (copy mut-11-build-2, 60 s cap): version back to 6 -> 2 failed | 73 passed (75): "a version 6 entry must be a miss after a restart ...", "a detail saved before partial coverage was kept must not certify new: expected [ 'new', 'also red on trunk' ] to deeply equal [ 'unknown' ]", "the detail contract version is 7 ...: expected 6 to be 7".
+- (iii) checked: package.json 0.43.13, CHANGELOG groundwork line present, slice Done-when says Patch bump.
+- Gate G (/tmp/phase-run/PLAN/p11v7-gateg.sh): focused (incl. ciHistory.test.ts), format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; `bun run test` Tests 10 failed | 8234 passed (8244), the known set (8 commit-list-column-resize, tsconfigCoverage, screenshotComparatorMeta). Gate L: no string changed. Gate U: no UI change. Gate E: CI.

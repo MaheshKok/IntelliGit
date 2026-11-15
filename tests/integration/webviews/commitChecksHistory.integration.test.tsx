@@ -6,6 +6,8 @@
 
 import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CiDetailPersistentCache } from "../../../src/services/commitChecks/detailPersistentCache";
+import { CommitCiDetailService } from "../../../src/services/commitChecks/detailService";
 import { NO_CI_CAPABILITIES } from "../../../src/shared/ci/capabilities";
 import type { CiHistory } from "../../../src/shared/ci/history";
 import type { CiJob, CommitCheckItem, CommitCiDetail, CommitDetail } from "../../../src/types";
@@ -458,6 +460,68 @@ describe("Checks tab history tags", () => {
         ).toEqual(["unknown"]);
         expect(tagsOf(container, "was-broken")).toEqual(["unknown"]);
         expect(tagsOf(container, "repaired")).toEqual([]);
+    });
+
+    it("a truncated detail saved under contract version 6 is a miss after a restart and cannot show new", async () => {
+        // Before Phase 11 a cut job list could be saved as fully covered; version 6 entries
+        // were written by that code, so a restart must read the commit again.
+        const KEY = `github:repo@${HASH}:-#detail`;
+        const { capabilities, repoKey, ...claimedFull } = detail(HASH);
+        const values = new Map<string, unknown>([
+            [
+                "intelligit.commitChecks.detailCache.v1",
+                {
+                    entries: [
+                        {
+                            key: KEY,
+                            contractVersion: 6,
+                            data: claimedFull,
+                            fetchedAt: 1_000,
+                            lastAccessedAt: 1_000,
+                        },
+                    ],
+                    unconfirmed: {},
+                },
+            ],
+        ]);
+        const state = {
+            get: (key: string) => values.get(key),
+            keys: () => [...values.keys()],
+            update: async (key: string, value: unknown) => {
+                values.set(key, value);
+            },
+        };
+        const restarted = new CommitCiDetailService({
+            persistentCache: new CiDetailPersistentCache(state, { now: () => 1_000 }),
+            now: () => 1_000,
+        });
+        const readAgain = vi.fn(async () => {
+            const full = detail(HASH);
+            return {
+                ...claimedFull,
+                runs: full.runs.map((run) => ({
+                    ...run,
+                    jobsCoverage: { reason: "pageBound" as const, shown: 4 },
+                })),
+            };
+        });
+        const served = await restarted.getOrFetch(KEY, readAgain, {
+            repoKey: repoKey!,
+            capabilities: capabilities!,
+        });
+        expect
+            .soft(readAgain, "a version 6 entry must be a miss after a restart")
+            .toHaveBeenCalledTimes(1);
+
+        const { container } = mount(
+            <CommitInfoPane detail={commit(HASH)} ciRepoKey="/repo" commitChecksEnabled />,
+        );
+        showDetail(container, () => served);
+        answerHistory(lastHistoryRequest());
+        expect(
+            tagsOf(container, "broke-here"),
+            "a detail saved before partial coverage was kept must not certify new",
+        ).toEqual(["unknown"]);
     });
 
     it("a partly read parent snapshot cannot prove a unique name: failed jobs are unknown, green ones untagged", () => {
