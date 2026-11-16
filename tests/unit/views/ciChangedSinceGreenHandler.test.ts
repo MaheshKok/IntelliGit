@@ -306,6 +306,60 @@ describe("openCiRangeDiff opens only what the latest answer listed", () => {
         ).toHaveBeenCalledTimes(2);
     });
 
+    it("keeps the newest request's file list openable when an older reply arrives last", async () => {
+        const newer = "c".repeat(40);
+        const answers = new Map<number, (found: ChangedSinceGreen) => void>();
+        const walk = vi.fn(
+            (_request: unknown, _repoKey: string) =>
+                new Promise<ChangedSinceGreen>((resolve) => {
+                    answers.set(answers.size, resolve);
+                }),
+        );
+        const { source: s, getFileContentAtRef } = gitSource(() => REPO, walk);
+        const grant = new CiRangeDiffGrant();
+        const older = answerChangedSinceGreenRequest(s, request({ requestId: 7 }), (reply) =>
+            grant.record(reply),
+        );
+        const newest = answerChangedSinceGreenRequest(s, request({ requestId: 9 }), (reply) =>
+            grant.record(reply),
+        );
+        // The newest request finishes first; the older one finishes last and must not replace it.
+        answers.get(1)?.({
+            lastGreen: newer,
+            files: [{ path: "src/other.ts", status: "M", additions: 2, deletions: 1 }],
+        });
+        await newest;
+        answers.get(0)?.(FOUND);
+        await older;
+        await answerOpenCiRangeDiff(
+            s,
+            openRequest({ fromRev: newer, path: "src/other.ts", oldPath: undefined, status: "M" }),
+            grant,
+        );
+        expect(
+            getFileContentAtRef,
+            "the newest displayed answer must remain openable after an older reply arrives",
+        ).toHaveBeenCalledTimes(2);
+    });
+
+    it("refuses a listed file opened under another valid status", async () => {
+        const walk = vi.fn(async (): Promise<ChangedSinceGreen> => ({
+            lastGreen: GREEN,
+            files: [{ path: "src/a.ts", status: "M", additions: 1, deletions: 1 }],
+        }));
+        const { source: s, getFileContentAtRef } = gitSource(() => REPO, walk);
+        const grant = await granted(s);
+        await answerOpenCiRangeDiff(
+            s,
+            openRequest({ path: "src/a.ts", oldPath: undefined, status: "D" }),
+            grant,
+        );
+        expect(
+            getFileContentAtRef,
+            "a status the host did not list is never read",
+        ).not.toHaveBeenCalled();
+    });
+
     it("refuses every pair after the webview is retired", async () => {
         const { source: s, getFileContentAtRef } = gitSource();
         const grant = await granted(s);

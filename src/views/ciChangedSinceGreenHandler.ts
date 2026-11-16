@@ -90,10 +90,17 @@ export async function answerChangedSinceGreenRequest(
  * it then names only files the host listed for that same repository.
  */
 export class CiRangeDiffGrant {
-    private latest?: Pick<ChangedSinceGreenMessage, "repoKey" | "hash" | "lastGreen" | "files">;
+    private latest?: Pick<
+        ChangedSinceGreenMessage,
+        "requestId" | "repoKey" | "hash" | "lastGreen" | "files"
+    >;
 
-    /** Replaces the record with the answer being posted. */
+    /**
+     * Replaces the record with the answer being posted, unless the record is already of a newer
+     * request: replies can finish out of order, and the webview shows only its newest request's.
+     */
     record(reply: ChangedSinceGreenMessage): void {
+        if (this.latest && reply.requestId < this.latest.requestId) return;
         this.latest = reply;
     }
 
