@@ -158,7 +158,12 @@ export async function changedSinceGreen(
         const snapshot = await deps.cachedChecks(hash);
         // An ancestor not in the cache, or not read, says nothing: the walk goes on past it.
         if (!snapshot || snapshot.state === "unavailable") continue;
-        const match = matchCheck(check, current, snapshot.items);
+        // A check whose known identity is another job's (another workflow's same-named job) is
+        // not this job: it can neither match nor make a name match ambiguous.
+        const candidates = snapshot.items.filter(
+            (item) => item.logicalId === undefined || item.logicalId === request.logicalCheckId,
+        );
+        const match = matchCheck(check, current, candidates);
         if (match === "ambiguous")
             return { lastGreen: null, unknownReason: "ambiguous", files: [] };
         if (match === "none") continue;

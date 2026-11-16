@@ -20,6 +20,7 @@ import { answerCiHistoryRequest } from "./ciHistoryHandler";
 import {
     answerChangedSinceGreenRequest,
     answerOpenCiRangeDiff,
+    CiRangeDiffGrant,
 } from "./ciChangedSinceGreenHandler";
 import type { LoadedCommit } from "../services/commitChecks/changedSinceGreen";
 
@@ -58,6 +59,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     /** Advances on every `ready`; a reload keeps this webview object, so a reply is told apart by it. */
     private webviewGeneration = 0;
     private ciSource?: CommitInfoCiSource;
+    private readonly rangeDiffGrant = new CiRangeDiffGrant();
     /** "Open in Checks" asked for before the webview could receive it, with the repository it
      * was asked in: a repository switch before the view is ready must not re-key it. */
     private pendingChecks?: { repoKey: string; hash: string };
@@ -126,6 +128,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     if (this.view === webviewView) {
                         this.webviewGeneration += 1;
                         this.ciDetailLoops.dispose();
+                        this.rangeDiffGrant.clear();
                     }
                     try {
                         await this.iconTheme.initIconThemeData();
@@ -180,6 +183,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
             // A replaced view's late dispose must not tear down its successor.
             if (this.view !== webviewView) return;
             this.ciDetailLoops.dispose();
+            this.rangeDiffGrant.clear();
             this.view = undefined;
             this.ready = false;
             this.iconTheme.dispose();
@@ -269,6 +273,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                         this.withLoaded(msg),
                         (reply) => {
                             if (this.view === view && generation === this.webviewGeneration) {
+                                this.rangeDiffGrant.record(reply);
                                 this.postToWebview(reply);
                             }
                         },
@@ -277,7 +282,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                 return;
             case "openCiRangeDiff":
                 if (!this.ciSource || this.view !== view) return;
-                await answerOpenCiRangeDiff(this.ciSource, { ...msg });
+                await answerOpenCiRangeDiff(this.ciSource, { ...msg }, this.rangeDiffGrant);
                 return;
             case "requestCiHistory":
                 if (!this.ciSource || this.view !== view) return;

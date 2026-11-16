@@ -147,20 +147,21 @@ export class CommitChecksService {
                 // saved copy; one still confirming its save is joined, never served early.
                 const running = this.joinable(key, options);
                 if (running) return running;
+                // Only a cache-only read gets here while a refresh runs: it takes the saved copy
+                // as it was, never the refresh's answer.
                 const newer = this.cache.get(key);
                 if (newer && newer !== cached) {
-                    if (this.isFresh(newer) && this.isServable(newer)) {
+                    if (!this.inflight.has(key) && this.isFresh(newer) && this.isServable(newer)) {
                         trace("hit-l1", newer.snapshot.hash);
                         return newer.snapshot;
                     }
                     // The newer entry expired while the read waited: fetch, never fall back.
                 } else {
-                    this.cache.set(key, {
+                    this.keepStoredRead(key, {
                         snapshot: persisted,
                         fetchedAt: this.now(),
                         storeGeneration: readGeneration[2],
                     });
-                    this.evictOldest();
                     trace("hit-l2", persisted.hash);
                     return persisted;
                 }
@@ -323,14 +324,22 @@ export class CommitChecksService {
         return entry.storeGeneration === this.storeGeneration();
     }
 
-    /** The fetch running for `key`, to join. A cache-only read never joins one: it misses. */
+    /**
+     * The fetch running for `key`, to join. A cache-only read never joins one: it reads the
+     * stored copy without waiting, or misses.
+     */
     private joinable(
         key: string,
         options: CommitChecksFetchOptions,
     ): Promise<CommitChecksSnapshot> | undefined {
-        const request = this.inflight.get(key);
-        if (request && options.cacheOnly) throw new Error("not cached");
-        return request;
+        return options.cacheOnly ? undefined : this.inflight.get(key);
+    }
+
+    /** Keeps an entry read from the store in L1, unless a refresh running for it fills L1. */
+    private keepStoredRead(key: string, entry: CacheEntry): void {
+        if (this.inflight.has(key)) return;
+        this.cache.set(key, entry);
+        this.evictOldest();
     }
 
     private isFresh(entry: CacheEntry): boolean {

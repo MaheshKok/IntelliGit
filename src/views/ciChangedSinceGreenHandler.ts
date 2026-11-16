@@ -4,6 +4,7 @@
 import { isE2eControlChannelActive } from "../e2e/activationState";
 import type { CiOperationContext } from "../services/commitChecks/ciGenerations";
 import { isValidGitHash } from "../services/gitHelpers";
+import type { CiRangeDiffFile } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import type { ChangedSinceGreenMessage } from "../webviews/protocol/commitCiMessages";
 import type { CommitCiDetailSource } from "./ciDetailHandler";
@@ -82,14 +83,58 @@ export async function answerChangedSinceGreenRequest(
 }
 
 /**
- * Validates an `openCiRangeDiff` message and opens the file's diff between the two revisions.
+ * The latest changed-since-green answer a host posted to its webview: the only revisions and
+ * files that webview may open. Each host keeps one, records every answer it posts and clears it
+ * when the webview reloads or closes. A record for another repository than the current one is
+ * dropped when it is next checked; a switch away and back with no open in between keeps it, and
+ * it then names only files the host listed for that same repository.
+ */
+export class CiRangeDiffGrant {
+    private latest?: Pick<ChangedSinceGreenMessage, "repoKey" | "hash" | "lastGreen" | "files">;
+
+    /** Replaces the record with the answer being posted. */
+    record(reply: ChangedSinceGreenMessage): void {
+        this.latest = reply;
+    }
+
+    /** Forgets the record: the webview it was posted to is gone. */
+    clear(): void {
+        this.latest = undefined;
+    }
+
+    /** Whether the latest answer for `repoKey` listed exactly this file between exactly these revisions. */
+    allows(repoKey: string, fromRev: string, toRev: string, file: CiRangeDiffFile): boolean {
+        const latest = this.latest;
+        if (latest && latest.repoKey !== repoKey) this.latest = undefined;
+        return (
+            latest !== undefined &&
+            latest.repoKey === repoKey &&
+            latest.lastGreen === fromRev &&
+            latest.hash === toRev &&
+            latest.files.some(
+                (listed) =>
+                    listed.path === file.path &&
+                    listed.oldPath === file.oldPath &&
+                    listed.status === file.status,
+            )
+        );
+    }
+}
+
+/**
+ * Validates an `openCiRangeDiff` message and opens the file's diff between the two revisions,
+ * only when the host's latest answer to this webview listed that file and those revisions.
  * The path is checked again by the diff opener, which reads it from Git only.
  *
+ * @param source - The host's repository and diff opener.
+ * @param msg - Untrusted webview message.
+ * @param grant - The host's record of what it last sent this webview.
  * @throws When a field of the message is malformed, or the diff cannot be opened.
  */
 export async function answerOpenCiRangeDiff(
     source: CommitCiDetailSource,
     msg: Record<string, unknown>,
+    grant: CiRangeDiffGrant,
 ): Promise<void> {
     readRequestId(msg.requestId);
     const { repoKey, path, oldPath, status } = msg;
@@ -104,9 +149,11 @@ export async function answerOpenCiRangeDiff(
     if (!isE2eControlChannelActive()) return;
     const open = source.openRangeDiff;
     if (!open || repoKey !== source.repoKey()) return;
-    await open(fromRev, toRev, {
+    const file: CiRangeDiffFile = {
         path,
-        status: status as ChangedSinceGreenMessage["files"][number]["status"],
+        status: status as CiRangeDiffFile["status"],
         ...(oldPath === undefined ? {} : { oldPath }),
-    });
+    };
+    if (!grant.allows(repoKey, fromRev, toRev, file)) return;
+    await open(fromRev, toRev, file);
 }

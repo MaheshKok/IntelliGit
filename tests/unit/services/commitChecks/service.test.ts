@@ -99,6 +99,41 @@ describe("CommitChecksService", () => {
         },
     );
 
+    it("a cache-only read serves the stored copy while a refresh runs; a badge request still joins the refresh", async () => {
+        const store = state();
+        const key = "github:repo@abc1234:-";
+        await new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(store),
+        }).getOrFetch(key, async () => snapshot("success"));
+        const service = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(store),
+        });
+        let release!: (value: CommitChecksSnapshot) => void;
+        const refresh = service.getOrFetch(
+            key,
+            () =>
+                new Promise((done) => {
+                    release = done;
+                }),
+            { force: true },
+        );
+        const blocked = new Promise<"blocked">((done) => setTimeout(() => done("blocked"), 50));
+        const cached = await Promise.race([service.getCached(key), blocked]);
+        expect(
+            cached === "blocked" ? cached : cached?.state,
+            "a cache-only read serves the stored copy at once, without waiting for the refresh",
+        ).toBe("success");
+        const fetchAgain = vi.fn(async () => snapshot("pending"));
+        const badge = service.getOrFetch(key, fetchAgain);
+        release(snapshot("failure"));
+        expect(
+            (await badge).state,
+            "a badge request during the refresh joins it, not the copy the cache-only read served",
+        ).toBe("failure");
+        expect(fetchAgain).not.toHaveBeenCalled();
+        await refresh;
+    });
+
     it("does not cache or detach requests that resolve after clear", async () => {
         const service = new CommitChecksService({ ttlMs: 15_000 });
         const key = "github:repo@abc1234:-";

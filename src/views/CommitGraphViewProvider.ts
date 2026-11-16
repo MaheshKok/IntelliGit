@@ -69,6 +69,7 @@ import { answerCiHistoryRequest } from "./ciHistoryHandler";
 import {
     answerChangedSinceGreenRequest,
     answerOpenCiRangeDiff,
+    CiRangeDiffGrant,
 } from "./ciChangedSinceGreenHandler";
 import { openRevisionRangeFileDiff } from "../services/diffService";
 import type { LoadedCommit } from "../services/commitChecks/changedSinceGreen";
@@ -113,6 +114,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     private readonly commitChecks: CommitChecksCoordinator;
     private commitCheckDemandSeq = 0;
     private readonly ciDetailLoops = new CommitCiDetailLoops();
+    private readonly rangeDiffGrant = new CiRangeDiffGrant();
     /** Each loaded commit's parents, so the standalone Changed Files view can walk them too. */
     private loadedCommitHashes = new Map<string, readonly string[]>();
     private checkableCommitHashes = new Set<string>();
@@ -363,6 +365,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             if (this.view === webviewView) {
                 this.commitCheckDemandSeq += 1;
                 this.ciDetailLoops.dispose();
+                this.rangeDiffGrant.clear();
                 this.view = undefined;
                 this.iconTheme.dispose();
                 this.disposeThemeChangeDisposables();
@@ -405,6 +408,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         if (this.view === webviewView) {
                             this.webviewGeneration += 1;
                             this.ciDetailLoops.dispose();
+                            this.rangeDiffGrant.clear();
                         }
                         this.postToWebview({
                             type: "setViewVisibility",
@@ -608,12 +612,17 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         // A late message from a replaced webview must not touch its successor.
         if (!repoKey || this.view !== webviewView) return;
         if (msg.type === "openCiRangeDiff") {
-            await answerOpenCiRangeDiff(this.ciDetailSource(repoKey), { ...msg });
+            await answerOpenCiRangeDiff(
+                this.ciDetailSource(repoKey),
+                { ...msg },
+                this.rangeDiffGrant,
+            );
             return;
         }
         const generation = this.webviewGeneration;
         await answerChangedSinceGreenRequest(this.ciDetailSource(repoKey), { ...msg }, (reply) => {
             if (this.view === webviewView && generation === this.webviewGeneration) {
+                this.rangeDiffGrant.record(reply);
                 this.postToWebview(reply);
             }
         });

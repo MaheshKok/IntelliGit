@@ -133,6 +133,29 @@ describe("CommitCiDetailService", () => {
         },
     );
 
+    it("a cache-only read serves the stored detail while a refresh runs; a detail request still joins the refresh", async () => {
+        const state = memento();
+        await service(state).service.getOrFetch(KEY, async () => detail(), SERVE);
+        const { service: details } = service(state);
+        const pending = deferred<CommitCiDetailData>();
+        const refresh = details.getOrFetch(KEY, () => pending.promise, SERVE, { force: true });
+        const blocked = new Promise<"blocked">((done) => setTimeout(() => done("blocked"), 50));
+        const cached = await Promise.race([details.getCached(KEY, SERVE), blocked]);
+        expect(
+            cached === "blocked" ? cached : cached?.outcome,
+            "a cache-only read serves the stored detail at once, without waiting for the refresh",
+        ).toBe("failure");
+        const fetchAgain = vi.fn(async () => detail({ complete: false, outcome: "pending" }));
+        const request = details.getOrFetch(KEY, fetchAgain, SERVE);
+        pending.resolve(detail({ outcome: "success" }));
+        expect(
+            (await request).outcome,
+            "a detail request during the refresh joins it, not the copy the cache-only read served",
+        ).toBe("success");
+        expect(fetchAgain).not.toHaveBeenCalled();
+        await refresh;
+    });
+
     it("complete detail served from L1 without refetch", async () => {
         let now = 0;
         const { service: details } = service(memento(), () => now);
