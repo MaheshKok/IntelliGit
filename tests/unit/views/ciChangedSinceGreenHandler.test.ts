@@ -159,6 +159,32 @@ describe("answerChangedSinceGreenRequest", () => {
         expect(post).not.toHaveBeenCalled();
     });
 
+    it.each([
+        ["with generations", new CiGenerations()],
+        ["without generations", undefined],
+    ])(
+        "drops the answer when the repository changed during the walk, %s",
+        async (_name, generations) => {
+            let repo = REPO;
+            const walk = vi.fn(async () => {
+                repo = "/other";
+                return FOUND;
+            });
+            const s: CommitCiDetailSource = {
+                ...source(walk).source,
+                repoKey: () => repo,
+                generations,
+            };
+            const post = vi.fn();
+            await answerChangedSinceGreenRequest(s, request(), post);
+            expect(walk).toHaveBeenCalledTimes(1);
+            expect(
+                post,
+                "an answer for the repository left behind is never posted",
+            ).not.toHaveBeenCalled();
+        },
+    );
+
     it("a disabled feature (undefined walk result) answers nothing", async () => {
         const { source: s } = source(vi.fn(async () => undefined));
         const post = vi.fn();
@@ -369,6 +395,26 @@ describe("openCiRangeDiff opens only what the latest answer listed", () => {
             getFileContentAtRef,
             "a retired webview's pair is never read",
         ).not.toHaveBeenCalled();
+    });
+
+    it("drops the record when another repository checks it, so a switch back finds nothing", async () => {
+        const grant = new CiRangeDiffGrant();
+        grant.record({
+            type: "changedSinceGreen",
+            requestId: 7,
+            repoKey: REPO,
+            hash: HASH,
+            logicalCheckId: "job\0ci\0test",
+            scopeName: "ci",
+            checkName: "test",
+            ...FOUND,
+        });
+        const listed = FOUND.files[0];
+        expect(grant.allows("/other", GREEN, HASH, listed), "another repository").toBe(false);
+        expect(
+            grant.allows(REPO, GREEN, HASH, listed),
+            "the record the other repository's check dropped",
+        ).toBe(false);
     });
 
     it("refuses the old repository's pair after a repository switch", async () => {

@@ -52,13 +52,20 @@ export interface ChangedSinceGreenDeps {
 
 /**
  * The first-parent ancestors of `start`, newest first, while they stay inside `loaded`; the
- * walk stops at the first hash the Git Log has not loaded.
+ * walk stops at the first hash the Git Log has not loaded. `loaded` is untrusted and may hold a
+ * cycle: the walk ends when it meets a hash it already listed or `start` itself, which is never
+ * its own ancestor.
  */
 export function firstParentLine(start: string, loaded: readonly LoadedCommit[]): string[] {
     const parentsOf = new Map(loaded.map((commit) => [commit.hash, commit.parents]));
     const line: string[] = [];
     let current = parentsOf.get(start)?.[0];
-    while (current !== undefined && parentsOf.has(current) && !line.includes(current)) {
+    while (
+        current !== undefined &&
+        current !== start &&
+        parentsOf.has(current) &&
+        !line.includes(current)
+    ) {
         line.push(current);
         current = parentsOf.get(current)?.[0];
     }

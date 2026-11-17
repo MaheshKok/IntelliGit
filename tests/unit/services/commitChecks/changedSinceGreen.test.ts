@@ -11,6 +11,7 @@ import { GitExecutor } from "../../../../src/git/executor";
 import { GitOps } from "../../../../src/git/operations";
 import {
     changedSinceGreen,
+    firstParentLine,
     rangeDiffSides,
     type ChangedSinceGreenDeps,
     type ChangedSinceGreenRequest,
@@ -131,6 +132,21 @@ function deps(
         diffNumstat: (from, to) => gitOps.diffNumstat(from, to),
     };
 }
+
+const PAGE_BOUND = { reason: "pageBound" as const, shown: 1 };
+
+/** Each way a current commit's checks can come from a list that was cut at the page bound. */
+const PARTLY_LISTED: [string, (whole: CommitCiDetailData) => CommitCiDetailData][] = [
+    ["the workflow list is cut", (whole) => ({ ...whole, runsCoverage: PAGE_BOUND })],
+    ["the flat check list is cut", (whole) => ({ ...whole, otherChecksCoverage: PAGE_BOUND })],
+    [
+        "a run's job list is cut",
+        (whole) => ({
+            ...whole,
+            runs: whole.runs.map((run) => ({ ...run, jobsCoverage: PAGE_BOUND })),
+        }),
+    ],
+];
 
 function request(
     hash: string,
@@ -415,42 +431,95 @@ describe("changedSinceGreen", () => {
         ).toEqual({ lastGreen: null, files: [] });
     });
 
-    it("cannot prove a name fallback unique in a partly listed current commit", async () => {
-        const green = commit("green, an item without an identity");
-        const selected = commit("selected");
-        const snapshots = { [green]: [item("success")] };
-        const whole = detail(selected);
-        const partlyListed = { ...whole, runsCoverage: { reason: "pageBound" as const, shown: 1 } };
+    it.each(["skipped", "cancelled", "neutral", "pending"] as const)(
+        "a %s ancestor is not a green: the walk goes on to the older success",
+        async (state) => {
+            const older = commit("older green");
+            const unfinished = commit(`ancestor, ${state}`);
+            const selected = commit("selected");
+            const cache = deps(
+                { [unfinished]: [item(state, CI)], [older]: [item("success", CI)] },
+                detail(selected),
+            );
 
-        // The same walk over a whole commit finds the name unique, so the green is taken.
+            const answer = await changedSinceGreen(cache, request(selected));
+
+            expect(answer.lastGreen, `a ${state} job never passed`).toBe(older);
+            expect(cache.diffs).toEqual([[older, selected]]);
+        },
+    );
+
+    it("a current commit cut at the page bound still takes an identity-matched green", async () => {
+        const green = commit("green, matched by identity");
+        const selected = commit("selected");
+        const partlyListed = {
+            ...detail(selected),
+            runsCoverage: { reason: "pageBound" as const, shown: 1 },
+        };
+
+        // The job's own identity proves the match; only a name needs a whole list.
         await expect(
-            changedSinceGreen(deps(snapshots, whole), request(selected)),
+            changedSinceGreen(
+                deps({ [green]: [item("success", CI)] }, partlyListed),
+                request(selected),
+            ),
         ).resolves.toMatchObject({ lastGreen: green });
-        // A hidden workflow may hold another job of that name: the name proves nothing.
-        await expect(
-            changedSinceGreen(deps(snapshots, partlyListed), request(selected)),
-        ).resolves.toEqual({ lastGreen: null, unknownReason: "ambiguous", files: [] });
     });
 
-    it("a partly listed current commit stops at an unprovable red name match", async () => {
-        const olderGreen = commit("older green, matched by identity");
-        const red = commit("red, an item without an identity");
+    it("a partly listed ancestor still takes an identity-matched green", async () => {
+        const green = commit("green, matched by identity, list read in part");
         const selected = commit("selected");
-        const snapshots = { [olderGreen]: [item("success", CI)], [red]: [item("failure")] };
-        const whole = detail(selected);
-        const partlyListed = { ...whole, runsCoverage: { reason: "pageBound" as const, shown: 1 } };
 
-        // Over a whole commit the red name match is plain history: the walk goes on to the green.
         await expect(
-            changedSinceGreen(deps(snapshots, whole), request(selected)),
-        ).resolves.toMatchObject({ lastGreen: olderGreen });
-        // A hidden workflow may hold another job of that name, so the red may not be this job's
-        // run: stepping over it to an older green would name the wrong commit.
-        await expect(
-            changedSinceGreen(deps(snapshots, partlyListed), request(selected)),
-            "an ambiguous ancestor must stop the walk, even when its visible match is red",
-        ).resolves.toEqual({ lastGreen: null, unknownReason: "ambiguous", files: [] });
+            changedSinceGreen(
+                deps({ [green]: [item("success", CI)] }, detail(selected), [green]),
+                request(selected),
+            ),
+        ).resolves.toMatchObject({ lastGreen: green });
     });
+
+    it.each(PARTLY_LISTED)(
+        "cannot prove a name fallback unique when %s",
+        async (_cut, cutDetail) => {
+            const green = commit("green, an item without an identity");
+            const selected = commit("selected");
+            const snapshots = { [green]: [item("success")] };
+            const whole = detail(selected);
+            const partlyListed = cutDetail(whole);
+
+            // The same walk over a whole commit finds the name unique, so the green is taken.
+            await expect(
+                changedSinceGreen(deps(snapshots, whole), request(selected)),
+            ).resolves.toMatchObject({ lastGreen: green });
+            // A hidden workflow may hold another job of that name: the name proves nothing.
+            await expect(
+                changedSinceGreen(deps(snapshots, partlyListed), request(selected)),
+            ).resolves.toEqual({ lastGreen: null, unknownReason: "ambiguous", files: [] });
+        },
+    );
+
+    it.each(PARTLY_LISTED)(
+        "stops at an unprovable red name match when %s",
+        async (_cut, cutDetail) => {
+            const olderGreen = commit("older green, matched by identity");
+            const red = commit("red, an item without an identity");
+            const selected = commit("selected");
+            const snapshots = { [olderGreen]: [item("success", CI)], [red]: [item("failure")] };
+            const whole = detail(selected);
+            const partlyListed = cutDetail(whole);
+
+            // Over a whole commit the red name match is plain history: the walk goes on to the green.
+            await expect(
+                changedSinceGreen(deps(snapshots, whole), request(selected)),
+            ).resolves.toMatchObject({ lastGreen: olderGreen });
+            // A hidden workflow may hold another job of that name, so the red may not be this job's
+            // run: stepping over it to an older green would name the wrong commit.
+            await expect(
+                changedSinceGreen(deps(snapshots, partlyListed), request(selected)),
+                "an ambiguous ancestor must stop the walk, even when its visible match is red",
+            ).resolves.toEqual({ lastGreen: null, unknownReason: "ambiguous", files: [] });
+        },
+    );
 
     it("add/delete/rename map to the right sides", async () => {
         const body = Array.from({ length: 20 }, (_, i) => `line ${i}\n`).join("");
@@ -620,5 +689,32 @@ describe("changedSinceGreen", () => {
         };
 
         await expect(changedSinceGreen(cache, request(selected))).rejects.toThrow("bad object");
+    });
+});
+
+// `loaded` comes from an untrusted webview message and readLoadedCommits checks only the shape of
+// each commit, so a cyclic list reaches the walk and must end it.
+describe("firstParentLine", () => {
+    it("ends a two-commit cycle without listing the selected commit in its own line", () => {
+        expect(
+            firstParentLine("A", [
+                { hash: "A", parents: ["B"] },
+                { hash: "B", parents: ["A"] },
+            ]),
+        ).toEqual(["B"]);
+    });
+
+    it("ends a commit that is its own parent with an empty line", () => {
+        expect(firstParentLine("A", [{ hash: "A", parents: ["A"] }])).toEqual([]);
+    });
+
+    it("ends a cycle the line enters after the selected commit", () => {
+        expect(
+            firstParentLine("A", [
+                { hash: "A", parents: ["B"] },
+                { hash: "B", parents: ["C"] },
+                { hash: "C", parents: ["B"] },
+            ]),
+        ).toEqual(["B", "C"]);
     });
 });
