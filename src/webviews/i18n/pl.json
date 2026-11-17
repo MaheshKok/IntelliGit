@@ -527,6 +527,8 @@
     "commit.checks.tab.openInBrowser": "Otwórz w przeglądarce",
     "commit.checks.tab.jobsPageBound": "Liczba wyświetlonych pierwszych zadań: {count} — otwórz przebieg w przeglądarce, aby zobaczyć resztę",
     "commit.checks.tab.jobsRejectedNext": "Liczba wyświetlonych pierwszych zadań: {count} — odrzucono link dostawcy do następnej strony",
+    "commit.checks.tab.attemptsPageBound": "Liczba wyświetlonych pierwszych prób: {count} — otwórz przebieg w przeglądarce, aby zobaczyć resztę",
+    "commit.checks.tab.attemptsRejectedNext": "Liczba wyświetlonych pierwszych prób: {count} — odrzucono link dostawcy do następnej strony",
     "commit.checks.tab.runsPageBound": "Liczba wyświetlonych pierwszych przebiegów przepływu pracy: {count}",
     "commit.checks.tab.runsRejectedNext": "Liczba wyświetlonych pierwszych przebiegów przepływu pracy: {count} — odrzucono link dostawcy do następnej strony",
     "commit.checks.tab.checksPageBound": "Liczba wyświetlonych pierwszych sprawdzeń: {count}",

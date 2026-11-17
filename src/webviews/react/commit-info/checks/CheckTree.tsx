@@ -73,6 +73,8 @@ export function CheckTree({
                 hash={hash}
                 attempts={detail.attemptHistory ?? NO_ATTEMPTS}
                 attemptsCounted={detail.capabilities.attemptHistory}
+                runUrlOf={(runId) => detail.runs.find((run) => run.id === runId)?.url}
+                onOpenUrl={onOpenUrl}
             />
         ) : null;
     // Keyed by job id; a job not in the map follows its default (expanded when it failed).
@@ -408,6 +410,8 @@ function HistoryTags({
     hash,
     attempts,
     attemptsCounted,
+    runUrlOf,
+    onOpenUrl,
 }: {
     check: CiHistoryCheck;
     current: readonly CiHistoryCheck[];
@@ -418,6 +422,9 @@ function HistoryTags({
     attempts: readonly CiAttemptHistory[];
     /** The provider lists re-runs; otherwise the flaky tag is an estimate (O3). */
     attemptsCounted: boolean;
+    /** The browser link of one of the commit's own runs. */
+    runUrlOf: (runId: string) => string | undefined;
+    onOpenUrl: (url: string) => void;
 }): React.ReactElement {
     // A flat check has no logical id, so no attempt history is its own; isolated reds still count.
     const flakyCount =
@@ -428,6 +435,13 @@ function HistoryTags({
                   attemptsCounted,
               )
             : null;
+    // K34: an attempt list read in part leaves the count, and a missing tag, unproven.
+    const partAttempts =
+        complete && history.line && check.logicalId !== undefined
+            ? [attempts, ...history.line.map((commit) => commit.attempts)]
+                  .flat()
+                  .find((entry) => entry.logicalId === check.logicalId && entry.coverage !== "full")
+            : undefined;
     const parentItems = history.parent?.items;
     // A partly read snapshot is as unfit to prove a unique name as a partly listed commit is.
     const tag = parentItems
@@ -474,6 +488,17 @@ function HistoryTags({
                     )}
                 </span>
             ) : null}
+            {partAttempts ? (
+                <CoverageNote
+                    coverage={partAttempts.coverage}
+                    pageBoundKey="commit.checks.tab.attemptsPageBound"
+                    rejectedKey="commit.checks.tab.attemptsRejectedNext"
+                    // Only the commit's own runs are in this detail; an ancestor's gets no link.
+                    url={runUrlOf(partAttempts.runId)}
+                    onOpenUrl={onOpenUrl}
+                    testId="ci-attempts-coverage-note"
+                />
+            ) : null}
         </>
     );
 }
@@ -484,23 +509,29 @@ function CoverageNote({
     rejectedKey,
     url,
     onOpenUrl,
+    testId = "ci-coverage-note",
 }: {
     coverage: CiCoverage;
     pageBoundKey: string;
     rejectedKey: string;
     url?: string;
     onOpenUrl?: (url: string) => void;
+    testId?: string;
 }): React.ReactElement | null {
     if (coverage === "full") return null;
     const key = coverage.reason === "pageBound" ? pageBoundKey : rejectedKey;
     return (
-        <div data-testid="ci-coverage-note" style={checksStyles.note}>
+        <div data-testid={testId} style={checksStyles.note}>
             <span>{t(key, { count: String(coverage.shown) })}</span>
             {url && onOpenUrl ? (
                 <button
                     type="button"
                     style={checksStyles.linkButton}
-                    onClick={() => onOpenUrl(url)}
+                    // A note inside a job row must not also select the job.
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenUrl(url);
+                    }}
                 >
                     {t("commit.checks.tab.openInBrowser")}
                 </button>

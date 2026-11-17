@@ -141,6 +141,12 @@ run or pipeline keeps its own history per job, so two workflows with a job of th
 never mix. For providers that cannot list re-runs the tag reads **flaky n/m (estimated)**, and
 its tooltip says **estimated from loaded commits; re-runs not counted for this provider**.
 
+A job's re-run list stops at 10 pages, or earlier when the provider's next-page link is
+refused. When the commit's own list, or a loaded ancestor's, stopped early for that job, the job
+row says **Showing the first N attempts — open the run in the browser for the rest** (or
+**… — the provider's next-page link was refused**), whether or not a tag shows, since the
+re-runs not read may hold a flake. For the commit's own run the note has **Open in browser**.
+
 ### Changed since last green
 
 A failed job's detail lists **Changed since last green (a1b2c3d)**: the files changed between

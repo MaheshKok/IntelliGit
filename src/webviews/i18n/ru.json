@@ -527,6 +527,8 @@
     "commit.checks.tab.openInBrowser": "Открыть в браузере",
     "commit.checks.tab.jobsPageBound": "Показано первых заданий: {count} — откройте запуск в браузере, чтобы увидеть остальные",
     "commit.checks.tab.jobsRejectedNext": "Показано первых заданий: {count} — ссылка поставщика на следующую страницу отклонена",
+    "commit.checks.tab.attemptsPageBound": "Показано первых попыток: {count} — откройте запуск в браузере, чтобы увидеть остальные",
+    "commit.checks.tab.attemptsRejectedNext": "Показано первых попыток: {count} — ссылка поставщика на следующую страницу отклонена",
     "commit.checks.tab.runsPageBound": "Показано первых запусков рабочих процессов: {count}",
     "commit.checks.tab.runsRejectedNext": "Показано первых запусков рабочих процессов: {count} — ссылка поставщика на следующую страницу отклонена",
     "commit.checks.tab.checksPageBound": "Показано первых проверок: {count}",

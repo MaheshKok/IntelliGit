@@ -191,6 +191,8 @@
     "commit.checks.tab.openInBrowser": "Open in browser",
     "commit.checks.tab.jobsPageBound": "Showing the first {count} jobs — open the run in the browser for the rest",
     "commit.checks.tab.jobsRejectedNext": "Showing the first {count} jobs — the provider's next-page link was refused",
+    "commit.checks.tab.attemptsPageBound": "Showing the first {count} attempts — open the run in the browser for the rest",
+    "commit.checks.tab.attemptsRejectedNext": "Showing the first {count} attempts — the provider's next-page link was refused",
     "commit.checks.tab.runsPageBound": "Showing the first {count} workflow runs",
     "commit.checks.tab.runsRejectedNext": "Showing the first {count} workflow runs — the provider's next-page link was refused",
     "commit.checks.tab.checksPageBound": "Showing the first {count} checks",

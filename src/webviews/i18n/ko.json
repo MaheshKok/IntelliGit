@@ -497,6 +497,8 @@
     "commit.checks.tab.openInBrowser": "브라우저에서 열기",
     "commit.checks.tab.jobsPageBound": "처음 {count}개 작업을 표시하는 중 — 나머지는 브라우저에서 실행을 여세요",
     "commit.checks.tab.jobsRejectedNext": "처음 {count}개 작업을 표시하는 중 — 공급자의 다음 페이지 링크가 거부되었습니다",
+    "commit.checks.tab.attemptsPageBound": "처음 {count}개 시도를 표시하는 중 — 나머지는 브라우저에서 실행을 여세요",
+    "commit.checks.tab.attemptsRejectedNext": "처음 {count}개 시도를 표시하는 중 — 공급자의 다음 페이지 링크가 거부되었습니다",
     "commit.checks.tab.runsPageBound": "처음 {count}개 워크플로 실행을 표시하는 중",
     "commit.checks.tab.runsRejectedNext": "처음 {count}개 워크플로 실행을 표시하는 중 — 공급자의 다음 페이지 링크가 거부되었습니다",
     "commit.checks.tab.checksPageBound": "처음 {count}개 검사를 표시하는 중",

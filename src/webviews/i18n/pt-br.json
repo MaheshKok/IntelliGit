@@ -517,6 +517,8 @@
     "commit.checks.tab.openInBrowser": "Abrir no navegador",
     "commit.checks.tab.jobsPageBound": "Mostrando os primeiros {count} jobs — abra a execução no navegador para ver o restante",
     "commit.checks.tab.jobsRejectedNext": "Mostrando os primeiros {count} jobs — o link da próxima página do provedor foi recusado",
+    "commit.checks.tab.attemptsPageBound": "Mostrando as primeiras {count} tentativas — abra a execução no navegador para ver o restante",
+    "commit.checks.tab.attemptsRejectedNext": "Mostrando as primeiras {count} tentativas — o link da próxima página do provedor foi recusado",
     "commit.checks.tab.runsPageBound": "Mostrando as primeiras {count} execuções de fluxo de trabalho",
     "commit.checks.tab.runsRejectedNext": "Mostrando as primeiras {count} execuções de fluxo de trabalho — o link da próxima página do provedor foi recusado",
     "commit.checks.tab.checksPageBound": "Mostrando as primeiras {count} verificações",

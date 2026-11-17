@@ -232,7 +232,121 @@ describe("Checks tab flaky tag", () => {
         answerHistory(history(["failure", "failure", "success"]));
         expect(flakyTag(container)).toBeNull();
     });
+
+    // K34: every attempt history carries its coverage, and banners read it.
+    it.each([
+        ["pageBound", "Showing the first 1000 attempts — open the run in the browser for the rest"],
+        [
+            "rejectedNext",
+            "Showing the first 1000 attempts — the provider's next-page link was refused",
+        ],
+    ] as const)(
+        "this commit's %s attempt list is disclosed beside the flaky tag",
+        (reason, text) => {
+            const container = mountPane();
+            const base = detail(
+                true,
+                FAILED_THEN_PASSED.map((entry) => ({
+                    ...entry,
+                    coverage: { reason, shown: 1000 },
+                })),
+            );
+            showDetail(container, {
+                ...base,
+                runs: base.runs.map((run) => ({
+                    ...run,
+                    url: "https://github.com/o/r/actions/runs/1",
+                    // A failed job listed first takes the default selection.
+                    jobs: [job("lint", "failure"), ...run.jobs],
+                })),
+            });
+            answerHistory(history(["success", "success", "success"]));
+            expect(flakyTag(container)?.textContent).toBe("flaky 1/4");
+            const testRow = container.querySelector(
+                '[data-testid="ci-job-row"][data-name="test"]',
+            )!;
+            expect(testRow.getAttribute("aria-current")).toBeNull();
+            const note = attemptsNote(container);
+            expect(note?.textContent ?? "no attempts note").toContain(text);
+            const open = note!.querySelector<HTMLButtonElement>("button");
+            expect(open?.textContent, "the note opens the run in the browser").toBe(
+                "Open in browser",
+            );
+            act(() => open!.click());
+            expect(posted("openCommitCheckUrl")).toEqual([
+                { type: "openCommitCheckUrl", url: "https://github.com/o/r/actions/runs/1" },
+            ]);
+            expect(
+                testRow.getAttribute("aria-current"),
+                "opening the run does not select the job",
+            ).toBeNull();
+        },
+    );
+
+    it("an attempt list read in part is disclosed even when nothing flaked", () => {
+        const container = mountPane();
+        showDetail(
+            container,
+            detail(true, [
+                {
+                    runId: "1",
+                    logicalId: LOGICAL,
+                    coverage: { reason: "pageBound", shown: 1000 },
+                    attempts: [{ attempt: 1, executionId: "11", state: "success" }],
+                },
+            ]),
+        );
+        answerHistory(history(["success", "success", "success"]));
+        expect(flakyTag(container)).toBeNull();
+        expect(attemptsNote(container)?.textContent ?? "no attempts note").toContain(
+            "Showing the first 1000 attempts",
+        );
+    });
+
+    it("an ancestor's attempt list read in part is disclosed; another job's is not", () => {
+        const container = mountPane();
+        showDetail(container, detail(true));
+        const answer = history(["success", "failure", "success"]);
+        answer.line![0]!.attempts = [
+            {
+                runId: "7",
+                logicalId: LOGICAL,
+                coverage: "full",
+                attempts: [{ attempt: 1, executionId: "71", state: "success" }],
+            },
+        ];
+        answer.line![1]!.attempts = [
+            {
+                runId: "9",
+                logicalId: "job\0CI\0other",
+                coverage: { reason: "rejectedNext", shown: 7 },
+                attempts: [],
+            },
+        ];
+        answerHistory(answer);
+        expect(flakyTag(container)?.textContent).toBe("flaky 1/4");
+        expect(attemptsNote(container), "another job's attempt list says nothing").toBeNull();
+
+        answer.line![2]!.attempts = [
+            {
+                runId: "8",
+                logicalId: LOGICAL,
+                coverage: { reason: "pageBound", shown: 1000 },
+                attempts: [{ attempt: 1, executionId: "81", state: "success" }],
+            },
+        ];
+        answerHistory(answer);
+        const note = attemptsNote(container);
+        expect(note?.textContent ?? "no attempts note").toContain(
+            "Showing the first 1000 attempts — open the run in the browser for the rest",
+        );
+        expect(note?.querySelector("button"), "an ancestor's run link is not known").toBeNull();
+    });
 });
+
+function attemptsNote(container: HTMLElement): HTMLElement | null {
+    return container.querySelector('[data-testid="ci-attempts-coverage-note"]');
+}
 
 interface ChangedRequest {
     type: "requestChangedSinceGreen";
