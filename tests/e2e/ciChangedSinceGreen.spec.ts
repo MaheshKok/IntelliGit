@@ -133,9 +133,11 @@ test("clicking a file opens a two-revision diff", async ({ fixtureWorkspace }, t
             "data-pane-state",
             "detail",
         );
+        // Maximize first: in a clean workspace the head commit is the top row, and in the
+        // few-rows-tall panel its checks popover overflows, leaving "Open in Checks" off-screen.
+        await new Workbench(page).runCommand("View: Toggle Maximized Panel");
         await graph.getByTestId(`commit-checks-button-${head}`).click();
         await graph.getByRole("button", { name: "Open in Checks" }).click();
-        await new Workbench(page).runCommand("View: Toggle Maximized Panel");
         const tab = graph.getByTestId("checks-tab");
 
         // The failed job is selected; its first parent is the last commit where it passed.
