@@ -29,6 +29,8 @@
 
 - Fix round 1 (rerun 3 review, this commit): finding 1 fixed. `CiFlakyCommit.unread` marks an ancestor with no read snapshot, an ambiguous match, or a partial list with no identity match; `flaky()` keeps it as a neighbour, so a red beside it is not isolated (history.ts). Finding 2 dropped by its own caveat: CheckTree passes `history.line` only when `complete` (the same test as changedSinceGreen's `nameProvesJob`) holds, so a name-only match is never counted under pageBound/rejectedNext. Tests: ciHistory.test.ts "an ancestor that was not read breaks isolation" (2 red before, 1 control).
 - Proof, round 1: every step green except `bun run test` (8 of 8421 red, the same commit-list-column-resize file, Node 26.5.0).
+- Fix round 2 (this commit): `flakyLineOf` drops ancestor items whose logicalId is set and differs from the check's before `matchCheck` (as changedSinceGreen does), so unrelated Deploy/Lint jobs are no result, not an unread ancestor. Tests in ciHistory.test.ts: "known Deploy/Lint identities cannot hide CI/unit..." (red before: expected null to deeply equal { n: 1, m: 3, attemptsCounted: true }) and "an ambiguous ancestor cannot prove the next red isolated" (green on the fix, red under M04 = the `found === "ambiguous"` marker removed, on a copy: expected { n: 1, m: 3, attemptsCounted: true } to be null).
+- Proof, round 2: every step green except `bun run test` (8 of 8423 red, the same commit-list-column-resize file, Node 26.5.0).
 
 ## Decisions and why
 - Unread attempts are a separate flag, not a coverage value on an empty list: `CiCoverage` describes a list that was read; an unread page has no list, and the flag never reaches a persisted shape (the history reply is not stored).

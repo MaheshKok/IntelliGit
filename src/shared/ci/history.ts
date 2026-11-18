@@ -216,7 +216,15 @@ export function flakyLineOf(
     return [
         { state: check.state, attempts },
         ...line.map((commit) => {
-            const found = commit.items ? matchCheck(check, current, commit.items) : undefined;
+            // An item with another known identity is another job, so it is no result here
+            // (changedSinceGreen drops it the same way before matching).
+            const items = commit.items?.filter(
+                (item) =>
+                    check.logicalId === undefined ||
+                    item.logicalId === undefined ||
+                    item.logicalId === check.logicalId,
+            );
+            const found = items ? matchCheck(check, current, items) : undefined;
             const match = typeof found === "object" ? found : undefined;
             const usable = match && (!commit.partial || match.logicalId !== undefined);
             const unread =

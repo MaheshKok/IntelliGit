@@ -841,6 +841,48 @@ describe("flaky (§9, O3)", () => {
             expect(flaky(UNIT, line, true)).toBeNull();
         });
 
+        it("an ambiguous ancestor cannot prove the next red isolated", () => {
+            const line = flakyLineOf(
+                check,
+                [check],
+                [],
+                [
+                    {
+                        hash: hash("a"),
+                        items: [
+                            item("unit", "success", { logicalId: UNIT }),
+                            item("unit", "failure", { logicalId: UNIT }),
+                        ],
+                        attempts: [],
+                    },
+                    { ...red, attempts: [] },
+                    { ...green, attempts: [] },
+                ],
+            );
+            expect(flaky(UNIT, line, true)).toBeNull();
+        });
+
+        it("known Deploy/Lint identities cannot hide CI/unit or break its isolated red", () => {
+            const line = flakyLineOf(
+                check,
+                [check],
+                [],
+                [
+                    {
+                        hash: hash("a"),
+                        items: [
+                            item("unit", "failure", { logicalId: jobId("Deploy", "unit") }),
+                            item("unit", "success", { logicalId: jobId("Lint", "unit") }),
+                        ],
+                        attempts: [],
+                    },
+                    { ...red, attempts: [] },
+                    { ...green, attempts: [] },
+                ],
+            );
+            expect(flaky(UNIT, line, true)).toEqual({ n: 1, m: 3, attemptsCounted: true });
+        });
+
         it("a red between two read greens still counts", () => {
             const line = flakyLineOf(
                 check,
