@@ -802,6 +802,59 @@ describe("flaky (§9, O3)", () => {
         expect(line.map((commit) => commit.state)).toEqual(["failure", null, "failure", "success"]);
     });
 
+    describe("an ancestor that was not read breaks isolation", () => {
+        const check = job("CI", "unit", "success");
+        const hash = (letter: string): string => letter.repeat(40);
+        const red = { hash: hash("b"), items: [item("unit", "failure", { logicalId: UNIT })] };
+        const green = { hash: hash("c"), items: [item("unit", "success", { logicalId: UNIT })] };
+
+        it("a red after an unread ancestor is not an isolated red", () => {
+            const line = flakyLineOf(
+                check,
+                [check],
+                [],
+                [
+                    { hash: hash("a"), items: null, attempts: [] },
+                    { ...red, attempts: [] },
+                    { ...green, attempts: [] },
+                ],
+            );
+            expect(flaky(UNIT, line, true)).toBeNull();
+        });
+
+        it("a name-only match in a partly read ancestor is unread, not a result", () => {
+            const line = flakyLineOf(
+                check,
+                [check],
+                [],
+                [
+                    {
+                        hash: hash("a"),
+                        items: [item("unit", "failure")],
+                        attempts: [],
+                        partial: true,
+                    },
+                    { ...red, attempts: [] },
+                    { ...green, attempts: [] },
+                ],
+            );
+            expect(flaky(UNIT, line, true)).toBeNull();
+        });
+
+        it("a red between two read greens still counts", () => {
+            const line = flakyLineOf(
+                check,
+                [check],
+                [],
+                [
+                    { ...red, attempts: [] },
+                    { ...green, attempts: [] },
+                ],
+            );
+            expect(flaky(UNIT, line, true)).toEqual({ n: 1, m: 3, attemptsCounted: true });
+        });
+    });
+
     it("no tag when n=0", () => {
         const line = [plain("success"), plain("failure"), plain("failure")];
         expect(flaky(UNIT, line, true)).toBeNull();

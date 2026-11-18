@@ -27,6 +27,9 @@
 - vscode mocking: the jsdom test also drives the host coordinator, and the browser transform refuses an unresolvable `vscode` import before `vi.mock` applies. vitest.config.ts now aliases exactly `vscode` to tests/setup/vscodeModule.ts, which throws on load, so every test still has to `vi.mock("vscode")` as before.
 - Proof: mutations M1-M12 on a copy, each red at a named assertion (log). Chain: every step green except `bun run test` (8 of 8418 red, all commit-list-column-resize, Node 26.5.0, recorded red at 90731f87).
 
+- Fix round 1 (rerun 3 review, this commit): finding 1 fixed. `CiFlakyCommit.unread` marks an ancestor with no read snapshot, an ambiguous match, or a partial list with no identity match; `flaky()` keeps it as a neighbour, so a red beside it is not isolated (history.ts). Finding 2 dropped by its own caveat: CheckTree passes `history.line` only when `complete` (the same test as changedSinceGreen's `nameProvesJob`) holds, so a name-only match is never counted under pageBound/rejectedNext. Tests: ciHistory.test.ts "an ancestor that was not read breaks isolation" (2 red before, 1 control).
+- Proof, round 1: every step green except `bun run test` (8 of 8421 red, the same commit-list-column-resize file, Node 26.5.0).
+
 ## Decisions and why
 - Unread attempts are a separate flag, not a coverage value on an empty list: `CiCoverage` describes a list that was read; an unread page has no list, and the flag never reaches a persisted shape (the history reply is not stored).
 - A repository switch mid-read is unread too (null), not empty: the answer belongs to another account or repository.
