@@ -6,8 +6,11 @@ import {
     flaky,
     flakyLineOf,
     historyChecksOf,
+    isComplete,
+    type CiFlakyCommit,
     type CiHistory,
     type CiHistoryCheck,
+    type CiHistoryLineCommit,
     type CiHistoryTag,
 } from "../../../../shared/ci/history";
 import { ELAPSED_TICK_MS, isOverdue } from "../../../../shared/ci/timing";
@@ -75,6 +78,7 @@ export function CheckTree({
                 attemptsCounted={detail.capabilities.attemptHistory}
                 runUrlOf={(runId) => detail.runs.find((run) => run.id === runId)?.url}
                 onOpenUrl={onOpenUrl}
+                onRefresh={onRefresh}
             />
         ) : null;
     // Keyed by job id; a job not in the map follows its default (expanded when it failed).
@@ -412,6 +416,7 @@ function HistoryTags({
     attemptsCounted,
     runUrlOf,
     onOpenUrl,
+    onRefresh,
 }: {
     check: CiHistoryCheck;
     current: readonly CiHistoryCheck[];
@@ -425,23 +430,19 @@ function HistoryTags({
     /** The browser link of one of the commit's own runs. */
     runUrlOf: (runId: string) => string | undefined;
     onOpenUrl: (url: string) => void;
+    /** Reads the detail again, and with it the line's attempt histories. */
+    onRefresh: () => void;
 }): React.ReactElement {
+    const loadedLine = complete ? history.line : undefined;
+    const line = loadedLine ? flakyLineOf(check, current, attempts, loadedLine) : null;
     // A flat check has no logical id, so no attempt history is its own; isolated reds still count.
-    const flakyCount =
-        complete && history.line
-            ? flaky(
-                  check.logicalId ?? "",
-                  flakyLineOf(check, current, attempts, history.line),
-                  attemptsCounted,
-              )
-            : null;
-    // K34: an attempt list read in part leaves the count, and a missing tag, unproven.
-    const partAttempts =
-        complete && history.line && check.logicalId !== undefined
-            ? [attempts, ...history.line.map((commit) => commit.attempts)]
-                  .flat()
-                  .find((entry) => entry.logicalId === check.logicalId && entry.coverage !== "full")
-            : undefined;
+    const flakyCount = line ? flaky(check.logicalId ?? "", line, attemptsCounted) : null;
+    const { partAttempts, attemptsUnread } = attemptCoverageOf(
+        check.logicalId,
+        attempts,
+        loadedLine,
+        line,
+    );
     const parentItems = history.parent?.items;
     // A partly read snapshot is as unfit to prove a unique name as a partly listed commit is.
     const tag = parentItems
@@ -488,18 +489,68 @@ function HistoryTags({
                     )}
                 </span>
             ) : null}
-            {partAttempts ? (
+            {partAttempts.map(({ entry, own }, index) => (
                 <CoverageNote
-                    coverage={partAttempts.coverage}
+                    key={index}
+                    coverage={entry.coverage}
                     pageBoundKey="commit.checks.tab.attemptsPageBound"
                     rejectedKey="commit.checks.tab.attemptsRejectedNext"
-                    // Only the commit's own runs are in this detail; an ancestor's gets no link.
-                    url={runUrlOf(partAttempts.runId)}
+                    url={own ? runUrlOf(entry.runId) : undefined}
                     onOpenUrl={onOpenUrl}
                     testId="ci-attempts-coverage-note"
                 />
-            ) : null}
+            ))}
+            {attemptsUnread ? <UnreadAttemptsNote onRefresh={onRefresh} /> : null}
         </>
+    );
+}
+
+/**
+ * What the flaky count could not read for the check (K34). `partAttempts`: each attempt history
+ * read in part, the commit's own and every loaded ancestor's, since each leaves the count, and a
+ * missing tag, unproven; only the commit's own runs are in this detail, so only their notes may
+ * link to a run. `attemptsUnread`: an ancestor with a result for the check whose re-runs could
+ * not be read at all (unread, not none). Nothing for a flat check: no attempt history is its own.
+ */
+function attemptCoverageOf(
+    logicalId: string | undefined,
+    attempts: readonly CiAttemptHistory[],
+    loadedLine: readonly CiHistoryLineCommit[] | undefined,
+    line: readonly CiFlakyCommit[] | null,
+): { partAttempts: { entry: CiAttemptHistory; own: boolean }[]; attemptsUnread: boolean } {
+    if (logicalId === undefined || !loadedLine || !line) {
+        return { partAttempts: [], attemptsUnread: false };
+    }
+    const partAttempts = [
+        ...attempts.map((entry) => ({ entry, own: true })),
+        ...loadedLine.flatMap((commit) => commit.attempts.map((entry) => ({ entry, own: false }))),
+    ].filter(({ entry }) => entry.logicalId === logicalId && entry.coverage !== "full");
+    // `line` is the selected commit followed by `loadedLine`, one entry each.
+    const attemptsUnread = line.some(
+        (entry, index) =>
+            index > 0 &&
+            loadedLine.at(index - 1)?.attemptsUnavailable === true &&
+            isComplete(entry.state),
+    );
+    return { partAttempts, attemptsUnread };
+}
+
+function UnreadAttemptsNote({ onRefresh }: { onRefresh: () => void }): React.ReactElement {
+    return (
+        <div data-testid="ci-attempts-coverage-note" role="status" style={checksStyles.note}>
+            <span>{t("commit.checks.tab.attemptsUnavailable")}</span>
+            <button
+                type="button"
+                style={checksStyles.linkButton}
+                // A note inside a job row must not also select the job.
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onRefresh();
+                }}
+            >
+                {t("common.refresh")}
+            </button>
+        </div>
     );
 }
 

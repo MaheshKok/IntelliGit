@@ -529,6 +529,7 @@
     "commit.checks.tab.jobsRejectedNext": "Liczba wyświetlonych pierwszych zadań: {count} — odrzucono link dostawcy do następnej strony",
     "commit.checks.tab.attemptsPageBound": "Liczba wyświetlonych pierwszych prób: {count} — otwórz przebieg w przeglądarce, aby zobaczyć resztę",
     "commit.checks.tab.attemptsRejectedNext": "Liczba wyświetlonych pierwszych prób: {count} — odrzucono link dostawcy do następnej strony",
+    "commit.checks.tab.attemptsUnavailable": "Nie udało się odczytać ponownych uruchomień niektórych wczytanych commitów — liczba „niestabilny” może być niepełna",
     "commit.checks.tab.runsPageBound": "Liczba wyświetlonych pierwszych przebiegów przepływu pracy: {count}",
     "commit.checks.tab.runsRejectedNext": "Liczba wyświetlonych pierwszych przebiegów przepływu pracy: {count} — odrzucono link dostawcy do następnej strony",
     "commit.checks.tab.checksPageBound": "Liczba wyświetlonych pierwszych sprawdzeń: {count}",

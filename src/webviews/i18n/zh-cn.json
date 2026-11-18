@@ -499,6 +499,7 @@
     "commit.checks.tab.jobsRejectedNext": "显示前 {count} 个作业 — 提供方的下一页链接被拒绝",
     "commit.checks.tab.attemptsPageBound": "显示前 {count} 次尝试 — 在浏览器中打开运行以查看其余尝试",
     "commit.checks.tab.attemptsRejectedNext": "显示前 {count} 次尝试 — 提供方的下一页链接被拒绝",
+    "commit.checks.tab.attemptsUnavailable": "无法读取部分已加载提交的重新运行 — “不稳定”计数可能不完整",
     "commit.checks.tab.runsPageBound": "显示前 {count} 次工作流运行",
     "commit.checks.tab.runsRejectedNext": "显示前 {count} 次工作流运行 — 提供方的下一页链接被拒绝",
     "commit.checks.tab.checksPageBound": "显示前 {count} 个检查",

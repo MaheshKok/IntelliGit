@@ -198,3 +198,65 @@ describe("changedSinceGreen during a refresh after a restart", () => {
         }
     });
 });
+
+// E3's checks (owner answer 2026-11-18): the stored copy is served while a forced refresh is
+// pending after a restart, and is still there once that refresh fails.
+describe("E3: stored copy during and after a rejected forced refresh, after restart", () => {
+    it("snapshot", async () => {
+        const store = memory();
+        await new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(store),
+        }).getOrFetch("key", async () => snap(HASH));
+        const restarted = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(store),
+        });
+        let reject!: (e: Error) => void;
+        const refresh = restarted
+            .getOrFetch(
+                "key",
+                () =>
+                    new Promise((_, r) => {
+                        reject = r;
+                    }),
+                { force: true },
+            )
+            .catch((e) => e);
+        const during = await restarted.getCached("key");
+        reject(new Error("offline"));
+        await refresh;
+        expect(during, "snapshot during the pending refresh").toEqual(snap(HASH));
+        expect(await restarted.getCached("key"), "snapshot after the rejected refresh").toEqual(
+            snap(HASH),
+        );
+    });
+
+    it("detail", async () => {
+        const store = memory();
+        await new CommitCiDetailService({
+            persistentCache: new CiDetailPersistentCache(store),
+        }).getOrFetch("key", async () => data(), SERVE);
+        const restarted = new CommitCiDetailService({
+            persistentCache: new CiDetailPersistentCache(store),
+        });
+        let reject!: (e: Error) => void;
+        const refresh = restarted
+            .getOrFetch(
+                "key",
+                () =>
+                    new Promise((_, r) => {
+                        reject = r;
+                    }),
+                SERVE,
+                { force: true },
+            )
+            .catch((e) => e);
+        const during = await restarted.getCached("key", SERVE);
+        reject(new Error("offline"));
+        await refresh;
+        expect(during, "detail during the pending refresh").toMatchObject(data());
+        expect(
+            await restarted.getCached("key", SERVE),
+            "detail after the rejected refresh",
+        ).toMatchObject(data());
+    });
+});

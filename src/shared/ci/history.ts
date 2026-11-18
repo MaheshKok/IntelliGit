@@ -41,10 +41,12 @@ interface CiHistorySnapshot {
 /**
  * A first-parent ancestor inside the commits the Git Log loaded, read from the cache only:
  * `items` is `null` when its snapshot was not cached, and `attempts` holds the re-runs its
- * cached detail lists.
+ * cached detail lists. `attemptsUnavailable` is set when the provider's attempt read for the
+ * commit failed: its re-runs are unknown, not none, so `attempts` is empty but not complete.
  */
 export interface CiHistoryLineCommit extends CiHistorySnapshot {
     attempts: CiAttemptHistory[];
+    attemptsUnavailable?: true;
 }
 
 /** The host's answer: the first parent's snapshot and the default branch tip's. */
@@ -157,7 +159,7 @@ export interface CiFlaky {
 }
 
 /** A pass or a failure; a running, skipped or cancelled check says nothing about flakiness. */
-function isComplete(state: CiFlakyCommit["state"]): boolean {
+export function isComplete(state: CiFlakyCommit["state"]): boolean {
     return state === "success" || (state !== null && isRed(state));
 }
 

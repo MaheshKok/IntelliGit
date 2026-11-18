@@ -509,6 +509,7 @@
     "commit.checks.tab.jobsRejectedNext": "Die ersten {count} Jobs werden angezeigt – der Link des Anbieters zur nächsten Seite wurde abgelehnt",
     "commit.checks.tab.attemptsPageBound": "Die ersten {count} Versuche werden angezeigt – öffnen Sie den Lauf im Browser für den Rest",
     "commit.checks.tab.attemptsRejectedNext": "Die ersten {count} Versuche werden angezeigt – der Link des Anbieters zur nächsten Seite wurde abgelehnt",
+    "commit.checks.tab.attemptsUnavailable": "Wiederholungen einiger geladener Commits konnten nicht gelesen werden – die Zählung „instabil“ ist möglicherweise unvollständig",
     "commit.checks.tab.runsPageBound": "Die ersten {count} Workflow-Läufe werden angezeigt",
     "commit.checks.tab.runsRejectedNext": "Die ersten {count} Workflow-Läufe werden angezeigt – der Link des Anbieters zur nächsten Seite wurde abgelehnt",
     "commit.checks.tab.checksPageBound": "Die ersten {count} Prüfungen werden angezeigt",

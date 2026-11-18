@@ -519,6 +519,7 @@
     "commit.checks.tab.jobsRejectedNext": "A mostrar os primeiros {count} jobs — a ligação para a página seguinte do fornecedor foi recusada",
     "commit.checks.tab.attemptsPageBound": "A mostrar as primeiras {count} tentativas — abra a execução no navegador para ver o resto",
     "commit.checks.tab.attemptsRejectedNext": "A mostrar as primeiras {count} tentativas — a ligação para a página seguinte do fornecedor foi recusada",
+    "commit.checks.tab.attemptsUnavailable": "Não foi possível ler as reexecuções de alguns commits carregados — a contagem de “instável” pode estar incompleta",
     "commit.checks.tab.runsPageBound": "A mostrar as primeiras {count} execuções de fluxo de trabalho",
     "commit.checks.tab.runsRejectedNext": "A mostrar as primeiras {count} execuções de fluxo de trabalho — a ligação para a página seguinte do fornecedor foi recusada",
     "commit.checks.tab.checksPageBound": "A mostrar as primeiras {count} verificações",

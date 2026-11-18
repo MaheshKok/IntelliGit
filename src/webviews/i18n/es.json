@@ -519,6 +519,7 @@
     "commit.checks.tab.jobsRejectedNext": "Se muestran los primeros {count} trabajos: se rechazó el enlace a la página siguiente del proveedor",
     "commit.checks.tab.attemptsPageBound": "Se muestran los primeros {count} intentos: abra la ejecución en el navegador para ver el resto",
     "commit.checks.tab.attemptsRejectedNext": "Se muestran los primeros {count} intentos: se rechazó el enlace a la página siguiente del proveedor",
+    "commit.checks.tab.attemptsUnavailable": "No se pudieron leer las repeticiones de algunos commits cargados: el recuento de «inestable» puede estar incompleto",
     "commit.checks.tab.runsPageBound": "Se muestran las primeras {count} ejecuciones de flujo de trabajo",
     "commit.checks.tab.runsRejectedNext": "Se muestran las primeras {count} ejecuciones de flujo de trabajo: se rechazó el enlace a la página siguiente del proveedor",
     "commit.checks.tab.checksPageBound": "Se muestran las primeras {count} comprobaciones",

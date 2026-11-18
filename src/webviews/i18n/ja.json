@@ -499,6 +499,7 @@
     "commit.checks.tab.jobsRejectedNext": "最初の {count} 件のジョブを表示しています — プロバイダーの次ページのリンクは拒否されました",
     "commit.checks.tab.attemptsPageBound": "最初の {count} 件の試行を表示しています — 残りはブラウザーで実行を開いてください",
     "commit.checks.tab.attemptsRejectedNext": "最初の {count} 件の試行を表示しています — プロバイダーの次ページのリンクは拒否されました",
+    "commit.checks.tab.attemptsUnavailable": "読み込んだ一部のコミットの再実行を読み取れませんでした — 「不安定」の件数は不完全な可能性があります",
     "commit.checks.tab.runsPageBound": "最初の {count} 件のワークフロー実行を表示しています",
     "commit.checks.tab.runsRejectedNext": "最初の {count} 件のワークフロー実行を表示しています — プロバイダーの次ページのリンクは拒否されました",
     "commit.checks.tab.checksPageBound": "最初の {count} 件のチェックを表示しています",

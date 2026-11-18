@@ -142,10 +142,16 @@ never mix. For providers that cannot list re-runs the tag reads **flaky n/m (est
 its tooltip says **estimated from loaded commits; re-runs not counted for this provider**.
 
 A job's re-run list stops at 10 pages, or earlier when the provider's next-page link is
-refused. When the commit's own list, or a loaded ancestor's, stopped early for that job, the job
-row says **Showing the first N attempts — open the run in the browser for the rest** (or
-**… — the provider's next-page link was refused**), whether or not a tag shows, since the
-re-runs not read may hold a flake. For the commit's own run the note has **Open in browser**.
+refused. Each list that stopped early for that job, the commit's own and each loaded
+ancestor's, puts its own note in the job row: **Showing the first N attempts — open the run in
+the browser for the rest** (or **… — the provider's next-page link was refused**), whether or
+not a tag shows, since the re-runs not read may hold a flake. Only the commit's own run's note
+has **Open in browser**.
+
+When the provider could not be reached for a loaded ancestor's re-runs, that ancestor's re-runs
+count as unknown, not as none: the row of every job with a result there says **Re-runs on some
+loaded commits could not be read — the flaky count may be incomplete**, with **Refresh** to read
+them again.
 
 ### Changed since last green
 

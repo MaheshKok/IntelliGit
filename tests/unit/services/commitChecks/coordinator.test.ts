@@ -941,7 +941,33 @@ describe("flaky history reads attempt histories (PLAN.md §9, Phase 12)", () => 
         const history = await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
 
         expect(history.line?.[0]?.attempts).toEqual([]);
+        expect(
+            history.line?.[0]?.attemptsUnavailable,
+            "an unread attempt page is marked, never an empty complete history",
+        ).toBe(true);
         const again = await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
         expect(again.line?.[0]?.attempts, "a failure is not remembered").toEqual([reRun]);
+        expect(again.line?.[0]).not.toHaveProperty("attemptsUnavailable");
+    });
+
+    it("an attempt read answered after the repository switched meanwhile is unread", async () => {
+        const { coordinator, getAttemptHistory } = setup();
+        await coordinator.getChecks(ANCESTOR);
+        let answer!: (histories: CiAttemptHistory[]) => void;
+        getAttemptHistory.mockImplementationOnce(
+            () =>
+                new Promise((done) => {
+                    answer = done;
+                }),
+        );
+
+        const pending = coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+        await vi.waitFor(() => expect(getAttemptHistory).toHaveBeenCalled());
+        coordinator.clearProviderResolution();
+        answer([reRun]);
+        const history = await pending;
+
+        expect(history.line?.[0]?.attempts).toEqual([]);
+        expect(history.line?.[0]?.attemptsUnavailable).toBe(true);
     });
 });

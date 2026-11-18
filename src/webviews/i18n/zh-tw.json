@@ -499,6 +499,7 @@
     "commit.checks.tab.jobsRejectedNext": "顯示前 {count} 個作業 — 提供者的下一頁連結遭到拒絕",
     "commit.checks.tab.attemptsPageBound": "顯示前 {count} 次嘗試 — 在瀏覽器中開啟執行以查看其餘嘗試",
     "commit.checks.tab.attemptsRejectedNext": "顯示前 {count} 次嘗試 — 提供者的下一頁連結遭到拒絕",
+    "commit.checks.tab.attemptsUnavailable": "無法讀取部分已載入提交的重新執行 — 「不穩定」計數可能不完整",
     "commit.checks.tab.runsPageBound": "顯示前 {count} 次工作流程執行",
     "commit.checks.tab.runsRejectedNext": "顯示前 {count} 次工作流程執行 — 提供者的下一頁連結遭到拒絕",
     "commit.checks.tab.checksPageBound": "顯示前 {count} 個檢查",

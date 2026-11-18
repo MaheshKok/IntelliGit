@@ -256,18 +256,20 @@ export class CommitChecksCoordinator {
                     this.cachedDetail(hash, ""),
                 ]);
                 const items = snapshot && snapshot.state !== "unavailable" ? snapshot.items : null;
+                // A cached detail already holds its re-runs; a commit whose checks are cached
+                // but whose detail was never opened asks the provider (§9), so a job that
+                // failed then passed there still counts.
+                const attempts = detail
+                    ? (detail.attemptHistory ?? [])
+                    : items
+                      ? await this.readAttemptHistory(hash)
+                      : [];
                 return {
                     hash,
                     items,
                     ...(items && snapshot?.partial && { partial: true as const }),
-                    // A cached detail already holds its re-runs; a commit whose checks are cached
-                    // but whose detail was never opened asks the provider (§9), so a job that
-                    // failed then passed there still counts.
-                    attempts: detail
-                        ? (detail.attemptHistory ?? [])
-                        : items
-                          ? await this.readAttemptHistory(hash)
-                          : [],
+                    attempts: attempts ?? [],
+                    ...(attempts === null && { attemptsUnavailable: true as const }),
                 };
             }),
         );
@@ -301,10 +303,11 @@ export class CommitChecksCoordinator {
 
     /**
      * A commit's attempt histories from the provider, remembered briefly per account so repeated
-     * badge requests share one read. Empty when the provider lists no re-runs, the repository or
-     * account changed meanwhile, or the read failed (a failure is not remembered).
+     * badge requests share one read. Empty when the provider lists no re-runs; `null` (unread,
+     * never an empty history) when the read failed or the account changed meanwhile. A failure
+     * is not remembered, so the next request (Refresh) reads it again.
      */
-    private async readAttemptHistory(hash: string): Promise<CiAttemptHistory[]> {
+    private async readAttemptHistory(hash: string): Promise<CiAttemptHistory[] | null> {
         const providerGeneration = this.providerGeneration;
         try {
             const match = await this.resolveEnabledMatch();
@@ -324,9 +327,9 @@ export class CommitChecksCoordinator {
                 read = fresh;
             }
             const answer = await read;
-            return providerGeneration === this.providerGeneration ? answer : [];
+            return providerGeneration === this.providerGeneration ? answer : null;
         } catch {
-            return [];
+            return null;
         }
     }
 
