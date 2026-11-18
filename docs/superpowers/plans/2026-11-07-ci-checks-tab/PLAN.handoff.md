@@ -17,33 +17,22 @@
 
 ## Phase 12: review pending, started at b9d710d60cb6a5b929ad4ef7e32c1293090b550b
 - Effective base 90731f87 (Phase 11 squash-merged, then the Phase 12 slice rewritten as groundwork); b9d710d6 is not its ancestor. Not a halt.
-- History: built 02881057; fixes 36c1f1b9, 5a06ca01; takeover 6e448ca8 halted; rerun (owner 2026-11-16) cd700bab, fixes 92ae2acb, 1842cf4a, takeover 4834dbc7 halted (two Codex K34 findings). Details: PLAN.review-log.md.
-- Owner answer 2026-11-18 (E3): one more rerun, Fable R1 only; a further halt goes to the owner's manual accept.
-- Rerun 3 (this commit, on 76ab0067), items (a) to (d):
-  - (a) CheckTree lists every attempt history of the job read in part (own and each loaded ancestor), each with its own reason; Open in browser only on the commit's own run's notes (an ancestor sharing the run id gets none).
-  - (b) `readAttemptHistory` returns `null` (unread) on a failed read or a repository switch mid-read; the line commit then carries `attemptsUnavailable: true` (src/shared/ci/history.ts). The job row of every job with a result on that ancestor says "Re-runs on some loaded commits could not be read — the flaky count may be incomplete" with Refresh (refetches the detail, which asks for the line again; failures are never memoized). New string in 12 locales plus the review CSV; README "Flaky jobs".
-  - (c) The 7 tests, assertions and messages verbatim: Codex's 2 plus its 4 sibling K34 cases in tests/integration/webviews/commitChecksAttemptCoverage.integration.test.tsx; the 3 halt-1 tests were already verbatim in changedSinceGreenCaches.test.ts; E3's 2 stored-copy tests added there.
-  - (d) The two retired "L2 survives ... miss while pending" tests were not copied.
-- vscode mocking: the jsdom test also drives the host coordinator, and the browser transform refuses an unresolvable `vscode` import before `vi.mock` applies. vitest.config.ts now aliases exactly `vscode` to tests/setup/vscodeModule.ts, which throws on load, so every test still has to `vi.mock("vscode")` as before.
-- Proof: mutations M1-M12 on a copy, each red at a named assertion (log). Chain: every step green except `bun run test` (8 of 8418 red, all commit-list-column-resize, Node 26.5.0, recorded red at 90731f87).
-
-- Fix round 1 (rerun 3 review, this commit): finding 1 fixed. `CiFlakyCommit.unread` marks an ancestor with no read snapshot, an ambiguous match, or a partial list with no identity match; `flaky()` keeps it as a neighbour, so a red beside it is not isolated (history.ts). Finding 2 dropped by its own caveat: CheckTree passes `history.line` only when `complete` (the same test as changedSinceGreen's `nameProvesJob`) holds, so a name-only match is never counted under pageBound/rejectedNext. Tests: ciHistory.test.ts "an ancestor that was not read breaks isolation" (2 red before, 1 control).
-- Proof, round 1: every step green except `bun run test` (8 of 8421 red, the same commit-list-column-resize file, Node 26.5.0).
-- Fix round 2 (this commit): `flakyLineOf` drops ancestor items whose logicalId is set and differs from the check's before `matchCheck` (as changedSinceGreen does), so unrelated Deploy/Lint jobs are no result, not an unread ancestor. Tests in ciHistory.test.ts: "known Deploy/Lint identities cannot hide CI/unit..." (red before: expected null to deeply equal { n: 1, m: 3, attemptsCounted: true }) and "an ambiguous ancestor cannot prove the next red isolated" (green on the fix, red under M04 = the `found === "ambiguous"` marker removed, on a copy: expected { n: 1, m: 3, attemptsCounted: true } to be null).
-- Proof, round 2: every step green except `bun run test` (8 of 8423 red, the same commit-list-column-resize file, Node 26.5.0).
+- History: built 02881057; fixes 36c1f1b9, 5a06ca01; takeover 6e448ca8 halted; rerun (owner 2026-11-16) cd700bab, fixes 92ae2acb, 1842cf4a, takeover 4834dbc7 halted; owner answer 2026-11-18 (E3): one more rerun, Fable R1 only, a further halt goes to the owner's manual accept. Rerun 3 ca830528, fixes 1fc1925c, 1fb5b95b, then this takeover. Details: PLAN.review-log.md.
+- Rerun 3 summary: CheckTree lists every attempt history read in part with its reason; an unread attempt read is `null` and the line commit carries `attemptsUnavailable: true` with a Refresh note; `flakyLineOf` treats an unread, ambiguous or name-only ancestor as a neighbour (never isolating a red) and drops ancestor items whose logicalId differs from the check's.
+- Takeover (this commit), finding 1: "Changed since last green" now renders each file through the shared `TreeFileRow` (the row `CommitChangedFilesPanel` uses via `FileTreeRows`) inside a `role="tree"` labelled by the section title; the hand-rolled button, `FILE_STATUS_COLOR` and `fileButtonStyle` are gone. A click or Enter opens the two-revision diff (wired as `onSelect`). Test: commitChecksChangedSinceGreen.integration.test.tsx "each file is the commit pane's shared changed-files row" (CI row outerHTML equals a standalone TreeFileRow's). Red before: `expected '<button type="button" data-testid="ci…' to be '<div tabindex="0" role="treeitem" ari…'`. The reviewer's .review-evidence/row-reuse.test.tsx passes on a copy of the fixed tree (2 of 2).
+- Takeover, finding 2: GitNexus 1.6.12 run on an index of this worktree (built into a scratch storage path, `--index-only --skip-agents-md --skip-skills`, registry entry removed after). detect-changes scope all (this diff): 3 symbols, 0 processes, risk low. detect-changes compare 90731f87 (whole phase): 77 files, 725 symbols, 268 flows, risk "critical"; the flow count is driven by name-matched `getData` flows, and the changed `CommitCiDetailService.getData` itself is impact LOW (6). Impact: `flakyLineOf` LOW (4, Checks module), `CheckJobDetail` HIGH (5, all in Checks/Commit-info/Components), `readAttemptHistory` LOW (3 per candidate). The spec's "impact before each edit" cannot be run retroactively; these runs are the substitute, recorded for the owner.
 
 ## Decisions and why
-- Unread attempts are a separate flag, not a coverage value on an empty list: `CiCoverage` describes a list that was read; an unread page has no list, and the flag never reaches a persisted shape (the history reply is not stored).
-- A repository switch mid-read is unread too (null), not empty: the answer belongs to another account or repository.
-- The unread note uses the attempts-note test id with role="status" and sits in each affected job row, like the K34 notes.
-- (b) of 2026-11-16 in the walk, not in `matchCheck` (Phase 11's "unknown" tag); grant compares status; the selected commit is never its own ancestor; scopeName = the run's name; handlers answer only while isE2eControlChannelActive is on.
+- Row reuse wires `onSelect` (not `onActivate`) to the diff, so one click opens it as the old button did; a double click opens it twice, as before. The rename tooltip "old → new" is lost: the shared row's title is the path and has no title prop; the spec asks only that renames diff on the right sides, which `openCiRangeDiff` still carries (`oldPath`).
+- Unread attempts are a separate flag, not a coverage value on an empty list; a repository switch mid-read is unread (null), not empty.
+- The unread note uses the attempts-note test id with role="status" in each affected job row, like the K34 notes.
 
 ## Open risks
-- Grant and repository switch: a switch away and back with no open in between keeps the record (only files the host sent for that repository).
+- Whole-phase GitNexus risk reads "critical" from name-matched flows; per-symbol impact is LOW except `CheckJobDetail` HIGH (5, all inside the Checks tab). Owner to accept or ask for more.
+- Grant and repository switch: a switch away and back with no open in between keeps the record.
 - A badge request on a long loaded line sends up to one attempt-history read per cached ancestor (memoized 60 s, failures not memoized). Not measured against a real forge.
-- GitNexus impact and detect-changes not run: the worktree has no `.gitnexus`; Root runs both in an indexed checkout before merge, or the owner waives them.
-- Gate E not run locally; the spec runs on CI. Contract 8 empties persisted CI detail caches once on upgrade.
-- The vitest `vscode` alias is repo-wide test config: a test that relied on `vscode` failing to resolve would now fail on the stub's throw instead (full suite shows no such test).
+- Gate E not run locally; the spec runs on CI (ciChangedSinceGreen.spec.ts clicks the row by text "ci-changed.txt", a top-level file, so the shared row still matches). Contract 8 empties persisted CI detail caches once on upgrade.
+- The vitest `vscode` alias is repo-wide test config: a test that relied on `vscode` failing to resolve would now fail on the stub's throw instead.
 
 ## Next phase: 13
 ## Found outside scope
@@ -53,3 +42,4 @@
 - `bun run package` can pack ignored `output/` leftovers; noRepositoryMode.ts registers a placeholder `refreshBadges`.
 - Mutation copies must link the main checkout's node_modules; a copy has no .git or dist.
 - GitLab snapshot could follow `x-next-page` pages if getChecks moved to `fetchWithMeta`.
+- The main checkout's GitNexus index is stale (indexed 64d390b, checkout at 3d70e16).

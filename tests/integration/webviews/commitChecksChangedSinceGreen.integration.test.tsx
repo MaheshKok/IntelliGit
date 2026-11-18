@@ -17,6 +17,7 @@ import type {
     CommitDetail,
 } from "../../../src/types";
 import { CommitInfoPane } from "../../../src/webviews/react/commit-info/CommitInfoPane";
+import { TreeFileRow } from "../../../src/webviews/react/shared/components/FileTreeRows";
 import { initReactDomTestEnvironment, mount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
@@ -426,14 +427,14 @@ describe("Checks tab changed since last green", () => {
         expect(section(container)?.textContent).toContain(
             `Changed since last green (${P2.slice(0, 7)})`,
         );
-        const buttons = Array.from(
-            container.querySelectorAll<HTMLButtonElement>('[data-testid="ci-changed-file"]'),
+        const rows = Array.from(
+            container.querySelectorAll<HTMLElement>('[data-testid="ci-changed-file"]'),
         );
-        expect(buttons.map((button) => button.textContent)).toEqual([
-            "Rsrc/new name.ts",
-            "Dgone.ts",
+        expect(rows.map((row) => row.getAttribute("title"))).toEqual([
+            "src/new name.ts",
+            "gone.ts",
         ]);
-        act(() => buttons[0]!.click());
+        act(() => rows[0]!.click());
         expect(posted("openCiRangeDiff").at(-1)).toMatchObject({
             repoKey: "/repo",
             fromRev: P2,
@@ -442,6 +443,35 @@ describe("Checks tab changed since last green", () => {
             oldPath: "src/old.ts",
             status: "R",
         });
+    });
+
+    it("each file is the commit pane's shared changed-files row", () => {
+        const container = mountPane();
+        showDetail(container, detail(true));
+        const file = {
+            path: "src/new name.ts",
+            oldPath: "src/old.ts",
+            status: "R",
+            additions: 4,
+            deletions: 2,
+        } as const;
+        answerChanged(lastChangedRequest(), { lastGreen: P2, files: [file] });
+        const shared = mount(
+            <TreeFileRow
+                file={file}
+                depth={0}
+                showParentPath
+                wiring={{
+                    isSelected: false,
+                    onSelect: () => {},
+                    dataAttributes: { testid: "ci-changed-file" },
+                }}
+            />,
+        ).container.firstElementChild;
+        expect(
+            container.querySelector('[data-testid="ci-changed-file"]')?.outerHTML,
+            "Phase 12 step 5: the list reuses CommitChangedFilesPanel's row",
+        ).toBe(shared?.outerHTML);
     });
 
     it.each([

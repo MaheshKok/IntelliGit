@@ -1,8 +1,8 @@
 import React from "react";
-import type { CiChangedFile, CiJob } from "../../../../types";
+import type { CiJob } from "../../../../types";
 import { StateIcon } from "../../commit-list/CommitChecksPopover";
+import { TreeFileRow } from "../../shared/components/FileTreeRows";
 import { t } from "../../shared/i18n";
-import { JETBRAINS_UI } from "../../shared/tokens";
 import { badgeStateOf, formatCiDuration, formatCiStart, stateLabel } from "./ciFormat";
 import { ActionButton } from "./ChecksHeader";
 import { checksStyles } from "./checksStyles";
@@ -192,15 +192,6 @@ function JobLog({
     );
 }
 
-const FILE_STATUS_COLOR: Record<CiChangedFile["status"], string> = {
-    A: JETBRAINS_UI.color.added,
-    D: JETBRAINS_UI.color.deleted,
-    M: JETBRAINS_UI.color.modified,
-    R: JETBRAINS_UI.color.modified,
-    C: JETBRAINS_UI.color.added,
-    T: JETBRAINS_UI.color.modified,
-};
-
 /**
  * "Changed since last green (a1b2c3d)": the files changed between the newest loaded
  * first-parent ancestor where this job passed and the selected commit, each opening a diff of
@@ -237,26 +228,22 @@ function ChangedSinceGreen({ job }: { job: ChangedSinceGreenJob }): React.ReactE
     return (
         <section data-testid="ci-changed-since-green" aria-label={title} style={logStyle}>
             <div style={{ fontWeight: 600 }}>{title}</div>
-            <ul style={stepsStyle}>
+            <div role="tree" aria-label={title} style={{ alignSelf: "stretch" }}>
                 {view.files.map((file) => (
-                    <li key={file.path}>
-                        <button
-                            type="button"
-                            data-testid="ci-changed-file"
-                            title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
-                            style={fileButtonStyle}
-                            onClick={() => openDiff(file)}
-                        >
-                            <span style={{ color: FILE_STATUS_COLOR[file.status], minWidth: 10 }}>
-                                {file.status}
-                            </span>
-                            <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
-                                {file.path}
-                            </span>
-                        </button>
-                    </li>
+                    // The commit pane's changed-files row; a click or Enter opens the diff.
+                    <TreeFileRow
+                        key={file.path}
+                        file={file}
+                        depth={0}
+                        showParentPath
+                        wiring={{
+                            isSelected: false,
+                            onSelect: () => openDiff(file),
+                            dataAttributes: { testid: "ci-changed-file" },
+                        }}
+                    />
                 ))}
-            </ul>
+            </div>
         </section>
     );
 }
@@ -345,20 +332,6 @@ const stepsStyle: React.CSSProperties = {
     display: "flex",
     flexDirection: "column",
     gap: 4,
-};
-
-const fileButtonStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    width: "100%",
-    padding: "2px 0",
-    border: "none",
-    background: "transparent",
-    color: "var(--vscode-foreground)",
-    font: "inherit",
-    textAlign: "left",
-    cursor: "pointer",
 };
 
 const stepStyle: React.CSSProperties = {
