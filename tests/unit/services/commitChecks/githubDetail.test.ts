@@ -178,9 +178,13 @@ function fakeGitHub(state: FakeGitHub) {
                     : state.jobsByRun;
             const all = byRun.get(jobsMatch[1]) ?? [];
             const slice = all.slice((page - 1) * 100, page * 100);
+            // The next link keeps the request's query (`filter=all` stays all); only `page` moves.
+            const next = new URL(jobsPageUrl(jobsMatch[1], page + 1));
+            next.search = parsed.search;
+            next.searchParams.set("page", String(page + 1));
             const link =
                 state.nextLink?.(url, page) ??
-                (page * 100 < all.length ? jobsPageUrl(jobsMatch[1], page + 1) : undefined);
+                (page * 100 < all.length ? next.toString() : undefined);
             return {
                 statusCode: 200,
                 headers: link ? { link: `<${link}>; rel="next"` } : {},
@@ -277,6 +281,36 @@ describe("GitHubProvider.getDetail", () => {
                 coverage: "full",
             },
         ]);
+    });
+
+    it("pages the all-attempts list past 100 jobs, not the latest list", async () => {
+        const runId = String(runFixture.id);
+        // Attempt 2 re-ran all 75 jobs: the latest list holds 75, every attempt's list 150.
+        const latest = Array.from({ length: 75 }, (_, i) =>
+            job(i + 1, "success", { run_attempt: 2 }),
+        );
+        const firstTries = Array.from({ length: 75 }, (_, i) =>
+            job(i + 1, "failure", { id: 10_000 + i, run_attempt: 1 }),
+        );
+        const gh = fakeGitHub(
+            state({
+                runs: [run({ run_attempt: 2, conclusion: "success" })],
+                jobsByRun: new Map([[runId, latest]]),
+                allJobsByRun: new Map([[runId, [...latest, ...firstTries]]]),
+            }),
+        );
+        const provider = new GitHubProvider(gh.fetchJson, undefined, gh.fetchWithMeta);
+
+        const detail = await provider.getDetail(ref, SHA);
+
+        const attemptPages = gh.log.filter(
+            (url) => url.includes("/jobs?") && new URL(url).searchParams.get("filter") === "all",
+        );
+        expect(attemptPages, "both pages of every attempt's jobs are read").toHaveLength(2);
+        expect(
+            detail.attemptHistory?.map((history) => history.attempts.length),
+            "each job's first try, 25 on page 1 and 50 on page 2, joins its re-run",
+        ).toEqual(Array.from({ length: 75 }, () => 2));
     });
 
     it("getAttemptHistory answers the detail's histories without the detail's reads", async () => {

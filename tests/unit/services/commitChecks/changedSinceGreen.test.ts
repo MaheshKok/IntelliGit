@@ -28,6 +28,7 @@ import type {
     CommitCiDetailData,
 } from "../../../../src/types";
 import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
+import { timingBudgetsApply } from "../../../helpers/timingBudgets";
 
 vi.mock("vscode", () => ({ l10n: { t: (text: string) => text } }));
 
@@ -357,11 +358,11 @@ describe("changedSinceGreen", () => {
 
         await coordinator.changedSinceGreen(request(selected), root);
 
-        const [settled] = await Promise.allSettled([badge]);
-        expect(
-            settled.status,
+        expect(badge, "the badge request must run while the cache-only read runs").toBeDefined();
+        await expect(
+            badge,
             "a cache miss must not install a rejecting fetch that real badge callers join",
-        ).toBe("fulfilled");
+        ).resolves.toEqual(snapshot(uncached, [item("failure", CI)]));
     });
 
     it("a cache-only walk never waits for an ancestor's in-flight badge fetch", async () => {
@@ -564,12 +565,14 @@ describe("changedSinceGreen", () => {
 
     it("names with space, tab, newline, #, ?, leading -", async () => {
         const green = commit("green");
+        // Windows refuses a tab, a newline and `?` in a file name, so those run elsewhere only.
         const names = [
             "with space.txt",
-            "with\ttab.txt",
-            "with\nnewline.txt",
-            "#hash?.txt",
+            "#hash.txt",
             "-dash.txt",
+            ...(process.platform === "win32"
+                ? []
+                : ["with\ttab.txt", "with\nnewline.txt", "#hash?.txt"]),
         ];
         for (const name of names) {
             // react-doctor-disable-next-line react-doctor/async-await-in-loop
@@ -716,5 +719,27 @@ describe("firstParentLine", () => {
                 { hash: "C", parents: ["B"] },
             ]),
         ).toEqual(["B", "C"]);
+    });
+
+    it("walks a long line in linear time", () => {
+        const count = 20_000;
+        const hashOf = (index: number): string => index.toString(16).padStart(40, "0");
+        const loaded = Array.from({ length: count }, (_, index) => ({
+            hash: hashOf(index),
+            parents: index + 1 < count ? [hashOf(index + 1)] : [],
+        }));
+
+        const started = performance.now();
+        const line = firstParentLine(hashOf(0), loaded);
+        const elapsed = performance.now() - started;
+
+        expect(line).toHaveLength(count - 1);
+        if (timingBudgetsApply) {
+            // Measured: a rescan of the listed line took 1292 ms here; a set lookup takes a few ms.
+            expect(
+                elapsed,
+                `${count} commits took ${elapsed.toFixed(0)} ms: the visited check must not rescan the line`,
+            ).toBeLessThan(200);
+        }
     });
 });

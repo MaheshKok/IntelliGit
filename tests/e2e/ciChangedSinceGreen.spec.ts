@@ -9,6 +9,7 @@ import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "./fixtureWorkspace";
 import { E2eControlChannelClient, waitForE2eChannelReady } from "./controlChannelClient";
 import { runGit } from "../fixtures/repo/gitRun";
+import { FIXTURE_REFS } from "../fixtures/repo/seed";
 import { NO_CI_CAPABILITIES } from "../../src/shared/ci/capabilities";
 import {
     dismissFirstRunDialogs,
@@ -86,6 +87,8 @@ test("clicking a file opens a two-revision diff", async ({ fixtureWorkspace }, t
     await git(["add", "--", FILE]);
     await git(["commit", "-m", "CI fails"]);
     const head = await git(["rev-parse", "HEAD"]);
+    // The Git Log gives an unpushed commit no checks button (CI never ran on it), so push both.
+    await git(["push", "--quiet", FIXTURE_REFS.remote, FIXTURE_REFS.main]);
 
     const settingsPath = path.join(workspace.root, ".vscode", "settings.json");
     await mkdir(path.dirname(settingsPath), { recursive: true });

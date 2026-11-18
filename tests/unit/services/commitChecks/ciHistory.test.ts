@@ -841,6 +841,31 @@ describe("flaky (§9, O3)", () => {
             expect(flaky(UNIT, line, true)).toBeNull();
         });
 
+        it("a flat check's name match on an identified item of a partly read ancestor is unread", () => {
+            // A flat check has no logical id, so only the name matched; a hidden item may share it.
+            const flat: CiHistoryCheck = { name: "unit", state: "success" };
+            const line = flakyLineOf(
+                flat,
+                [flat],
+                [],
+                [
+                    {
+                        hash: hash("a"),
+                        items: [item("unit", "failure", { logicalId: UNIT })],
+                        attempts: [],
+                        partial: true,
+                    },
+                    { hash: hash("b"), items: [item("unit", "success")], attempts: [] },
+                ],
+            );
+            expect(line[1], "a partial ancestor proves only an identity match").toEqual({
+                state: null,
+                attempts: [],
+                unread: true,
+            });
+            expect(flaky("", line, true), "no unqualified flaky 1/3").toBeNull();
+        });
+
         it("an ambiguous ancestor cannot prove the next red isolated", () => {
             const line = flakyLineOf(
                 check,

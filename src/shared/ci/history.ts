@@ -226,7 +226,12 @@ export function flakyLineOf(
             );
             const found = items ? matchCheck(check, current, items) : undefined;
             const match = typeof found === "object" ? found : undefined;
-            const usable = match && (!commit.partial || match.logicalId !== undefined);
+            // A list read in part proves only an identity match; a flat check (no logical id)
+            // matched an identified item there by name alone.
+            const usable =
+                match &&
+                (!commit.partial ||
+                    (check.logicalId !== undefined && match.logicalId === check.logicalId));
             const unread =
                 !commit.items || found === "ambiguous" || (commit.partial === true && !usable);
             return {

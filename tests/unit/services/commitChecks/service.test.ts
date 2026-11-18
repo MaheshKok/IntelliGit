@@ -61,6 +61,18 @@ describe("CommitChecksService", () => {
         });
         await begun;
         const cached = service.getCached("github:repo@abc1234:-");
+        // Bounded: a read that waited for the fetch would still be pending at the deadline.
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+        const first = await Promise.race([
+            cached.then(() => "cache read" as const),
+            new Promise<"still waiting">((done) => {
+                deadline = setTimeout(() => done("still waiting"), 1_000);
+            }),
+        ]);
+        clearTimeout(deadline);
+        expect(first, "a cache-only read must complete while the fetch is still pending").toBe(
+            "cache read",
+        );
         release(snapshot("success"));
         await fetching;
 

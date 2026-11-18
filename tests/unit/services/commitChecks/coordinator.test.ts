@@ -871,7 +871,7 @@ describe("flaky history reads attempt histories (PLAN.md §9, Phase 12)", () => 
         { hash: ANCESTOR, parents: [UNLOADED] },
     ];
 
-    function setup(attemptHistory = true) {
+    function setup(attemptHistory = true, getDetail?: CommitChecksProvider["getDetail"]) {
         const getAttemptHistory = vi.fn(async (): Promise<CiAttemptHistory[]> => [reRun]);
         const provider: CommitChecksProvider = {
             ...makeProvider("github", "github.com", async (_ref, hash) => ({
@@ -882,6 +882,7 @@ describe("flaky history reads attempt histories (PLAN.md §9, Phase 12)", () => 
             })),
             capabilities: { ...NO_CI_CAPABILITIES, attemptHistory },
             getAttemptHistory,
+            ...(getDetail && { getDetail }),
         };
         const gitOps = {
             ...makeGitOps({ origin: "git@github.com:owner/repo.git" }),
@@ -948,6 +949,59 @@ describe("flaky history reads attempt histories (PLAN.md §9, Phase 12)", () => 
         const again = await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
         expect(again.line?.[0]?.attempts, "a failure is not remembered").toEqual([reRun]);
         expect(again.line?.[0]).not.toHaveProperty("attemptsUnavailable");
+    });
+
+    it("a cached detail that never read the re-runs leaves them unread, not an empty history", async () => {
+        // The detail read failed, so the cache holds the unavailable floor detail: no re-runs read.
+        const { coordinator, getAttemptHistory } = setup(true, async () => {
+            throw new Error("detail offline");
+        });
+        await coordinator.getChecks(ANCESTOR);
+        await coordinator.getDetail(
+            ANCESTOR,
+            {},
+            { repoKey: "", authGeneration: 0, lifecycleGeneration: 0 },
+        );
+        getAttemptHistory.mockRejectedValueOnce(new Error("rate limited"));
+
+        const history = await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+
+        expect(
+            history.line?.[0]?.attemptsUnavailable,
+            "unread attempts never become an empty, fully counted history",
+        ).toBe(true);
+        const again = await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+        expect(again.line?.[0]?.attempts, "the provider's re-runs count").toEqual([reRun]);
+    });
+
+    it("a cached detail that read no re-runs is taken as it is", async () => {
+        const { coordinator, getAttemptHistory } = setup(true, async (_ref, hash) => ({
+            hash,
+            provider: "github",
+            complete: true,
+            outcome: "success",
+            runs: [],
+            runsCoverage: "full",
+            otherChecks: [],
+            otherChecksCoverage: "full",
+            attemptHistory: [],
+        }));
+        await coordinator.getChecks(ANCESTOR);
+        await coordinator.getDetail(
+            ANCESTOR,
+            {},
+            { repoKey: "", authGeneration: 0, lifecycleGeneration: 0 },
+        );
+
+        const history = await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+
+        expect(history.line?.[0]?.items, "the ancestor's checks are cached").not.toBeNull();
+        expect(history.line?.[0]?.attempts, "the detail's empty history is kept").toEqual([]);
+        expect(history.line?.[0]).not.toHaveProperty("attemptsUnavailable");
+        expect(
+            getAttemptHistory,
+            "a detail that read its re-runs is not asked again",
+        ).not.toHaveBeenCalled();
     });
 
     it("an attempt read answered after the repository switched meanwhile is unread", async () => {

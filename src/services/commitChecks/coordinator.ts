@@ -256,14 +256,12 @@ export class CommitChecksCoordinator {
                     this.cachedDetail(hash, ""),
                 ]);
                 const items = snapshot && snapshot.state !== "unavailable" ? snapshot.items : null;
-                // A cached detail already holds its re-runs; a commit whose checks are cached
-                // but whose detail was never opened asks the provider (§9), so a job that
-                // failed then passed there still counts.
-                const attempts = detail
-                    ? (detail.attemptHistory ?? [])
-                    : items
-                      ? await this.readAttemptHistory(hash)
-                      : [];
+                // A cached detail that read its re-runs holds them; any other commit whose checks
+                // are cached (detail never opened, or one that never read them, such as an
+                // unavailable one) asks the provider (§9), so a job that failed then passed
+                // there still counts and an unread answer stays unread.
+                const attempts =
+                    detail?.attemptHistory ?? (items ? await this.readAttemptHistory(hash) : []);
                 return {
                     hash,
                     items,

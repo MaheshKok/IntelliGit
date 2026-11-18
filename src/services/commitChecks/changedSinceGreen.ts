@@ -59,14 +59,16 @@ export interface ChangedSinceGreenDeps {
 export function firstParentLine(start: string, loaded: readonly LoadedCommit[]): string[] {
     const parentsOf = new Map(loaded.map((commit) => [commit.hash, commit.parents]));
     const line: string[] = [];
+    const listed = new Set<string>();
     let current = parentsOf.get(start)?.[0];
     while (
         current !== undefined &&
         current !== start &&
         parentsOf.has(current) &&
-        !line.includes(current)
+        !listed.has(current)
     ) {
         line.push(current);
+        listed.add(current);
         current = parentsOf.get(current)?.[0];
     }
     return line;
@@ -78,7 +80,7 @@ const STATUSES: ReadonlySet<string> = new Set(["A", "M", "D", "R", "C", "T"]);
  * Parses `git diff --name-status -z`: fields are NUL-separated, so any byte but NUL survives
  * in a name. A rename or copy row carries its source path before its destination.
  */
-export function parseNameStatusZ(output: string): CiRangeDiffFile[] {
+function parseNameStatusZ(output: string): CiRangeDiffFile[] {
     const fields = output.split("\0");
     const files: CiRangeDiffFile[] = [];
     for (let index = 0; index < fields.length;) {
@@ -104,9 +106,7 @@ export function parseNameStatusZ(output: string): CiRangeDiffFile[] {
  * `added TAB deleted TAB path NUL`; a rename or copy leaves the path empty and follows with the
  * source and destination as two more fields. A binary file counts `-` and is taken as 0.
  */
-export function parseNumstatZ(
-    output: string,
-): Map<string, { additions: number; deletions: number }> {
+function parseNumstatZ(output: string): Map<string, { additions: number; deletions: number }> {
     const fields = output.split("\0");
     const counts = new Map<string, { additions: number; deletions: number }>();
     for (let index = 0; index < fields.length;) {

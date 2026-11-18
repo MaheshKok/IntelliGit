@@ -192,6 +192,9 @@ function flakyTag(container: HTMLElement): HTMLElement | null {
 
 const EXPECTED_LOADED = LOADED.map((c) => ({ hash: c.hash, parents: c.parentHashes }));
 
+const UNREAD =
+    "Re-runs on some loaded commits could not be read — the flaky count may be incomplete";
+
 describe("independent Phase 12 K34 review", () => {
     it.each(["pageBound", "rejectedNext"] as const)("own %s is text beside count", (reason) => {
         const container = mountPane();
@@ -298,17 +301,14 @@ describe("independent Phase 12 K34 review", () => {
         const container = mountPane();
         showDetail(container, detail(true));
         answerHistory(answer);
-        const tag = flakyTag(container);
+        expect(flakyTag(container)?.textContent, "the line still shows its count").toBe(
+            "flaky 1/4",
+        );
         // An unavailable attempt page cannot justify the same unqualified count as a fully read list.
-        const unqualified =
-            tag?.textContent === "flaky 1/4" &&
-            !tag?.getAttribute("title") &&
-            !container.querySelector('[role="alert"]') &&
-            !container.querySelector('[data-testid="ci-attempts-coverage-note"]');
         expect(
-            unqualified,
+            container.querySelector('[data-testid="ci-attempts-coverage-note"]')?.textContent ?? "",
             "provider page failure must be disclosed; unread attempts cannot become an empty fully counted history",
-        ).toBe(false);
+        ).toContain(UNREAD);
     });
 });
 
@@ -337,9 +337,6 @@ describe("own run link", () => {
 });
 
 describe("unread ancestor attempt pages", () => {
-    const UNREAD =
-        "Re-runs on some loaded commits could not be read — the flaky count may be incomplete";
-
     function testRow(container: HTMLElement): HTMLElement {
         return container.querySelector('[data-testid="ci-job-row"][data-name="test"]')!;
     }
