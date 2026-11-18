@@ -11,6 +11,7 @@ import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type { EtagStore } from "./etagStore";
 import { httpGetJsonWithMeta, type FetchJson, type FetchJsonWithMeta } from "./http";
 import { aggregateState, redactSecret, summaryForItems, unavailableSnapshot } from "./normalize";
+import { isUnderApiPrefix } from "./paginate";
 import { isStatusPage, toStatusItem, type BitbucketStatus } from "./bitbucketShared";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
@@ -261,15 +262,8 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
 }
 
 function normalizeBitbucketCloudNextUrl(next: unknown): string | undefined {
-    if (typeof next !== "string") return undefined;
-    try {
-        const url = new URL(next);
-        if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "api.bitbucket.org") {
-            return undefined;
-        }
-        if (!url.pathname.startsWith("/2.0/")) return undefined;
-        return url.toString();
-    } catch {
+    if (typeof next !== "string" || !isUnderApiPrefix(next, API_BASE, ["/2.0/"])) {
         return undefined;
     }
+    return new URL(next).toString();
 }

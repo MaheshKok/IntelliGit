@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.43.14] - 2026-11-15
+## [0.43.15] - 2026-11-18
 
 ### Added
 
 - Groundwork for the coming Checks tab: IntelliGit can now tell when a CI job passes and fails at random, and list the files changed since a failed job last passed, each opening a diff of the two versions. Nothing changes in the extension yet.
+
+## [0.43.14] - 2026-11-15
+
+### Fixed
+
+- When IntelliGit loads more build statuses from Bitbucket Cloud, it now sends your sign-in only to Bitbucket's own API address. A next-page link pointing to another port or carrying a user name or password is skipped, and the list is shown as incomplete.
 
 ## [0.43.13] - 2026-11-15
 
