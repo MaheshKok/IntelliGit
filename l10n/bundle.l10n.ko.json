@@ -328,6 +328,7 @@
     "GitHub clone failed": "GitHub 클론 실패",
     "GitLab clone failed": "GitLab 클론 실패",
     "If no keys are listed, add yours with `ssh-add ~/.ssh/id_ed25519` (or `~/.ssh/id_rsa`).": "키가 목록에 없으면 `ssh-add ~/.ssh/id_ed25519` (또는 `~/.ssh/id_rsa`) 명령어를 사용하여 키를 추가하세요.",
+    "If the repository is private, choose \"Browse My Repositories\" to sign in to GitHub.": "저장소가 비공개인 경우 \"내 저장소 찾아보기\"를 선택하여 GitHub에 로그인하세요.",
     "IntelliGit error: {message}": "IntelliGit 오류: {message}",
     "Invalid merge file path: {message}": "잘못된 병합 파일 경로: {message}",
     "Invalid merge resolution content for {path}.": "{path}에 대한 병합 해결 콘텐츠가 잘못되었습니다.",

@@ -328,6 +328,7 @@
     "GitHub clone failed": "Клонирование GitHub не удалось.",
     "GitLab clone failed": "Клонирование GitLab не удалось.",
     "If no keys are listed, add yours with `ssh-add ~/.ssh/id_ed25519` (or `~/.ssh/id_rsa`).": "Если ключи не указаны, добавьте свои с помощью команды `ssh-add ~/.ssh/id_ed25519` (или `~/.ssh/id_rsa`).",
+    "If the repository is private, choose \"Browse My Repositories\" to sign in to GitHub.": "Если репозиторий приватный, выберите «Просмотреть мои репозитории», чтобы войти в GitHub.",
     "IntelliGit error: {message}": "Ошибка IntelliGit: {message}",
     "Invalid merge file path: {message}": "Неверный путь к файлу слияния: {message}",
     "Invalid merge resolution content for {path}.": "Недопустимое содержимое разрешения слияния для {path}.",

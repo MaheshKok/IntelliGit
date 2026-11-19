@@ -570,6 +570,7 @@
     "GitHub clone failed": "GitHub clone failed",
     "GitLab clone failed": "GitLab clone failed",
     "If no keys are listed, add yours with `ssh-add ~/.ssh/id_ed25519` (or `~/.ssh/id_rsa`).": "If no keys are listed, add yours with `ssh-add ~/.ssh/id_ed25519` (or `~/.ssh/id_rsa`).",
+    "If the repository is private, choose \"Browse My Repositories\" to sign in to GitHub.": "If the repository is private, choose \"Browse My Repositories\" to sign in to GitHub.",
     "IntelliGit error: {message}": "IntelliGit error: {message}",
     "Invalid merge file path: {message}": "Invalid merge file path: {message}",
     "Invalid merge resolution content for {path}.": "Invalid merge resolution content for {path}.",

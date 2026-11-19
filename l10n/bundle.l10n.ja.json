@@ -328,6 +328,7 @@
     "GitHub clone failed": "GitHubクローンに失敗しました",
     "GitLab clone failed": "GitLabのクローン作成に失敗しました",
     "If no keys are listed, add yours with `ssh-add ~/.ssh/id_ed25519` (or `~/.ssh/id_rsa`).": "キーがリストされていない場合は、`ssh-add ~/.ssh/id_ed25519` (または `~/.ssh/id_rsa`) を使用してキーを追加してください。",
+    "If the repository is private, choose \"Browse My Repositories\" to sign in to GitHub.": "リポジトリが非公開の場合は、「マイリポジトリを閲覧する」を選択して GitHub にサインインしてください。",
     "IntelliGit error: {message}": "IntelliGitエラー: {message}",
     "Invalid merge file path: {message}": "無効なマージファイルパス: {message}",
     "Invalid merge resolution content for {path}.": "{path} のマージ解決コンテンツが無効です。",

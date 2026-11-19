@@ -328,6 +328,7 @@
     "GitHub clone failed": "Klon GitHub nie powiódł się",
     "GitLab clone failed": "Klon GitLab nie powiódł się",
     "If no keys are listed, add yours with `ssh-add ~/.ssh/id_ed25519` (or `~/.ssh/id_rsa`).": "Jeżeli nie ma na liście żadnych kluczy, dodaj je poleceniem `ssh-add ~/.ssh/id_ed25519` (lub `~/.ssh/id_rsa`).",
+    "If the repository is private, choose \"Browse My Repositories\" to sign in to GitHub.": "Jeśli repozytorium jest prywatne, wybierz „Przeglądaj moje repozytoria”, aby zalogować się do GitHub.",
     "IntelliGit error: {message}": "Błąd IntelliGit: {message}",
     "Invalid merge file path: {message}": "Nieprawidłowa ścieżka do pliku scalania: {message}",
     "Invalid merge resolution content for {path}.": "Nieprawidłowa zawartość rozwiązania scalenia dla {path}.",

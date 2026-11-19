@@ -155,16 +155,13 @@ async function cloneViaSSH(): Promise<void> {
 /**
  * Handles the GitHub clone path using VS Code authentication and HTTPS clone URLs.
  *
- * Users can browse repositories through the GitHub API or paste a GitHub HTTPS
- * URL. Authenticated clones use transient askpass credentials and reset `origin`
- * to the clean clone URL after success so tokens are not persisted in `.git/config`.
+ * Users can browse repositories through the GitHub API (requires sign-in) or paste
+ * a GitHub HTTPS URL, which reuses an existing session silently and otherwise
+ * clones anonymously so public repositories need no sign-in. Authenticated clones
+ * use transient askpass credentials and reset `origin` to the clean clone URL after
+ * success so tokens are not persisted in `.git/config`.
  */
 async function cloneViaGitHub(): Promise<void> {
-    const session = await acquireGitHubSession();
-    if (!session) return;
-
-    const token = session.accessToken;
-
     const mode = await vscode.window.showQuickPick(
         [
             {
@@ -178,8 +175,12 @@ async function cloneViaGitHub(): Promise<void> {
     if (!mode) return;
 
     let cloneUrl: string;
+    let token: string | undefined;
 
     if (mode.value === "browse") {
+        const session = await acquireGitHubSession();
+        if (!session) return;
+        token = session.accessToken;
         const repo = await pickGitHubRepo(token);
         if (!repo) return;
         cloneUrl = repo.clone_url;
@@ -198,6 +199,7 @@ async function cloneViaGitHub(): Promise<void> {
         });
         if (!input) return;
         cloneUrl = input;
+        token = await getExistingGitHubToken();
     }
 
     const dest = await pickDestinationFolder();
@@ -210,9 +212,24 @@ async function cloneViaGitHub(): Promise<void> {
         url: cloneUrl,
         targetPath,
         provider: "github",
-        auth: { username: "x-access-token", token },
+        auth: token ? { username: "x-access-token", token } : undefined,
         cleanRemoteUrl: cloneUrl,
     });
+}
+
+/**
+ * Returns the token of an existing GitHub session without prompting, or `undefined`
+ * when the user is not signed in or GitHub authentication is unavailable.
+ */
+async function getExistingGitHubToken(): Promise<string | undefined> {
+    try {
+        const session = await vscode.authentication.getSession("github", ["repo"], {
+            silent: true,
+        });
+        return session?.accessToken;
+    } catch {
+        return undefined;
+    }
 }
 
 /**
@@ -705,7 +722,7 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
                 });
             }
         } catch (err) {
-            handleCloneError(err, url, provider);
+            handleCloneError(err, url, provider, auth !== undefined);
         }
     }
 }
@@ -721,7 +738,12 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
  * token failures add concise recovery hints. Errors are intentionally not
  * rethrown because command handlers should complete after showing the message.
  */
-function handleCloneError(err: unknown, url: string, provider: CloneProvider): void {
+function handleCloneError(
+    err: unknown,
+    url: string,
+    provider: CloneProvider,
+    authenticated: boolean,
+): void {
     const message = getErrorMessage(err).toLowerCase();
 
     if (provider === "ssh") {
@@ -763,7 +785,13 @@ function handleCloneError(err: unknown, url: string, provider: CloneProvider): v
         showCloneErrorMessage(vscode.l10n.t("SSH clone failed"), err, hints);
     } else if (provider === "github") {
         const hints: string[] = [];
-        if (
+        if (!authenticated) {
+            hints.push(
+                vscode.l10n.t(
+                    'If the repository is private, choose "Browse My Repositories" to sign in to GitHub.',
+                ),
+            );
+        } else if (
             message.includes("authentication") ||
             message.includes("403") ||
             message.includes("denied")

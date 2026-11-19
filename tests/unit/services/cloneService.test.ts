@@ -131,15 +131,85 @@ function secretStorage(initial?: string): {
 }
 
 describe("cloneService phase 3", () => {
-    it("GitHub-only clone routes directly to GitHub session and repository choice", async () => {
-        mocks.getSession.mockResolvedValue({ accessToken: "synthetic-token" });
+    it("GitHub-only clone asks for the repository choice before any GitHub sign-in", async () => {
         mocks.showQuickPick.mockResolvedValue(undefined);
         await runGitHubCloneFlow();
-        expect(mocks.getSession).toHaveBeenCalledWith("github", ["repo"], { createIfNone: true });
+        expect(mocks.getSession).not.toHaveBeenCalled();
         expect(mocks.showQuickPick).toHaveBeenCalledOnce();
         expect(
             mocks.showQuickPick.mock.calls[0][0].map((item: { value: string }) => item.value),
         ).toEqual(["browse", "url"]);
+    });
+
+    it("signs in to GitHub only when browsing repositories", async () => {
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "browse" });
+
+        await runCloneFlow();
+
+        expect(mocks.getSession).toHaveBeenCalledWith("github", ["repo"], { createIfNone: true });
+    });
+
+    it("clones a public GitHub URL without asking for GitHub sign-in (issue #441)", async () => {
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "url" });
+        mocks.showInputBox.mockResolvedValueOnce("https://github.com/user/repo.git");
+        mocks.getSession.mockResolvedValue(undefined);
+
+        await runCloneFlow();
+
+        for (const call of mocks.getSession.mock.calls) {
+            expect(call[2], "pasted URL must never prompt for GitHub sign-in").toEqual({
+                silent: true,
+            });
+        }
+        expect(
+            mocks.execFile,
+            "anonymous clone must not use askpass credentials",
+        ).not.toHaveBeenCalled();
+        expect(mocks.gitRuns).toContainEqual({
+            root: fixturePath("/dest"),
+            args: ["clone", "https://github.com/user/repo.git", "repo"],
+        });
+    });
+
+    it("clones a public GitHub URL when GitHub authentication is unavailable", async () => {
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "url" });
+        mocks.showInputBox.mockResolvedValueOnce("https://github.com/user/repo.git");
+        mocks.getSession.mockRejectedValue(new Error("No GitHub authentication provider"));
+
+        await runCloneFlow();
+
+        expect(mocks.showErrorMessage).not.toHaveBeenCalled();
+        expect(mocks.gitRuns).toContainEqual({
+            root: fixturePath("/dest"),
+            args: ["clone", "https://github.com/user/repo.git", "repo"],
+        });
+    });
+
+    it("points to sign-in when an anonymous GitHub URL clone fails", async () => {
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "url" });
+        mocks.showInputBox.mockResolvedValueOnce("https://github.com/user/private.git");
+        mocks.getSession.mockResolvedValue(undefined);
+        mocks.gitRun.mockRejectedValueOnce(
+            new Error(
+                "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+            ),
+        );
+
+        await runCloneFlow();
+
+        const message = mocks.showErrorMessage.mock.calls[0]?.[0] as string;
+        expect(message).toContain(
+            'If the repository is private, choose "Browse My Repositories" to sign in to GitHub.',
+        );
+        expect(message).not.toContain("Your GitHub token may have expired");
     });
     beforeEach(() => {
         vi.clearAllMocks();

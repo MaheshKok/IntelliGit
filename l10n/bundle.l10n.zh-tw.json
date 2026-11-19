@@ -328,6 +328,7 @@
     "GitHub clone failed": "GitHub 複製失敗",
     "GitLab clone failed": "GitLab 克隆失敗",
     "If no keys are listed, add yours with `ssh-add ~/.ssh/id_ed25519` (or `~/.ssh/id_rsa`).": "如果沒有列出金鑰，請使用 `ssh-add ~/.ssh/id_ed25519`（或 `~/.ssh/id_rsa`）新增您的金鑰。",
+    "If the repository is private, choose \"Browse My Repositories\" to sign in to GitHub.": "如果倉庫是私有的，請選擇「瀏覽我的倉庫」以登入 GitHub。",
     "IntelliGit error: {message}": "IntelliGit 錯誤：{message}",
     "Invalid merge file path: {message}": "合併檔案路徑無效：{message}",
     "Invalid merge resolution content for {path}.": "{path} 的合併解析內容無效。",
