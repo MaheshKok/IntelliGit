@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
     fsChmod: vi.fn(),
     execFile: vi.fn(),
     httpsGet: vi.fn(),
-    gitRuns: [] as Array<{ root: string; args: string[] }>,
+    gitRuns: [] as Array<{ root: string; args: string[]; env?: Record<string, string> }>,
     gitRun: vi.fn(),
 }));
 
@@ -100,8 +100,12 @@ vi.mock("../../../src/git/executor", () => ({
     GitExecutor: class MockGitExecutor {
         constructor(private readonly root: string) {}
 
-        run(args: string[]): Promise<string> {
-            mocks.gitRuns.push({ root: this.root, args });
+        run(args: string[], options?: { env?: Record<string, string> }): Promise<string> {
+            mocks.gitRuns.push({
+                root: this.root,
+                args,
+                ...(options?.env ? { env: options.env } : {}),
+            });
             return mocks.gitRun(args, this.root);
         }
     },
@@ -131,15 +135,88 @@ function secretStorage(initial?: string): {
 }
 
 describe("cloneService phase 3", () => {
-    it("GitHub-only clone routes directly to GitHub session and repository choice", async () => {
-        mocks.getSession.mockResolvedValue({ accessToken: "synthetic-token" });
+    it("GitHub-only clone asks for the repository choice before any GitHub sign-in", async () => {
         mocks.showQuickPick.mockResolvedValue(undefined);
         await runGitHubCloneFlow();
-        expect(mocks.getSession).toHaveBeenCalledWith("github", ["repo"], { createIfNone: true });
+        expect(mocks.getSession).not.toHaveBeenCalled();
         expect(mocks.showQuickPick).toHaveBeenCalledOnce();
         expect(
             mocks.showQuickPick.mock.calls[0][0].map((item: { value: string }) => item.value),
         ).toEqual(["browse", "url"]);
+    });
+
+    it("signs in to GitHub only when browsing repositories", async () => {
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "browse" });
+
+        await runCloneFlow();
+
+        expect(mocks.getSession).toHaveBeenCalledWith("github", ["repo"], { createIfNone: true });
+    });
+
+    it("clones a public GitHub URL without asking for GitHub sign-in (issue #441)", async () => {
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "url" });
+        mocks.showInputBox.mockResolvedValueOnce("https://github.com/user/repo.git");
+        mocks.getSession.mockResolvedValue(undefined);
+
+        await runCloneFlow();
+
+        for (const call of mocks.getSession.mock.calls) {
+            expect(call[2], "pasted URL must never prompt for GitHub sign-in").toEqual({
+                silent: true,
+            });
+        }
+        expect(
+            mocks.execFile,
+            "anonymous clone must not use askpass credentials",
+        ).not.toHaveBeenCalled();
+        expect(mocks.gitRuns).toContainEqual({
+            root: fixturePath("/dest"),
+            args: ["clone", "https://github.com/user/repo.git", "repo"],
+            // A credential prompt nobody can see would hang the non-cancellable clone.
+            env: { GIT_TERMINAL_PROMPT: "0" },
+        });
+    });
+
+    it("clones a public GitHub URL when GitHub authentication is unavailable", async () => {
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "url" });
+        mocks.showInputBox.mockResolvedValueOnce("https://github.com/user/repo.git");
+        mocks.getSession.mockRejectedValue(new Error("No GitHub authentication provider"));
+
+        await runCloneFlow();
+
+        expect(mocks.showErrorMessage).not.toHaveBeenCalled();
+        expect(mocks.gitRuns).toContainEqual({
+            root: fixturePath("/dest"),
+            args: ["clone", "https://github.com/user/repo.git", "repo"],
+            env: { GIT_TERMINAL_PROMPT: "0" },
+        });
+    });
+
+    it("points to sign-in when an anonymous GitHub URL clone fails", async () => {
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "url" });
+        mocks.showInputBox.mockResolvedValueOnce("https://github.com/user/private.git");
+        mocks.getSession.mockResolvedValue(undefined);
+        mocks.gitRun.mockRejectedValueOnce(
+            new Error(
+                "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+            ),
+        );
+
+        await runCloneFlow();
+
+        const message = mocks.showErrorMessage.mock.calls[0]?.[0] as string;
+        expect(message).toContain(
+            'If the repository is private, choose "Browse My Repositories" to sign in to GitHub.',
+        );
+        expect(message).not.toContain("Your GitHub token may have expired");
     });
     beforeEach(() => {
         vi.clearAllMocks();
@@ -211,6 +288,20 @@ describe("cloneService phase 3", () => {
         expect(items.map((item) => item.provider)).toEqual(["github", "gitlab", "ssh"]);
     });
 
+    it("describes GitHub clone as needing sign-in only for browsing (issue #441)", async () => {
+        mocks.showQuickPick.mockResolvedValueOnce(undefined);
+
+        await runCloneFlow();
+
+        const items = mocks.showQuickPick.mock.calls[0][0] as Array<{
+            provider: string;
+            description: string;
+        }>;
+        expect(items.find((item) => item.provider === "github")?.description).toBe(
+            "Clone by URL, or sign in to browse your repositories",
+        );
+    });
+
     it("runs SSH clone with the selected destination and inferred repo directory", async () => {
         mocks.showQuickPick.mockResolvedValueOnce({ provider: "ssh" });
         mocks.showInputBox.mockResolvedValueOnce("git@github.com:user/repo.git");
@@ -221,6 +312,7 @@ describe("cloneService phase 3", () => {
             {
                 root: fixturePath("/dest"),
                 args: ["clone", "git@github.com:user/repo.git", "repo"],
+                env: { GIT_TERMINAL_PROMPT: "0" },
             },
         ]);
     });
@@ -256,6 +348,7 @@ describe("cloneService phase 3", () => {
             {
                 root: fixturePath("/dest"),
                 args: ["clone", "git@github.com:user/..git", "repo"],
+                env: { GIT_TERMINAL_PROMPT: "0" },
             },
         ]);
     });
