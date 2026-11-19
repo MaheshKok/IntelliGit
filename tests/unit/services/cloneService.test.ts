@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
     fsChmod: vi.fn(),
     execFile: vi.fn(),
     httpsGet: vi.fn(),
-    gitRuns: [] as Array<{ root: string; args: string[] }>,
+    gitRuns: [] as Array<{ root: string; args: string[]; env?: Record<string, string> }>,
     gitRun: vi.fn(),
 }));
 
@@ -100,8 +100,12 @@ vi.mock("../../../src/git/executor", () => ({
     GitExecutor: class MockGitExecutor {
         constructor(private readonly root: string) {}
 
-        run(args: string[]): Promise<string> {
-            mocks.gitRuns.push({ root: this.root, args });
+        run(args: string[], options?: { env?: Record<string, string> }): Promise<string> {
+            mocks.gitRuns.push({
+                root: this.root,
+                args,
+                ...(options?.env ? { env: options.env } : {}),
+            });
             return mocks.gitRun(args, this.root);
         }
     },
@@ -172,6 +176,8 @@ describe("cloneService phase 3", () => {
         expect(mocks.gitRuns).toContainEqual({
             root: fixturePath("/dest"),
             args: ["clone", "https://github.com/user/repo.git", "repo"],
+            // A credential prompt nobody can see would hang the non-cancellable clone.
+            env: { GIT_TERMINAL_PROMPT: "0" },
         });
     });
 
@@ -188,6 +194,7 @@ describe("cloneService phase 3", () => {
         expect(mocks.gitRuns).toContainEqual({
             root: fixturePath("/dest"),
             args: ["clone", "https://github.com/user/repo.git", "repo"],
+            env: { GIT_TERMINAL_PROMPT: "0" },
         });
     });
 
@@ -291,6 +298,7 @@ describe("cloneService phase 3", () => {
             {
                 root: fixturePath("/dest"),
                 args: ["clone", "git@github.com:user/repo.git", "repo"],
+                env: { GIT_TERMINAL_PROMPT: "0" },
             },
         ]);
     });
@@ -326,6 +334,7 @@ describe("cloneService phase 3", () => {
             {
                 root: fixturePath("/dest"),
                 args: ["clone", "git@github.com:user/..git", "repo"],
+                env: { GIT_TERMINAL_PROMPT: "0" },
             },
         ]);
     });

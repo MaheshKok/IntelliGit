@@ -674,7 +674,11 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
                         await runGitCloneWithAskpass(parentDir, ["clone", url, repoDir], auth);
                     } else {
                         const executor = new GitExecutor(parentDir);
-                        await executor.run(["clone", url, repoDir]);
+                        // No terminal is visible and this progress cannot be cancelled, so a
+                        // credential prompt must fail fast instead of waiting forever.
+                        await executor.run(["clone", url, repoDir], {
+                            env: { GIT_TERMINAL_PROMPT: "0" },
+                        });
                     }
                 },
             );
