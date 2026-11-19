@@ -9,6 +9,7 @@ import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
 import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type { CiHistory } from "../../shared/ci/history";
 import type {
+    CiAttemptHistory,
     CiRun,
     CiState,
     CommitChecksSnapshot,
@@ -19,6 +20,13 @@ import type {
 import { getErrorMessage } from "../../utils/errors";
 import type { CiGenerations, CiOperationContext } from "./ciGenerations";
 import { readCiHistory } from "./ciHistory";
+import {
+    changedSinceGreen,
+    firstParentLine,
+    type ChangedSinceGreen,
+    type ChangedSinceGreenRequest,
+    type LoadedCommit,
+} from "./changedSinceGreen";
 import { applyUsual, usualCacheKey } from "./ciTiming";
 import { ciLogKey, type CiLogSource } from "./ciLogMemoryStore";
 import type { CiTrace } from "./ciTrace";
@@ -69,6 +77,9 @@ class AccountChangedError extends Error {}
  */
 export const DEFAULT_COMMIT_CHECKS_TTL_MS = 15_000;
 
+/** How long an ancestor's attempt histories are reused by later badge requests. */
+const ATTEMPT_HISTORY_TTL_MS = 60_000;
+
 /** Tunable behavior for the coordinator; all fields default to the prior Phase-0 behavior. */
 export interface CommitChecksCoordinatorOptions {
     /** When false, every request returns a none snapshot without touching the network. */
@@ -98,6 +109,12 @@ export interface CommitChecksCoordinatorOptions {
     ) => { detail: CommitCiDetailData; capabilities: ProviderCiCapabilities } | undefined;
 }
 
+/** The commit a "flaky n/m" line starts from, and the Git Log's loaded commits. */
+interface CiHistoryLineRequest {
+    hash: string;
+    loaded: readonly LoadedCommit[];
+}
+
 /** Resolves the provider for a repository and delegates snapshots to the shared cache. */
 export class CommitChecksCoordinator {
     private readonly enabled: boolean;
@@ -109,6 +126,11 @@ export class CommitChecksCoordinator {
     private readonly trace?: CiTrace;
     private readonly fixture?: CommitChecksCoordinatorOptions["fixture"];
     private readonly requiredChecks: RequiredChecksCache;
+    private readonly now: () => number;
+    private readonly attemptReads = new Map<
+        string,
+        { at: number; read: Promise<CiAttemptHistory[]> }
+    >();
     private resolvedProvider = false;
     private providerMatch: ProviderMatch | null = null;
     private providerGeneration = 0;
@@ -145,6 +167,7 @@ export class CommitChecksCoordinator {
         this.trace = options.trace;
         this.fixture = options.fixture;
         this.requiredChecks = new RequiredChecksCache(options.now);
+        this.now = options.now ?? Date.now;
     }
 
     /** Drops shared cached snapshots and details; called after credential/settings changes. */
@@ -153,6 +176,7 @@ export class CommitChecksCoordinator {
         this.service.clear();
         this.detailService.clear();
         this.requiredChecks.clear();
+        this.attemptReads.clear();
     }
 
     /** Clears only the memoized provider/ref, preserving shared cached snapshots. */
@@ -212,15 +236,139 @@ export class CommitChecksCoordinator {
      * branch tip's, both cache first; `origin/HEAD` is read for this request.
      *
      * @param parents - The commit's parent hashes, first parent first.
+     * @param line - The commit and the Git Log's loaded commits: their first-parent line is
+     *   read from the caches only, for "flaky n/m".
      */
-    ciHistory(parents: readonly string[]): Promise<CiHistory> {
-        return readCiHistory(
+    async ciHistory(parents: readonly string[], line?: CiHistoryLineRequest): Promise<CiHistory> {
+        const history = await readCiHistory(
             {
                 getChecks: (hash) => this.getChecks(hash),
                 readDefaultBranch: () => this.gitOps.readDefaultBranch(),
             },
             parents,
         );
+        if (!line) return history;
+        // After the parent read, so the first parent just fetched is in the cache too.
+        const ancestors = await Promise.all(
+            firstParentLine(line.hash, line.loaded).map(async (hash) => {
+                const [snapshot, detail] = await Promise.all([
+                    this.cachedSnapshot(hash),
+                    this.cachedDetail(hash, ""),
+                ]);
+                const items = snapshot && snapshot.state !== "unavailable" ? snapshot.items : null;
+                // A cached detail that read its re-runs holds them; any other commit whose checks
+                // are cached (detail never opened, or one that never read them, such as an
+                // unavailable one) asks the provider (§9), so a job that failed then passed
+                // there still counts and an unread answer stays unread.
+                const attempts =
+                    detail?.attemptHistory ?? (items ? await this.readAttemptHistory(hash) : []);
+                return {
+                    hash,
+                    items,
+                    ...(items && snapshot?.partial && { partial: true as const }),
+                    attempts: attempts ?? [],
+                    ...(attempts === null && { attemptsUnavailable: true as const }),
+                };
+            }),
+        );
+        return { ...history, line: ancestors };
+    }
+
+    /**
+     * The newest first-parent ancestor inside the loaded commits where a failed job passed,
+     * and the files changed since (PLAN.md §14). Snapshots and the selected commit's detail
+     * are read from the caches only: nothing here sends a request. `undefined` when checks
+     * are off. A git failure rejects.
+     *
+     * @param request - The job, the selected commit and the Git Log's loaded commits.
+     * @param repoKey - The repository the Checks tab asks about.
+     */
+    async changedSinceGreen(
+        request: ChangedSinceGreenRequest,
+        repoKey: string,
+    ): Promise<ChangedSinceGreen | undefined> {
+        if (!this.enabled) return undefined;
+        return changedSinceGreen(
+            {
+                cachedChecks: (hash) => this.cachedSnapshot(hash),
+                cachedDetail: (hash) => this.cachedDetail(hash, repoKey),
+                diffNameStatus: (from, to) => this.gitOps.diffNameStatus(from, to),
+                diffNumstat: (from, to) => this.gitOps.diffNumstat(from, to),
+            },
+            request,
+        );
+    }
+
+    /**
+     * A commit's attempt histories from the provider, remembered briefly per account so repeated
+     * badge requests share one read. Empty when the provider lists no re-runs; `null` (unread,
+     * never an empty history) when the read failed or the account changed meanwhile. A failure
+     * is not remembered, so the next request (Refresh) reads it again.
+     */
+    private async readAttemptHistory(hash: string): Promise<CiAttemptHistory[] | null> {
+        const providerGeneration = this.providerGeneration;
+        try {
+            const match = await this.resolveEnabledMatch();
+            if (!match?.provider.capabilities.attemptHistory) return [];
+            const { provider, ref } = match;
+            if (!provider.getAttemptHistory) return [];
+            const key = this.snapshotKey(match, await this.readAccount(match), hash);
+            const now = this.now();
+            const kept = this.attemptReads.get(key);
+            let read = kept && now - kept.at < ATTEMPT_HISTORY_TTL_MS ? kept.read : undefined;
+            if (!read) {
+                const fresh = provider.getAttemptHistory(ref, hash);
+                this.attemptReads.set(key, { at: now, read: fresh });
+                fresh.catch(() => {
+                    if (this.attemptReads.get(key)?.read === fresh) this.attemptReads.delete(key);
+                });
+                read = fresh;
+            }
+            const answer = await read;
+            return providerGeneration === this.providerGeneration ? answer : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * A commit's cached snapshot (L1, then L2), or `undefined`; never asks the provider. An
+     * E2E-seeded commit is served from its fixture, which sends nothing either.
+     */
+    private cachedSnapshot(hash: string): Promise<CommitChecksSnapshot | undefined> {
+        if (this.fixture?.(hash)) return this.getChecks(hash);
+        return this.fromCache((key) => this.service.getCached(key), hash);
+    }
+
+    /** A commit's cached detail (L1, then L2), or `undefined`; never asks the provider. */
+    private async cachedDetail(
+        hash: string,
+        repoKey: string,
+    ): Promise<CommitCiDetailData | undefined> {
+        const seeded = this.fixture?.(hash);
+        if (seeded) return seeded.detail;
+        return this.fromCache(
+            (key, match) =>
+                this.detailService.getCached(`${key}#detail`, {
+                    repoKey,
+                    capabilities: match.provider.capabilities,
+                }),
+            hash,
+        );
+    }
+
+    /** Reads a commit's cache entry under the signed-in account; `undefined` on a miss. */
+    private async fromCache<T>(
+        read: (key: string, match: ProviderMatch) => Promise<T>,
+        hash: string,
+    ): Promise<T | undefined> {
+        try {
+            const match = await this.resolveEnabledMatch();
+            if (!match) return undefined;
+            return await read(this.snapshotKey(match, await this.readAccount(match), hash), match);
+        } catch {
+            return undefined;
+        }
     }
 
     /**

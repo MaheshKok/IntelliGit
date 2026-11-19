@@ -517,6 +517,9 @@
     "commit.checks.tab.openInBrowser": "Abrir en el navegador",
     "commit.checks.tab.jobsPageBound": "Se muestran los primeros {count} trabajos: abra la ejecución en el navegador para ver el resto",
     "commit.checks.tab.jobsRejectedNext": "Se muestran los primeros {count} trabajos: se rechazó el enlace a la página siguiente del proveedor",
+    "commit.checks.tab.attemptsPageBound": "Se muestran los primeros {count} intentos: abra la ejecución en el navegador para ver el resto",
+    "commit.checks.tab.attemptsRejectedNext": "Se muestran los primeros {count} intentos: se rechazó el enlace a la página siguiente del proveedor",
+    "commit.checks.tab.attemptsUnavailable": "No se pudieron leer las repeticiones de algunos commits cargados: el recuento de «inestable» puede estar incompleto",
     "commit.checks.tab.runsPageBound": "Se muestran las primeras {count} ejecuciones de flujo de trabajo",
     "commit.checks.tab.runsRejectedNext": "Se muestran las primeras {count} ejecuciones de flujo de trabajo: se rechazó el enlace a la página siguiente del proveedor",
     "commit.checks.tab.checksPageBound": "Se muestran las primeras {count} comprobaciones",
@@ -578,5 +581,13 @@
     "commit.checks.tab.history.still": "persiste",
     "commit.checks.tab.history.fixed": "corregido",
     "commit.checks.tab.history.unknown": "desconocido",
-    "commit.checks.tab.history.alsoRed": "también en rojo en {branch}"
+    "commit.checks.tab.history.alsoRed": "también en rojo en {branch}",
+    "commit.checks.tab.history.flaky": "inestable {n}/{m}",
+    "commit.checks.tab.history.flakyEstimated": "inestable {n}/{m} (estimado)",
+    "commit.checks.tab.history.flakyEstimatedTooltip": "estimado a partir de los commits cargados; los reintentos no se cuentan para este proveedor",
+    "commit.checks.tab.changedSinceGreen": "Cambios desde el último verde ({hash})",
+    "commit.checks.tab.changedSinceGreenNone": "No hay ninguna ejecución correcta de este trabajo en el historial cargado",
+    "commit.checks.tab.changedSinceGreenAmbiguous": "No se puede identificar este trabajo en commits anteriores",
+    "commit.checks.tab.changedSinceGreenFailed": "No se pudo comparar: {error}",
+    "commit.checks.tab.changedSinceGreenLoading": "Buscando la última ejecución correcta…"
 }

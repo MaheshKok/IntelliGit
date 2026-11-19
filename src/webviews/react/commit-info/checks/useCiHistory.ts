@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { CiHistory } from "../../../../shared/ci/history";
 import type { CommitCiDetail } from "../../../../types";
-import type { CiHistoryMessage, RequestCiHistoryMessage } from "../../../protocol/commitCiMessages";
+import type {
+    CiHistoryMessage,
+    CiLoadedCommit,
+    RequestCiHistoryMessage,
+} from "../../../protocol/commitCiMessages";
 import { getVsCodeApi } from "../../shared/vscodeApi";
 
 // One counter per webview, so a request id is never reused by another pane instance.
@@ -17,12 +21,15 @@ let lastRequestId = 0;
  * @param hash - The commit whose detail is shown.
  * @param parents - The commit's parents from the row the pane holds.
  * @param detail - The shown detail; nothing is asked before it renders.
+ * @param loaded - The commits the graph loaded, for the "flaky" line; absent where the host
+ *   supplies them. A new page of commits asks again, so the line grows with the graph.
  */
 export function useCiHistory(
     repoKey: string,
     hash: string,
     parents: readonly string[],
     detail: CommitCiDetail | undefined,
+    loaded?: readonly CiLoadedCommit[],
 ): { history: CiHistory | undefined; defaultBranchUnknown: boolean | undefined } {
     // Each answer keeps the detail it was asked for, so a replacement detail's first render,
     // before the effect below retires the answer, never shows the previous answer's tags.
@@ -52,8 +59,9 @@ export function useCiHistory(
             repoKey,
             hash,
             parents: parentsKey ? parentsKey.split(",") : [],
+            ...(loaded && { loaded: [...loaded] }),
         });
-    }, [repoKey, hash, parentsKey, detail]);
+    }, [repoKey, hash, parentsKey, detail, loaded]);
 
     useEffect(() => {
         const onMessage = (event: MessageEvent<unknown>): void => {

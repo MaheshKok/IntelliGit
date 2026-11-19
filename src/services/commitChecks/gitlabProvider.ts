@@ -8,6 +8,7 @@ import * as vscode from "vscode";
 import type {
     CiAction,
     CiActionEvidence,
+    CiAttemptHistory,
     CiCoverage,
     CiFlatCheck,
     CiJob,
@@ -41,11 +42,18 @@ import {
     summaryForItems,
     unavailableSnapshot,
 } from "./normalize";
-import { CI_MAX_PAGES, CI_PAGE_SIZE, isUnderApiPrefix, paginate } from "./paginate";
+import {
+    CI_MAX_PAGES,
+    CI_PAGE_SIZE,
+    isUnderApiPrefix,
+    paginate,
+    type PaginateResult,
+} from "./paginate";
 import { RequestGateCooldownError } from "./requestGate";
 import { NO_CI_CAPABILITIES } from "../../shared/ci/capabilities";
 import { UNKNOWN_REQUIRED, type RequiredChecks } from "./requiredChecks";
 import { uniqueJobDurations, type UsualDuration } from "./ciTiming";
+import { attemptHistories, type CiAttemptRun } from "./ciHistory";
 import {
     hasUnfinishedWork,
     isCompleteDetail,
@@ -110,6 +118,7 @@ interface GitLabJob {
     web_url?: unknown;
     started_at?: unknown;
     finished_at?: unknown;
+    created_at?: unknown;
     allow_failure?: unknown;
     /** Seconds the job ran, with a fraction; null while it runs. */
     duration?: unknown;
@@ -238,6 +247,7 @@ export class GitLabProvider implements CommitChecksProvider {
         requiredChecks: true,
         optionalJobs: true,
         usualDuration: true,
+        attemptHistory: true,
         writeScopeHelp: "commit.checks.tab.writeScopeHelpGitlab",
         // POST pipelines/:id/retry restarts failed and canceled jobs.
         rerunFailedLabel: "commit.checks.tab.rerunFailedAndCanceled",
@@ -525,17 +535,49 @@ export class GitLabProvider implements CommitChecksProvider {
         }
     }
 
-    private async readDetail(
-        ref: GitLabRepoRef,
-        hash: string,
-        token: string,
-        conditional: EtagStore | undefined,
-    ): Promise<CiDetailFetch> {
-        const fetch = (url: string) =>
-            this.fetchWithMeta(url, { "PRIVATE-TOKEN": token }, conditional);
-        const pages = async <T>(firstUrl: string, itemsOf: (body: unknown) => T[]) => {
+    /**
+     * §9: the commit's attempt histories, one per pipeline and logical job; `getDetail` carries
+     * the same ones. No token is an empty answer; a failed read rejects.
+     */
+    async getAttemptHistory(ref: ProviderRepoRef, hash: string): Promise<CiAttemptHistory[]> {
+        const gitLabRef = ref as GitLabRepoRef;
+        const token = await this.readToken(gitLabRef.host, hash);
+        if (typeof token !== "string") {
+            if (token.signInHost === undefined) throw new Error(token.error ?? token.summary);
+            return [];
+        }
+        const fetch = (url: string) => this.fetchWithMeta(url, { "PRIVATE-TOKEN": token });
+        const pages = this.pager(gitLabRef, fetch);
+        const base = projectApiUrl(gitLabRef);
+        try {
+            const pipelines = await pages(
+                `${base}/pipelines?sha=${encodeURIComponent(hash)}&per_page=${CI_PAGE_SIZE}`,
+                readArray<GitLabPipeline>,
+            );
+            const attemptRuns: CiAttemptRun[] = [];
+            for (const listed of pipelines.items) {
+                const runId = readId(listed.id);
+                if (runId === undefined) continue;
+                // The pipeline's name is in its own record, not in the list.
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
+                const pipeline = ((await fetch(`${base}/pipelines/${encodeURIComponent(runId)}`))
+                    .body ?? {}) as GitLabPipeline;
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
+                attemptRuns.push(
+                    await readAttemptRun(pages, base, runId, readString(pipeline.name)),
+                );
+            }
+            return attemptRuns.length > 0 ? attemptHistories(attemptRuns, "createdAt") : [];
+        } catch (err) {
+            throw redactError(err, token);
+        }
+    }
+
+    /** Reads a collection page by page under this provider's next-page guard. */
+    private pager(ref: GitLabRepoRef, fetch: (url: string) => Promise<FetchResponse>): Pages {
+        return async <T>(firstUrl: string, itemsOf: (body: unknown) => T[]) => {
             let current = firstUrl;
-            const result = await paginate(
+            return paginate(
                 (url) => {
                     current = url;
                     return fetch(url);
@@ -546,8 +588,18 @@ export class GitLabProvider implements CommitChecksProvider {
                 CI_MAX_PAGES,
                 (url) => this.allowNext(ref, url),
             );
-            return result;
         };
+    }
+
+    private async readDetail(
+        ref: GitLabRepoRef,
+        hash: string,
+        token: string,
+        conditional: EtagStore | undefined,
+    ): Promise<CiDetailFetch> {
+        const fetch = (url: string) =>
+            this.fetchWithMeta(url, { "PRIVATE-TOKEN": token }, conditional);
+        const pages = this.pager(ref, fetch);
         const base = projectApiUrl(ref);
         const pipelines = await pages(
             `${base}/pipelines?sha=${encodeURIComponent(hash)}&per_page=${CI_PAGE_SIZE}`,
@@ -556,6 +608,7 @@ export class GitLabProvider implements CommitChecksProvider {
         const runs: CiRun[] = [];
         const cutRuns = new Set<string>();
         const scanCursors: CiFailedScanCursor[] = [];
+        const attemptRuns: CiAttemptRun[] = [];
         let retriedMidRead = false;
         let sessionOnly = false;
         for (const listed of pipelines.items) {
@@ -589,6 +642,8 @@ export class GitLabProvider implements CommitChecksProvider {
             const jobs = inStageOrder(jobsPage.items).map((job) => toJob(job, runName));
             const run = toRun(pipeline, runId, runName, jobs, jobsPage.coverage);
             runs.push(run);
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            attemptRuns.push(await readAttemptRun(pages, base, runId, runName));
             if (jobsPage.coverage !== "full") cutRuns.add(runId);
             if (run.state === "failure" && jobsPage.next) {
                 // The failed-only collection is read from its first page; jobs already shown
@@ -622,6 +677,9 @@ export class GitLabProvider implements CommitChecksProvider {
             ...(retriedMidRead && { complete: false }),
             ...(sessionOnly && { sessionOnly }),
             ...(scanCursors.length > 0 && { scanCursors }),
+            ...(attemptRuns.length > 0 && {
+                attemptHistory: attemptHistories(attemptRuns, "createdAt"),
+            }),
         };
     }
 
@@ -740,6 +798,32 @@ export class GitLabProvider implements CommitChecksProvider {
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/** Reads a collection page by page; the pager's shape. */
+type Pages = <T>(firstUrl: string, itemsOf: (body: unknown) => T[]) => Promise<PaginateResult<T>>;
+
+/**
+ * Every attempt of one pipeline's jobs (`include_retried`). Retried jobs carry no attempt
+ * number, so their history is ordered by creation.
+ */
+async function readAttemptRun(
+    pages: Pages,
+    base: string,
+    runId: string,
+    runName: string,
+): Promise<CiAttemptRun> {
+    const attempts = await pages(
+        `${base}/pipelines/${encodeURIComponent(runId)}/jobs?include_retried=true&per_page=${CI_PAGE_SIZE}`,
+        (body) =>
+            readArray<GitLabJob>(body).map((job) => ({
+                ...toJob(job, runName),
+                ...(optionalString(job.created_at) !== undefined && {
+                    createdAt: optionalString(job.created_at),
+                }),
+            })),
+    );
+    return { runId, coverage: attempts.coverage, jobs: attempts.items };
+}
 
 /** A GitLab duration in seconds as milliseconds; null when it is missing or not a duration. */
 function secondsToMs(seconds: unknown): number | null {

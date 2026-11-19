@@ -1,16 +1,19 @@
 import React from "react";
 import type { CiJob } from "../../../../types";
 import { StateIcon } from "../../commit-list/CommitChecksPopover";
+import { TreeFileRow } from "../../shared/components/FileTreeRows";
 import { t } from "../../shared/i18n";
 import { badgeStateOf, formatCiDuration, formatCiStart, stateLabel } from "./ciFormat";
 import { ActionButton } from "./ChecksHeader";
 import { checksStyles } from "./checksStyles";
 import type { CiActionTarget } from "./useCiAction";
+import { useChangedSinceGreen, type ChangedSinceGreenJob } from "./useChangedSinceGreen";
 import { useCiLog, type CiLogJobRef, type CiLogView } from "./useCiLog";
 
 /**
- * The selected job: name, state, duration, start, its failure summary, its steps, its log
- * excerpt with the button that opens the full log, and its link.
+ * The selected job: name, state, duration, start, its failure summary, its steps, the files
+ * changed since it last passed, its log excerpt with the button that opens the full log, and
+ * its link.
  */
 export function CheckJobDetail({
     job,
@@ -18,6 +21,7 @@ export function CheckJobDetail({
     showFailureSummary = false,
     logJob = null,
     rerunJob = null,
+    changedSinceGreen = null,
     onOpenUrl,
 }: {
     job: CiJob | undefined;
@@ -32,6 +36,8 @@ export function CheckJobDetail({
         busy: CiActionTarget | null;
         onAction: (target: CiActionTarget) => void;
     } | null;
+    /** The selected job when it failed, for "Changed since last green"; null otherwise. */
+    changedSinceGreen?: ChangedSinceGreenJob | null;
     onOpenUrl: (url: string) => void;
 }): React.ReactElement {
     if (!job) {
@@ -92,6 +98,13 @@ export function CheckJobDetail({
                         </li>
                     ))}
                 </ol>
+            ) : null}
+            {changedSinceGreen ? (
+                <ChangedSinceGreen
+                    // Another job or commit starts a new answer, so nothing of the last one shows.
+                    key={`${changedSinceGreen.repoKey}\0${changedSinceGreen.hash}\0${changedSinceGreen.logicalCheckId}`}
+                    job={changedSinceGreen}
+                />
             ) : null}
             {logJob ? (
                 <JobLog
@@ -176,6 +189,62 @@ function JobLog({
             </button>
             <LogProblem view={openError} />
         </div>
+    );
+}
+
+/**
+ * "Changed since last green (a1b2c3d)": the files changed between the newest loaded
+ * first-parent ancestor where this job passed and the selected commit, each opening a diff of
+ * the two versions. Says so when no ancestor passed, when the job cannot be matched in older
+ * commits, or when Git could not compare.
+ */
+function ChangedSinceGreen({ job }: { job: ChangedSinceGreenJob }): React.ReactElement {
+    const { view, openDiff } = useChangedSinceGreen(job);
+    if (view.status === "loading") {
+        return (
+            <div role="status" style={checksStyles.note}>
+                {t("commit.checks.tab.changedSinceGreenLoading")}
+            </div>
+        );
+    }
+    if (view.error !== undefined) {
+        return (
+            <div role="alert" data-testid="ci-changed-since-green" style={checksStyles.note}>
+                {t("commit.checks.tab.changedSinceGreenFailed", { error: view.error })}
+            </div>
+        );
+    }
+    const lastGreen = view.lastGreen;
+    if (!lastGreen) {
+        return (
+            <div data-testid="ci-changed-since-green" style={checksStyles.note}>
+                {view.unknownReason === "ambiguous"
+                    ? t("commit.checks.tab.changedSinceGreenAmbiguous")
+                    : t("commit.checks.tab.changedSinceGreenNone")}
+            </div>
+        );
+    }
+    const title = t("commit.checks.tab.changedSinceGreen", { hash: lastGreen.slice(0, 7) });
+    return (
+        <section data-testid="ci-changed-since-green" aria-label={title} style={logStyle}>
+            <div style={{ fontWeight: 600 }}>{title}</div>
+            <div role="tree" aria-label={title} style={{ alignSelf: "stretch" }}>
+                {view.files.map((file) => (
+                    // The commit pane's changed-files row; a click or Enter opens the diff.
+                    <TreeFileRow
+                        key={file.path}
+                        file={file}
+                        depth={0}
+                        showParentPath
+                        wiring={{
+                            isSelected: false,
+                            onSelect: () => openDiff(file),
+                            dataAttributes: { testid: "ci-changed-file" },
+                        }}
+                    />
+                ))}
+            </div>
+        </section>
     );
 }
 

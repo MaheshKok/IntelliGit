@@ -1,11 +1,23 @@
 // Vitest configuration for unit testing the extension. Excludes VS Code API
 // calls which require the Extension Development Host for integration tests.
 
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 import { harnessTimeouts } from "./tests/setup/platformTimeouts";
 
 export default defineConfig({
+    // Exact match only, so packages such as `vscode-uri` resolve as before.
+    resolve: {
+        alias: [
+            {
+                find: /^vscode$/,
+                replacement: fileURLToPath(
+                    new URL("./tests/setup/vscodeModule.ts", import.meta.url),
+                ),
+            },
+        ],
+    },
     test: {
         include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
         globals: true,

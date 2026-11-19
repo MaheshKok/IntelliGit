@@ -517,6 +517,9 @@
     "commit.checks.tab.openInBrowser": "Ouvrir dans le navigateur",
     "commit.checks.tab.jobsPageBound": "Affichage des {count} premiers jobs — ouvrez l'exécution dans le navigateur pour le reste",
     "commit.checks.tab.jobsRejectedNext": "Affichage des {count} premiers jobs — le lien de page suivante du fournisseur a été refusé",
+    "commit.checks.tab.attemptsPageBound": "Affichage des {count} premières tentatives — ouvrez l'exécution dans le navigateur pour le reste",
+    "commit.checks.tab.attemptsRejectedNext": "Affichage des {count} premières tentatives — le lien de page suivante du fournisseur a été refusé",
+    "commit.checks.tab.attemptsUnavailable": "Les relances de certains commits chargés n'ont pas pu être lues — le décompte « instable » est peut-être incomplet",
     "commit.checks.tab.runsPageBound": "Affichage des {count} premières exécutions de workflow",
     "commit.checks.tab.runsRejectedNext": "Affichage des {count} premières exécutions de workflow — le lien de page suivante du fournisseur a été refusé",
     "commit.checks.tab.checksPageBound": "Affichage des {count} premières vérifications",
@@ -578,5 +581,13 @@
     "commit.checks.tab.history.still": "toujours",
     "commit.checks.tab.history.fixed": "corrigé",
     "commit.checks.tab.history.unknown": "inconnu",
-    "commit.checks.tab.history.alsoRed": "également en rouge sur {branch}"
+    "commit.checks.tab.history.alsoRed": "également en rouge sur {branch}",
+    "commit.checks.tab.history.flaky": "instable {n}/{m}",
+    "commit.checks.tab.history.flakyEstimated": "instable {n}/{m} (estimé)",
+    "commit.checks.tab.history.flakyEstimatedTooltip": "estimé à partir des commits chargés ; les relances ne sont pas comptées pour ce fournisseur",
+    "commit.checks.tab.changedSinceGreen": "Modifié depuis le dernier succès ({hash})",
+    "commit.checks.tab.changedSinceGreenNone": "Aucune exécution réussie de ce job dans l'historique chargé",
+    "commit.checks.tab.changedSinceGreenAmbiguous": "Impossible de retrouver ce job dans les commits plus anciens",
+    "commit.checks.tab.changedSinceGreenFailed": "Impossible de comparer : {error}",
+    "commit.checks.tab.changedSinceGreenLoading": "Recherche de la dernière exécution réussie…"
 }

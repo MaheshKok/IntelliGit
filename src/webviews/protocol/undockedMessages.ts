@@ -17,6 +17,8 @@ import type {
     PreviewCiLogMessage,
     RunCiActionMessage,
     RequestCiHistoryMessage,
+    RequestChangedSinceGreenMessage,
+    OpenCiRangeDiffMessage,
     RequestCommitCiDetailMessage,
 } from "./commitCiMessages";
 
@@ -222,6 +224,8 @@ type GraphOutbound =
     | OpenCiLogMessage
     | RunCiActionMessage
     | RequestCiHistoryMessage
+    | RequestChangedSinceGreenMessage
+    | OpenCiRangeDiffMessage
     | OpenCommitChecksSettingsMessage
     | {
           /** Command requesting the controller to return IntelliGit to docked views. */

@@ -43,6 +43,109 @@ describe("CommitChecksService", () => {
         expect(fetchSnapshot).toHaveBeenCalledTimes(1);
     });
 
+    it.each([
+        ["L1 only", undefined],
+        ["L1 and L2", () => new CommitChecksPersistentCache(state())],
+    ])("a cache-only read never joins an in-flight fetch (%s)", async (_label, persistent) => {
+        const service = new CommitChecksService({ persistentCache: persistent?.() });
+        let release!: (value: CommitChecksSnapshot) => void;
+        let started!: () => void;
+        const begun = new Promise<void>((done) => {
+            started = done;
+        });
+        const fetching = service.getOrFetch("github:repo@abc1234:-", () => {
+            started();
+            return new Promise((done) => {
+                release = done;
+            });
+        });
+        await begun;
+        const cached = service.getCached("github:repo@abc1234:-");
+        // Bounded: a read that waited for the fetch would still be pending at the deadline.
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+        const first = await Promise.race([
+            cached.then(() => "cache read" as const),
+            new Promise<"still waiting">((done) => {
+                deadline = setTimeout(() => done("still waiting"), 1_000);
+            }),
+        ]);
+        clearTimeout(deadline);
+        expect(first, "a cache-only read must complete while the fetch is still pending").toBe(
+            "cache read",
+        );
+        release(snapshot("success"));
+        await fetching;
+
+        expect(
+            await cached,
+            "a cache-only miss must not wait for and take the network answer",
+        ).toBeUndefined();
+    });
+
+    it.each([
+        ["a stored entry", true],
+        ["an empty store", false],
+    ])(
+        "a cache-only read over %s never joins a refresh started during its store read",
+        async (_label, stored) => {
+            const store = state();
+            const key = "github:repo@abc1234:-";
+            if (stored) {
+                await new CommitChecksService({
+                    persistentCache: new CommitChecksPersistentCache(store),
+                }).getOrFetch(key, async () => snapshot("success"));
+            }
+            const service = new CommitChecksService({
+                persistentCache: new CommitChecksPersistentCache(store),
+            });
+            const cached = service.getCached(key);
+            const refresh = service.getOrFetch(key, async () => snapshot("failure"), {
+                force: true,
+            });
+
+            expect(
+                (await cached)?.state,
+                "a cache-only read must not take the refresh's network answer",
+            ).not.toBe("failure");
+            await refresh;
+        },
+    );
+
+    it("a cache-only read serves the stored copy while a refresh runs; a badge request still joins the refresh", async () => {
+        const store = state();
+        const key = "github:repo@abc1234:-";
+        await new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(store),
+        }).getOrFetch(key, async () => snapshot("success"));
+        const service = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(store),
+        });
+        let release!: (value: CommitChecksSnapshot) => void;
+        const refresh = service.getOrFetch(
+            key,
+            () =>
+                new Promise((done) => {
+                    release = done;
+                }),
+            { force: true },
+        );
+        const blocked = new Promise<"blocked">((done) => setTimeout(() => done("blocked"), 50));
+        const cached = await Promise.race([service.getCached(key), blocked]);
+        expect(
+            cached === "blocked" ? cached : cached?.state,
+            "a cache-only read serves the stored copy at once, without waiting for the refresh",
+        ).toBe("success");
+        const fetchAgain = vi.fn(async () => snapshot("pending"));
+        const badge = service.getOrFetch(key, fetchAgain);
+        release(snapshot("failure"));
+        expect(
+            (await badge).state,
+            "a badge request during the refresh joins it, not the copy the cache-only read served",
+        ).toBe("failure");
+        expect(fetchAgain).not.toHaveBeenCalled();
+        await refresh;
+    });
+
     it("does not cache or detach requests that resolve after clear", async () => {
         const service = new CommitChecksService({ ttlMs: 15_000 });
         const key = "github:repo@abc1234:-";

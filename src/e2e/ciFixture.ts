@@ -1,6 +1,6 @@
 // E2E-only CI fixture. A spec seeds one CI detail into a globalState key the control channel
-// allowlists, and every commit then reports it, so the Checks tab renders without a CI
-// provider or network. Read only while the E2E control channel is active (its three-gate
+// allowlists, and every commit then reports it (or its own, under `details`), so the Checks
+// tab renders without a CI provider or network. Read only while the E2E control channel is active (its three-gate
 // check), so a shipped install never serves it.
 
 import type * as vscode from "vscode";
@@ -33,8 +33,19 @@ export function readE2eCiFixture(
     if (!isE2eControlChannelActive()) return undefined;
     const seeded = memento.get<unknown>(E2E_CI_FIXTURE_KEY);
     if (seeded === undefined || seeded === null) return undefined;
-    const { detail, capabilities } = seeded as { detail?: unknown; capabilities?: unknown };
-    const stamped = typeof detail === "object" && detail !== null ? { ...detail, hash } : detail;
+    const { detail, details, capabilities } = seeded as {
+        detail?: unknown;
+        details?: unknown;
+        capabilities?: unknown;
+    };
+    // `details` (commit hash to detail) seeds one commit apart from the shared `detail`.
+    if (details !== undefined && (typeof details !== "object" || details === null)) {
+        throw new Error(
+            `The seeded ${E2E_CI_FIXTURE_KEY} details are not commits mapped to details.`,
+        );
+    }
+    const own = (details as Record<string, unknown> | undefined)?.[hash] ?? detail;
+    const stamped = typeof own === "object" && own !== null ? { ...own, hash } : own;
     if (!isCommitCiDetailData(stamped)) {
         throw new Error(`The seeded ${E2E_CI_FIXTURE_KEY} value is not a CI detail.`);
     }

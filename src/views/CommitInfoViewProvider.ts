@@ -17,11 +17,22 @@ import {
 import { answerCiLogMessage } from "./ciLogHandler";
 import { answerCiActionMessage } from "./ciActionHandler";
 import { answerCiHistoryRequest } from "./ciHistoryHandler";
+import {
+    answerChangedSinceGreenRequest,
+    answerOpenCiRangeDiff,
+    CiRangeDiffGrant,
+} from "./ciChangedSinceGreenHandler";
+import type { LoadedCommit } from "../services/commitChecks/changedSinceGreen";
 
 /** What the Changed Files view needs to serve its Checks tab. */
 export interface CommitInfoCiSource extends CommitCiDetailSource {
     /** The `commitChecks.enabled` setting. */
     enabled: boolean;
+    /**
+     * The commits the Git Log views loaded, with their parents: this view holds no commit list,
+     * so history and "Changed since last green" walk these instead of the webview's.
+     */
+    loadedCommits?: () => readonly LoadedCommit[];
 }
 
 /**
@@ -48,6 +59,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     /** Advances on every `ready`; a reload keeps this webview object, so a reply is told apart by it. */
     private webviewGeneration = 0;
     private ciSource?: CommitInfoCiSource;
+    private readonly rangeDiffGrant = new CiRangeDiffGrant();
     /** "Open in Checks" asked for before the webview could receive it, with the repository it
      * was asked in: a repository switch before the view is ready must not re-key it. */
     private pendingChecks?: { repoKey: string; hash: string };
@@ -116,6 +128,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     if (this.view === webviewView) {
                         this.webviewGeneration += 1;
                         this.ciDetailLoops.dispose();
+                        this.rangeDiffGrant.clear();
                     }
                     try {
                         await this.iconTheme.initIconThemeData();
@@ -152,6 +165,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                 case "openCiLog":
                 case "runCiAction":
                 case "requestCiHistory":
+                case "requestChangedSinceGreen":
+                case "openCiRangeDiff":
                     try {
                         await this.handleChecksMessage(msg, webviewView);
                     } catch (err) {
@@ -168,6 +183,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
             // A replaced view's late dispose must not tear down its successor.
             if (this.view !== webviewView) return;
             this.ciDetailLoops.dispose();
+            this.rangeDiffGrant.clear();
             this.view = undefined;
             this.ready = false;
             this.iconTheme.dispose();
@@ -221,6 +237,12 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({ type: "openChecksTab", ...pending });
     }
 
+    /** The message with the Git Log views' loaded commits in place of the webview's (none). */
+    private withLoaded(msg: object): Record<string, unknown> {
+        const loaded = this.ciSource?.loadedCommits?.();
+        return loaded ? { ...msg, loaded } : { ...msg };
+    }
+
     private async handleChecksMessage(
         msg: Extract<
             CommitInfoOutbound,
@@ -234,17 +256,39 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     | "previewCiLog"
                     | "openCiLog"
                     | "runCiAction"
-                    | "requestCiHistory";
+                    | "requestCiHistory"
+                    | "requestChangedSinceGreen"
+                    | "openCiRangeDiff";
             }
         >,
         view: vscode.WebviewView,
     ): Promise<void> {
         switch (msg.type) {
+            case "requestChangedSinceGreen":
+                if (!this.ciSource || this.view !== view) return;
+                {
+                    const generation = this.webviewGeneration;
+                    await answerChangedSinceGreenRequest(
+                        this.ciSource,
+                        this.withLoaded(msg),
+                        (reply) => {
+                            if (this.view === view && generation === this.webviewGeneration) {
+                                this.rangeDiffGrant.record(reply);
+                                this.postToWebview(reply);
+                            }
+                        },
+                    );
+                }
+                return;
+            case "openCiRangeDiff":
+                if (!this.ciSource || this.view !== view) return;
+                await answerOpenCiRangeDiff(this.ciSource, { ...msg }, this.rangeDiffGrant);
+                return;
             case "requestCiHistory":
                 if (!this.ciSource || this.view !== view) return;
                 {
                     const generation = this.webviewGeneration;
-                    await answerCiHistoryRequest(this.ciSource, { ...msg }, (reply) => {
+                    await answerCiHistoryRequest(this.ciSource, this.withLoaded(msg), (reply) => {
                         if (this.view === view && generation === this.webviewGeneration) {
                             this.postToWebview(reply);
                         }

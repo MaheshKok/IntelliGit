@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Cloning a public GitHub repository by pasting its URL no longer asks you to sign in to GitHub. If you are already signed in, IntelliGit still uses your account, so private repositories keep working; signing in is only needed to browse your own repositories.
 
+## [0.43.15] - 2026-11-18
+
+### Added
+
+- Groundwork for the coming Checks tab: IntelliGit can now tell when a CI job passes and fails at random, and list the files changed since a failed job last passed, each opening a diff of the two versions. Nothing changes in the extension yet.
+
 ## [0.43.14] - 2026-11-15
 
 ### Fixed

@@ -10,7 +10,13 @@
  * one check of the current commit (Codex R3 #11); anything else is no match.
  */
 
-import type { CiState, CommitCheckItem, CommitCheckState, CommitCiDetailData } from "../../types";
+import type {
+    CiAttemptHistory,
+    CiState,
+    CommitCheckItem,
+    CommitCheckState,
+    CommitCiDetailData,
+} from "../../types";
 
 /** How a check compares with the same check on the parent commit. */
 export type CiHistoryTag = "new" | "still" | "fixed" | "unknown";
@@ -32,8 +38,21 @@ interface CiHistorySnapshot {
     partial?: true;
 }
 
+/**
+ * A first-parent ancestor inside the commits the Git Log loaded, read from the cache only:
+ * `items` is `null` when its snapshot was not cached, and `attempts` holds the re-runs its
+ * cached detail lists. `attemptsUnavailable` is set when the provider's attempt read for the
+ * commit failed: its re-runs are unknown, not none, so `attempts` is empty but not complete.
+ */
+export interface CiHistoryLineCommit extends CiHistorySnapshot {
+    attempts: CiAttemptHistory[];
+    attemptsUnavailable?: true;
+}
+
 /** The host's answer: the first parent's snapshot and the default branch tip's. */
 export interface CiHistory {
+    /** The loaded first-parent ancestors, newest first, that "flaky n/m" counts. */
+    line?: CiHistoryLineCommit[];
     /** `null` for a root commit. */
     parent: CiHistorySnapshot | null;
     /** `null` when `origin/HEAD` or its tip is missing (shown as "default branch unknown"). */
@@ -60,11 +79,23 @@ export function join(
     current: readonly CiHistoryCheck[],
     parent: readonly CommitCheckItem[],
 ): CommitCheckItem | undefined {
+    const match = matchCheck(check, current, parent);
+    return typeof match === "string" ? undefined : match;
+}
+
+/**
+ * `join`, telling "no such check" (`none`) from "more than one it could be" (`ambiguous`).
+ */
+export function matchCheck(
+    check: CiHistoryCheck,
+    current: readonly CiHistoryCheck[],
+    parent: readonly CommitCheckItem[],
+): CommitCheckItem | "none" | "ambiguous" {
     if (check.logicalId !== undefined) {
         const byId = parent.filter((item) => item.logicalId === check.logicalId);
         if (byId.length > 0) {
             const sameIdNow = current.filter((other) => other.logicalId === check.logicalId);
-            return byId.length === 1 && sameIdNow.length === 1 ? byId[0] : undefined;
+            return byId.length === 1 && sameIdNow.length === 1 ? byId[0] : "ambiguous";
         }
     }
     // The name fallback's scope is the whole commit: every same-named parent item counts, an
@@ -73,11 +104,11 @@ export function join(
     const byName = parent.filter((item) => item.name === check.name);
     const sameNameNow = current.filter((other) => other.name === check.name).length;
     const [only] = byName;
-    return byName.length === 1 &&
-        sameNameNow === 1 &&
-        (only.logicalId === undefined || check.logicalId === undefined)
-        ? only
-        : undefined;
+    if (byName.length === 0) return "none";
+    if (byName.length === 1 && only.logicalId !== undefined && check.logicalId !== undefined) {
+        return "none";
+    }
+    return byName.length === 1 && sameNameNow === 1 ? only : "ambiguous";
 }
 
 /**
@@ -108,6 +139,108 @@ export function alsoRed(
     if (!isRed(check.state)) return false;
     const match = join(check, current, tip);
     return match !== undefined && isRed(match.state);
+}
+
+/**
+ * One commit of a check's first-parent line for `flaky`: the check's state there (`null` when
+ * the commit has no result for it) and the commit's attempt histories, any check's.
+ */
+export interface CiFlakyCommit {
+    state: CiState | CommitCheckState | null;
+    attempts: readonly CiAttemptHistory[];
+    /** The commit's checks were not read for this check, so a `null` state is unknown, not "did not run". */
+    unread?: true;
+}
+
+/** "flaky n/m": `n` flaky commits out of `m` with a pass or a failure for the check. */
+export interface CiFlaky {
+    n: number;
+    m: number;
+    /** `false` when the provider cannot list re-runs: the tag says "(estimated)" (O3). */
+    attemptsCounted: boolean;
+}
+
+/** A pass or a failure; a running, skipped or cancelled check says nothing about flakiness. */
+export function isComplete(state: CiFlakyCommit["state"]): boolean {
+    return state === "success" || (state !== null && isRed(state));
+}
+
+function failedThenPassed(logicalId: string, attempts: readonly CiAttemptHistory[]): boolean {
+    return attempts.some((history) => {
+        if (history.logicalId !== logicalId) return false;
+        const firstRed = history.attempts.findIndex((attempt) => isRed(attempt.state));
+        return (
+            firstRed !== -1 &&
+            history.attempts.slice(firstRed + 1).some((attempt) => attempt.state === "success")
+        );
+    });
+}
+
+/**
+ * Counts the commits of `line` (newest first, first parents only) where the check flaked:
+ * an isolated red (the nearest newer and older commits with a result are both green, with no
+ * unread commit between) or an attempt history of the check that failed and then passed.
+ * `null` when none did.
+ */
+export function flaky(
+    logicalId: string,
+    line: readonly CiFlakyCommit[],
+    attemptsCounted: boolean,
+): CiFlaky | null {
+    // An unread commit may hold a red, so it stays as a neighbour; only a commit that read
+    // "no result" drops out.
+    const known = line.filter((commit) => commit.unread || isComplete(commit.state));
+    const n = known.filter((commit, index) => {
+        if (!isComplete(commit.state)) return false;
+        const isolated =
+            isRed(commit.state as string) &&
+            known[index - 1]?.state === "success" &&
+            known[index + 1]?.state === "success";
+        return isolated || failedThenPassed(logicalId, commit.attempts);
+    }).length;
+    const m = known.filter((commit) => isComplete(commit.state)).length;
+    return n === 0 ? null : { n, m, attemptsCounted };
+}
+
+/**
+ * The check's line for `flaky`: the selected commit with its own attempts, then each loaded
+ * ancestor's matched state. An ancestor read in part counts only an identity match. An ancestor
+ * not read, or whose match cannot be proven, is `unread`: it breaks an isolated red.
+ */
+export function flakyLineOf(
+    check: CiHistoryCheck,
+    current: readonly CiHistoryCheck[],
+    attempts: readonly CiAttemptHistory[],
+    line: readonly CiHistoryLineCommit[],
+): CiFlakyCommit[] {
+    return [
+        { state: check.state, attempts },
+        ...line.map((commit) => {
+            // An item with another known identity is another job, so it is no result here
+            // (changedSinceGreen drops it the same way before matching).
+            const items = commit.items?.filter(
+                (item) =>
+                    check.logicalId === undefined ||
+                    item.logicalId === undefined ||
+                    item.logicalId === check.logicalId,
+            );
+            const found = items ? matchCheck(check, current, items) : undefined;
+            const match = typeof found === "object" ? found : undefined;
+            // A list read in part proves only an identity match; a flat check (no logical id)
+            // matched an identified item there by name alone.
+            const usable =
+                match &&
+                (!commit.partial ||
+                    (check.logicalId !== undefined && match.logicalId === check.logicalId));
+            const unread =
+                !commit.items || found === "ambiguous" || (commit.partial === true && !usable);
+            return {
+                state: usable ? match.state : null,
+                attempts: commit.attempts,
+                ...(unread && { unread: true as const }),
+            };
+        }),
+    ];
 }
 
 /**

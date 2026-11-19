@@ -3,13 +3,18 @@ import { VscChevronDown, VscChevronRight } from "react-icons/vsc";
 import {
     alsoRed,
     compare,
+    flaky,
+    flakyLineOf,
     historyChecksOf,
+    isComplete,
+    type CiFlakyCommit,
     type CiHistory,
     type CiHistoryCheck,
+    type CiHistoryLineCommit,
     type CiHistoryTag,
 } from "../../../../shared/ci/history";
 import { ELAPSED_TICK_MS, isOverdue } from "../../../../shared/ci/timing";
-import type { CiCoverage, CiJob, CiRun, CommitCiDetail } from "../../../../types";
+import type { CiAttemptHistory, CiCoverage, CiJob, CiRun, CommitCiDetail } from "../../../../types";
 import { StateIcon } from "../../commit-list/CommitChecksPopover";
 import { t } from "../../shared/i18n";
 import { JETBRAINS_UI } from "../../shared/tokens";
@@ -69,6 +74,11 @@ export function CheckTree({
                 complete={complete}
                 history={history}
                 hash={hash}
+                attempts={detail.attemptHistory ?? NO_ATTEMPTS}
+                attemptsCounted={detail.capabilities.attemptHistory}
+                runUrlOf={(runId) => detail.runs.find((run) => run.id === runId)?.url}
+                onOpenUrl={onOpenUrl}
+                onRefresh={onRefresh}
             />
         ) : null;
     // Keyed by job id; a job not in the map follows its default (expanded when it failed).
@@ -387,11 +397,14 @@ const HISTORY_TAGS: Record<CiHistoryTag, { key: string; color: string }> = {
     unknown: { key: "commit.checks.tab.history.unknown", color: JETBRAINS_UI.color.muted },
 };
 
+const NO_ATTEMPTS: readonly CiAttemptHistory[] = [];
+
 /**
- * "new" / "still" / "fixed" / "unknown" against the first parent, and "also red on <branch>"
- * against the default branch's tip, named as `origin/HEAD` names it. A snapshot the host could
- * not read tags nothing. While the commit's own checks are only partly listed, nothing can be
- * matched (a hidden check may share the name): a failed check is "unknown", with no other tag.
+ * "new" / "still" / "fixed" / "unknown" against the first parent, "also red on <branch>"
+ * against the default branch's tip, named as `origin/HEAD` names it, and "flaky n/m" over the
+ * loaded first-parent line (§9). A snapshot the host could not read tags nothing. While the
+ * commit's own checks are only partly listed, nothing can be matched (a hidden check may share
+ * the name): a failed check is "unknown", with no other tag.
  */
 function HistoryTags({
     check,
@@ -399,13 +412,37 @@ function HistoryTags({
     complete,
     history,
     hash,
+    attempts,
+    attemptsCounted,
+    runUrlOf,
+    onOpenUrl,
+    onRefresh,
 }: {
     check: CiHistoryCheck;
     current: readonly CiHistoryCheck[];
     complete: boolean;
     history: CiHistory;
     hash: string | undefined;
+    /** The commit's own attempt histories. */
+    attempts: readonly CiAttemptHistory[];
+    /** The provider lists re-runs; otherwise the flaky tag is an estimate (O3). */
+    attemptsCounted: boolean;
+    /** The browser link of one of the commit's own runs. */
+    runUrlOf: (runId: string) => string | undefined;
+    onOpenUrl: (url: string) => void;
+    /** Reads the detail again, and with it the line's attempt histories. */
+    onRefresh: () => void;
 }): React.ReactElement {
+    const loadedLine = complete ? history.line : undefined;
+    const line = loadedLine ? flakyLineOf(check, current, attempts, loadedLine) : null;
+    // A flat check has no logical id, so no attempt history is its own; isolated reds still count.
+    const flakyCount = line ? flaky(check.logicalId ?? "", line, attemptsCounted) : null;
+    const { partAttempts, attemptsUnread } = attemptCoverageOf(
+        check.logicalId,
+        attempts,
+        loadedLine,
+        line,
+    );
     const parentItems = history.parent?.items;
     // A partly read snapshot is as unfit to prove a unique name as a partly listed commit is.
     const tag = parentItems
@@ -434,7 +471,86 @@ function HistoryTags({
                     {t("commit.checks.tab.history.alsoRed", { branch: tip.name })}
                 </span>
             ) : null}
+            {flakyCount ? (
+                <span
+                    data-testid="ci-tag-flaky"
+                    title={
+                        flakyCount.attemptsCounted
+                            ? undefined
+                            : t("commit.checks.tab.history.flakyEstimatedTooltip")
+                    }
+                    style={{ ...checksStyles.tag, color: JETBRAINS_UI.color.modified }}
+                >
+                    {t(
+                        flakyCount.attemptsCounted
+                            ? "commit.checks.tab.history.flaky"
+                            : "commit.checks.tab.history.flakyEstimated",
+                        { n: String(flakyCount.n), m: String(flakyCount.m) },
+                    )}
+                </span>
+            ) : null}
+            {partAttempts.map(({ entry, own }, index) => (
+                <CoverageNote
+                    key={index}
+                    coverage={entry.coverage}
+                    pageBoundKey="commit.checks.tab.attemptsPageBound"
+                    rejectedKey="commit.checks.tab.attemptsRejectedNext"
+                    url={own ? runUrlOf(entry.runId) : undefined}
+                    onOpenUrl={onOpenUrl}
+                    testId="ci-attempts-coverage-note"
+                />
+            ))}
+            {attemptsUnread ? <UnreadAttemptsNote onRefresh={onRefresh} /> : null}
         </>
+    );
+}
+
+/**
+ * What the flaky count could not read for the check (K34). `partAttempts`: each attempt history
+ * read in part, the commit's own and every loaded ancestor's, since each leaves the count, and a
+ * missing tag, unproven; only the commit's own runs are in this detail, so only their notes may
+ * link to a run. `attemptsUnread`: an ancestor with a result for the check whose re-runs could
+ * not be read at all (unread, not none). Nothing for a flat check: no attempt history is its own.
+ */
+function attemptCoverageOf(
+    logicalId: string | undefined,
+    attempts: readonly CiAttemptHistory[],
+    loadedLine: readonly CiHistoryLineCommit[] | undefined,
+    line: readonly CiFlakyCommit[] | null,
+): { partAttempts: { entry: CiAttemptHistory; own: boolean }[]; attemptsUnread: boolean } {
+    if (logicalId === undefined || !loadedLine || !line) {
+        return { partAttempts: [], attemptsUnread: false };
+    }
+    const partAttempts = [
+        ...attempts.map((entry) => ({ entry, own: true })),
+        ...loadedLine.flatMap((commit) => commit.attempts.map((entry) => ({ entry, own: false }))),
+    ].filter(({ entry }) => entry.logicalId === logicalId && entry.coverage !== "full");
+    // `line` is the selected commit followed by `loadedLine`, one entry each.
+    const attemptsUnread = line.some(
+        (entry, index) =>
+            index > 0 &&
+            loadedLine.at(index - 1)?.attemptsUnavailable === true &&
+            isComplete(entry.state),
+    );
+    return { partAttempts, attemptsUnread };
+}
+
+function UnreadAttemptsNote({ onRefresh }: { onRefresh: () => void }): React.ReactElement {
+    return (
+        <div data-testid="ci-attempts-coverage-note" role="status" style={checksStyles.note}>
+            <span>{t("commit.checks.tab.attemptsUnavailable")}</span>
+            <button
+                type="button"
+                style={checksStyles.linkButton}
+                // A note inside a job row must not also select the job.
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onRefresh();
+                }}
+            >
+                {t("common.refresh")}
+            </button>
+        </div>
     );
 }
 
@@ -444,23 +560,29 @@ function CoverageNote({
     rejectedKey,
     url,
     onOpenUrl,
+    testId = "ci-coverage-note",
 }: {
     coverage: CiCoverage;
     pageBoundKey: string;
     rejectedKey: string;
     url?: string;
     onOpenUrl?: (url: string) => void;
+    testId?: string;
 }): React.ReactElement | null {
     if (coverage === "full") return null;
     const key = coverage.reason === "pageBound" ? pageBoundKey : rejectedKey;
     return (
-        <div data-testid="ci-coverage-note" style={checksStyles.note}>
+        <div data-testid={testId} style={checksStyles.note}>
             <span>{t(key, { count: String(coverage.shown) })}</span>
             {url && onOpenUrl ? (
                 <button
                     type="button"
                     style={checksStyles.linkButton}
-                    onClick={() => onOpenUrl(url)}
+                    // A note inside a job row must not also select the job.
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenUrl(url);
+                    }}
                 >
                     {t("commit.checks.tab.openInBrowser")}
                 </button>

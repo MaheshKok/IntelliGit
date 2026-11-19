@@ -7,6 +7,7 @@ import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
 import type {
     CiAction,
     CiActionEvidence,
+    CiAttemptHistory,
     CiJob,
     CiRun,
     CommitChecksSnapshot,
@@ -114,6 +115,12 @@ export interface CommitChecksProvider {
      * snapshot.
      */
     getDetail?(ref: ProviderRepoRef, hash: string, ctx: CiOperationContext): Promise<CiDetailFetch>;
+    /**
+     * Reads a commit's attempt histories (§9), one per run and logical job, for the runs that
+     * were re-run; `getDetail` carries the same ones. Signed out is an empty answer; a failed
+     * read rejects.
+     */
+    getAttemptHistory?(ref: ProviderRepoRef, hash: string): Promise<CiAttemptHistory[]>;
     /** Reads the next page of failed jobs past the page bound. Must not throw. */
     continueFailedScan?(
         ref: ProviderRepoRef,

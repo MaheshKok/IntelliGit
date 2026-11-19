@@ -21,6 +21,7 @@ import {
 } from "../ai/commitMessageGenerationCoordinator";
 import { showCommitMessageGenerationNotification } from "../ai/commitMessageGenerationNotifications";
 import type { ShelfService } from "../services/shelfService";
+import { openRevisionRangeFileDiff } from "../services/diffService";
 import type { ShelfEntry, ShelfHealthWarning } from "../webviews/protocol/commitPanelMessages";
 import { IconThemeService } from "./shared/IconThemeService";
 import { isRedundantPost, serializeWebviewPayload } from "./shared/postedPayload";
@@ -37,6 +38,11 @@ import {
 import { answerCiLogMessage } from "./ciLogHandler";
 import { answerCiActionMessage, ciActionAccess, type CiActionOptions } from "./ciActionHandler";
 import { answerCiHistoryRequest } from "./ciHistoryHandler";
+import {
+    answerChangedSinceGreenRequest,
+    answerOpenCiRangeDiff,
+    CiRangeDiffGrant,
+} from "./ciChangedSinceGreenHandler";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
 import { postWebviewMessage } from "./webviewDelivery";
@@ -263,6 +269,7 @@ export class UndockedViewProvider {
     private commitChecksGeneration = 0;
     private commitCheckDemandSeq = 0;
     private readonly ciDetailLoops = new CommitCiDetailLoops();
+    private readonly rangeDiffGrant = new CiRangeDiffGrant();
     private loadedCommitHashes = new Set<string>();
     private checkableCommitHashes = new Set<string>();
     private constrainCommitCheckHashes = false;
@@ -455,7 +462,10 @@ export class UndockedViewProvider {
             generations: this.ciGenerations,
             getDetail: (hash, options, ctx, onScanUpdate) =>
                 this.commitChecks.getDetail(hash, options, ctx, onScanUpdate),
-            history: (parents) => this.commitChecks.ciHistory(parents),
+            history: (parents, line) => this.commitChecks.ciHistory(parents, line),
+            changedSinceGreen: (request, key) => this.commitChecks.changedSinceGreen(request, key),
+            openRangeDiff: (fromRev, toRev, file) =>
+                openRevisionRangeFileDiff(fromRev, toRev, file, this.gitOps),
             ...(store && {
                 logs: {
                     store,
@@ -821,6 +831,7 @@ export class UndockedViewProvider {
             this.fileStats.dispose();
             this.commitCheckDemandSeq += 1;
             this.ciDetailLoops.dispose();
+            this.rangeDiffGrant.clear();
             this.commitMessageGenerationCoordinator?.dropHost(this.commitMessageGenerationHost);
             this.nativeCommitInputBridge.setVisible(false);
             this.panel = undefined;
@@ -838,13 +849,16 @@ export class UndockedViewProvider {
                 msg.type === "previewCiLog" ||
                 msg.type === "openCiLog" ||
                 msg.type === "runCiAction" ||
-                msg.type === "requestCiHistory";
+                msg.type === "requestCiHistory" ||
+                msg.type === "requestChangedSinceGreen" ||
+                msg.type === "openCiRangeDiff";
             if (ciMessage && this.panel !== panel) return;
             // A window reload sends ready without reopening the panel: it ends the old scan loop
             // and orphans a history reply asked before it. A closed panel's late ready does neither.
             if (msg.type === "ready" && this.panel === panel) {
                 this.webviewGeneration += 1;
                 this.ciDetailLoops.dispose();
+                this.rangeDiffGrant.clear();
             }
             try {
                 if (isChangeWorkflowCommand(msg.type)) await this.handleChangeWorkflowMessage(msg);
@@ -1363,6 +1377,20 @@ export class UndockedViewProvider {
                 });
                 break;
             }
+            case "requestChangedSinceGreen": {
+                const panel = this.panel;
+                const generation = this.webviewGeneration;
+                await answerChangedSinceGreenRequest(this.ciDetailSource(), { ...msg }, (reply) => {
+                    if (this.panel === panel && generation === this.webviewGeneration) {
+                        this.rangeDiffGrant.record(reply);
+                        this.postToWebview(reply);
+                    }
+                });
+                break;
+            }
+            case "openCiRangeDiff":
+                await answerOpenCiRangeDiff(this.ciDetailSource(), { ...msg }, this.rangeDiffGrant);
+                break;
             case "cancelCommitCiDetail":
                 this.ciDetailLoops.cancel(msg.requestId);
                 break;

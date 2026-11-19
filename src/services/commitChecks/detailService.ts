@@ -54,6 +54,9 @@ interface ScanRequester {
 /** This service's clear count, the key's invalidate count and the store's clear generation. */
 type Generation = readonly [number, number, string | undefined];
 
+/** The fetcher of a cache-only read; `cacheOnly` stops before it can run. */
+const neverFetched = (): Promise<never> => Promise.reject(new Error("not cached"));
+
 /**
  * When a served detail's snapshot was built, counted across the window. Every snapshot is of the
  * key's current entry, so a higher number never holds older data, whichever entry it came from.
@@ -205,7 +208,7 @@ export class CommitCiDetailService {
             this.startScans(key, cached, this.captureGeneration(key));
             return served(cached);
         }
-        const inflight = this.inflight.get(key);
+        const inflight = this.joinable(key, options);
         if (inflight) return inflight;
         if (!options.force && this.persistentCache) {
             const readGeneration = this.captureGeneration(key);
@@ -222,11 +225,13 @@ export class CommitCiDetailService {
             ) {
                 // A forced refresh that started or finished during the read is newer than the
                 // saved copy; one still confirming its save is joined, never served early.
-                const running = this.inflight.get(key);
+                const running = this.joinable(key, options);
                 if (running) return running;
+                // Only a cache-only read gets here while a refresh runs: it takes the saved copy
+                // as it was, never the refresh's answer.
                 const newer = this.cache.get(key);
                 if (newer && newer !== cached) {
-                    if (this.isFresh(newer) && this.isServable(newer)) {
+                    if (!this.inflight.has(key) && this.isFresh(newer) && this.isServable(newer)) {
                         this.traceOutcome("hit-l1", newer.data, serve);
                         this.startScans(key, newer, this.captureGeneration(key));
                         return served(newer);
@@ -238,15 +243,15 @@ export class CommitCiDetailService {
                         fetchedAt: this.now(),
                         storeGeneration: readGeneration[2],
                     };
-                    this.cache.set(key, entry);
-                    this.evictOldest();
+                    this.keepStoredRead(key, entry);
                     this.traceOutcome("hit-l2", persisted, serve);
                     return served(entry);
                 }
             }
         }
-        const newerInflight = this.inflight.get(key);
+        const newerInflight = this.joinable(key, options);
         if (newerInflight) return newerInflight;
+        if (options.cacheOnly) throw new Error("not cached");
         const generation = this.captureGeneration(key);
         let fenceEnds = this.fenceEndCount;
         const fenceSequence = this.fences?.sequence();
@@ -331,6 +336,21 @@ export class CommitCiDetailService {
     }
 
     /**
+     * A fresh cached detail (L1, then the persistent store) with the read-time values attached,
+     * or `undefined` on a miss. Never starts a fetch, so a miss leaves the in-flight map as it was.
+     *
+     * @param key - Detail cache key (`<snapshot key>#detail`).
+     * @param serve - Capabilities and repository attached to the served detail.
+     */
+    async getCached(key: string, serve: CiDetailServeContext): Promise<CommitCiDetail | undefined> {
+        try {
+            return await this.getOrFetch(key, neverFetched, serve, { cacheOnly: true });
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
      * Drops one key from L1, the in-flight map and the persistent store. A fetch that
      * started before this call neither caches its result nor is joined by a later one.
      *
@@ -410,6 +430,24 @@ export class CommitCiDetailService {
     /** False once a clear() in any window, visible here, came after the entry was stored. */
     private isServable(entry: DetailEntry): boolean {
         return entry.storeGeneration === this.storeGeneration();
+    }
+
+    /**
+     * The fetch running for `key`, to join. A cache-only read never joins one: it reads the
+     * stored copy without waiting, or misses.
+     */
+    private joinable(
+        key: string,
+        options: CommitChecksFetchOptions,
+    ): Promise<ServedDetailData> | undefined {
+        return options.cacheOnly ? undefined : this.inflight.get(key);
+    }
+
+    /** Keeps an entry read from the store in L1, unless a refresh running for it fills L1. */
+    private keepStoredRead(key: string, entry: DetailEntry): void {
+        if (this.inflight.has(key)) return;
+        this.cache.set(key, entry);
+        this.evictOldest();
     }
 
     private isFresh(entry: DetailEntry): boolean {

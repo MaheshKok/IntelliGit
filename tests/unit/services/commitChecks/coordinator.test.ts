@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GitOps } from "../../../../src/git/operations";
-import type { CommitChecksSnapshot } from "../../../../src/types";
+import { NO_CI_CAPABILITIES } from "../../../../src/shared/ci/capabilities";
+import { flaky } from "../../../../src/shared/ci/history";
+import type { CiAttemptHistory, CommitChecksSnapshot } from "../../../../src/types";
 import type {
     CommitChecksProvider,
     HostMap,
@@ -848,5 +850,178 @@ describe("CommitChecksCoordinator — TTL throttle (fake clock)", () => {
         await coordinator.getChecks("abc1234");
 
         expect(getChecks).toHaveBeenCalledTimes(1); // terminal → never re-fetched
+    });
+});
+
+describe("flaky history reads attempt histories (PLAN.md §9, Phase 12)", () => {
+    const SELECTED = "c".repeat(40);
+    const ANCESTOR = "a".repeat(40);
+    const UNLOADED = "d".repeat(40);
+    const reRun: CiAttemptHistory = {
+        runId: "1",
+        logicalId: "job:ci/unit",
+        coverage: "full",
+        attempts: [
+            { attempt: 1, executionId: "1", state: "failure" },
+            { attempt: 2, executionId: "2", state: "success" },
+        ],
+    };
+    const loaded = [
+        { hash: SELECTED, parents: [ANCESTOR] },
+        { hash: ANCESTOR, parents: [UNLOADED] },
+    ];
+
+    function setup(attemptHistory = true, getDetail?: CommitChecksProvider["getDetail"]) {
+        const getAttemptHistory = vi.fn(async (): Promise<CiAttemptHistory[]> => [reRun]);
+        const provider: CommitChecksProvider = {
+            ...makeProvider("github", "github.com", async (_ref, hash) => ({
+                hash,
+                state: "success",
+                summary: "success",
+                items: [{ name: "unit", description: "", state: "success", source: "status" }],
+            })),
+            capabilities: { ...NO_CI_CAPABILITIES, attemptHistory },
+            getAttemptHistory,
+            ...(getDetail && { getDetail }),
+        };
+        const gitOps = {
+            ...makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            readDefaultBranch: async () => null,
+        } as unknown as GitOps;
+        const coordinator = new CommitChecksCoordinator(gitOps, [provider]);
+        return { coordinator, getAttemptHistory };
+    }
+
+    it("counts a loaded ancestor that failed then passed, though its detail was never opened", async () => {
+        const { coordinator, getAttemptHistory } = setup();
+        await coordinator.getChecks(ANCESTOR); // the Git Log badge, not the Checks tab
+
+        const history = await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+
+        expect(history.line?.[0]?.attempts).toEqual([reRun]);
+        expect(
+            flaky(
+                reRun.logicalId,
+                [
+                    { state: "success", attempts: [] },
+                    { state: "success", attempts: history.line?.[0]?.attempts ?? [] },
+                ],
+                true,
+            ),
+        ).toEqual({ n: 1, m: 2, attemptsCounted: true });
+        await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+        expect(getAttemptHistory, "a second badge request reuses the answer").toHaveBeenCalledTimes(
+            1,
+        );
+    });
+
+    it("asks nothing for an ancestor whose checks are not cached", async () => {
+        const { coordinator, getAttemptHistory } = setup();
+
+        // The compared parent is read (and so cached) by the request itself; the line's ancestor is not.
+        const history = await coordinator.ciHistory([UNLOADED], { hash: SELECTED, loaded });
+
+        expect(history.line?.[0]?.attempts).toEqual([]);
+        expect(getAttemptHistory).not.toHaveBeenCalled();
+    });
+
+    it("asks nothing from a provider that has no attempt history", async () => {
+        const { coordinator, getAttemptHistory } = setup(false);
+        await coordinator.getChecks(ANCESTOR);
+
+        await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+
+        expect(getAttemptHistory).not.toHaveBeenCalled();
+    });
+
+    it("a failed attempt-history read leaves the badge without re-runs, not broken", async () => {
+        const { coordinator, getAttemptHistory } = setup();
+        getAttemptHistory.mockRejectedValueOnce(new Error("rate limited"));
+        await coordinator.getChecks(ANCESTOR);
+
+        const history = await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+
+        expect(history.line?.[0]?.attempts).toEqual([]);
+        expect(
+            history.line?.[0]?.attemptsUnavailable,
+            "an unread attempt page is marked, never an empty complete history",
+        ).toBe(true);
+        const again = await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+        expect(again.line?.[0]?.attempts, "a failure is not remembered").toEqual([reRun]);
+        expect(again.line?.[0]).not.toHaveProperty("attemptsUnavailable");
+    });
+
+    it("a cached detail that never read the re-runs leaves them unread, not an empty history", async () => {
+        // The detail read failed, so the cache holds the unavailable floor detail: no re-runs read.
+        const { coordinator, getAttemptHistory } = setup(true, async () => {
+            throw new Error("detail offline");
+        });
+        await coordinator.getChecks(ANCESTOR);
+        await coordinator.getDetail(
+            ANCESTOR,
+            {},
+            { repoKey: "", authGeneration: 0, lifecycleGeneration: 0 },
+        );
+        getAttemptHistory.mockRejectedValueOnce(new Error("rate limited"));
+
+        const history = await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+
+        expect(
+            history.line?.[0]?.attemptsUnavailable,
+            "unread attempts never become an empty, fully counted history",
+        ).toBe(true);
+        const again = await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+        expect(again.line?.[0]?.attempts, "the provider's re-runs count").toEqual([reRun]);
+    });
+
+    it("a cached detail that read no re-runs is taken as it is", async () => {
+        const { coordinator, getAttemptHistory } = setup(true, async (_ref, hash) => ({
+            hash,
+            provider: "github",
+            complete: true,
+            outcome: "success",
+            runs: [],
+            runsCoverage: "full",
+            otherChecks: [],
+            otherChecksCoverage: "full",
+            attemptHistory: [],
+        }));
+        await coordinator.getChecks(ANCESTOR);
+        await coordinator.getDetail(
+            ANCESTOR,
+            {},
+            { repoKey: "", authGeneration: 0, lifecycleGeneration: 0 },
+        );
+
+        const history = await coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+
+        expect(history.line?.[0]?.items, "the ancestor's checks are cached").not.toBeNull();
+        expect(history.line?.[0]?.attempts, "the detail's empty history is kept").toEqual([]);
+        expect(history.line?.[0]).not.toHaveProperty("attemptsUnavailable");
+        expect(
+            getAttemptHistory,
+            "a detail that read its re-runs is not asked again",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("an attempt read answered after the repository switched meanwhile is unread", async () => {
+        const { coordinator, getAttemptHistory } = setup();
+        await coordinator.getChecks(ANCESTOR);
+        let answer!: (histories: CiAttemptHistory[]) => void;
+        getAttemptHistory.mockImplementationOnce(
+            () =>
+                new Promise((done) => {
+                    answer = done;
+                }),
+        );
+
+        const pending = coordinator.ciHistory([ANCESTOR], { hash: SELECTED, loaded });
+        await vi.waitFor(() => expect(getAttemptHistory).toHaveBeenCalled());
+        coordinator.clearProviderResolution();
+        answer([reRun]);
+        const history = await pending;
+
+        expect(history.line?.[0]?.attempts).toEqual([]);
+        expect(history.line?.[0]?.attemptsUnavailable).toBe(true);
     });
 });

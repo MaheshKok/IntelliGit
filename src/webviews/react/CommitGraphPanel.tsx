@@ -644,6 +644,7 @@ export function CommitGraphPanel({
                             onOpenDiff={handleOpenDiff}
                             ciRepoKey={ciRepoKey}
                             commitChecksEnabled={commitChecksEnabled}
+                            loadedCommits={state.commits}
                         />
                     </div>
                 )}

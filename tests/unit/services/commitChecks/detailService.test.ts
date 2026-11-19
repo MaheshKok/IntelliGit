@@ -85,6 +85,77 @@ describe("CommitCiDetailService", () => {
         expect(fetchDetail).toHaveBeenCalledTimes(1);
     });
 
+    it("a cache-only read never joins an in-flight fetch", async () => {
+        const { service: details } = service();
+        const pending = deferred<CommitCiDetailData>();
+        const started = deferred<void>();
+        const fetching = details.getOrFetch(
+            KEY,
+            () => {
+                started.resolve();
+                return pending.promise;
+            },
+            SERVE,
+        );
+        await started.promise;
+        const cached = details.getCached(KEY, SERVE);
+        pending.resolve(detail());
+        await fetching;
+
+        expect(
+            await cached,
+            "a cache-only miss must not wait for and take the network detail",
+        ).toBeUndefined();
+    });
+
+    it.each([
+        ["a stored entry", true],
+        ["an empty store", false],
+    ])(
+        "a cache-only read over %s never joins a refresh started during its store read",
+        async (_label, stored) => {
+            const state = memento();
+            if (stored) await service(state).service.getOrFetch(KEY, async () => detail(), SERVE);
+            const { service: details } = service(state);
+            const cached = details.getCached(KEY, SERVE);
+            const refresh = details.getOrFetch(
+                KEY,
+                async () => detail({ outcome: "success" }),
+                SERVE,
+                { force: true },
+            );
+
+            expect(
+                (await cached)?.outcome,
+                "a cache-only read must not take the refresh's network detail",
+            ).not.toBe("success");
+            await refresh;
+        },
+    );
+
+    it("a cache-only read serves the stored detail while a refresh runs; a detail request still joins the refresh", async () => {
+        const state = memento();
+        await service(state).service.getOrFetch(KEY, async () => detail(), SERVE);
+        const { service: details } = service(state);
+        const pending = deferred<CommitCiDetailData>();
+        const refresh = details.getOrFetch(KEY, () => pending.promise, SERVE, { force: true });
+        const blocked = new Promise<"blocked">((done) => setTimeout(() => done("blocked"), 50));
+        const cached = await Promise.race([details.getCached(KEY, SERVE), blocked]);
+        expect(
+            cached === "blocked" ? cached : cached?.outcome,
+            "a cache-only read serves the stored detail at once, without waiting for the refresh",
+        ).toBe("failure");
+        const fetchAgain = vi.fn(async () => detail({ complete: false, outcome: "pending" }));
+        const request = details.getOrFetch(KEY, fetchAgain, SERVE);
+        pending.resolve(detail({ outcome: "success" }));
+        expect(
+            (await request).outcome,
+            "a detail request during the refresh joins it, not the copy the cache-only read served",
+        ).toBe("success");
+        expect(fetchAgain).not.toHaveBeenCalled();
+        await refresh;
+    });
+
     it("complete detail served from L1 without refetch", async () => {
         let now = 0;
         const { service: details } = service(memento(), () => now);
@@ -210,12 +281,12 @@ describe("CommitCiDetailService", () => {
         expect(fetchDetail).toHaveBeenCalledTimes(1);
     });
 
-    it("the detail contract version is 7: details carry and accept 7, and an older entry is a miss", async () => {
-        expect(CI_DETAIL_CONTRACT_VERSION).toBe(7);
+    it("the detail contract version is 8: details carry and accept 8, and an older entry is a miss", async () => {
+        expect(CI_DETAIL_CONTRACT_VERSION).toBe(8);
         const state = memento();
         await service(state, () => 1_000).service.getOrFetch(KEY, async () => detail(), SERVE);
         const saved = state.values.get(STORAGE_KEY) as { entries: { contractVersion: number }[] };
-        expect(saved.entries.map((entry) => entry.contractVersion)).toEqual([7]);
+        expect(saved.entries.map((entry) => entry.contractVersion)).toEqual([8]);
 
         const written = (contractVersion: number) => {
             const stored = memento();
@@ -235,9 +306,15 @@ describe("CommitCiDetailService", () => {
         };
         const fetchDetail = vi.fn(async () => detail({ outcome: "success" }));
         await expect(
-            service(written(7), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
+            service(written(8), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
         ).resolves.toMatchObject({ outcome: "failure" });
         expect(fetchDetail).not.toHaveBeenCalled();
+        // Version 7 entries were read before details carried a job's re-run attempts.
+        await expect(
+            service(written(7), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
+        ).resolves.toMatchObject({ outcome: "success" });
+        expect(fetchDetail).toHaveBeenCalledTimes(1);
+        fetchDetail.mockClear();
         // Version 6 entries could hold a cut list saved as fully covered (before Phase 11).
         await expect(
             service(written(6), () => 1_000).service.getOrFetch(KEY, fetchDetail, SERVE),
