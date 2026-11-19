@@ -59,6 +59,7 @@ import {
     isValidRemoteName,
 } from "../utils/gitRefs";
 import {
+    assertListedGitPath,
     assertRepoRelativeGitPath,
     assertStashIndex,
     commitStatsUnavailableMessage,
@@ -568,6 +569,38 @@ export class GitOps {
     /** Reads `origin/HEAD` and its tip fresh on every call; `null` when either is missing. */
     readDefaultBranch(): Promise<DefaultBranch | null> {
         return readDefaultBranch((args) => this.executor.run(args));
+    }
+
+    /**
+     * NUL-separated `git diff --name-status -M` between two commits, so every byte but NUL of
+     * a file name survives. Callers pass validated hashes; `--end-of-options` still keeps
+     * either from being read as an option.
+     */
+    diffNameStatus(from: string, to: string): Promise<string> {
+        return this.executor.run([
+            "diff",
+            "--name-status",
+            "-M",
+            "-z",
+            "--end-of-options",
+            from,
+            to,
+            "--",
+        ]);
+    }
+
+    /** NUL-separated `git diff --numstat -M` between two commits: the line counts of each file. */
+    diffNumstat(from: string, to: string): Promise<string> {
+        return this.executor.run([
+            "diff",
+            "--numstat",
+            "-M",
+            "-z",
+            "--end-of-options",
+            from,
+            to,
+            "--",
+        ]);
     }
 
     /** Reads a validated remote URL so host services can inspect provider metadata. */
@@ -1895,10 +1928,18 @@ export class GitOps {
      *
      * File paths are normalized as repository-relative Git paths, and refs with empty, option-like, or
      * control-character content are rejected before constructing the `git show` argument.
+     * `listedName` is for a name Git itself listed: it keeps the name byte for byte (line breaks,
+     * edge whitespace, backslashes) and only refuses NUL, absolute and escaping paths.
      */
-    async getFileContentAtRef(filePath: string, ref: string): Promise<string> {
+    async getFileContentAtRef(
+        filePath: string,
+        ref: string,
+        options?: { listedName?: boolean },
+    ): Promise<string> {
         const trimmedRef = ref.trim();
-        const safeFilePath = assertRepoRelativeGitPath(filePath);
+        const safeFilePath = options?.listedName
+            ? assertListedGitPath(filePath)
+            : assertRepoRelativeGitPath(filePath);
         if (!trimmedRef) throw new Error("Git ref is empty.");
         if (trimmedRef.startsWith("-")) {
             throw new Error("Git ref must not start with '-'.");

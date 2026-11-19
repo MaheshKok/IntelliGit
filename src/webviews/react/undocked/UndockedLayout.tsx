@@ -445,6 +445,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                             onOpenDiff={handleOpenDiff}
                                             ciRepoKey={repositoryRoot}
                                             commitChecksEnabled={commitChecksEnabled}
+                                            loadedCommits={commits}
                                         />
                                     </div>
                                 )}

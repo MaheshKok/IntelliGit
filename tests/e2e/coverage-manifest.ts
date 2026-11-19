@@ -638,6 +638,8 @@ const WEBVIEW_ENTRIES = [
     { kind: "webview", id: "previewCiLog", mutating: false },
     { kind: "webview", id: "openCiLog", mutating: false },
     { kind: "webview", id: "requestCiHistory", mutating: false },
+    { kind: "webview", id: "requestChangedSinceGreen", mutating: false },
+    { kind: "webview", id: "openCiRangeDiff", mutating: false },
     {
         kind: "webview",
         id: "runCiAction",

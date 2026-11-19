@@ -799,6 +799,58 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
         expect(replies, "only the reloaded context's reply is posted").toHaveLength(1);
     });
 
+    it("opens only a file its latest changed-since-green answer listed, until the webview is retired", async () => {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const read = vi.spyOn(gitOps, "getFileContentAtRef").mockResolvedValue("");
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            { ...buildProviderOptions("card"), ciRepoKey: () => "/repo" },
+        );
+        const { webviewView, receiveMessage } = createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+        vi.spyOn(
+            (provider as unknown as { commitChecks: { changedSinceGreen: () => unknown } })
+                .commitChecks,
+            "changedSinceGreen",
+        ).mockResolvedValue({
+            lastGreen: "b".repeat(40),
+            files: [{ path: "src/a.ts", status: "M", additions: 1, deletions: 0 }],
+        } as never);
+        const open = {
+            type: "openCiRangeDiff",
+            requestId: 3,
+            repoKey: "/repo",
+            fromRev: "b".repeat(40),
+            toRev: "a".repeat(40),
+            path: "src/a.ts",
+            status: "M",
+        };
+        await receiveMessage({
+            type: "requestChangedSinceGreen",
+            requestId: 2,
+            repoKey: "/repo",
+            hash: "a".repeat(40),
+            logicalCheckId: "job\0ci\0test",
+            scopeName: "ci",
+            checkName: "test",
+            loaded: [],
+        });
+        // Only the Git reads matter: this test double has no diff editor to open them in.
+        await receiveMessage(open).catch(() => undefined);
+        expect(read, "the control: the listed file's two sides are read").toHaveBeenCalledTimes(2);
+
+        await receiveMessage({ type: "ready" });
+        await receiveMessage(open).catch(() => undefined);
+        expect(read, "a reloaded webview cannot open the retired one's list").toHaveBeenCalledTimes(
+            2,
+        );
+    });
+
     it("a replaced view's late ready does not discard the current context's history reply", async () => {
         const gitOps = new GitOps(
             new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),

@@ -497,6 +497,9 @@
     "commit.checks.tab.openInBrowser": "ブラウザーで開く",
     "commit.checks.tab.jobsPageBound": "最初の {count} 件のジョブを表示しています — 残りはブラウザーで実行を開いてください",
     "commit.checks.tab.jobsRejectedNext": "最初の {count} 件のジョブを表示しています — プロバイダーの次ページのリンクは拒否されました",
+    "commit.checks.tab.attemptsPageBound": "最初の {count} 件の試行を表示しています — 残りはブラウザーで実行を開いてください",
+    "commit.checks.tab.attemptsRejectedNext": "最初の {count} 件の試行を表示しています — プロバイダーの次ページのリンクは拒否されました",
+    "commit.checks.tab.attemptsUnavailable": "読み込んだ一部のコミットの再実行を読み取れませんでした — 「不安定」の件数は不完全な可能性があります",
     "commit.checks.tab.runsPageBound": "最初の {count} 件のワークフロー実行を表示しています",
     "commit.checks.tab.runsRejectedNext": "最初の {count} 件のワークフロー実行を表示しています — プロバイダーの次ページのリンクは拒否されました",
     "commit.checks.tab.checksPageBound": "最初の {count} 件のチェックを表示しています",
@@ -558,5 +561,13 @@
     "commit.checks.tab.history.still": "継続",
     "commit.checks.tab.history.fixed": "修正済み",
     "commit.checks.tab.history.unknown": "不明",
-    "commit.checks.tab.history.alsoRed": "{branch} でも失敗"
+    "commit.checks.tab.history.alsoRed": "{branch} でも失敗",
+    "commit.checks.tab.history.flaky": "不安定 {n}/{m}",
+    "commit.checks.tab.history.flakyEstimated": "不安定 {n}/{m}（推定）",
+    "commit.checks.tab.history.flakyEstimatedTooltip": "読み込まれたコミットから推定。このプロバイダーでは再実行は数えられません",
+    "commit.checks.tab.changedSinceGreen": "最後の成功以降の変更 ({hash})",
+    "commit.checks.tab.changedSinceGreenNone": "読み込まれた履歴にこのジョブの成功した実行はありません",
+    "commit.checks.tab.changedSinceGreenAmbiguous": "古いコミットでこのジョブを特定できません",
+    "commit.checks.tab.changedSinceGreenFailed": "比較できませんでした: {error}",
+    "commit.checks.tab.changedSinceGreenLoading": "最後に成功した実行を検索しています…"
 }

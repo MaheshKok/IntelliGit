@@ -5,7 +5,13 @@
  */
 
 import type { CiHistory } from "../../shared/ci/history";
-import type { CommitCheckItem, CommitChecksSnapshot } from "../../types";
+import type {
+    CiAttemptHistory,
+    CiCoverage,
+    CiJob,
+    CommitCheckItem,
+    CommitChecksSnapshot,
+} from "../../types";
 import type { DefaultBranch } from "./defaultBranch";
 
 /** Where the history reads from: the coordinator's cache-first snapshots and `origin/HEAD`. */
@@ -30,6 +36,76 @@ async function itemsOf(deps: CiHistoryDeps, hash: string): Promise<ReadItems> {
     } catch {
         return { items: null };
     }
+}
+
+/** One execution of a job as a provider lists it with its re-runs (§9, Phase 12). */
+export type CiAttemptJob = Pick<
+    CiJob,
+    "id" | "logicalId" | "name" | "state" | "attempt" | "startedAt" | "completedAt"
+> & {
+    /** GitLab: retried jobs carry no attempt number, only their creation time. */
+    createdAt?: string;
+};
+
+/** Every listed execution of one run or pipeline, and how much of the list was read. */
+export interface CiAttemptRun {
+    runId: string;
+    coverage: CiCoverage;
+    jobs: readonly CiAttemptJob[];
+}
+
+const byTime = (a: string | undefined, b: string | undefined): number =>
+    // A missing time sorts last, so it never reorders the attempts that have one.
+    a === b ? 0 : a === undefined ? 1 : b === undefined ? -1 : Date.parse(a) - Date.parse(b);
+
+const byJobId = (a: CiAttemptJob, b: CiAttemptJob): number =>
+    Number(a.id) - Number(b.id) || a.id.localeCompare(b.id);
+
+/**
+ * One attempt history per `(runId, logicalId)`, so same-named jobs of two workflows or two
+ * runs never share one. GitHub (`runAttempt`) orders by `run_attempt`, then `started_at`,
+ * then job id; GitLab (`createdAt`) by `created_at`, then job id, numbering attempts 1..n.
+ * Executions are de-duplicated by job id.
+ */
+export function attemptHistories(
+    runs: readonly CiAttemptRun[],
+    order: "runAttempt" | "createdAt",
+): CiAttemptHistory[] {
+    const seen = new Set<string>();
+    const groups = new Map<string, { run: CiAttemptRun; jobs: CiAttemptJob[] }>();
+    for (const run of runs) {
+        for (const job of run.jobs) {
+            if (seen.has(job.id)) continue;
+            seen.add(job.id);
+            const key = `${run.runId}\0${job.logicalId}`;
+            const group = groups.get(key) ?? { run, jobs: [] };
+            group.jobs.push(job);
+            groups.set(key, group);
+        }
+    }
+    return [...groups.values()].map(({ run, jobs }) => {
+        const sorted =
+            order === "runAttempt"
+                ? jobs.sort(
+                      (a, b) =>
+                          (a.attempt ?? 1) - (b.attempt ?? 1) ||
+                          byTime(a.startedAt, b.startedAt) ||
+                          byJobId(a, b),
+                  )
+                : jobs.sort((a, b) => byTime(a.createdAt, b.createdAt) || byJobId(a, b));
+        return {
+            runId: run.runId,
+            logicalId: sorted[0].logicalId,
+            attempts: sorted.map((job, index) => ({
+                attempt: order === "runAttempt" ? (job.attempt ?? 1) : index + 1,
+                executionId: job.id,
+                state: job.state,
+                ...(job.startedAt !== undefined && { startedAt: job.startedAt }),
+                ...(job.completedAt !== undefined && { completedAt: job.completedAt }),
+            })),
+            coverage: run.coverage,
+        };
+    });
 }
 
 /**

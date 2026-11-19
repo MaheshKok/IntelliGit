@@ -47,7 +47,15 @@ export interface CommitChecksServiceOptions {
 export interface CommitChecksFetchOptions {
     /** When true, bypasses fresh L1/L2 snapshots but retains in-flight de-duplication. */
     force?: boolean;
+    /**
+     * When true, a miss rejects before any fetch starts: nothing is put in the in-flight map for
+     * a concurrent caller to join. Set by `getCached`, never by a caller that wants an answer.
+     */
+    cacheOnly?: true;
 }
+
+/** The fetcher of a cache-only read; `cacheOnly` stops before it can run. */
+const neverFetched = (): Promise<never> => Promise.reject(new Error("not cached"));
 
 /** Shared in-memory commit-check cache and in-flight request de-dupe. */
 export class CommitChecksService {
@@ -120,7 +128,7 @@ export class CommitChecksService {
             trace("hit-l1", cached.snapshot.hash);
             return cached.snapshot;
         }
-        const inflight = this.inflight.get(key);
+        const inflight = this.joinable(key, options);
         if (inflight) return inflight;
         if (!options.force && this.persistentCache) {
             const readGeneration = this.captureGeneration(key);
@@ -137,29 +145,31 @@ export class CommitChecksService {
             ) {
                 // A forced refresh that started or finished during the read is newer than the
                 // saved copy; one still confirming its save is joined, never served early.
-                const running = this.inflight.get(key);
+                const running = this.joinable(key, options);
                 if (running) return running;
+                // Only a cache-only read gets here while a refresh runs: it takes the saved copy
+                // as it was, never the refresh's answer.
                 const newer = this.cache.get(key);
                 if (newer && newer !== cached) {
-                    if (this.isFresh(newer) && this.isServable(newer)) {
+                    if (!this.inflight.has(key) && this.isFresh(newer) && this.isServable(newer)) {
                         trace("hit-l1", newer.snapshot.hash);
                         return newer.snapshot;
                     }
                     // The newer entry expired while the read waited: fetch, never fall back.
                 } else {
-                    this.cache.set(key, {
+                    this.keepStoredRead(key, {
                         snapshot: persisted,
                         fetchedAt: this.now(),
                         storeGeneration: readGeneration[2],
                     });
-                    this.evictOldest();
                     trace("hit-l2", persisted.hash);
                     return persisted;
                 }
             }
         }
-        const newerInflight = this.inflight.get(key);
+        const newerInflight = this.joinable(key, options);
         if (newerInflight) return newerInflight;
+        if (options.cacheOnly) throw new Error("not cached");
         const generation = this.captureGeneration(key);
         const fenceEnds = this.fenceEndCount;
         const startedAt = this.now();
@@ -219,6 +229,20 @@ export class CommitChecksService {
             });
         this.inflight.set(key, request);
         return request;
+    }
+
+    /**
+     * A fresh cached snapshot (L1, then the persistent store), or `undefined` on a miss. Never
+     * starts a fetch, so a miss leaves the in-flight map as it was.
+     *
+     * @param key - Provider/repo/settings/commit cache key.
+     */
+    async getCached(key: string): Promise<CommitChecksSnapshot | undefined> {
+        try {
+            return await this.getOrFetch(key, neverFetched, { cacheOnly: true });
+        } catch {
+            return undefined;
+        }
     }
 
     /**
@@ -298,6 +322,24 @@ export class CommitChecksService {
     /** False once a clear() in any window, visible here, came after the entry was stored. */
     private isServable(entry: CacheEntry): boolean {
         return entry.storeGeneration === this.storeGeneration();
+    }
+
+    /**
+     * The fetch running for `key`, to join. A cache-only read never joins one: it reads the
+     * stored copy without waiting, or misses.
+     */
+    private joinable(
+        key: string,
+        options: CommitChecksFetchOptions,
+    ): Promise<CommitChecksSnapshot> | undefined {
+        return options.cacheOnly ? undefined : this.inflight.get(key);
+    }
+
+    /** Keeps an entry read from the store in L1, unless a refresh running for it fills L1. */
+    private keepStoredRead(key: string, entry: CacheEntry): void {
+        if (this.inflight.has(key)) return;
+        this.cache.set(key, entry);
+        this.evictOldest();
     }
 
     private isFresh(entry: CacheEntry): boolean {

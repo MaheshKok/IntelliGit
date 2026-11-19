@@ -17,7 +17,10 @@ import {
     isValidGitHash,
 } from "./gitHelpers";
 import { assertRepoRelativePath } from "../utils/fileOps";
+import { assertListedRepoRelativePath } from "../utils/repoRelativePath";
 import { EMPTY_TREE_HASH } from "../utils/constants";
+import type { CiRangeDiffFile } from "../types";
+import { rangeDiffSides } from "./commitChecks/changedSinceGreen";
 import { exceedsDiffBudget } from "../diff/diffBudgets";
 import {
     claimDiffViewerSession,
@@ -928,6 +931,50 @@ export async function openCommitFileDiff(
             const rightUri = createReadonlyDiffUri(safePath, rightContent, shortCommit);
             await vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, title);
         },
+    );
+}
+
+/**
+ * Opens a read-only diff of one file between two commits ("Changed since last green"): an
+ * added file has an empty left side, a deleted one an empty right side, and a renamed one
+ * shows its old path on the left. Both sides are read from Git into read-only documents.
+ *
+ * @throws When a revision or path is unsafe.
+ */
+export async function openRevisionRangeFileDiff(
+    fromRev: string,
+    toRev: string,
+    file: CiRangeDiffFile,
+    gitOps: Pick<GitOps, "getFileContentAtRef">,
+): Promise<void> {
+    if (!isValidGitHash(fromRev) || !isValidGitHash(toRev)) {
+        throw new Error("Invalid commit hash received for a range diff.");
+    }
+    const { left, right } = rangeDiffSides(
+        {
+            ...file,
+            path: assertListedRepoRelativePath(file.path),
+            ...(file.oldPath === undefined
+                ? {}
+                : { oldPath: assertListedRepoRelativePath(file.oldPath) }),
+        },
+        fromRev,
+        toRev,
+    );
+    const read = (side: { path: string; rev: string } | null): Promise<string> =>
+        side
+            ? gitOps.getFileContentAtRef(side.path, side.rev, { listedName: true })
+            : Promise.resolve("");
+    const [leftContent, rightContent] = await Promise.all([read(left), read(right)]);
+    const shortFrom = fromRev.slice(0, 8);
+    const shortTo = toRev.slice(0, 8);
+    const leftUri = createReadonlyDiffUri(left?.path ?? file.path, leftContent, shortFrom);
+    const rightUri = createReadonlyDiffUri(right?.path ?? file.path, rightContent, shortTo);
+    await vscode.commands.executeCommand(
+        "vscode.diff",
+        leftUri,
+        rightUri,
+        `${file.path} (${shortFrom} ↔ ${shortTo})`,
     );
 }
 

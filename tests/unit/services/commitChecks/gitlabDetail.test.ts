@@ -71,6 +71,8 @@ interface FakeGitLab {
     /** Each pipeline as the single-pipeline request returns it. */
     pipelines: Json[];
     jobsByPipeline: Map<string, Json[]>;
+    /** `include_retried=true`: retried jobs too; defaults to `jobsByPipeline`. */
+    retriedByPipeline?: Map<string, Json[]>;
     /** Commit statuses: GitLab lists every job as one too, under the job's id. */
     statuses: Json[];
     /** Throws for a URL the test wants to fail; consulted on every request. */
@@ -124,7 +126,11 @@ function fakeGitLab(state: FakeGitLab) {
         const jobsMatch = new RegExp(`^${project}/pipelines/(\\d+)/jobs$`).exec(path);
         if (jobsMatch) {
             const scopes = new URL(url).searchParams.getAll("scope[]");
-            const all = (state.jobsByPipeline.get(jobsMatch[1]) ?? []).filter(
+            const byPipeline =
+                new URL(url).searchParams.get("include_retried") === "true"
+                    ? (state.retriedByPipeline ?? state.jobsByPipeline)
+                    : state.jobsByPipeline;
+            const all = (byPipeline.get(jobsMatch[1]) ?? []).filter(
                 (j) => scopes.length === 0 || scopes.includes(String(j.status)),
             );
             return paged(url, all);
@@ -170,6 +176,7 @@ function jobPages(log: readonly string[]): number[] {
     return log
         .filter((url) => new URL(url).pathname.endsWith("/jobs"))
         .filter((url) => new URL(url).searchParams.getAll("scope[]").length === 0)
+        .filter((url) => !new URL(url).searchParams.has("include_retried"))
         .map((url) => Number(new URL(url).searchParams.get("page") ?? "1"));
 }
 
@@ -187,6 +194,73 @@ const failedNames = (detail: CommitCiDetail): string[] =>
 describe("GitLabProvider.getDetail", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+    });
+
+    it("attempt requests carry per_page=100", async () => {
+        // A retried job keeps its name; the retry has the higher id but is ordered by time.
+        const retry = job(31, "success", { name: "unit", created_at: "2026-11-08T15:00:00Z" });
+        const firstTry = job(42, "failed", { name: "unit", created_at: "2026-11-08T14:00:00Z" });
+        const gl = fakeGitLab(
+            state({
+                jobsByPipeline: new Map([[PIPELINE_ID, [retry]]]),
+                retriedByPipeline: new Map([[PIPELINE_ID, [retry, firstTry]]]),
+            }),
+        );
+        const gitlab = provider(gl);
+
+        const detail = await gitlab.getDetail(ref, SHA);
+
+        const attemptUrls = gl.log.filter(
+            (url) => new URL(url).searchParams.get("include_retried") === "true",
+        );
+        expect(attemptUrls).toHaveLength(1);
+        expect(new URL(attemptUrls[0]).searchParams.get("per_page")).toBe("100");
+        expect(gitlab.capabilities.attemptHistory).toBe(true);
+        expect(detail.attemptHistory).toEqual([
+            {
+                runId: PIPELINE_ID,
+                logicalId: logicalCheckId({ kind: "job", scope: "Build pipeline", name: "unit" }),
+                attempts: [
+                    expect.objectContaining({ attempt: 1, executionId: "42", state: "failure" }),
+                    expect.objectContaining({ attempt: 2, executionId: "31", state: "success" }),
+                ],
+                coverage: "full",
+            },
+        ]);
+    });
+
+    it("getAttemptHistory answers the detail's histories without the detail's reads", async () => {
+        const retry = job(31, "success", { name: "unit", created_at: "2026-11-08T15:00:00Z" });
+        const firstTry = job(42, "failed", { name: "unit", created_at: "2026-11-08T14:00:00Z" });
+        const gl = fakeGitLab(
+            state({
+                jobsByPipeline: new Map([[PIPELINE_ID, [retry]]]),
+                retriedByPipeline: new Map([[PIPELINE_ID, [retry, firstTry]]]),
+            }),
+        );
+        const gitlab = provider(gl);
+        const inDetail = (await gitlab.getDetail(ref, SHA)).attemptHistory;
+        gl.log.length = 0;
+
+        const histories = await gitlab.getAttemptHistory(ref, SHA);
+
+        expect(histories).toEqual(inDetail);
+        expect(histories).toHaveLength(1);
+        expect(gl.log.some((url) => url.includes("/statuses"))).toBe(false);
+        expect(gl.log.some((url) => url.includes("scope[]"))).toBe(false);
+    });
+
+    it("getAttemptHistory is empty without a token", async () => {
+        const gl = fakeGitLab(state());
+        const gitlab = new GitLabProvider(
+            gl.fetchJson,
+            tokenStore(null),
+            undefined,
+            gl.fetchWithMeta,
+        );
+
+        await expect(gitlab.getAttemptHistory(ref, SHA)).resolves.toEqual([]);
+        expect(gl.log).toEqual([]);
     });
 
     it("maps pipeline → jobs", async () => {

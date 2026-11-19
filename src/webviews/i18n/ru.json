@@ -527,6 +527,9 @@
     "commit.checks.tab.openInBrowser": "Открыть в браузере",
     "commit.checks.tab.jobsPageBound": "Показано первых заданий: {count} — откройте запуск в браузере, чтобы увидеть остальные",
     "commit.checks.tab.jobsRejectedNext": "Показано первых заданий: {count} — ссылка поставщика на следующую страницу отклонена",
+    "commit.checks.tab.attemptsPageBound": "Показано первых попыток: {count} — откройте запуск в браузере, чтобы увидеть остальные",
+    "commit.checks.tab.attemptsRejectedNext": "Показано первых попыток: {count} — ссылка поставщика на следующую страницу отклонена",
+    "commit.checks.tab.attemptsUnavailable": "Не удалось прочитать перезапуски некоторых загруженных коммитов — счётчик «нестабильный» может быть неполным",
     "commit.checks.tab.runsPageBound": "Показано первых запусков рабочих процессов: {count}",
     "commit.checks.tab.runsRejectedNext": "Показано первых запусков рабочих процессов: {count} — ссылка поставщика на следующую страницу отклонена",
     "commit.checks.tab.checksPageBound": "Показано первых проверок: {count}",
@@ -588,5 +591,13 @@
     "commit.checks.tab.history.still": "по-прежнему",
     "commit.checks.tab.history.fixed": "исправлен",
     "commit.checks.tab.history.unknown": "неизвестно",
-    "commit.checks.tab.history.alsoRed": "также красный в {branch}"
+    "commit.checks.tab.history.alsoRed": "также красный в {branch}",
+    "commit.checks.tab.history.flaky": "нестабильный {n}/{m}",
+    "commit.checks.tab.history.flakyEstimated": "нестабильный {n}/{m} (оценка)",
+    "commit.checks.tab.history.flakyEstimatedTooltip": "оценка по загруженным коммитам; повторные запуски для этого провайдера не учитываются",
+    "commit.checks.tab.changedSinceGreen": "Изменено после последнего успешного запуска ({hash})",
+    "commit.checks.tab.changedSinceGreenNone": "В загруженной истории нет успешного запуска этого задания",
+    "commit.checks.tab.changedSinceGreenAmbiguous": "Не удаётся сопоставить это задание в более старых коммитах",
+    "commit.checks.tab.changedSinceGreenFailed": "Не удалось сравнить: {error}",
+    "commit.checks.tab.changedSinceGreenLoading": "Поиск последнего успешного запуска…"
 }

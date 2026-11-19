@@ -66,6 +66,13 @@ import {
 import { answerCiLogMessage } from "./ciLogHandler";
 import { answerCiActionMessage, ciActionAccess, type CiActionOptions } from "./ciActionHandler";
 import { answerCiHistoryRequest } from "./ciHistoryHandler";
+import {
+    answerChangedSinceGreenRequest,
+    answerOpenCiRangeDiff,
+    CiRangeDiffGrant,
+} from "./ciChangedSinceGreenHandler";
+import { openRevisionRangeFileDiff } from "../services/diffService";
+import type { LoadedCommit } from "../services/commitChecks/changedSinceGreen";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
@@ -107,7 +114,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     private readonly commitChecks: CommitChecksCoordinator;
     private commitCheckDemandSeq = 0;
     private readonly ciDetailLoops = new CommitCiDetailLoops();
-    private loadedCommitHashes = new Set<string>();
+    private readonly rangeDiffGrant = new CiRangeDiffGrant();
+    /** Each loaded commit's parents, so the standalone Changed Files view can walk them too. */
+    private loadedCommitHashes = new Map<string, readonly string[]>();
     private checkableCommitHashes = new Set<string>();
     private constrainCommitCheckHashes = false;
     private folderIconsByName: ThemeFolderIconMap = {};
@@ -267,6 +276,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         return this.commitChecks.getDetail(hash, options, ctx, onScanUpdate);
     }
 
+    /** The commits this graph has loaded, with their parents, for a view that has no list. */
+    loadedCommits(): LoadedCommit[] {
+        return [...this.loadedCommitHashes].map(([hash, parents]) => ({ hash, parents }));
+    }
+
     /**
      * What this view's Checks tab, or another view showing the same repository, answers CI
      * messages with.
@@ -281,7 +295,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             generations: this.options.ciGenerations,
             getDetail: (hash, options, ctx, onScanUpdate) =>
                 this.getCommitCiDetail(hash, options, ctx, onScanUpdate),
-            history: (parents) => this.commitChecks.ciHistory(parents),
+            history: (parents, line) => this.commitChecks.ciHistory(parents, line),
+            changedSinceGreen: (request, key) => this.commitChecks.changedSinceGreen(request, key),
+            openRangeDiff: (fromRev, toRev, file) =>
+                openRevisionRangeFileDiff(fromRev, toRev, file, this.gitOps),
             ...(store && {
                 logs: {
                     store,
@@ -348,6 +365,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             if (this.view === webviewView) {
                 this.commitCheckDemandSeq += 1;
                 this.ciDetailLoops.dispose();
+                this.rangeDiffGrant.clear();
                 this.view = undefined;
                 this.iconTheme.dispose();
                 this.disposeThemeChangeDisposables();
@@ -390,6 +408,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         if (this.view === webviewView) {
                             this.webviewGeneration += 1;
                             this.ciDetailLoops.dispose();
+                            this.rangeDiffGrant.clear();
                         }
                         this.postToWebview({
                             type: "setViewVisibility",
@@ -544,6 +563,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         );
                         break;
                     }
+                    case "requestChangedSinceGreen":
+                    case "openCiRangeDiff":
+                        await this.handleChangedSinceGreenMessage(webviewView, msg);
+                        break;
                     case "cancelCommitCiDetail":
                         if (this.view === webviewView) this.ciDetailLoops.cancel(msg.requestId);
                         break;
@@ -570,6 +593,37 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         : "Commit graph error: {message}";
                 vscode.window.showErrorMessage(vscode.l10n.t(label, { message }));
                 this.postToWebview({ type: "error", message });
+            }
+        });
+    }
+
+    /**
+     * "Changed since last green": answers the file list to the webview that asked, unless it
+     * reloaded since, and opens one file's two-revision diff.
+     *
+     * @param webviewView - The view the message came from.
+     * @param msg - The Checks tab's request.
+     */
+    private async handleChangedSinceGreenMessage(
+        webviewView: vscode.WebviewView,
+        msg: Extract<CommitGraphOutbound, { type: "requestChangedSinceGreen" | "openCiRangeDiff" }>,
+    ): Promise<void> {
+        const repoKey = this.options.ciRepoKey;
+        // A late message from a replaced webview must not touch its successor.
+        if (!repoKey || this.view !== webviewView) return;
+        if (msg.type === "openCiRangeDiff") {
+            await answerOpenCiRangeDiff(
+                this.ciDetailSource(repoKey),
+                { ...msg },
+                this.rangeDiffGrant,
+            );
+            return;
+        }
+        const generation = this.webviewGeneration;
+        await answerChangedSinceGreenRequest(this.ciDetailSource(repoKey), { ...msg }, (reply) => {
+            if (this.view === webviewView && generation === this.webviewGeneration) {
+                this.rangeDiffGrant.record(reply);
+                this.postToWebview(reply);
             }
         });
     }
@@ -1007,7 +1061,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     /** Replaces first-page hash scope and invalidates demand tied to the previous graph result. */
     private replaceCommitCheckHashScope(commits: Commit[], unpushedHashes: string[]): void {
         this.commitCheckDemandSeq += 1;
-        this.loadedCommitHashes = new Set();
+        this.loadedCommitHashes = new Map();
         this.checkableCommitHashes = new Set();
         this.constrainCommitCheckHashes = true;
         this.addCommitCheckHashScope(commits, unpushedHashes);
@@ -1021,7 +1075,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         const unpushed = new Set(unpushedHashes);
         this.constrainCommitCheckHashes = true;
         for (const commit of commits) {
-            this.loadedCommitHashes.add(commit.hash);
+            this.loadedCommitHashes.set(commit.hash, commit.parentHashes);
             if (unpushed.has(commit.hash)) {
                 this.checkableCommitHashes.delete(commit.hash);
             } else {

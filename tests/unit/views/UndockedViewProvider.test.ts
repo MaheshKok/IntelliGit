@@ -977,6 +977,59 @@ describe("UndockedViewProvider Checks tab loops", () => {
         });
     });
 
+    it("a panel opens only a file its latest changed-since-green answer listed, until it is retired", async () => {
+        await withLoopHarness(async ({ provider }) => {
+            const read = vi
+                .spyOn(
+                    (provider as unknown as { gitOps: { getFileContentAtRef: () => unknown } })
+                        .gitOps,
+                    "getFileContentAtRef",
+                )
+                .mockResolvedValue("" as never);
+            vi.spyOn(
+                (provider as unknown as { commitChecks: { changedSinceGreen: () => unknown } })
+                    .commitChecks,
+                "changedSinceGreen",
+            ).mockResolvedValue({
+                lastGreen: HASH_B,
+                files: [{ path: "src/a.ts", status: "M", additions: 1, deletions: 0 }],
+            } as never);
+            const panel = openTestPanel(provider);
+            attachPostedMessageRecorder(panel);
+            const open = {
+                type: "openCiRangeDiff",
+                requestId: 3,
+                repoKey: "/repo-a",
+                fromRev: HASH_B,
+                toRev: HASH_A,
+                path: "src/a.ts",
+                status: "M",
+            };
+            await panel.receiveMessage({
+                type: "requestChangedSinceGreen",
+                requestId: 2,
+                repoKey: "/repo-a",
+                hash: HASH_A,
+                logicalCheckId: "job\0ci\0test",
+                scopeName: "ci",
+                checkName: "test",
+                loaded: [],
+            });
+            await panel.receiveMessage(open).catch(() => undefined);
+            expect(read, "the control: the listed file's two sides are read").toHaveBeenCalledTimes(
+                2,
+            );
+
+            // Only the generation matters here: ready's repository startup needs a real workspace.
+            await panel.receiveMessage({ type: "ready" }).catch(() => undefined);
+            await panel.receiveMessage(open).catch(() => undefined);
+            expect(
+                read,
+                "a reloaded panel cannot open the retired context's list",
+            ).toHaveBeenCalledTimes(2);
+        });
+    });
+
     it("closing the panel stops its Checks tab loop", async () => {
         await withLoopHarness(async ({ provider, getDetail }) => {
             const panel = openTestPanel(provider);

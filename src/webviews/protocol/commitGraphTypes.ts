@@ -18,6 +18,7 @@ import type {
 import type {
     CancelCommitCiDetailMessage,
     CiActionResultMessage,
+    ChangedSinceGreenMessage,
     CiHistoryMessage,
     CiLogPreviewMessage,
     CiLogResultMessage,
@@ -26,6 +27,8 @@ import type {
     OpenCiLogMessage,
     RunCiActionMessage,
     RequestCiHistoryMessage,
+    RequestChangedSinceGreenMessage,
+    OpenCiRangeDiffMessage,
     OpenCommitChecksSettingsMessage,
     OpenChecksTabMessage,
     OpenCommitInChecksMessage,
@@ -261,6 +264,8 @@ export type CommitGraphOutbound =
     | OpenCiLogMessage
     | RunCiActionMessage
     | RequestCiHistoryMessage
+    | RequestChangedSinceGreenMessage
+    | OpenCiRangeDiffMessage
     | OpenCommitChecksSettingsMessage
     | OpenCommitInChecksMessage;
 
@@ -430,4 +435,5 @@ export type CommitGraphInbound =
     | CiLogResultMessage
     | CiActionResultMessage
     | CiHistoryMessage
+    | ChangedSinceGreenMessage
     | OpenChecksTabMessage;

@@ -507,6 +507,9 @@
     "commit.checks.tab.openInBrowser": "Im Browser öffnen",
     "commit.checks.tab.jobsPageBound": "Die ersten {count} Jobs werden angezeigt – öffnen Sie den Lauf im Browser für den Rest",
     "commit.checks.tab.jobsRejectedNext": "Die ersten {count} Jobs werden angezeigt – der Link des Anbieters zur nächsten Seite wurde abgelehnt",
+    "commit.checks.tab.attemptsPageBound": "Die ersten {count} Versuche werden angezeigt – öffnen Sie den Lauf im Browser für den Rest",
+    "commit.checks.tab.attemptsRejectedNext": "Die ersten {count} Versuche werden angezeigt – der Link des Anbieters zur nächsten Seite wurde abgelehnt",
+    "commit.checks.tab.attemptsUnavailable": "Wiederholungen einiger geladener Commits konnten nicht gelesen werden – die Zählung „instabil“ ist möglicherweise unvollständig",
     "commit.checks.tab.runsPageBound": "Die ersten {count} Workflow-Läufe werden angezeigt",
     "commit.checks.tab.runsRejectedNext": "Die ersten {count} Workflow-Läufe werden angezeigt – der Link des Anbieters zur nächsten Seite wurde abgelehnt",
     "commit.checks.tab.checksPageBound": "Die ersten {count} Prüfungen werden angezeigt",
@@ -568,5 +571,13 @@
     "commit.checks.tab.history.still": "weiterhin",
     "commit.checks.tab.history.fixed": "behoben",
     "commit.checks.tab.history.unknown": "unbekannt",
-    "commit.checks.tab.history.alsoRed": "auch rot auf {branch}"
+    "commit.checks.tab.history.alsoRed": "auch rot auf {branch}",
+    "commit.checks.tab.history.flaky": "instabil {n}/{m}",
+    "commit.checks.tab.history.flakyEstimated": "instabil {n}/{m} (geschätzt)",
+    "commit.checks.tab.history.flakyEstimatedTooltip": "geschätzt aus den geladenen Commits; Wiederholungen werden bei diesem Anbieter nicht gezählt",
+    "commit.checks.tab.changedSinceGreen": "Geändert seit dem letzten Erfolg ({hash})",
+    "commit.checks.tab.changedSinceGreenNone": "Kein erfolgreicher Lauf dieses Jobs im geladenen Verlauf",
+    "commit.checks.tab.changedSinceGreenAmbiguous": "Dieser Job lässt sich in älteren Commits nicht zuordnen",
+    "commit.checks.tab.changedSinceGreenFailed": "Vergleich nicht möglich: {error}",
+    "commit.checks.tab.changedSinceGreenLoading": "Letzter erfolgreicher Lauf wird gesucht…"
 }

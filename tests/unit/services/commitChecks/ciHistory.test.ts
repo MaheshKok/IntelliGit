@@ -23,7 +23,11 @@ import checkRunsFixture from "../../../fixtures/commitChecks/github/checkRuns.js
 import gitlabStatusesFixture from "../../../fixtures/commitChecks/gitlab/statuses.json";
 import { BitbucketCloudProvider } from "../../../../src/services/commitChecks/bitbucketCloudProvider";
 import { BitbucketServerProvider } from "../../../../src/services/commitChecks/bitbucketServerProvider";
-import { readCiHistory } from "../../../../src/services/commitChecks/ciHistory";
+import {
+    attemptHistories,
+    readCiHistory,
+    type CiAttemptJob,
+} from "../../../../src/services/commitChecks/ciHistory";
 import { CredentialStore } from "../../../../src/services/commitChecks/credentialStore";
 import {
     readDefaultBranch,
@@ -35,12 +39,20 @@ import type { ProviderRepoRef } from "../../../../src/services/commitChecks/type
 import {
     alsoRed,
     compare,
+    flaky,
+    flakyLineOf,
     historyChecksOf,
     join,
+    type CiFlakyCommit,
     type CiHistoryCheck,
 } from "../../../../src/shared/ci/history";
 import { logicalCheckId } from "../../../../src/shared/ci/identity";
-import type { CiJob, CommitCheckItem, CommitChecksSnapshot } from "../../../../src/types";
+import type {
+    CiAttemptHistory,
+    CiJob,
+    CommitCheckItem,
+    CommitChecksSnapshot,
+} from "../../../../src/types";
 
 const jobId = (scope: string, name: string): string => logicalCheckId({ kind: "job", scope, name });
 
@@ -530,5 +542,389 @@ describe("snapshot logical identity per provider", () => {
         const result = await provider.getChecks(ref, "a".repeat(40));
         expect(result.items.map((i) => i.name)).toEqual(["unit-tests"]);
         expect(result.items.every((i) => i.logicalId === undefined)).toBe(true);
+    });
+});
+
+const RUN_A = "run-a";
+const RUN_B = "run-b";
+const UNIT = jobId("CI", "unit");
+
+/** One attempt record of `UNIT` (or `logicalId`) as a provider reads it. */
+function attemptJob(
+    id: string,
+    state: CiJob["state"],
+    extra: Partial<CiAttemptJob> = {},
+): CiAttemptJob {
+    return { id, logicalId: UNIT, name: "unit", state, ...extra };
+}
+
+/** A commit of the loaded line with no attempt histories. */
+function plain(state: CiFlakyCommit["state"]): CiFlakyCommit {
+    return { state, attempts: [] };
+}
+
+/** One history of `UNIT` in `RUN_A` with the given attempt states, oldest first. */
+function retried(...states: CiJob["state"][]): CiAttemptHistory[] {
+    return attemptHistories(
+        [
+            {
+                runId: RUN_A,
+                coverage: "full",
+                jobs: states.map((state, index) =>
+                    attemptJob(String(index + 1), state, { attempt: index + 1 }),
+                ),
+            },
+        ],
+        "runAttempt",
+    );
+}
+
+describe("attempt histories (§9)", () => {
+    it("GitHub attempts ordered by run_attempt then started_at", () => {
+        const [history] = attemptHistories(
+            [
+                {
+                    runId: RUN_A,
+                    coverage: "full",
+                    jobs: [
+                        attemptJob("300", "failure", {
+                            attempt: 1,
+                            startedAt: "2026-11-07T09:00:00Z",
+                        }),
+                        attemptJob("100", "success", {
+                            attempt: 2,
+                            startedAt: "2026-11-07T10:05:00Z",
+                        }),
+                        attemptJob("200", "failure", {
+                            attempt: 2,
+                            startedAt: "2026-11-07T10:00:00Z",
+                        }),
+                        attemptJob("300", "failure", {
+                            attempt: 1,
+                            startedAt: "2026-11-07T09:00:00Z",
+                        }),
+                    ],
+                },
+            ],
+            "runAttempt",
+        );
+        expect(history.attempts.map((a) => [a.executionId, a.attempt])).toEqual([
+            ["300", 1],
+            ["200", 2],
+            ["100", 2],
+        ]);
+    });
+
+    it("GitHub orders by run_attempt before an earlier started_at or a lower job id", () => {
+        // A clock-skewed re-run: attempt 2 reports an earlier start and a lower id than attempt 1.
+        const [history] = attemptHistories(
+            [
+                {
+                    runId: RUN_A,
+                    coverage: "full",
+                    jobs: [
+                        attemptJob("20", "failure", {
+                            attempt: 1,
+                            startedAt: "2026-11-07T10:00:00Z",
+                        }),
+                        attemptJob("10", "success", {
+                            attempt: 2,
+                            startedAt: "2026-11-07T09:00:00Z",
+                        }),
+                    ],
+                },
+            ],
+            "runAttempt",
+        );
+        expect(history.attempts.map((a) => [a.executionId, a.attempt])).toEqual([
+            ["20", 1],
+            ["10", 2],
+        ]);
+    });
+
+    it("GitLab retried jobs ordered by created_at", () => {
+        // Job ids out of time order: a sort by id alone would put 5 first.
+        const [history] = attemptHistories(
+            [
+                {
+                    runId: RUN_A,
+                    coverage: "full",
+                    jobs: [
+                        attemptJob("9", "failure", { createdAt: "2026-11-07T10:00:00Z" }),
+                        attemptJob("12", "failure", { createdAt: "2026-11-07T09:00:00Z" }),
+                        attemptJob("5", "success", { createdAt: "2026-11-07T11:00:00Z" }),
+                    ],
+                },
+            ],
+            "createdAt",
+        );
+        expect(history.attempts.map((a) => [a.executionId, a.attempt])).toEqual([
+            ["12", 1],
+            ["9", 2],
+            ["5", 3],
+        ]);
+    });
+
+    it("colliding attempt numbers in two runs do not merge", () => {
+        const histories = attemptHistories(
+            [
+                {
+                    runId: RUN_A,
+                    coverage: "full",
+                    jobs: [
+                        attemptJob("1", "failure", { attempt: 1 }),
+                        attemptJob("2", "success", { attempt: 2 }),
+                    ],
+                },
+                {
+                    runId: RUN_B,
+                    coverage: { reason: "pageBound", shown: 2 },
+                    jobs: [
+                        attemptJob("3", "failure", { attempt: 1 }),
+                        attemptJob("4", "failure", { attempt: 2 }),
+                    ],
+                },
+            ],
+            "runAttempt",
+        );
+        expect(
+            histories.map((h) => [h.runId, h.attempts.map((a) => a.executionId), h.coverage]),
+        ).toEqual([
+            [RUN_A, ["1", "2"], "full"],
+            [RUN_B, ["3", "4"], { reason: "pageBound", shown: 2 }],
+        ]);
+    });
+
+    it("same-named jobs in two workflows keep separate histories", () => {
+        const deploy = jobId("Deploy", "unit");
+        const histories = attemptHistories(
+            [
+                {
+                    runId: RUN_A,
+                    coverage: "full",
+                    jobs: [
+                        attemptJob("1", "failure", { attempt: 1 }),
+                        attemptJob("2", "success", { attempt: 1, logicalId: deploy }),
+                    ],
+                },
+            ],
+            "runAttempt",
+        );
+        expect(histories.map((h) => h.logicalId)).toEqual([UNIT, deploy]);
+        // The CI workflow's job only failed: the Deploy workflow's pass is another check.
+        expect(flaky(UNIT, [{ state: "failure", attempts: histories }], true)).toBeNull();
+    });
+});
+
+describe("flaky (§9, O3)", () => {
+    it("isolated red counts, run of reds does not", () => {
+        const line = ["success", "failure", "success", "failure", "failure", "success"] as const;
+        expect(flaky(UNIT, line.map(plain), true)).toEqual({ n: 1, m: 6, attemptsCounted: true });
+    });
+
+    it("an isolated red looks past commits with no complete result", () => {
+        const line = [
+            plain("success"),
+            plain(null),
+            plain("failure"),
+            plain("running"),
+            plain("success"),
+        ];
+        expect(flaky(UNIT, line, true)).toEqual({ n: 1, m: 3, attemptsCounted: true });
+    });
+
+    it("a red at either end of the loaded line is not isolated", () => {
+        expect(flaky(UNIT, [plain("failure"), plain("success")], true)).toBeNull();
+        expect(flaky(UNIT, [plain("success"), plain("failure")], true)).toBeNull();
+    });
+
+    it("same-commit fail-then-pass counts", () => {
+        const line: CiFlakyCommit[] = [
+            { state: "success", attempts: retried("failure", "success") },
+            plain("success"),
+            plain("success"),
+        ];
+        expect(flaky(UNIT, line, true)).toEqual({ n: 1, m: 3, attemptsCounted: true });
+    });
+
+    it("another check's fail-then-pass on the same commit does not count", () => {
+        const deployRetried = retried("failure", "success").map((history) => ({
+            ...history,
+            logicalId: jobId("Deploy", "unit"),
+        }));
+        const line: CiFlakyCommit[] = [
+            { state: "success", attempts: deployRetried },
+            plain("success"),
+        ];
+        expect(flaky(UNIT, line, true)).toBeNull();
+    });
+
+    it("pass-then-fail on one commit is not a flaky retry", () => {
+        const line: CiFlakyCommit[] = [
+            { state: "failure", attempts: retried("success", "failure") },
+            plain("failure"),
+        ];
+        expect(flaky(UNIT, line, true)).toBeNull();
+    });
+
+    it("a commit meeting both rules counts once", () => {
+        const line: CiFlakyCommit[] = [
+            plain("success"),
+            { state: "failure", attempts: retried("failure", "success") },
+            plain("success"),
+        ];
+        expect(flaky(UNIT, line, true)).toEqual({ n: 1, m: 3, attemptsCounted: true });
+    });
+
+    it("no attempt history → attemptsCounted false", () => {
+        const line = [plain("success"), plain("failure"), plain("success")];
+        expect(flaky(UNIT, line, false)).toEqual({ n: 1, m: 3, attemptsCounted: false });
+    });
+
+    it("an ancestor read in part counts only an identity match", () => {
+        const check = job("CI", "unit", "failure");
+        const nameOnly = [item("unit", "failure")];
+        const line = flakyLineOf(
+            check,
+            [check],
+            [],
+            [
+                { hash: "a".repeat(40), items: nameOnly, attempts: [], partial: true },
+                { hash: "b".repeat(40), items: nameOnly, attempts: [] },
+                {
+                    hash: "c".repeat(40),
+                    items: [item("unit", "success", { logicalId: UNIT })],
+                    attempts: [],
+                    partial: true,
+                },
+            ],
+        );
+        expect(line.map((commit) => commit.state)).toEqual(["failure", null, "failure", "success"]);
+    });
+
+    describe("an ancestor that was not read breaks isolation", () => {
+        const check = job("CI", "unit", "success");
+        const hash = (letter: string): string => letter.repeat(40);
+        const red = { hash: hash("b"), items: [item("unit", "failure", { logicalId: UNIT })] };
+        const green = { hash: hash("c"), items: [item("unit", "success", { logicalId: UNIT })] };
+
+        it("a red after an unread ancestor is not an isolated red", () => {
+            const line = flakyLineOf(
+                check,
+                [check],
+                [],
+                [
+                    { hash: hash("a"), items: null, attempts: [] },
+                    { ...red, attempts: [] },
+                    { ...green, attempts: [] },
+                ],
+            );
+            expect(flaky(UNIT, line, true)).toBeNull();
+        });
+
+        it("a name-only match in a partly read ancestor is unread, not a result", () => {
+            const line = flakyLineOf(
+                check,
+                [check],
+                [],
+                [
+                    {
+                        hash: hash("a"),
+                        items: [item("unit", "failure")],
+                        attempts: [],
+                        partial: true,
+                    },
+                    { ...red, attempts: [] },
+                    { ...green, attempts: [] },
+                ],
+            );
+            expect(flaky(UNIT, line, true)).toBeNull();
+        });
+
+        it("a flat check's name match on an identified item of a partly read ancestor is unread", () => {
+            // A flat check has no logical id, so only the name matched; a hidden item may share it.
+            const flat: CiHistoryCheck = { name: "unit", state: "success" };
+            const line = flakyLineOf(
+                flat,
+                [flat],
+                [],
+                [
+                    {
+                        hash: hash("a"),
+                        items: [item("unit", "failure", { logicalId: UNIT })],
+                        attempts: [],
+                        partial: true,
+                    },
+                    { hash: hash("b"), items: [item("unit", "success")], attempts: [] },
+                ],
+            );
+            expect(line[1], "a partial ancestor proves only an identity match").toEqual({
+                state: null,
+                attempts: [],
+                unread: true,
+            });
+            expect(flaky("", line, true), "no unqualified flaky 1/3").toBeNull();
+        });
+
+        it("an ambiguous ancestor cannot prove the next red isolated", () => {
+            const line = flakyLineOf(
+                check,
+                [check],
+                [],
+                [
+                    {
+                        hash: hash("a"),
+                        items: [
+                            item("unit", "success", { logicalId: UNIT }),
+                            item("unit", "failure", { logicalId: UNIT }),
+                        ],
+                        attempts: [],
+                    },
+                    { ...red, attempts: [] },
+                    { ...green, attempts: [] },
+                ],
+            );
+            expect(flaky(UNIT, line, true)).toBeNull();
+        });
+
+        it("known Deploy/Lint identities cannot hide CI/unit or break its isolated red", () => {
+            const line = flakyLineOf(
+                check,
+                [check],
+                [],
+                [
+                    {
+                        hash: hash("a"),
+                        items: [
+                            item("unit", "failure", { logicalId: jobId("Deploy", "unit") }),
+                            item("unit", "success", { logicalId: jobId("Lint", "unit") }),
+                        ],
+                        attempts: [],
+                    },
+                    { ...red, attempts: [] },
+                    { ...green, attempts: [] },
+                ],
+            );
+            expect(flaky(UNIT, line, true)).toEqual({ n: 1, m: 3, attemptsCounted: true });
+        });
+
+        it("a red between two read greens still counts", () => {
+            const line = flakyLineOf(
+                check,
+                [check],
+                [],
+                [
+                    { ...red, attempts: [] },
+                    { ...green, attempts: [] },
+                ],
+            );
+            expect(flaky(UNIT, line, true)).toEqual({ n: 1, m: 3, attemptsCounted: true });
+        });
+    });
+
+    it("no tag when n=0", () => {
+        const line = [plain("success"), plain("failure"), plain("failure")];
+        expect(flaky(UNIT, line, true)).toBeNull();
+        expect(flaky(UNIT, [], true)).toBeNull();
     });
 });

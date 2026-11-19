@@ -770,6 +770,97 @@ describe("CommitInfoViewProvider Checks tab history after a webview reload", () 
         expect(replies, "only the reloaded context's reply is posted").toHaveLength(1);
     });
 
+    it("history and changed-since-green walk the Git Log views' loaded commits, not the webview's", async () => {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        const view = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await view.receiveMessage({ type: "ready" });
+        const loaded = [{ hash: "a".repeat(40), parents: ["b".repeat(40)] }];
+        const history = vi.fn().mockResolvedValue({ parent: null, defaultBranch: null });
+        const changedSinceGreen = vi.fn().mockResolvedValue({ lastGreen: null, files: [] });
+        provider.setCiSource({
+            enabled: true,
+            repoKey: () => "/repo",
+            getDetail: vi.fn(),
+            history,
+            changedSinceGreen,
+            loadedCommits: () => loaded,
+        });
+        await view.receiveMessage({
+            type: "requestCiHistory",
+            requestId: 1,
+            repoKey: "/repo",
+            hash: "a".repeat(40),
+            parents: ["b".repeat(40)],
+        });
+        await view.receiveMessage({
+            type: "requestChangedSinceGreen",
+            requestId: 2,
+            repoKey: "/repo",
+            hash: "a".repeat(40),
+            logicalCheckId: "job\0ci\0test",
+            scopeName: "ci",
+            checkName: "test",
+            loaded: [],
+        });
+        expect(history).toHaveBeenCalledWith(["b".repeat(40)], { hash: "a".repeat(40), loaded });
+        expect(changedSinceGreen).toHaveBeenCalledWith(
+            expect.objectContaining({ hash: "a".repeat(40), loaded }),
+            "/repo",
+        );
+        expect(
+            view.posted.filter((m) => isRecord(m) && m.type === "changedSinceGreen"),
+        ).toHaveLength(1);
+    });
+
+    it("opens only a file its latest changed-since-green answer listed, until the webview is retired", async () => {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        const view = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await view.receiveMessage({ type: "ready" });
+        const openRangeDiff = vi.fn(async () => undefined);
+        provider.setCiSource({
+            enabled: true,
+            repoKey: () => "/repo",
+            getDetail: vi.fn(),
+            changedSinceGreen: vi.fn().mockResolvedValue({
+                lastGreen: "b".repeat(40),
+                files: [{ path: "src/a.ts", status: "M", additions: 1, deletions: 0 }],
+            }),
+            openRangeDiff,
+        });
+        const open = {
+            type: "openCiRangeDiff",
+            requestId: 3,
+            repoKey: "/repo",
+            fromRev: "b".repeat(40),
+            toRev: "a".repeat(40),
+            path: "src/a.ts",
+            status: "M",
+        };
+        await view.receiveMessage(open);
+        expect(openRangeDiff, "nothing was listed yet").not.toHaveBeenCalled();
+        await view.receiveMessage({
+            type: "requestChangedSinceGreen",
+            requestId: 2,
+            repoKey: "/repo",
+            hash: "a".repeat(40),
+            logicalCheckId: "job\0ci\0test",
+            scopeName: "ci",
+            checkName: "test",
+            loaded: [],
+        });
+        await view.receiveMessage(open);
+        expect(openRangeDiff, "the control: the listed file opens").toHaveBeenCalledTimes(1);
+
+        await view.receiveMessage({ type: "ready" });
+        await view.receiveMessage(open);
+        expect(
+            openRangeDiff,
+            "a reloaded webview cannot open the retired one's list",
+        ).toHaveBeenCalledTimes(1);
+    });
+
     it("a replaced view's late ready does not discard the current context's history reply", async () => {
         const provider = new CommitInfoViewProvider(createFakeExtensionUri());
         const retired = createInspectableFakeWebviewView();

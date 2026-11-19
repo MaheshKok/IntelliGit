@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.15] - 2026-11-18
+
+### Added
+
+- Groundwork for the coming Checks tab: IntelliGit can now tell when a CI job passes and fails at random, and list the files changed since a failed job last passed, each opening a diff of the two versions. Nothing changes in the extension yet.
+
 ## [0.43.14] - 2026-11-15
 
 ### Fixed

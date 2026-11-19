@@ -13,9 +13,14 @@ import { snapshotOf, withoutSnapshot } from "../services/commitChecks/detailServ
 import type { CommitChecksFetchOptions } from "../services/commitChecks/service";
 import type { CiActionRequest, CiLogJob } from "../services/commitChecks/types";
 import { isValidGitHash } from "../services/gitHelpers";
+import type {
+    ChangedSinceGreen,
+    ChangedSinceGreenRequest,
+    LoadedCommit,
+} from "../services/commitChecks/changedSinceGreen";
 import type { CiHistory } from "../shared/ci/history";
 import { PENDING_CHECK_RETRY_DELAYS_MS } from "../shared/ci/pollSchedule";
-import type { CommitCiDetail } from "../types";
+import type { CiRangeDiffFile, CommitCiDetail } from "../types";
 import type { CommitCiDetailMessage } from "../webviews/protocol/commitCiMessages";
 
 /** What a host offers to answer a Checks tab request. */
@@ -33,8 +38,21 @@ export interface CommitCiDetailSource {
     logs?: CiLogAccess;
     /** CI write actions and their fences; absent = the host answers no action message. */
     actions?: CiActionAccess;
-    /** The snapshots the history tags compare with; absent = the host answers no history request. */
-    history?: (parents: readonly string[]) => Promise<CiHistory>;
+    /**
+     * The snapshots the history tags compare with, and the cached first-parent line of the
+     * loaded commits; absent = the host answers no history request.
+     */
+    history?: (
+        parents: readonly string[],
+        line: { hash: string; loaded: readonly LoadedCommit[] },
+    ) => Promise<CiHistory>;
+    /** "Changed since last green"; absent = the host answers no such request. */
+    changedSinceGreen?: (
+        request: ChangedSinceGreenRequest,
+        repoKey: string,
+    ) => Promise<ChangedSinceGreen | undefined>;
+    /** Opens a file's diff between two revisions; absent = the host opens none. */
+    openRangeDiff?: (fromRev: string, toRev: string, file: CiRangeDiffFile) => Promise<void>;
 }
 
 /** A host's way to run CI write actions for the repository it shows. */
