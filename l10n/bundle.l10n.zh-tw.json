@@ -139,7 +139,7 @@
     "Select IntelliGit repository": "選擇 IntelliGit 儲存庫",
     "Selected file is outside the current IntelliGit repository workspace.": "所選檔案位於目前 IntelliGit 儲存庫工作區之外。",
     "Stashed change deleted.": "儲藏的變更已刪除。",
-    "Sign in with your GitHub account": "使用您的 GitHub 帳號登入",
+    "Clone by URL, or sign in to browse your repositories": "透過 URL 複製，或登入以瀏覽您的倉庫",
     "Squash Commits is available only for unpushed commits.": "壓縮提交僅適用於未推送的提交。",
     "Squash Commits is available only when every commit in the selected range is unpushed.": "只有當所選範圍內的所有提交都未推送時，才能使用「壓縮提交」功能。",
     "Squash Commits is not available for merge commits.": "合併提交不支援“壓縮提交”功能。",

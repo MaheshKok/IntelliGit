@@ -139,7 +139,7 @@
     "Select IntelliGit repository": "IntelliGit-Repository auswählen",
     "Selected file is outside the current IntelliGit repository workspace.": "Die ausgewählte Datei befindet sich außerhalb des aktuellen IntelliGit-Repository-Arbeitsbereichs.",
     "Stashed change deleted.": "Stash-Eintrag gelöscht.",
-    "Sign in with your GitHub account": "Melde dich mit deinem GitHub-Konto an",
+    "Clone by URL, or sign in to browse your repositories": "Per URL klonen oder anmelden, um deine Repositories zu durchsuchen",
     "Squash Commits is available only for unpushed commits.": "Squash Commits ist nur für nicht gepushte Commits verfügbar.",
     "Squash Commits is available only when every commit in the selected range is unpushed.": "Commits squaschen ist nur verfügbar, wenn alle Commits im ausgewählten Bereich nicht gepusht wurden.",
     "Squash Commits is not available for merge commits.": "Squash Commits ist für Merge-Commits nicht verfügbar.",

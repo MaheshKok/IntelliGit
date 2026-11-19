@@ -139,7 +139,7 @@
     "Select IntelliGit repository": "IntelliGit 저장소를 선택하세요",
     "Selected file is outside the current IntelliGit repository workspace.": "선택한 파일이 현재 IntelliGit 저장소 작업 공간 외부에 있습니다.",
     "Stashed change deleted.": "스태시가 삭제되었습니다.",
-    "Sign in with your GitHub account": "GitHub 계정으로 로그인하세요",
+    "Clone by URL, or sign in to browse your repositories": "URL로 복제하거나 로그인하여 내 저장소 찾아보기",
     "Squash Commits is available only for unpushed commits.": "Squash Commits는 푸시되지 않은 커밋에 대해서만 사용할 수 있습니다.",
     "Squash Commits is available only when every commit in the selected range is unpushed.": "스쿼시 커밋 기능은 선택한 범위 내의 모든 커밋이 푸시되지 않은 경우에만 사용할 수 있습니다.",
     "Squash Commits is not available for merge commits.": "병합 커밋에는 스쿼시 커밋 기능을 사용할 수 없습니다.",

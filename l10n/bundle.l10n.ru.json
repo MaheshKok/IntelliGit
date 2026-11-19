@@ -139,7 +139,7 @@
     "Select IntelliGit repository": "Выберите репозиторий IntelliGit",
     "Selected file is outside the current IntelliGit repository workspace.": "Выбранный файл находится за пределами текущей рабочей области репозитория IntelliGit.",
     "Stashed change deleted.": "Спрятанное изменение удалено.",
-    "Sign in with your GitHub account": "Войдите в систему, используя свою учетную запись GitHub.",
+    "Clone by URL, or sign in to browse your repositories": "Клонировать по URL или войти, чтобы просмотреть свои репозитории",
     "Squash Commits is available only for unpushed commits.": "Функция Squash Commits доступна только для неотправленных коммитов.",
     "Squash Commits is available only when every commit in the selected range is unpushed.": "Функция Squash Commits доступна только тогда, когда все коммиты в выбранном диапазоне не отправлены.",
     "Squash Commits is not available for merge commits.": "Функция Squash Commits недоступна для коммитов слияния.",

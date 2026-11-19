@@ -288,6 +288,20 @@ describe("cloneService phase 3", () => {
         expect(items.map((item) => item.provider)).toEqual(["github", "gitlab", "ssh"]);
     });
 
+    it("describes GitHub clone as needing sign-in only for browsing (issue #441)", async () => {
+        mocks.showQuickPick.mockResolvedValueOnce(undefined);
+
+        await runCloneFlow();
+
+        const items = mocks.showQuickPick.mock.calls[0][0] as Array<{
+            provider: string;
+            description: string;
+        }>;
+        expect(items.find((item) => item.provider === "github")?.description).toBe(
+            "Clone by URL, or sign in to browse your repositories",
+        );
+    });
+
     it("runs SSH clone with the selected destination and inferred repo directory", async () => {
         mocks.showQuickPick.mockResolvedValueOnce({ provider: "ssh" });
         mocks.showInputBox.mockResolvedValueOnce("git@github.com:user/repo.git");

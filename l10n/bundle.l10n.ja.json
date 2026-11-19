@@ -139,7 +139,7 @@
     "Select IntelliGit repository": "IntelliGitリポジトリを選択してください",
     "Selected file is outside the current IntelliGit repository workspace.": "選択されたファイルは、現在のIntelliGitリポジトリワークスペース外にあります。",
     "Stashed change deleted.": "スタッシュが削除されました。",
-    "Sign in with your GitHub account": "GitHubアカウントでサインインしてください",
+    "Clone by URL, or sign in to browse your repositories": "URL でクローン、またはサインインしてマイリポジトリを閲覧",
     "Squash Commits is available only for unpushed commits.": "スクワッシュコミットは、プッシュされていないコミットに対してのみ利用可能です。",
     "Squash Commits is available only when every commit in the selected range is unpushed.": "コミットの統合機能は、選択した範囲内のすべてのコミットがプッシュされていない場合にのみ使用できます。",
     "Squash Commits is not available for merge commits.": "マージコミットに対しては、スクワッシュコミットは利用できません。",

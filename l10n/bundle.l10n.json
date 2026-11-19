@@ -337,7 +337,7 @@
     "Malformed Link header.": "Malformed Link header.",
     "Malformed x-next-page header.": "Malformed x-next-page header.",
     "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "This pipeline has no update time, so a retry during the scan cannot be ruled out.",
-    "Sign in with your GitHub account": "Sign in with your GitHub account",
+    "Clone by URL, or sign in to browse your repositories": "Clone by URL, or sign in to browse your repositories",
     "Squash Commits is available only for unpushed commits.": "Squash Commits is available only for unpushed commits.",
     "Squash Commits is available only when every commit in the selected range is unpushed.": "Squash Commits is available only when every commit in the selected range is unpushed.",
     "Squash Commits is not available for merge commits.": "Squash Commits is not available for merge commits.",

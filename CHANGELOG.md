@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Cloning a public GitHub repository by pasting its URL no longer asks you to sign in to GitHub. If you are already signed in, IntelliGit still uses your account, so private repositories keep working; signing in is only needed to browse your own repositories.
 - Cloning by URL or SSH without credentials now fails at once with a clear error when the repository needs a sign-in, instead of waiting on a hidden terminal password prompt that could leave the "Cloning…" notification stuck.
+- The GitHub choice in the clone picker now reads "Clone by URL, or sign in to browse your repositories" instead of "Sign in with your GitHub account", so it no longer suggests that cloning a public repository needs a sign-in.
 
 ## [0.43.15] - 2026-11-18
 

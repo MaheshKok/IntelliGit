@@ -76,7 +76,7 @@ async function pickCloneProvider(): Promise<CloneProvider | undefined> {
         [
             {
                 label: vscode.l10n.t("$(github) GitHub"),
-                description: vscode.l10n.t("Sign in with your GitHub account"),
+                description: vscode.l10n.t("Clone by URL, or sign in to browse your repositories"),
                 provider: "github" as const,
             },
             {
