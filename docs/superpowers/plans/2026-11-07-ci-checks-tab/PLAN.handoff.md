@@ -36,6 +36,7 @@
 - The vitest `vscode` alias is repo-wide test config: a test that relied on `vscode` failing to resolve would now fail on the stub's throw instead.
 
 ## Next phase: 13
+- Owner's answer 2026-11-20, "A: hide them": Phase 13 ships hidden behind the Checks tab switch (`isE2eControlChannelActive()` on the host). While it is off there is no status bar item, no settle notification, and the HEAD watcher starts no timer and sends no CI request for HEAD; the two `intelligit.ci.*HeadChecks` commands stay registered (both e2e inventories) and do nothing; the `statusBar` and `notifyOnSettle` settings are read with their defaults but contributed (package.json + NLS) only in Phase 18; Patch bump with a groundwork CHANGELOG line, and Phase 18 carries the visible line and deletes the switch checks and their switch-off tests.
 ## Found outside scope
 - Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
 - tests/integration/git/updateWithLocalChanges.integration.test.ts fails on Node 24.3.0; commit-list-column-resize fails on Node 26.
