@@ -799,6 +799,33 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
         expect(replies, "only the reloaded context's reply is posted").toHaveLength(1);
     });
 
+    it("holds openChecksTab until the webview is ready, then posts it once", async () => {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            { ...buildProviderOptions("card"), ciRepoKey: () => "/repo" },
+        );
+        const { webviewView, posted, receiveMessage } =
+            createInspectableFakeCommitGraphWebviewView();
+        const opens = () =>
+            posted.filter((message) => isRecord(message) && message.type === "openChecksTab");
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        provider.openChecksTab("a".repeat(40));
+        expect(opens()).toEqual([]);
+        await receiveMessage({ type: "ready" });
+        expect(opens()).toEqual([
+            { type: "openChecksTab", repoKey: "/repo", hash: "a".repeat(40) },
+        ]);
+        await receiveMessage({ type: "ready" });
+        expect(opens()).toHaveLength(1);
+        provider.openChecksTab("b".repeat(40));
+        expect(opens()).toHaveLength(2);
+    });
+
     it("opens only a file its latest changed-since-green answer listed, until the webview is retired", async () => {
         const gitOps = new GitOps(
             new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),

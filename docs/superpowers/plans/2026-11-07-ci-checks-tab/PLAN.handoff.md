@@ -13,30 +13,33 @@
 - Phase 9: accepted 37ba9d13, manual; elephant OK 2026-11-14 (squash-merged as #430, 63b8ea88).
 - Phase 10: accepted 8ff6422d, manual, owner answer "A" 2026-11-14 (squash-merged as #435, bc063074).
 - Phase 11: accepted b9d710d6, verification incomplete (squash-merged as #439, 928c1aae).
+- Phase 12: accepted by the owner by hand 2026-11-18 at c874d0b3 ("A: accept, file issue"; gaps in #443; squash-merged as #444, 29efe7ec).
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 12: review pending, started at b9d710d60cb6a5b929ad4ef7e32c1293090b550b
-- Effective base 90731f87 (Phase 11 squash-merged, then the Phase 12 slice rewritten as groundwork); b9d710d6 is not its ancestor. Not a halt.
-- History: built 02881057; fixes 36c1f1b9, 5a06ca01; takeover 6e448ca8 halted; rerun (owner 2026-11-16) cd700bab, fixes 92ae2acb, 1842cf4a, takeover 4834dbc7 halted; owner answer 2026-11-18 (E3): one more rerun, Fable R1 only, a further halt goes to the owner's manual accept. Rerun 3 ca830528, fixes 1fc1925c, 1fb5b95b, then this takeover. Details: PLAN.review-log.md.
-- Rerun 3 summary: CheckTree lists every attempt history read in part with its reason; an unread attempt read is `null` and the line commit carries `attemptsUnavailable: true` with a Refresh note; `flakyLineOf` treats an unread, ambiguous or name-only ancestor as a neighbour (never isolating a red) and drops ancestor items whose logicalId differs from the check's.
-- Takeover (this commit), finding 1: "Changed since last green" now renders each file through the shared `TreeFileRow` (the row `CommitChangedFilesPanel` uses via `FileTreeRows`) inside a `role="tree"` labelled by the section title; the hand-rolled button, `FILE_STATUS_COLOR` and `fileButtonStyle` are gone. A click or Enter opens the two-revision diff (wired as `onSelect`). Test: commitChecksChangedSinceGreen.integration.test.tsx "each file is the commit pane's shared changed-files row" (CI row outerHTML equals a standalone TreeFileRow's). Red before: `expected '<button type="button" data-testid="ci…' to be '<div tabindex="0" role="treeitem" ari…'`. The reviewer's .review-evidence/row-reuse.test.tsx passes on a copy of the fixed tree (2 of 2).
-- Takeover, finding 2: GitNexus 1.6.12 run on an index of this worktree (built into a scratch storage path, `--index-only --skip-agents-md --skip-skills`, registry entry removed after). detect-changes scope all (this diff): 3 symbols, 0 processes, risk low. detect-changes compare 90731f87 (whole phase): 77 files, 725 symbols, 268 flows, risk "critical"; the flow count is driven by name-matched `getData` flows, and the changed `CommitCiDetailService.getData` itself is impact LOW (6). Impact: `flakyLineOf` LOW (4, Checks module), `CheckJobDetail` HIGH (5, all in Checks/Commit-info/Components), `readAttemptHistory` LOW (3 per candidate). The spec's "impact before each edit" cannot be run retroactively; these runs are the substitute, recorded for the owner.
-- Owner accepted Phase 12 by hand 2026-11-18 at c874d0b3 (answer "A: accept, file issue"); open gaps in #443; the review log's last Phase 12 line stays HALT.
+## Phase 13: review pending, started at 1860b1475c08f0fb8502dba7e1cdb681b68d7abf
+- Built test-first, no Codex round yet. New: `src/services/commitChecks/headStatus.ts` (status bar, settle notification, monitor), `src/activation/headChecks.ts` (wiring, both commands), `tests/unit/services/commitChecks/headStatus.test.ts` (29 tests, the 25 spec names plus 4), `tests/e2e/ciHeadStatus.spec.ts` (not run locally; CI runs it). Coordinator gained `invalidateDetail` and `capabilities`; request gates `latestCooldownEnd`; CommitGraphViewProvider `openChecksTab` (held until the webview is ready) and `headChecksSource`.
+- Mutations on a copy: 24 of 24 red, each red line names the planned test. Not mutated: "claims are never pruned" (no pruning code exists to break) and "settles during the restart gap" (no in-memory-set variant tried).
+- Gates: format, lint:strict, typecheck, architecture, react-doctor, verify:manifest, Gate L (l10n sync/import/validate/audit), build, build:prod, package green. `bun run test` 8 of 8498 red, all in tests/webview/unit/commit-list-column-resize.test.tsx (Node 26.5.0), also 8 of 8 red at 1860b147 on an extracted copy: PRE-EXISTING. "claim taken before toast" once flaked under full-suite load (waited a fixed tick count for the fake's async read); it now awaits the fake's own promise, and 24 parallel runs passed.
 
 ## Decisions and why
-- Row reuse wires `onSelect` (not `onActivate`) to the diff, so one click opens it as the old button did; a double click opens it twice, as before. The rename tooltip "old → new" is lost: the shared row's title is the path and has no title prop; the spec asks only that renames diff on the right sides, which `openCiRangeDiff` still carries (`oldPath`).
-- Unread attempts are a separate flag, not a coverage value on an empty list; a repository switch mid-read is unread (null), not empty.
-- The unread note uses the attempts-note test id with role="status" in each affected job row, like the K34 notes.
+- Wiring lives in `src/activation/headChecks.ts` (called from repositoryMode.ts), not extension.ts: repository mode owns the providers, generations and gates the monitor reads.
+- Cooldown pauses read the latest end across all request-gate buckets (`latestCooldownEnd`); in a multi-forge workspace another forge's cooldown also pauses HEAD (comment at the call site).
+- A pushed `none` HEAD uses the short HEAD_NONE ladder, then stops; `unavailable` hides the item and stops until the next HEAD change or restart.
+- The toast is at most once: a HEAD that moves during the claim loses its notification. A non-EEXIST mkdir error keeps the hash and the next focus retries.
+- Without workspace or global storage (activation test contexts) the monitor is not created; the commands still register and do nothing.
+- K7 (diagnostics) is not read here; Phase 14. Settings K5/K6 are read with `get(key, default)` and are not contributed (Phase 18); verify:manifest and the l10n checks accept that.
+- The e2e spec restarts the monitor through the visible "Refresh Commit Check Badges" command (the two new commands are hidden from the palette).
 
 ## Open risks
-- Whole-phase GitNexus risk reads "critical" from name-matched flows; per-symbol impact is LOW except `CheckJobDetail` HIGH (5, all inside the Checks tab). Owner to accept or ask for more.
-- Grant and repository switch: a switch away and back with no open in between keeps the record.
-- A badge request on a long loaded line sends up to one attempt-history read per cached ancestor (memoized 60 s, failures not memoized). Not measured against a real forge.
-- Gate E not run locally; the spec runs on CI (ciChangedSinceGreen.spec.ts clicks the row by text "ci-changed.txt", a top-level file, so the shared row still matches). Contract 8 empties persisted CI detail caches once on upgrade.
-- The vitest `vscode` alias is repo-wide test config: a test that relied on `vscode` failing to resolve would now fail on the stub's throw instead.
+- GitNexus detect-changes (scope all, scratch index): 40 files, 38 symbols, 23 flows, risk "critical", driven by flows through `refreshActiveRepositoryWithGuard` and `activateRepositoryMode` (one added line each). Impact before edits: CommitChecksCoordinator HIGH (53), CommitChecksRequestGateRegistry HIGH (15), CommitGraphViewProvider HIGH (11), activateRepositoryMode UNKNOWN; every edit there is additive.
+- E2E not run locally: the status bar locator assumes the only status entry with both `codicon-error` and `codicon-check` is ours; the toast test relies on the window being focused (the spec calls `focus()`).
+- R1 (Fable) review still due: async ordering and cross-window claim concurrency.
 
 ## Next phase: 13
 - Owner's answer 2026-11-20, "A: hide them": Phase 13 ships hidden behind the Checks tab switch (`isE2eControlChannelActive()` on the host). While it is off there is no status bar item, no settle notification, and the HEAD watcher starts no timer and sends no CI request for HEAD; the two `intelligit.ci.*HeadChecks` commands stay registered (both e2e inventories) and do nothing; the `statusBar` and `notifyOnSettle` settings are read with their defaults but contributed (package.json + NLS) only in Phase 18; Patch bump with a groundwork CHANGELOG line, and Phase 18 carries the visible line and deletes the switch checks and their switch-off tests.
+
+## Next phase: 14
+
 ## Found outside scope
 - Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
 - tests/integration/git/updateWithLocalChanges.integration.test.ts fails on Node 24.3.0; commit-list-column-resize fails on Node 26.

@@ -384,6 +384,8 @@ class MockCommitGraphViewProvider {
         repoKey,
         getDetail: (...args: unknown[]) => this.getCommitCiDetail(...(args as [])),
     }));
+    headChecksSource = vi.fn(() => ({}));
+    openChecksTab = vi.fn();
     setBranches = vi.fn();
     refresh = vi.fn(async () => undefined);
     clearChecksCache = vi.fn();
@@ -757,6 +759,7 @@ vi.mock("vscode", () => ({
                 return { dispose: vi.fn() };
             },
         ),
+        onDidChangeWindowState: vi.fn(() => ({ dispose: vi.fn() })),
         createTreeView: vi.fn((id: string) => {
             const view: MockTreeView = {
                 badge: initialTreeViewBadges.get(id),

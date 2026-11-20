@@ -118,6 +118,8 @@
     "command.commitChecksSignIn": "Sign In to Commit Checks Provider",
     "command.commitChecksSignOut": "Sign Out of Commit Checks Provider",
     "command.commitChecksRefreshBadges": "Refresh Commit Check Badges",
+    "command.ciShowHeadChecks": "Show CI Checks for the Current Commit",
+    "command.ciRefreshHeadChecks": "Refresh CI Checks for the Current Commit",
     "command.showReviewPrompt": "Show Review Prompt",
     "command.resetReviewPrompt": "Reset Review Prompt State",
     "command.showReviewPromptCard": "Show Review Prompt Card",

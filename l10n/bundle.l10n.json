@@ -998,5 +998,11 @@
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: could not load this CI log: {0}]",
     "This provider cannot show CI logs.": "This provider cannot show CI logs.",
     "Loading the log of {0}…": "Loading the log of {0}…",
-    "This provider cannot re-run or cancel CI runs.": "This provider cannot re-run or cancel CI runs."
+    "This provider cannot re-run or cancel CI runs.": "This provider cannot re-run or cancel CI runs.",
+    "CI paused": "CI paused",
+    "CI finished for {0}: {1} failed, {2} passed.": "CI finished for {0}: {1} failed, {2} passed.",
+    "Open Checks": "Open Checks",
+    "Open log": "Open log",
+    "Re-run failed": "Re-run failed",
+    "Your sign-in cannot re-run this CI run.": "Your sign-in cannot re-run this CI run."
 }

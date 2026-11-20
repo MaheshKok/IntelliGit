@@ -1371,3 +1371,10 @@ WORKTREE 0 12: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-ru
 - Finding 2 (GitNexus): run on a scratch index of this worktree (GitNexus 1.6.12; registry entry removed after). detect-changes scope all: 3 symbols, 0 processes, low. Compare 90731f87: 77 files, 725 symbols, 268 flows, "critical" (name-matched `getData` flows; CommitCiDetailService.getData impact LOW, 6). Impact: flakyLineOf LOW 4; CheckJobDetail HIGH 5 (Checks, Commit-info, Components); readAttemptHistory LOW 3. "Impact before each edit" cannot be run retroactively; recorded in the handoff for the owner. No code change.
 - Proof: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; test exit 1, 8 of 8424 red, all tests/webview/unit/commit-list-column-resize.test.tsx (Node 26.5.0, recorded red at 90731f87).
 PHASE 12: HALT review still failing after takeover
+
+### Phase 13: built, review pending (builder phase-builder opus high, base 1860b1475c08f0fb8502dba7e1cdb681b68d7abf, 2026-11-20)
+- Built test-first behind the Checks tab switch: headStatus.ts (status bar, settle notification with the K13 mkdir claim, K26 monitor), activation/headChecks.ts, both commands hidden in the palette and listed in both e2e inventories, openChecksTab host message, l10n (6 strings + 2 command titles, 11 locales), 0.43.17, CHANGELOG, README section, tests/e2e/ciHeadStatus.spec.ts (not run locally).
+- Mutations on a copy: 24 of 24 red, each naming its planned test.
+- Proof: verify.py gates --stage round GREEN (format, lint:strict, typecheck, architecture, react-doctor); verify:manifest and Gate L OK; accept stage build, build-prod, package OK; test 8 of 8498 red, all tests/webview/unit/commit-list-column-resize.test.tsx (Node 26.5.0), 8 of 8 red at 1860b147 too: PRE-EXISTING.
+- GitNexus detect-changes scope all: 40 files, 38 symbols, 23 flows, risk critical (flows through refreshActiveRepositoryWithGuard and activateRepositoryMode, one added line each).
+- Phase 13: built, review pending

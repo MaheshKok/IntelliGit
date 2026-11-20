@@ -125,5 +125,7 @@
     "command.openPartialChanges": "部分的な変更を開く",
     "command.shelf.applyPatchToChangelist": "パッチを変更リストに適用…",
     "command.completeTargetedHistory": "未コミットの履歴操作を完了",
-    "command.discardTargetedHistory": "未コミットの履歴操作を破棄"
+    "command.discardTargetedHistory": "未コミットの履歴操作を破棄",
+    "command.ciShowHeadChecks": "現在のコミットの CI チェックを表示",
+    "command.ciRefreshHeadChecks": "現在のコミットの CI チェックを更新"
 }

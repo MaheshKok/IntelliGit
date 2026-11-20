@@ -998,5 +998,11 @@
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: nie można wczytać tego dziennika CI: {0}]",
     "This provider cannot show CI logs.": "Ten dostawca nie może wyświetlać dzienników CI.",
     "Loading the log of {0}…": "Wczytywanie dziennika {0}…",
-    "This provider cannot re-run or cancel CI runs.": "Ten dostawca nie może ponownie uruchamiać ani anulować uruchomień CI."
+    "This provider cannot re-run or cancel CI runs.": "Ten dostawca nie może ponownie uruchamiać ani anulować uruchomień CI.",
+    "CI paused": "CI wstrzymane",
+    "CI finished for {0}: {1} failed, {2} passed.": "CI dla {0} zakończone: nieudane {1}, udane {2}.",
+    "Open Checks": "Otwórz sprawdzenia",
+    "Open log": "Otwórz dziennik",
+    "Re-run failed": "Uruchom ponownie nieudane",
+    "Your sign-in cannot re-run this CI run.": "Twoje logowanie nie pozwala ponownie uruchomić tego przebiegu CI."
 }

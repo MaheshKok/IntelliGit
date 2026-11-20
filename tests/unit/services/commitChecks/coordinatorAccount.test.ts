@@ -358,4 +358,35 @@ describe("CommitChecksCoordinator saved results are tied to the signed-in accoun
         expect(session.getChecks).toHaveBeenCalledTimes(2);
         expect(session.getDetail).toHaveBeenCalledTimes(2);
     });
+
+    it("invalidateDetail() drops only the detail and keeps the snapshot", async () => {
+        const store = memento();
+        const account: Account = { current: "old" };
+        const session = startSession(store, account);
+        await session.coordinator.getChecks(HASH);
+        await session.coordinator.getDetail(HASH, {}, ctx);
+
+        await session.coordinator.invalidateDetail(HASH);
+        await session.coordinator.getChecks(HASH);
+        await session.coordinator.getDetail(HASH, {}, ctx);
+
+        expect(session.getChecks).toHaveBeenCalledTimes(1);
+        expect(session.getDetail).toHaveBeenCalledTimes(2);
+    });
+
+    it("capabilities() reports the matched provider's, and none when checks are off", async () => {
+        const session = startSession(memento(), { current: "old" });
+        await expect(session.coordinator.capabilities(HASH)).resolves.toBe(
+            session.provider.capabilities,
+        );
+        const off = new CommitChecksCoordinator(
+            {} as GitOps,
+            [session.provider],
+            {},
+            {
+                enabled: false,
+            },
+        );
+        await expect(off.capabilities(HASH)).resolves.toBeUndefined();
+    });
 });

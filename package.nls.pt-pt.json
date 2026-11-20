@@ -125,5 +125,7 @@
     "command.openPartialChanges": "Abrir alterações parciais",
     "command.shelf.applyPatchToChangelist": "Aplicar Patch à lista de alterações…",
     "command.completeTargetedHistory": "Concluir ação do histórico não confirmada",
-    "command.discardTargetedHistory": "Descartar ação do histórico não confirmada"
+    "command.discardTargetedHistory": "Descartar ação do histórico não confirmada",
+    "command.ciShowHeadChecks": "Mostrar verificações de CI do commit atual",
+    "command.ciRefreshHeadChecks": "Atualizar verificações de CI do commit atual"
 }

@@ -125,5 +125,7 @@
     "command.openPartialChanges": "부분 변경 열기",
     "command.shelf.applyPatchToChangelist": "패치를 변경 목록에 적용…",
     "command.completeTargetedHistory": "커밋되지 않은 기록 작업 완료",
-    "command.discardTargetedHistory": "커밋되지 않은 기록 작업 폐기"
+    "command.discardTargetedHistory": "커밋되지 않은 기록 작업 폐기",
+    "command.ciShowHeadChecks": "현재 커밋의 CI 검사 표시",
+    "command.ciRefreshHeadChecks": "현재 커밋의 CI 검사 새로 고침"
 }

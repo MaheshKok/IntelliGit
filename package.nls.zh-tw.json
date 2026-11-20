@@ -125,5 +125,7 @@
     "command.openPartialChanges": "開啟部分變更",
     "command.shelf.applyPatchToChangelist": "將補丁套用到變更清單…",
     "command.completeTargetedHistory": "完成未提交的歷史操作",
-    "command.discardTargetedHistory": "捨棄未提交的歷史操作"
+    "command.discardTargetedHistory": "捨棄未提交的歷史操作",
+    "command.ciShowHeadChecks": "顯示目前提交的 CI 檢查",
+    "command.ciRefreshHeadChecks": "重新整理目前提交的 CI 檢查"
 }

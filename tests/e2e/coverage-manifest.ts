@@ -447,6 +447,9 @@ const COMMAND_ENTRIES = [
     // Non-mutating like intelligit.refresh: it drops cached snapshots and rate-limit
     // buckets and re-renders, leaving no repository or credential state behind.
     { kind: "command", id: "intelligit.commitChecks.refreshBadges", mutating: false },
+    // The HEAD status bar item's commands: one opens the Checks tab, one polls HEAD again.
+    { kind: "command", id: "intelligit.ci.showHeadChecks", mutating: false },
+    { kind: "command", id: "intelligit.ci.refreshHeadChecks", mutating: false },
     { kind: "command", id: "intelligit.showReviewPrompt", mutating: false },
     { kind: "command", id: "intelligit.showReviewPromptCard", mutating: false },
     {

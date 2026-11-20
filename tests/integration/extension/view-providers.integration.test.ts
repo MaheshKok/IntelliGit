@@ -324,6 +324,7 @@ const vscodeMock = {
             },
         ),
         onDidChangeActiveColorTheme: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidChangeWindowState: vi.fn(() => ({ dispose: vi.fn() })),
     },
     commands: {
         registerCommand: vi.fn((id: string, handler: CommandHandler) => {

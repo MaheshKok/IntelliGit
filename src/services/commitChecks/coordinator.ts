@@ -690,6 +690,34 @@ export class CommitChecksCoordinator {
     }
 
     /**
+     * Drops only the detail of one commit, with its in-flight request, and keeps the
+     * snapshot: the HEAD monitor's settlement fetch then starts after settlement.
+     *
+     * @param hash - Full Git commit hash.
+     */
+    async invalidateDetail(hash: string): Promise<void> {
+        if (!this.enabled || this.fixture?.(hash)) return;
+        const match = await this.resolveEnabledMatch();
+        if (!match) return;
+        const snapshotKey = this.snapshotKey(match, await this.readAccount(match), hash);
+        await this.detailService.invalidate(`${snapshotKey}#detail`);
+    }
+
+    /**
+     * Capabilities of the provider serving this commit (an E2E fixture's own), or
+     * undefined when checks are off or no enabled provider matches. Throws when the
+     * remotes cannot be read.
+     *
+     * @param hash - Full Git commit hash.
+     */
+    async capabilities(hash: string): Promise<ProviderCiCapabilities | undefined> {
+        if (!this.enabled) return undefined;
+        const seeded = this.fixture?.(hash);
+        if (seeded) return seeded.capabilities;
+        return (await this.resolveEnabledMatch())?.provider.capabilities;
+    }
+
+    /**
      * The provider and repository a write action on this repository goes to, or null when
      * none applies (feature or provider off, no matching remote, or an E2E fixture, which
      * never sends a request). Throws when the remotes cannot be read.

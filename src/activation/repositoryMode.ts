@@ -48,6 +48,7 @@ import { createCiTrace } from "../services/commitChecks/ciTrace";
 import { CiLogMemoryStore, type CiLogSource } from "../services/commitChecks/ciLogMemoryStore";
 import { registerCiLogDocumentProvider } from "../services/commitChecks/ciLogDocument";
 import { createCommitChecksProviders, writeActionsHelpUrl } from "./commitChecksProviders";
+import { registerHeadChecks } from "./headChecks";
 import { captureWebviewViewProvider } from "../e2e/webviewCapture";
 import { readE2eCiFixture, readE2eCiFixtureLog } from "../e2e/ciFixture";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
@@ -424,6 +425,17 @@ export async function activateRepositoryMode(
         loadedCommits: () => [...commitGraph.loadedCommits(), ...sidebarGraph.loadedCommits()],
     });
     sidebarGraph.onOpenCommitInChecks((hash) => commitInfo.openChecksTab(hash));
+    const headChecks = registerHeadChecks({
+        context,
+        commitGraph,
+        gitOps,
+        executor,
+        repoRoot: () => repoRoot,
+        generations: ciGenerations,
+        requestGates: requestGateRegistry,
+        fences: ciActionFences,
+        trace: ciTrace,
+    });
     const commitPanel = new CommitPanelViewProvider(
         context.extensionUri,
         gitOps,
@@ -510,6 +522,7 @@ export async function activateRepositoryMode(
                 worktrees: worktreeService,
                 onBranchesUpdated: (branches) => {
                     currentBranches = branches;
+                    void headChecks?.onRepositoryChanged();
                 },
                 onWorktreesUpdated: (worktrees) => {
                     currentWorktrees = worktrees;
@@ -626,6 +639,7 @@ export async function activateRepositoryMode(
         commitGraph.setBranches(currentBranches, currentWorktrees);
         sidebarGraph.setBranches(currentBranches, currentWorktrees);
         commitPanel.setBranches(currentBranches);
+        void headChecks?.onRepositoryChanged();
         if (afterBranchDataApplied) {
             if (!shouldContinue()) return false;
             // react-doctor-disable-next-line react-doctor/async-defer-await
@@ -1434,6 +1448,7 @@ export async function activateRepositoryMode(
         sidebarGraph.clearChecksCache();
         undocked?.clearChecksCache();
         commitInfo.refreshChecksTab();
+        void headChecks?.restart();
         await Promise.all([commitGraph.refresh(), sidebarGraph.refresh()]);
         if (undocked) await undocked.refresh();
     };
@@ -1603,6 +1618,7 @@ export async function activateRepositoryMode(
     commitGraph.setBranches(currentBranches, currentWorktrees);
     sidebarGraph.setBranches(currentBranches, currentWorktrees);
     commitPanel.setBranches(currentBranches);
+    void headChecks?.onRepositoryChanged();
 
     commitPanel.refreshSilent().catch((err) => {
         console.error("Initial commit panel refresh failed:", err);

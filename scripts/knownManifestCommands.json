@@ -5,6 +5,8 @@
         "intelligit.applyPatchToChangelist",
         "intelligit.checkout",
         "intelligit.checkoutAndRebase",
+        "intelligit.ci.refreshHeadChecks",
+        "intelligit.ci.showHeadChecks",
         "intelligit.cleanUpShelf",
         "intelligit.cloneRepository",
         "intelligit.commitChecks.refreshBadges",

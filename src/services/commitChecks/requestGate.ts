@@ -112,6 +112,16 @@ export class CommitChecksRequestGateRegistry {
     }
 
     /**
+     * Read-only: the latest cooldown end across every bucket, for callers that do not know
+     * their API origin (the HEAD monitor).
+     *
+     * @returns Epoch milliseconds, or 0 when no bucket is cooling down.
+     */
+    latestCooldownEnd(): number {
+        return Math.max(0, ...[...this.gates.values()].map((gate) => gate.cooldownEnd()));
+    }
+
+    /**
      * Clears quota and cooldown state after a credential or configuration change.
      *
      * Idle buckets are discarded, while busy buckets retain their active tasks and waiters so a

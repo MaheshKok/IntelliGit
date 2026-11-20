@@ -125,5 +125,7 @@
     "command.openPartialChanges": "Otwórz częściowe zmiany",
     "command.shelf.applyPatchToChangelist": "Zastosuj poprawkę do listy zmian…",
     "command.completeTargetedHistory": "Zakończ niezatwierdzoną akcję historii",
-    "command.discardTargetedHistory": "Odrzuć niezatwierdzoną akcję historii"
+    "command.discardTargetedHistory": "Odrzuć niezatwierdzoną akcję historii",
+    "command.ciShowHeadChecks": "Pokaż sprawdzenia CI bieżącego commita",
+    "command.ciRefreshHeadChecks": "Odśwież sprawdzenia CI bieżącego commita"
 }
