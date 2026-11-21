@@ -632,3 +632,111 @@ describe("round 3 builder additions", () => {
         expect(getDetail).toHaveBeenCalledTimes(1);
     });
 });
+
+describe("round 4 fix round 1", () => {
+    it("a fenced HEAD with a settled cancelled snapshot fetches the detail that clears the fence", async () => {
+        let fenced = true;
+        const s = setup({
+            snapshot: "cancelled",
+            detail: async () => {
+                fenced = false;
+                return detailOf("success", "cancelled");
+            },
+            claimDir,
+        });
+        s.deps.workspaceState = { get: () => undefined, update: async () => undefined };
+        s.deps.isFenced = () => fenced;
+        const status = track(new HeadCiStatus(s.deps));
+        await status.onRepositoryChanged();
+        await settle();
+        expect(
+            s.detail,
+            "a cancelled HEAD under a fence must fetch the detail that clears it",
+        ).toHaveBeenCalledTimes(1);
+        expect(status.isPolling(), "the cleared fence stops the polling").toBe(false);
+    });
+
+    it("a required-check lookup is not sent for a caller that went stale during the default branch read", async () => {
+        const branch = deferred<{ name: string }>();
+        const entered = deferred<void>();
+        let on = true;
+        const getRequiredChecks = vi.fn(async () => ({ kind: "none" }));
+        const provider = {
+            id: "github",
+            capabilities: { ...RUNS_CAPS, requiredChecks: true },
+            match: () => ({ host: "github.com" }),
+            keyFor: () => "github:o/r",
+            accountKey: async () => "account",
+            getChecks: vi.fn(),
+            getDetail: async () => detailData("success"),
+            getRequiredChecks,
+        } as unknown as CommitChecksProvider;
+        const generations = new CiGenerations();
+        const coordinator = new CommitChecksCoordinator(
+            {
+                getRemotes: async () => ["origin"],
+                getRemoteUrl: async () => "https://github.com/o/r.git",
+                readDefaultBranch: () => {
+                    entered.resolve();
+                    return branch.promise;
+                },
+            } as unknown as GitOps,
+            [provider],
+            {},
+            { generations },
+        );
+        const run = coordinator.getDetail(HASH, { isCurrent: () => on }, generations.capture(REPO));
+        await entered.promise;
+        on = false;
+        branch.resolve({ name: "main" });
+        await run;
+        expect(
+            getRequiredChecks,
+            "no required-check provider request after the caller became stale",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("a manual Refresh of an already settled failing HEAD forces the detail fetch", async () => {
+        let calls = 0;
+        const provider = {
+            id: "github",
+            capabilities: RUNS_CAPS,
+            match: () => ({ host: "github.com" }),
+            keyFor: () => "github:o/r",
+            accountKey: async () => "account",
+            getChecks: vi.fn(),
+            getDetail: async () => {
+                const first = detailData("failure", "failure");
+                if (++calls === 1) return first;
+                const run = first.runs[0]!;
+                const added = {
+                    ...run.jobs[0]!,
+                    id: "job-1",
+                    name: "job-1",
+                    state: "success" as const,
+                };
+                return { ...first, runs: [{ ...run, jobs: [...run.jobs, added] }] };
+            },
+        } as unknown as CommitChecksProvider;
+        const s = setup({ snapshot: "failure", detail: async () => undefined, claimDir });
+        const coordinator = new CommitChecksCoordinator(
+            {
+                getRemotes: async () => ["origin"],
+                getRemoteUrl: async () => "https://github.com/o/r.git",
+            } as unknown as GitOps,
+            [provider],
+            {},
+            { generations: s.generations },
+        );
+        s.deps.detail = (hash, opts, ctx) => coordinator.getDetail(hash, opts, ctx);
+        const status = track(new HeadCiStatus(s.deps));
+        await status.onRepositoryChanged();
+        await settle();
+        await status.refresh();
+        await settle();
+        expect(calls, "Refresh must reach the provider for the detail").toBe(2);
+        expect(s.items[0]?.text, "Refresh must show the new successful job").toContain(
+            "$(check) 1",
+        );
+    });
+});

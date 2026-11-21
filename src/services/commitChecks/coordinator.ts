@@ -443,7 +443,7 @@ export class CommitChecksCoordinator {
                 // The account read was awaited: a caller gone stale meanwhile sends nothing.
                 if (!live()) return undefined;
                 // Read beside the detail and applied at serve time, so the detail cache never holds it.
-                const required = this.readRequired(match, account, confirm);
+                const required = this.readRequired(match, account, confirm, live);
                 const markRequired = (
                     served: CommitCiDetail,
                     rule: Awaited<typeof required>,
@@ -475,7 +475,7 @@ export class CommitChecksCoordinator {
                             void (async () => {
                                 // Re-read through the 1 h cache (K21), so an update after the hour
                                 // carries the current rule, not the one the scan started with.
-                                const rule = await this.readRequired(match, account, confirm);
+                                const rule = await this.readRequired(match, account, confirm, live);
                                 const marked = markRequired(update, rule);
                                 await confirm();
                                 // No await from the account check to the publish, so the account
@@ -585,6 +585,7 @@ export class CommitChecksCoordinator {
         match: ProviderMatch,
         account: string | undefined,
         confirm: () => Promise<void>,
+        live: () => boolean,
     ): Promise<
         | { checks: RequiredChecks; defaultBranchUnknown: boolean; defaultBranch?: string }
         | undefined
@@ -603,6 +604,8 @@ export class CommitChecksCoordinator {
                 account === undefined ? scope : `${scope}|${account}`,
                 branch.name,
                 async () => {
+                    // The Git read and the account check were awaited: a caller gone stale sends nothing.
+                    if (!live()) throw new StaleCallerError();
                     const rule = await getRequiredChecks(ref, branch.name);
                     // A throw here is a rejected fetch, which the cache drops.
                     await confirm();
@@ -611,7 +614,7 @@ export class CommitChecksCoordinator {
             );
             return { checks, defaultBranchUnknown: false, defaultBranch: branch.name };
         } catch (err) {
-            if (err instanceof AccountChangedError) throw err;
+            if (err instanceof AccountChangedError || err instanceof StaleCallerError) throw err;
             return { checks: UNKNOWN_REQUIRED, defaultBranchUnknown: false };
         }
     }

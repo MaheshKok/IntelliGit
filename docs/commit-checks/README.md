@@ -201,12 +201,13 @@ commit has no checks and is not pushed yet, or when no provider serves the repos
 
 IntelliGit asks the provider again after 3, 5, 10, 20 and 30 seconds, then twice a minute
 apart, then every 2 minutes for as long as the commit's checks are still running, so an
-hour of running checks costs 36 requests. It stops once every check has finished. A commit
+hour of running checks costs 36 status requests, plus the detail requests that read when the
+checks started and the job counts. It stops once every check has finished. A commit
 whose re-run or cancel is still on its way keeps being watched until the provider shows
 the new state.
 
-When a commit you saw running finishes, one notification says how many checks failed and
-passed, with **Open Checks**, **Open log** (when the provider has logs and a job failed)
+When a commit you saw running finishes, one notification names the commit and, when it failed,
+the first failed job ("CI passed on a1b2c3d" or "CI failed on a1b2c3d: unit-tests"), with **Open Checks**, **Open log** (when the provider has logs and a job failed)
 and **Re-run failed** (when you can re-run). It is shown once per commit, even across a
 reload or with several VS Code windows open on the same repository: the first focused
 window to claim it shows it, and a window that is not focused waits until you switch to

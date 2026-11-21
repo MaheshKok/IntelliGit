@@ -818,7 +818,7 @@ export class HeadCiStatus {
     }
 
     private async onComplete(poll: PollContext, snapshot: CommitChecksSnapshot): Promise<void> {
-        const { run, hash, repoKey, ctx, current, capabilities } = poll;
+        const { run, hash, repoKey, ctx, current, capabilities, options } = poll;
         this.bar.render(snapshotView(snapshot)());
         const settlement = await this.settlementDetail(
             hash,
@@ -827,6 +827,7 @@ export class HeadCiStatus {
             snapshot,
             ctx,
             current,
+            options,
         );
         if (!current()) return;
         // A provider failure is not unknown coverage: show it and wait for the user's refresh.
@@ -875,10 +876,14 @@ export class HeadCiStatus {
         snapshot: CommitChecksSnapshot,
         ctx: CiOperationContext,
         current: () => boolean,
+        pollOptions: HeadFetchOptions,
     ): Promise<{ state: CiSettlement | "unavailable"; detail?: CommitCiDetail; error?: string }> {
         if (!capabilities.runs) return { state: "settled" };
         const transition = this.lastUnknown || this.toast.pendingObserved.has(repoKey, hash);
-        if (!transition && snapshot.state !== "failure") return { state: "settled" };
+        // A fenced HEAD's detail is the evidence that clears the fence, whatever the outcome.
+        if (!transition && snapshot.state !== "failure" && !this.deps.isFenced(hash)) {
+            return { state: "settled" };
+        }
         this.detailSequence += 1;
         let detail: CommitCiDetail | undefined;
         try {
@@ -887,7 +892,9 @@ export class HeadCiStatus {
                 // The switch, HEAD or a dispose may have changed during the invalidation: no request.
                 if (!current()) return { state: "unknown" };
             }
-            const options = { ...(transition && { force: true }), isCurrent: current };
+            // The user's Refresh forces the detail too, or a settled HEAD would keep its old jobs.
+            const force = transition || pollOptions.force === true;
+            const options = { ...(force && { force: true }), isCurrent: current };
             detail = await this.deps.detail(hash, options, ctx);
         } catch (error) {
             // A failed read is a provider failure: shown, and only the user's refresh retries.

@@ -1404,3 +1404,4 @@ PHASE 13: HALT review still failing after takeover
 - Mutants M01-M13 on a copy (mut-13-build-1, reviewer A10/A11 included): 13 of 13 red, each naming its test; no survivor.
 - Proof: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package, verify:manifest exit 0; l10n sync/validate/audit exit 0; `bun run test` 8 of 8570 red, all tests/webview/unit/commit-list-column-resize.test.tsx (Node 26, PRE-EXISTING at 1860b147). GitNexus detect-changes: 18 files, 11 symbols, 0 processes, low (stale index).
 - Phase 13: built, review pending
+PHASE 13 FIX 1 (review 13-4): findings 1-3 fixed test-first (3 regression tests red before: fence detail not fetched, required lookup sent for stale caller, Refresh served old detail from L1) and finding 4 (README) corrected; proof chain green except the known 8 commit-list-column-resize Node 26 test reds; commit follows f31f88dd.
