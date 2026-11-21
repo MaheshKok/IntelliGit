@@ -8,7 +8,11 @@ const vscodeMock = vi.hoisted(() => ({
 vi.mock("vscode", () => ({
     window: {
         state: { focused: true },
-        createStatusBarItem: () => ({ show: () => undefined, hide: () => undefined }),
+        createStatusBarItem: () => ({
+            show: () => undefined,
+            hide: () => undefined,
+            dispose: () => undefined,
+        }),
         onDidChangeWindowState: () => ({ dispose: () => undefined }),
         showInformationMessage: async () => undefined,
         showErrorMessage: async () => undefined,
@@ -74,7 +78,7 @@ describe("headCooldownEnd", () => {
 });
 
 describe("registerHeadChecks commands", () => {
-    function register() {
+    function register(fences?: unknown) {
         vscodeMock.commands.clear();
         vscodeMock.executeCommand.mockClear();
         const checks = {
@@ -101,11 +105,41 @@ describe("registerHeadChecks commands", () => {
             repoRoot: () => "/repo",
             generations: new CiGenerations(),
             requestGates: new CommitChecksRequestGateRegistry("cooling down"),
-            fences: undefined,
+            fences: fences as never,
             trace: () => undefined,
         });
         return { checks, commitGraph, monitor };
     }
+
+    it("a new HEAD action fence wakes a monitor that already stopped on a settled HEAD", async () => {
+        let onFence: ((change: { repoKey: string; hash: string }) => void) | undefined;
+        const disposeListener = vi.fn();
+        const { checks, monitor } = register({
+            isFenced: () => false,
+            onDidChange: (listener: typeof onFence) => {
+                onFence = listener;
+                return { dispose: disposeListener };
+            },
+        });
+        checks.capabilities.mockResolvedValue({ runs: true, jobs: true });
+        checks.getChecks.mockResolvedValue({
+            hash: HASH,
+            state: "success",
+            summary: "",
+            items: [],
+        });
+        await monitor?.onRepositoryChanged();
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(monitor?.isPolling(), "a settled HEAD stops the monitor").toBe(false);
+        const before = checks.getChecks.mock.calls.length;
+        onFence?.({ repoKey: "/repo", hash: HASH });
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(
+            checks.getChecks.mock.calls.length,
+            "a new HEAD action fence must wake the settled monitor",
+        ).toBeGreaterThan(before);
+        monitor?.dispose();
+    });
 
     it("Show HEAD checks opens the Git Log and posts openChecksTab for HEAD", async () => {
         const { commitGraph, monitor } = register();

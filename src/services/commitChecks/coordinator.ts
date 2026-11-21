@@ -462,12 +462,14 @@ export class CommitChecksCoordinator {
                 const scan: CiFailedScanHooks | undefined = continueFailedScan && {
                     continueScan: async (cursor) => {
                         try {
+                            // Each page is a request of its own: a caller gone stale sends no more.
+                            if (!live()) throw new StaleCallerError();
                             return await continueFailedScan(ref, cursor, ctx);
                         } catch (err) {
                             return { error: getErrorMessage(err) };
                         }
                     },
-                    isCurrent: () => this.isCurrent(ctx, providerGeneration),
+                    isCurrent: live,
                     onUpdate:
                         onScanUpdate &&
                         ((update) => {

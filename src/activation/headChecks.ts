@@ -156,6 +156,14 @@ export function registerHeadChecks(options: HeadChecksOptions): HeadCiStatus | u
     if (monitor) {
         context.subscriptions.push(
             monitor,
+            // A new action fence on a settled HEAD (a re-run from the Checks tab) wakes the stopped monitor.
+            ...(options.fences
+                ? [
+                      options.fences.onDidChange((change) => {
+                          if (change.repoKey === repoRoot()) void monitor.restart();
+                      }),
+                  ]
+                : []),
             vscode.window.onDidChangeWindowState((state) => {
                 if (state.focused) void monitor.onWindowFocused();
             }),

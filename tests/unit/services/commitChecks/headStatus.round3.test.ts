@@ -740,3 +740,55 @@ describe("round 4 fix round 1", () => {
         );
     });
 });
+
+describe("round 4 fix round 2", () => {
+    it("an overflow scan must not request another page after HEAD becomes stale", async () => {
+        const detail = deferred<CommitCiDetailData>();
+        const entered = deferred<void>();
+        let on = true;
+        const continueFailedScan = vi.fn(async () => ({ failed: [] }));
+        const provider = {
+            id: "github",
+            capabilities: RUNS_CAPS,
+            match: () => ({ host: "github.com" }),
+            keyFor: () => "github:o/r",
+            accountKey: async () => "account",
+            getChecks: vi.fn(),
+            getDetail: () => {
+                entered.resolve();
+                return detail.promise;
+            },
+            continueFailedScan,
+        } as unknown as CommitChecksProvider;
+        const generations = new CiGenerations();
+        const coordinator = new CommitChecksCoordinator(
+            {
+                getRemotes: async () => ["origin"],
+                getRemoteUrl: async () => "https://github.com/o/r.git",
+            } as unknown as GitOps,
+            [provider],
+            {},
+            { generations },
+        );
+        const run = coordinator.getDetail(
+            HASH,
+            { isCurrent: () => on },
+            generations.capture(REPO),
+            () => undefined,
+        );
+        await entered.promise;
+        on = false;
+        const base = detailData("failure", "failure");
+        detail.resolve({
+            ...base,
+            runs: [{ ...base.runs[0]!, jobsCoverage: { reason: "pageBound", shown: 1000 } }],
+            scanCursors: [{ runId: "run-1", runAttempt: 1, runName: "CI", url: "page-11" }],
+        } as CommitCiDetailData);
+        await run;
+        await settle();
+        expect(
+            continueFailedScan,
+            "a stale HEAD poll must not start an overflow provider request",
+        ).not.toHaveBeenCalled();
+    });
+});
