@@ -66,6 +66,7 @@ vi.mock("vscode", () => ({
         createTreeView: vi.fn(() => ({ ...disposable(), badge: undefined })),
         registerWebviewViewProvider: vi.fn(() => disposable()),
         onDidChangeActiveTextEditor: vi.fn(() => disposable()),
+        onDidChangeWindowState: vi.fn(() => disposable()),
         showWarningMessage: vi.fn(async () => undefined),
         showErrorMessage: vi.fn(async () => undefined),
         showQuickPick: vi.fn(async () => undefined),
@@ -175,6 +176,7 @@ vi.mock("../../../src/views/CommitGraphViewProvider", () => ({
             repoKey,
             getDetail: (...args: unknown[]) => this.getCommitCiDetail(...(args as [])),
         }));
+        headChecksSource = vi.fn(() => ({}));
         dispose = vi.fn();
         constructor(..._args: unknown[]) {}
     },

@@ -186,6 +186,38 @@ These actions need a token that can write:
 When the token cannot write, the tab says so, keeps the checks on screen, and links to
 this section.
 
+## Current commit in the status bar
+
+> Planned: the status bar item and the notification stay off until the Checks tab ships.
+> This section describes how they will behave.
+
+The status bar shows the CI of the commit you have checked out: failed, running and passed
+counts, and while anything still runs, how long it has been running. Clicking it opens the
+Checks tab for that commit. During a rate-limit pause of the commit's own provider it reads
+**CI paused**, and clicking it asks again once the pause is over. When the provider cannot
+be read it reads **CI unavailable** with the error as its tooltip, asks again only when you
+click it or the checked-out commit changes. It hides when commit checks are off, when the
+commit has no checks and is not pushed yet, or when no provider serves the repository.
+
+IntelliGit asks the provider again after 3, 5, 10, 20 and 30 seconds, then twice a minute
+apart, then every 2 minutes for as long as the commit's checks are still running, so an
+hour of running checks costs 36 status requests, plus the detail requests that read when the
+checks started and the job counts. It stops once every check has finished. A commit
+whose re-run or cancel is still on its way keeps being watched until the provider shows
+the new state.
+
+When a commit you saw running finishes, one notification names the commit and, when it failed,
+the first failed job ("CI passed on a1b2c3d" or "CI failed on a1b2c3d: unit-tests"), with **Open Checks**, **Open log** (when the provider has logs and a job failed)
+and **Re-run failed** (when you can re-run). It is shown once per commit, even across a
+reload or with several VS Code windows open on the same repository: the first focused
+window to claim it shows it, and a window that is not focused waits until you switch to
+it. A commit that finished while VS Code was closed still gets its notification the next
+time IntelliGit sees it, as long as IntelliGit had seen it running.
+
+Two settings turn the parts off: `intelligit.commitChecks.statusBar` (the item) and
+`intelligit.commitChecks.notifyOnSettle` (the notification). Both are on by default; with
+both off, IntelliGit stops watching the current commit.
+
 ## Authentication per provider
 
 | Provider | Credential | How to provide it | Scope / permission |

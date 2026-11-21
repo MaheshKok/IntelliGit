@@ -125,5 +125,7 @@
     "command.openPartialChanges": "Teiländerungen öffnen",
     "command.shelf.applyPatchToChangelist": "Patch auf Änderungsliste anwenden…",
     "command.completeTargetedHistory": "Nicht committete Verlaufsaktion abschließen",
-    "command.discardTargetedHistory": "Nicht committete Verlaufsaktion verwerfen"
+    "command.discardTargetedHistory": "Nicht committete Verlaufsaktion verwerfen",
+    "command.ciShowHeadChecks": "CI-Prüfungen für den aktuellen Commit anzeigen",
+    "command.ciRefreshHeadChecks": "CI-Prüfungen für den aktuellen Commit aktualisieren"
 }

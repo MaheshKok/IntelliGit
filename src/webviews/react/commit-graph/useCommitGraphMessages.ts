@@ -39,6 +39,9 @@ export function useCommitGraphMessages(params: {
     } = params;
     const selectedHashRef = useRef<string | null>(selectedHash);
     const ciRepoKeyRef = useRef(ciRepoKey);
+    // An Open Checks request received before any detail waits for the next detail, whose
+    // repository decides whether it applies (as in CommitInfoApp).
+    const heldChecksRef = useRef<{ repoKey: string; hash: string } | undefined>(undefined);
     const selectFirstOnNextLoadRef = useRef(false);
     useLayoutEffect(() => {
         selectedHashRef.current = selectedHash;
@@ -69,6 +72,14 @@ export function useCommitGraphMessages(params: {
             ) {
                 return;
             }
+            const showChecks = (hash: string): void => {
+                if (hash !== selectedHashRef.current) {
+                    selectedHashRef.current = hash;
+                    dispatch({ type: "selectCommit", hash });
+                    vscode.postMessage({ type: "selectCommit", hash });
+                }
+                openChecksTab();
+            };
             switch (data.type) {
                 case "loadCommits": {
                     loadingMore.current = false;
@@ -137,6 +148,12 @@ export function useCommitGraphMessages(params: {
                         iconFonts: data.iconFonts,
                         ciRepoKey: data.ciRepoKey,
                     });
+                    ciRepoKeyRef.current = data.ciRepoKey;
+                    {
+                        const held = heldChecksRef.current;
+                        heldChecksRef.current = undefined;
+                        if (held && held.repoKey === data.ciRepoKey) showChecks(held.hash);
+                    }
                     break;
                 case "clearCommitDetail":
                     dispatch({ type: "clearCommitDetail", loading: data.loading ?? false });
@@ -154,13 +171,11 @@ export function useCommitGraphMessages(params: {
                     onShowReviewPromptRef.current(data.requestId);
                     break;
                 case "openChecksTab":
-                    if (data.repoKey !== ciRepoKeyRef.current) break;
-                    if (data.hash !== selectedHashRef.current) {
-                        selectedHashRef.current = data.hash;
-                        dispatch({ type: "selectCommit", hash: data.hash });
-                        vscode.postMessage({ type: "selectCommit", hash: data.hash });
+                    if (ciRepoKeyRef.current === undefined) {
+                        heldChecksRef.current = { repoKey: data.repoKey, hash: data.hash };
+                        break;
                     }
-                    openChecksTab();
+                    if (data.repoKey === ciRepoKeyRef.current) showChecks(data.hash);
                     break;
                 case "loadError":
                     selectFirstOnNextLoadRef.current = false;

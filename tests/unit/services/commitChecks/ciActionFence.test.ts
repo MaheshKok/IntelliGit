@@ -164,6 +164,28 @@ afterEach(() => {
 });
 
 describe("CiActionFenceStore", () => {
+    it("begin announces the new fence on onDidBegin once its write settled; a failed begin does not", async () => {
+        const fences = new CiActionFenceStore(memento());
+        const changes: unknown[] = [];
+        fences.onDidBegin((change) => changes.push(change));
+        await fences.begin(start());
+        expect(changes, "a begun fence must emit its repository and commit").toEqual([
+            { repoKey: REPO, hash: HASH },
+        ]);
+
+        const failing = memento();
+        failing.update = vi.fn(async () => {
+            throw new Error("disk full");
+        });
+        const refused = new CiActionFenceStore(failing);
+        const refusedChanges: unknown[] = [];
+        refused.onDidBegin((change) => refusedChanges.push(change));
+        await expect(refused.begin(start())).rejects.toThrow("disk full");
+        expect(refusedChanges, "a fence whose write failed must not emit").toEqual([]);
+        fences.dispose();
+        refused.dispose();
+    });
+
     it("a fenced key is never persisted, even complete", async () => {
         const workspace = memento();
         const global = memento();

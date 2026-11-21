@@ -100,6 +100,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     private static readonly CARD_SCRIPT_FILE = "webview-commitgraph.js";
 
     private view?: vscode.WebviewView;
+    // A held "open the Checks tab" request, posted once the current webview has loaded.
+    private pendingChecks?: { repoKey: string; hash: string };
+    private checksReady = false;
     private currentBranch: string | null = null;
     private filterText = "";
     private offset = 0;
@@ -276,6 +279,38 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         return this.commitChecks.getDetail(hash, options, ctx, onScanUpdate);
     }
 
+    /**
+     * Shows the Checks tab for a commit, for the HEAD status bar item and notification.
+     * Held until the webview has loaded: the panel may still be opening.
+     *
+     * @param hash - Full Git commit hash.
+     */
+    openChecksTab(hash: string): void {
+        const repoKey = this.options.ciRepoKey;
+        if (!repoKey) return;
+        // The hash belongs to the repository it was asked in, not the one current when posted.
+        this.pendingChecks = { repoKey: repoKey(), hash };
+        this.postPendingChecksTab();
+    }
+
+    private postPendingChecksTab(): void {
+        const pending = this.pendingChecks;
+        const repoKey = this.options.ciRepoKey;
+        if (!this.checksReady || !this.view || !pending || !repoKey) return;
+        this.pendingChecks = undefined;
+        // A repository switch before the webview was ready drops the request.
+        if (repoKey() !== pending.repoKey) return;
+        this.postToWebview({ type: "openChecksTab", ...pending });
+    }
+
+    /** The HEAD monitor's view of this graph's CI coordinator. */
+    headChecksSource(): Pick<
+        CommitChecksCoordinator,
+        "getChecks" | "getDetail" | "invalidateDetail" | "capabilities" | "requestBucket"
+    > {
+        return this.commitChecks;
+    }
+
     /** The commits this graph has loaded, with their parents, for a view that has no list. */
     loadedCommits(): LoadedCommit[] {
         return [...this.loadedCommitHashes].map(([hash, parents]) => ({ hash, parents }));
@@ -348,6 +383,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         // The replaced view's re-post loop would keep fetching for a webview that is gone.
         this.ciDetailLoops.dispose();
         this.view = webviewView;
+        this.checksReady = false;
         this.lastPostedPayload = undefined;
         this.applyRepositoryDescription();
 
@@ -367,6 +403,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                 this.ciDetailLoops.dispose();
                 this.rangeDiffGrant.clear();
                 this.view = undefined;
+                this.checksReady = false;
                 this.iconTheme.dispose();
                 this.disposeThemeChangeDisposables();
                 this.unregisterReviewPromptHost?.();
@@ -418,6 +455,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         await this.sendBranches();
                         await this.loadInitial();
                         this.postCommitDetailState();
+                        if (this.view === webviewView) {
+                            this.checksReady = true;
+                            this.postPendingChecksTab();
+                        }
                         break;
                     case "selectCommit":
                         this._onCommitSelected.fire(this.assertGitHash(msg.hash, "hash"));

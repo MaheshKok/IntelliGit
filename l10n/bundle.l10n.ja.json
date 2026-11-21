@@ -998,5 +998,13 @@
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: この CI ログを読み込めませんでした: {0}]",
     "This provider cannot show CI logs.": "このプロバイダーは CI ログを表示できません。",
     "Loading the log of {0}…": "{0} のログを読み込んでいます…",
-    "This provider cannot re-run or cancel CI runs.": "このプロバイダーは CI の実行を再実行またはキャンセルできません。"
+    "This provider cannot re-run or cancel CI runs.": "このプロバイダーは CI の実行を再実行またはキャンセルできません。",
+    "CI paused": "CI 一時停止中",
+    "CI passed on {0}": "{0} の CI が成功しました",
+    "CI failed on {0}: {1}": "{0} の CI が失敗しました: {1}",
+    "Open Checks": "チェックを開く",
+    "Open log": "ログを開く",
+    "Re-run failed": "失敗したジョブを再実行",
+    "Your sign-in cannot re-run this CI run.": "現在のサインインでは、この CI 実行を再実行できません。",
+    "CI unavailable": "CI は利用できません"
 }

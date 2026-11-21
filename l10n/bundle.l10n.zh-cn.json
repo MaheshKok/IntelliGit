@@ -998,5 +998,13 @@
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit：无法加载此 CI 日志：{0}]",
     "This provider cannot show CI logs.": "此提供程序无法显示 CI 日志。",
     "Loading the log of {0}…": "正在加载 {0} 的日志…",
-    "This provider cannot re-run or cancel CI runs.": "此提供程序无法重新运行或取消 CI 运行。"
+    "This provider cannot re-run or cancel CI runs.": "此提供程序无法重新运行或取消 CI 运行。",
+    "CI paused": "CI 已暂停",
+    "CI passed on {0}": "{0} 的 CI 已通过",
+    "CI failed on {0}: {1}": "{0} 的 CI 失败：{1}",
+    "Open Checks": "打开检查",
+    "Open log": "打开日志",
+    "Re-run failed": "重新运行失败的作业",
+    "Your sign-in cannot re-run this CI run.": "您的登录无法重新运行此 CI 运行。",
+    "CI unavailable": "CI 不可用"
 }

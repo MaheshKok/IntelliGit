@@ -10,6 +10,7 @@ import type { CiLogTarget } from "../services/commitChecks/coordinator";
 import { HttpError } from "../services/commitChecks/http";
 import { isValidGitHash } from "../services/gitHelpers";
 import { getErrorMessage } from "../utils/errors";
+import { withoutLinkBrackets } from "../utils/notifications";
 import type {
     CiLogPreviewMessage,
     CiLogResultMessage,
@@ -122,7 +123,7 @@ export async function answerCiLogMessage(
         entry = await vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Notification,
-                title: vscode.l10n.t("Loading the log of {0}…", job.name),
+                title: vscode.l10n.t("Loading the log of {0}…", withoutLinkBrackets(job.name)),
                 cancellable: true,
             },
             async (_progress, token) => {

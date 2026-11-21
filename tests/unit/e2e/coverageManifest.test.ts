@@ -116,6 +116,17 @@ function manifestKey(entry: (typeof COVERAGE_MANIFEST)[number]): string {
 }
 
 describe("E2E coverage manifest", () => {
+    it("lists every spec in the standard E2E suite as its own argument that exists", () => {
+        const packageJson = JSON.parse(
+            readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
+        ) as PackageJson;
+        const specs = (packageJson.scripts?.["test:e2e"]?.split(/\s+/) ?? []).filter((argument) =>
+            argument.includes("tests/e2e/"),
+        );
+        expect(specs).toContain("tests/e2e/ciHeadStatus.spec.ts");
+        expect(specs).toContain("tests/e2e/worktreeDeleteRefresh.spec.ts");
+        expect(specs.filter((spec) => !existsSync(path.join(REPO_ROOT, spec)))).toEqual([]);
+    });
     it("runs merge workbench resolutions and drafts in the standard E2E suite", () => {
         const packageJson = JSON.parse(
             readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
@@ -285,7 +296,7 @@ describe("E2E coverage manifest", () => {
         );
 
         expect(aliasIds).toHaveLength(9);
-        expect(collapsedBaseIds).toHaveLength(96);
+        expect(collapsedBaseIds).toHaveLength(98);
         expect(collapsedManifestBaseIds).toEqual(collapsedBaseIds);
     });
 

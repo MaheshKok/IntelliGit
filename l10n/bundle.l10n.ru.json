@@ -998,5 +998,13 @@
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit: не удалось загрузить этот журнал CI: {0}]",
     "This provider cannot show CI logs.": "Этот поставщик не может показывать журналы CI.",
     "Loading the log of {0}…": "Загрузка журнала {0}…",
-    "This provider cannot re-run or cancel CI runs.": "Этот поставщик не может перезапускать или отменять запуски CI."
+    "This provider cannot re-run or cancel CI runs.": "Этот поставщик не может перезапускать или отменять запуски CI.",
+    "CI paused": "CI приостановлена",
+    "CI passed on {0}": "CI успешно для {0}",
+    "CI failed on {0}: {1}": "CI с ошибкой для {0}: {1}",
+    "Open Checks": "Открыть проверки",
+    "Open log": "Открыть журнал",
+    "Re-run failed": "Перезапустить неудачные",
+    "Your sign-in cannot re-run this CI run.": "Ваш вход не позволяет перезапустить этот запуск CI.",
+    "CI unavailable": "CI недоступна"
 }

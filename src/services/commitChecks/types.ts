@@ -107,6 +107,11 @@ export interface CommitChecksProvider {
      * returns an id no other lookup shares. Must not throw.
      */
     accountKey?(ref: ProviderRepoRef): Promise<string>;
+    /**
+     * A URL on the API origin this repository's requests go to; with `id` it names the
+     * request-gate bucket whose cooldown pauses the HEAD monitor. Absent = no bucket.
+     */
+    apiUrl?(ref: ProviderRepoRef): string;
     /** Fetches and normalizes the check snapshot for one commit hash. Must not throw. */
     getChecks(ref: ProviderRepoRef, hash: string): Promise<CommitChecksSnapshot>;
     /**

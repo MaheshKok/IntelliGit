@@ -125,5 +125,7 @@
     "command.openPartialChanges": "Открыть частичные изменения",
     "command.shelf.applyPatchToChangelist": "Применить патч к списку изменений…",
     "command.completeTargetedHistory": "Завершить незафиксированное действие с историей",
-    "command.discardTargetedHistory": "Отменить незафиксированное действие с историей"
+    "command.discardTargetedHistory": "Отменить незафиксированное действие с историей",
+    "command.ciShowHeadChecks": "Показать проверки CI для текущего коммита",
+    "command.ciRefreshHeadChecks": "Обновить проверки CI для текущего коммита"
 }

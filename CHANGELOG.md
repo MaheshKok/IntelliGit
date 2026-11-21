@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.17] - 2026-11-21
+
+### Added
+
+- Groundwork for the coming Checks tab: IntelliGit can now watch your current commit's CI, show it in the status bar, and tell you once when everything has finished. Nothing changes in the extension yet.
+
 ## [0.43.16] - 2026-11-19
 
 ### Fixed

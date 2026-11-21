@@ -998,5 +998,13 @@
     "[IntelliGit: could not load this CI log: {0}]": "[IntelliGit : impossible de charger ce journal CI : {0}]",
     "This provider cannot show CI logs.": "Ce fournisseur ne peut pas afficher les journaux CI.",
     "Loading the log of {0}…": "Chargement du journal de {0}…",
-    "This provider cannot re-run or cancel CI runs.": "Ce fournisseur ne peut pas relancer ni annuler les exécutions CI."
+    "This provider cannot re-run or cancel CI runs.": "Ce fournisseur ne peut pas relancer ni annuler les exécutions CI.",
+    "CI paused": "CI en pause",
+    "CI passed on {0}": "CI réussie sur {0}",
+    "CI failed on {0}: {1}": "CI en échec sur {0} : {1}",
+    "Open Checks": "Ouvrir les vérifications",
+    "Open log": "Ouvrir le journal",
+    "Re-run failed": "Relancer les échecs",
+    "Your sign-in cannot re-run this CI run.": "Votre connexion ne permet pas de relancer cette exécution CI.",
+    "CI unavailable": "CI indisponible"
 }
