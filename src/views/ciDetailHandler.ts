@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import { isE2eControlChannelActive } from "../e2e/activationState";
 import type { CiActionFenceStore } from "../services/commitChecks/ciActionFence";
 import type { CiActionOutcome } from "../services/commitChecks/ciActions";
+import type { CiAnnotationsAccess } from "../services/commitChecks/ciDiagnostics";
 import type { CiGenerations, CiOperationContext } from "../services/commitChecks/ciGenerations";
 import type { CiLogMemoryStore } from "../services/commitChecks/ciLogMemoryStore";
 import type { CiLogTarget } from "../services/commitChecks/coordinator";
@@ -53,6 +54,8 @@ export interface CommitCiDetailSource {
     ) => Promise<ChangedSinceGreen | undefined>;
     /** Opens a file's diff between two revisions; absent = the host opens none. */
     openRangeDiff?: (fromRev: string, toRev: string, file: CiRangeDiffFile) => Promise<void>;
+    /** HEAD's CI annotations; absent = replies carry none and the host opens none. */
+    annotations?: CiAnnotationsAccess;
 }
 
 /** A host's way to run CI write actions for the repository it shows. */
@@ -155,7 +158,10 @@ export async function answerCommitCiDetailRequest(
         detail =
             next &&
             withoutSnapshot(fences ? withFence(next, fences.fenceFor(repoKey, hash)) : next);
-        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
+        // The annotations ride on the posted copy only, never on a cached detail.
+        const view = detail && source.annotations?.viewFor(repoKey, hash);
+        const posted = detail && view ? { ...detail, annotations: view } : detail;
+        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: posted ?? null });
     };
     const read = async (
         fetch: (
@@ -183,6 +189,12 @@ export async function answerCommitCiDetailRequest(
             post: show,
             refetch: () => reread(false),
         });
+    }
+    if (source.annotations && !stopped.aborted) {
+        const changed = source.annotations.onDidChange(() => {
+            if (!stopped.aborted && detail) show(detail);
+        });
+        stopped.addEventListener("abort", () => changed.dispose(), { once: true });
     }
     // The scan pages reach only the newest requester of a commit's detail, so its progress is
     // also re-read and re-posted under the same request id until the scan ends: another view

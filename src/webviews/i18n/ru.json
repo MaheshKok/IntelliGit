@@ -599,5 +599,15 @@
     "commit.checks.tab.changedSinceGreenNone": "В загруженной истории нет успешного запуска этого задания",
     "commit.checks.tab.changedSinceGreenAmbiguous": "Не удаётся сопоставить это задание в более старых коммитах",
     "commit.checks.tab.changedSinceGreenFailed": "Не удалось сравнить: {error}",
-    "commit.checks.tab.changedSinceGreenLoading": "Поиск последнего успешного запуска…"
+    "commit.checks.tab.changedSinceGreenLoading": "Поиск последнего успешного запуска…",
+    "commit.checks.tab.annotations": "Аннотации",
+    "commit.checks.tab.annotationsRejected": {
+        "few": "Не удалось разместить {count} аннотации",
+        "many": "Не удалось разместить {count} аннотаций",
+        "one": "Не удалось разместить {count} аннотацию",
+        "other": "Не удалось разместить аннотации: {count}"
+    },
+    "commit.checks.tab.annotationsTruncated": "Показаны первые 1 000 аннотаций",
+    "commit.checks.tab.annotationsForbidden": "Аннотации недоступны с этим токеном",
+    "commit.checks.tab.annotationsUnavailable": "Аннотации недоступны: {reason}"
 }

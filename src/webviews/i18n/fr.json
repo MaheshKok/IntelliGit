@@ -589,5 +589,14 @@
     "commit.checks.tab.changedSinceGreenNone": "Aucune exécution réussie de ce job dans l'historique chargé",
     "commit.checks.tab.changedSinceGreenAmbiguous": "Impossible de retrouver ce job dans les commits plus anciens",
     "commit.checks.tab.changedSinceGreenFailed": "Impossible de comparer : {error}",
-    "commit.checks.tab.changedSinceGreenLoading": "Recherche de la dernière exécution réussie…"
+    "commit.checks.tab.changedSinceGreenLoading": "Recherche de la dernière exécution réussie…",
+    "commit.checks.tab.annotations": "Annotations",
+    "commit.checks.tab.annotationsRejected": {
+        "many": "{count} annotations n'ont pas pu être placées",
+        "one": "{count} annotation n'a pas pu être placée",
+        "other": "{count} annotations n'ont pas pu être placées"
+    },
+    "commit.checks.tab.annotationsTruncated": "Affichage des 1 000 premières annotations",
+    "commit.checks.tab.annotationsForbidden": "Annotations indisponibles avec ce jeton",
+    "commit.checks.tab.annotationsUnavailable": "Annotations indisponibles : {reason}"
 }

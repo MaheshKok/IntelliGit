@@ -209,6 +209,16 @@ type CommitCiOutbound =
           path: string;
           oldPath?: string;
           status: CiChangedFile["status"];
+      }
+    | {
+          /** Checks tab asks its host to open a CI annotation's file at its line. */
+          type: "openCiAnnotation";
+          requestId: number;
+          repoKey: string;
+          hash: string;
+          path: string;
+          /** 1-based, as the Annotations section lists it. */
+          line: number;
       };
 
 /** Checks tab asks its host for a commit's CI detail. */
@@ -243,3 +253,5 @@ export type RequestChangedSinceGreenMessage = Extract<
 >;
 /** Checks tab asks to diff a file between two revisions. */
 export type OpenCiRangeDiffMessage = Extract<CommitCiOutbound, { type: "openCiRangeDiff" }>;
+/** Checks tab asks to open a CI annotation's file at its line. */
+export type OpenCiAnnotationMessage = Extract<CommitCiOutbound, { type: "openCiAnnotation" }>;

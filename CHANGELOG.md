@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.18] - 2026-11-21
+
+### Added
+
+- Groundwork for the coming Checks tab: IntelliGit can now read GitHub's CI failure notes for your current commit and place them on the exact file and line in the Problems panel. Nothing changes in the extension yet.
+
 ## [0.43.17] - 2026-11-21
 
 ### Added

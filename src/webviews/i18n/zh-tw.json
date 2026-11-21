@@ -569,5 +569,12 @@
     "commit.checks.tab.changedSinceGreenNone": "已載入的歷史中沒有此作業的通過執行",
     "commit.checks.tab.changedSinceGreenAmbiguous": "無法在較早的提交中比對此作業",
     "commit.checks.tab.changedSinceGreenFailed": "無法比較：{error}",
-    "commit.checks.tab.changedSinceGreenLoading": "正在尋找上次通過的執行…"
+    "commit.checks.tab.changedSinceGreenLoading": "正在尋找上次通過的執行…",
+    "commit.checks.tab.annotations": "註解",
+    "commit.checks.tab.annotationsRejected": {
+        "other": "有 {count} 則註解無法放置"
+    },
+    "commit.checks.tab.annotationsTruncated": "顯示前 1 000 則註解",
+    "commit.checks.tab.annotationsForbidden": "此權杖無法使用註解",
+    "commit.checks.tab.annotationsUnavailable": "註解無法使用：{reason}"
 }

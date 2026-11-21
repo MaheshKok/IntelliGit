@@ -64,6 +64,8 @@ import {
     type CommitCiDetailSource,
 } from "./ciDetailHandler";
 import { answerCiLogMessage } from "./ciLogHandler";
+import { answerOpenCiAnnotation } from "./ciAnnotationHandler";
+import type { CiAnnotationsAccess } from "../services/commitChecks/ciDiagnostics";
 import { answerCiActionMessage, ciActionAccess, type CiActionOptions } from "./ciActionHandler";
 import { answerCiHistoryRequest } from "./ciHistoryHandler";
 import {
@@ -223,6 +225,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             ciLogStore?: CiLogMemoryStore;
             /** The window's action fences and write-token help; absent = no CI write actions. */
             ciActions?: CiActionOptions;
+            /** HEAD's CI annotations; absent = the Checks tab lists none. */
+            ciAnnotations?: CiAnnotationsAccess;
         } = {},
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
@@ -306,7 +310,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     /** The HEAD monitor's view of this graph's CI coordinator. */
     headChecksSource(): Pick<
         CommitChecksCoordinator,
-        "getChecks" | "getDetail" | "invalidateDetail" | "capabilities" | "requestBucket"
+        | "getChecks"
+        | "getDetail"
+        | "invalidateDetail"
+        | "capabilities"
+        | "requestBucket"
+        | "annotations"
     > {
         return this.commitChecks;
     }
@@ -343,6 +352,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             ...(ciActions && {
                 actions: ciActionAccess(this.commitChecks, ciActions),
             }),
+            ...(this.options.ciAnnotations && { annotations: this.options.ciAnnotations }),
         };
     }
 
@@ -606,7 +616,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                     }
                     case "requestChangedSinceGreen":
                     case "openCiRangeDiff":
-                        await this.handleChangedSinceGreenMessage(webviewView, msg);
+                    case "openCiAnnotation":
+                        await this.handleCiFileMessage(webviewView, msg);
                         break;
                     case "cancelCommitCiDetail":
                         if (this.view === webviewView) this.ciDetailLoops.cancel(msg.requestId);
@@ -645,13 +656,20 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
      * @param webviewView - The view the message came from.
      * @param msg - The Checks tab's request.
      */
-    private async handleChangedSinceGreenMessage(
+    private async handleCiFileMessage(
         webviewView: vscode.WebviewView,
-        msg: Extract<CommitGraphOutbound, { type: "requestChangedSinceGreen" | "openCiRangeDiff" }>,
+        msg: Extract<
+            CommitGraphOutbound,
+            { type: "requestChangedSinceGreen" | "openCiRangeDiff" | "openCiAnnotation" }
+        >,
     ): Promise<void> {
         const repoKey = this.options.ciRepoKey;
         // A late message from a replaced webview must not touch its successor.
         if (!repoKey || this.view !== webviewView) return;
+        if (msg.type === "openCiAnnotation") {
+            await answerOpenCiAnnotation(this.ciDetailSource(repoKey), { ...msg });
+            return;
+        }
         if (msg.type === "openCiRangeDiff") {
             await answerOpenCiRangeDiff(
                 this.ciDetailSource(repoKey),

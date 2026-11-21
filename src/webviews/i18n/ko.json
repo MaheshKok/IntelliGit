@@ -569,5 +569,12 @@
     "commit.checks.tab.changedSinceGreenNone": "불러온 기록에 이 작업의 성공한 실행이 없습니다",
     "commit.checks.tab.changedSinceGreenAmbiguous": "이전 커밋에서 이 작업을 찾을 수 없습니다",
     "commit.checks.tab.changedSinceGreenFailed": "비교할 수 없습니다: {error}",
-    "commit.checks.tab.changedSinceGreenLoading": "마지막으로 성공한 실행을 찾는 중…"
+    "commit.checks.tab.changedSinceGreenLoading": "마지막으로 성공한 실행을 찾는 중…",
+    "commit.checks.tab.annotations": "주석",
+    "commit.checks.tab.annotationsRejected": {
+        "other": "주석 {count}개를 배치할 수 없습니다"
+    },
+    "commit.checks.tab.annotationsTruncated": "처음 1 000개의 주석을 표시합니다",
+    "commit.checks.tab.annotationsForbidden": "이 토큰으로는 주석을 사용할 수 없습니다",
+    "commit.checks.tab.annotationsUnavailable": "주석을 사용할 수 없음: {reason}"
 }

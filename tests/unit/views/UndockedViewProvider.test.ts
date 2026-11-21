@@ -1030,6 +1030,32 @@ describe("UndockedViewProvider Checks tab loops", () => {
         });
     });
 
+    it("a panel opens a clicked CI annotation through the placed list, and nothing while the Checks tab switch is off", async () => {
+        await withLoopHarness(async ({ provider }) => {
+            const open = vi.fn(async () => undefined);
+            (provider as unknown as { ciAnnotations: unknown }).ciAnnotations = {
+                viewFor: () => undefined,
+                onDidChange: () => ({ dispose: () => undefined }),
+                open,
+            };
+            const panel = openTestPanel(provider);
+            const click = {
+                type: "openCiAnnotation",
+                requestId: 4,
+                repoKey: "/repo-a",
+                hash: HASH_A,
+                path: "src/a.ts",
+                line: 2,
+            };
+            setE2eControlChannelActive(false);
+            await panel.receiveMessage(click);
+            expect(open, "the switch is off: nothing opens").not.toHaveBeenCalled();
+            setE2eControlChannelActive(true);
+            await panel.receiveMessage(click);
+            expect(open).toHaveBeenCalledWith("/repo-a", HASH_A, "src/a.ts", 2);
+        });
+    });
+
     it("closing the panel stops its Checks tab loop", async () => {
         await withLoopHarness(async ({ provider, getDetail }) => {
             const panel = openTestPanel(provider);

@@ -40,6 +40,8 @@ import {
 } from "./requiredChecks";
 import { CommitChecksService, type CommitChecksFetchOptions } from "./service";
 import type {
+    CiAnnotation,
+    CiAnnotations,
     CiDetailFetch,
     CiLogJob,
     CommitChecksProvider,
@@ -113,9 +115,13 @@ export interface CommitChecksCoordinatorOptions {
     /** Token-free diagnostic trace for discarded detail requests. */
     trace?: CiTrace;
     /** E2E runs only: a seeded detail served for a commit instead of the provider's. */
-    fixture?: (
-        hash: string,
-    ) => { detail: CommitCiDetailData; capabilities: ProviderCiCapabilities } | undefined;
+    fixture?: (hash: string) =>
+        | {
+              detail: CommitCiDetailData;
+              capabilities: ProviderCiCapabilities;
+              annotations?: Record<string, CiAnnotation[]>;
+          }
+        | undefined;
 }
 
 /** The commit a "flaky n/m" line starts from, and the Git Log's loaded commits. */
@@ -751,6 +757,34 @@ export class CommitChecksCoordinator {
         const seeded = this.fixture?.(hash);
         if (seeded) return seeded.capabilities;
         return (await this.resolveEnabledMatch())?.provider.capabilities;
+    }
+
+    /**
+     * One check run's annotations (an E2E fixture's seeded ones). Empty when checks are off or
+     * the provider reads none; rejects before the request once `isCurrent` turns false.
+     *
+     * @param hash - The commit the check run belongs to.
+     * @param checkRunId - The failed job's check-run id.
+     * @param isCurrent - Read right before the request is sent.
+     */
+    async annotations(
+        hash: string,
+        checkRunId: string,
+        isCurrent: () => boolean,
+    ): Promise<CiAnnotations> {
+        const none: CiAnnotations = { annotations: [], coverage: "full" };
+        if (!this.enabled) return none;
+        const seeded = this.fixture?.(hash);
+        if (seeded) {
+            if (!seeded.capabilities.annotations) return none;
+            return { annotations: seeded.annotations?.[checkRunId] ?? [], coverage: "full" };
+        }
+        const match = await this.resolveEnabledMatch();
+        if (!match?.provider.getAnnotations || !match.provider.capabilities?.annotations) {
+            return none;
+        }
+        if (!isCurrent()) throw new StaleCallerError();
+        return match.provider.getAnnotations(match.ref, checkRunId);
     }
 
     /**

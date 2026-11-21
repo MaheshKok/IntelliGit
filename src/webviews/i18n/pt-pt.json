@@ -589,5 +589,14 @@
     "commit.checks.tab.changedSinceGreenNone": "Nenhuma execução aprovada desta tarefa no histórico carregado",
     "commit.checks.tab.changedSinceGreenAmbiguous": "Não é possível identificar esta tarefa em commits anteriores",
     "commit.checks.tab.changedSinceGreenFailed": "Não foi possível comparar: {error}",
-    "commit.checks.tab.changedSinceGreenLoading": "A procurar a última execução aprovada…"
+    "commit.checks.tab.changedSinceGreenLoading": "A procurar a última execução aprovada…",
+    "commit.checks.tab.annotations": "Anotações",
+    "commit.checks.tab.annotationsRejected": {
+        "many": "{count} anotações não puderam ser colocadas",
+        "one": "{count} anotação não pôde ser colocada",
+        "other": "{count} anotações não puderam ser colocadas"
+    },
+    "commit.checks.tab.annotationsTruncated": "A mostrar as primeiras 1 000 anotações",
+    "commit.checks.tab.annotationsForbidden": "Anotações indisponíveis com este token",
+    "commit.checks.tab.annotationsUnavailable": "Anotações indisponíveis: {reason}"
 }

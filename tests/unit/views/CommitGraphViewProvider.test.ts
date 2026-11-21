@@ -71,7 +71,10 @@ import { createFakeExtensionUri } from "../../visual/recorder/commitInfoVscodeDo
 import { throwingDouble } from "../../visual/recorder/throwingDouble";
 import { toGitEnvironment } from "../../visual/recorder/recordingGitEnvironment";
 import { buildProviderOptions } from "../../visual/recorder/recordCommitGraphWebviewFixture";
-import { setE2eControlChannelActive } from "../../../src/e2e/activationState";
+import {
+    isE2eControlChannelActive,
+    setE2eControlChannelActive,
+} from "../../../src/e2e/activationState";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 import { CredentialStore } from "../../../src/services/commitChecks/credentialStore";
@@ -902,6 +905,48 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
         expect(read, "a reloaded webview cannot open the retired one's list").toHaveBeenCalledTimes(
             2,
         );
+    });
+
+    it("opens a clicked CI annotation through the placed list, and nothing while the Checks tab switch is off", async () => {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const open = vi.fn(async () => undefined);
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            {
+                ...buildProviderOptions("card"),
+                ciRepoKey: () => "/repo",
+                ciAnnotations: {
+                    viewFor: () => undefined,
+                    onDidChange: () => ({ dispose: () => undefined }),
+                    open,
+                },
+            },
+        );
+        const { webviewView, receiveMessage } = createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const click = {
+            type: "openCiAnnotation",
+            requestId: 4,
+            repoKey: "/repo",
+            hash: "a".repeat(40),
+            path: "src/a.ts",
+            line: 2,
+        };
+        const wasOn = isE2eControlChannelActive();
+        try {
+            setE2eControlChannelActive(false);
+            await receiveMessage(click);
+            expect(open, "the switch is off: nothing opens").not.toHaveBeenCalled();
+            setE2eControlChannelActive(true);
+            await receiveMessage(click);
+            expect(open).toHaveBeenCalledWith("/repo", "a".repeat(40), "src/a.ts", 2);
+        } finally {
+            setE2eControlChannelActive(wasOn);
+        }
     });
 
     it("a replaced view's late ready does not discard the current context's history reply", async () => {

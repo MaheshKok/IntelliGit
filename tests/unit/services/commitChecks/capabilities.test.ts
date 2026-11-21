@@ -49,6 +49,7 @@ describe("provider capabilities", () => {
         // cancel a run, and explain a refused write with their own scope help. Phase 9: both
         // read required checks; GitLab marks jobs allowed to fail as optional. Phase 10: both
         // read how long the previous successful run took. Phase 12: both list a job's re-runs.
+        // Phase 14: GitHub reads a failed check run's annotations.
         const write = ["rerunFailed", "rerunJob", "cancel"] as const;
         const landed: Record<string, readonly (keyof ProviderCiCapabilities)[]> = {
             github: [
@@ -62,6 +63,7 @@ describe("provider capabilities", () => {
                 "requiredChecks",
                 "usualDuration",
                 "attemptHistory",
+                "annotations",
             ],
             gitlab: [
                 "runs",

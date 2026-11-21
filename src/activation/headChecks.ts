@@ -1,4 +1,5 @@
-// Wires the HEAD CI monitor (status bar item and settle notification) into repository mode.
+// Wires the HEAD CI monitor (status bar item, settle notification and Problems annotations)
+// into repository mode.
 
 import * as path from "path";
 import * as vscode from "vscode";
@@ -6,6 +7,11 @@ import { isE2eControlChannelActive } from "../e2e/activationState";
 import type { GitExecutor } from "../git/executor";
 import type { GitOps } from "../git/operations";
 import type { CiActionFenceStore } from "../services/commitChecks/ciActionFence";
+import {
+    CI_DIAGNOSTICS_COLLECTION,
+    CiDiagnostics,
+    type CiDiagnosticsDeps,
+} from "../services/commitChecks/ciDiagnostics";
 import type { CiGenerations } from "../services/commitChecks/ciGenerations";
 import type { CiTrace } from "../services/commitChecks/ciTrace";
 import type { CommitChecksCoordinator } from "../services/commitChecks/coordinator";
@@ -33,6 +39,69 @@ export interface HeadChecksOptions {
     requestGates: CommitChecksRequestGateRegistry;
     fences: CiActionFenceStore | undefined;
     trace: CiTrace;
+    /** HEAD's annotations in the Problems panel, filled from the monitor's settled detail. */
+    diagnostics?: CiDiagnostics;
+}
+
+/** HEAD's commit hash, or undefined in an empty repository. */
+async function readHeadHash(executor: GitExecutor): Promise<string | undefined> {
+    try {
+        return (await executor.run(["rev-parse", "--verify", "HEAD"])).trim() || undefined;
+    } catch {
+        // An empty repository has no HEAD commit.
+        return undefined;
+    }
+}
+
+/** What HEAD's CI annotations read. */
+export interface CiDiagnosticsOptions {
+    /** Disposes the collection with the extension. */
+    context: vscode.ExtensionContext;
+    /** Reads HEAD's commit hash. */
+    executor: GitExecutor;
+    /** The repository the window shows now. */
+    repoRoot: () => string;
+    generations: CiGenerations;
+    /** Reads one check run's annotations (the Git Log's coordinator). */
+    annotations: CiDiagnosticsDeps["annotations"];
+}
+
+/**
+ * HEAD's CI annotations in the Problems panel (PLAN.md §11).
+ *
+ * @param options - What the diagnostics read.
+ * @returns The diagnostics, its collection disposed with the extension.
+ */
+export function createCiDiagnostics(options: CiDiagnosticsOptions): CiDiagnostics {
+    // Created on the first publish, so a window that never gets an annotation has no collection.
+    let created: vscode.DiagnosticCollection | undefined;
+    const collection: CiDiagnosticsDeps["collection"] = {
+        set: (uri, diagnostics) => {
+            if (!created) {
+                created = vscode.languages.createDiagnosticCollection(CI_DIAGNOSTICS_COLLECTION);
+                options.context.subscriptions.push(created);
+            }
+            created.set(uri, diagnostics);
+        },
+        clear: () => created?.clear(),
+    };
+    return new CiDiagnostics({
+        switchOn: isE2eControlChannelActive,
+        enabled: (provider) => {
+            const config = vscode.workspace.getConfiguration("intelligit");
+            const settings = normalizeCommitChecksSettings(config.get("commitChecks"));
+            return (
+                settings.enabled &&
+                settings.providers[provider] &&
+                readHeadStatusSettings(config).problemsDiagnostics === true
+            );
+        },
+        repoKey: options.repoRoot,
+        headHash: () => readHeadHash(options.executor),
+        generations: options.generations,
+        collection,
+        annotations: options.annotations,
+    });
 }
 
 /**
@@ -76,17 +145,7 @@ export function registerHeadChecks(options: HeadChecksOptions): HeadCiStatus | u
                   settings: () =>
                       readHeadStatusSettings(vscode.workspace.getConfiguration("intelligit")),
                   repoKey: repoRoot,
-                  headHash: async () => {
-                      try {
-                          return (
-                              (await executor.run(["rev-parse", "--verify", "HEAD"])).trim() ||
-                              undefined
-                          );
-                      } catch {
-                          // An empty repository has no HEAD commit.
-                          return undefined;
-                      }
-                  },
+                  headHash: () => readHeadHash(executor),
                   isUnpushed: async (hash) =>
                       (await gitOps.getUnpushedCommitHashes()).includes(hash),
                   capabilities: (hash) => checks.capabilities(hash),
@@ -152,6 +211,7 @@ export function registerHeadChecks(options: HeadChecksOptions): HeadCiStatus | u
                       await monitor?.restart();
                   },
                   trace: options.trace,
+                  diagnostics: options.diagnostics,
               })
             : undefined;
     context.subscriptions.push(
@@ -173,7 +233,10 @@ export function registerHeadChecks(options: HeadChecksOptions): HeadCiStatus | u
                 if (state.focused) void monitor.onWindowFocused();
             }),
             vscode.workspace.onDidChangeConfiguration((event) => {
-                if (event.affectsConfiguration("intelligit.commitChecks")) void monitor.restart();
+                if (!event.affectsConfiguration("intelligit.commitChecks")) return;
+                // A provider or the setting turned off drops the annotations at once.
+                options.diagnostics?.clear();
+                void monitor.restart();
             }),
         );
     }

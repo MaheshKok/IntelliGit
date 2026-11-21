@@ -218,6 +218,33 @@ Two settings turn the parts off: `intelligit.commitChecks.statusBar` (the item) 
 `intelligit.commitChecks.notifyOnSettle` (the notification). Both are on by default; with
 both off, IntelliGit stops watching the current commit.
 
+## CI failure notes in the Problems panel
+
+> Planned: the Problems panel entries and the Annotations section stay off until the Checks
+> tab ships. This section describes how they will behave.
+
+When the commit you have checked out finished with failed GitHub jobs, IntelliGit reads the
+notes those jobs left (GitHub calls them annotations) and puts each one on its file and line
+in the Problems panel, with `CI: <job name>` as its source. Failures show as errors, warnings
+as warnings, and notices as information. The Checks tab lists the same notes under
+**Annotations**; clicking one opens its file at its line.
+
+Only the checked-out commit gets notes, and only jobs that failed and report notes are read.
+A note is dropped when its path is not a relative path inside the repository (an absolute
+path, a drive letter, a `..` step, or a link that leads outside), when the file does not
+exist, or when its line numbers are not whole numbers from 1 up; the tab then says how many
+could not be placed. A job with more than 1 000 notes shows the first 1 000, and the tab
+says so. The entries disappear when the checked-out commit changes, when you sign out, when
+commit checks or the provider are turned off, and when the repository closes.
+
+GitHub's documentation names the Checks read permission for GitHub App tokens and the `repo`
+scope for OAuth and classic tokens on private repositories. IntelliGit uses VS Code's GitHub
+session, so it needs classic `repo`. When GitHub refuses the token, the Problems panel stays
+empty and the tab shows **Annotations unavailable with this token**.
+
+`intelligit.commitChecks.problemsDiagnostics` turns the Problems panel entries off. It is on by
+default.
+
 ## Authentication per provider
 
 | Provider | Credential | How to provide it | Scope / permission |

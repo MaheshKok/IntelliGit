@@ -20,6 +20,7 @@ import type {
 } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import { withoutLinkBrackets } from "../../utils/notifications";
+import type { CiDiagnosticsTarget } from "./ciDiagnostics";
 import type { CiGenerations, CiOperationContext } from "./ciGenerations";
 import type { CiTrace } from "./ciTrace";
 
@@ -40,10 +41,12 @@ const FAILED_STATES: ReadonlySet<CommitCheckState> = new Set([
     "action_required",
 ]);
 
-/** The two settings this phase reads (K5, K6). */
+/** The HEAD settings (K5, K6, K7). */
 export interface HeadStatusSettings {
     statusBar: boolean;
     notifyOnSettle: boolean;
+    /** HEAD's CI annotations in the Problems panel; absent counts as off. */
+    problemsDiagnostics?: boolean;
 }
 
 /** The part of a configuration section the settings reader uses. */
@@ -53,7 +56,7 @@ export interface HeadStatusConfig {
 }
 
 /**
- * Reads K5 and K6. They are not contributed in `package.json` until Phase 18, so the
+ * Reads K5, K6 and K7. They are not contributed in `package.json` until Phase 18, so the
  * default comes from here, and a value that is not a boolean counts as the default.
  *
  * @param config - The `intelligit` configuration section.
@@ -66,6 +69,7 @@ export function readHeadStatusSettings(config: HeadStatusConfig): HeadStatusSett
     return {
         statusBar: flag("commitChecks.statusBar"),
         notifyOnSettle: flag("commitChecks.notifyOnSettle"),
+        problemsDiagnostics: flag("commitChecks.problemsDiagnostics"),
     };
 }
 
@@ -600,6 +604,11 @@ export interface HeadCiStatusDeps extends HeadSettleToastDeps, HeadStatusBarDeps
     cooldownUntil(hash: string): number | Promise<number>;
     isFenced(hash: string): boolean;
     generations: CiGenerations;
+    /** HEAD's CI annotations in the Problems panel; absent = none. */
+    diagnostics?: {
+        show(target: CiDiagnosticsTarget): Promise<void>;
+        clear(): void;
+    };
 }
 
 /** The HEAD monitor (§10): one per active repository. */
@@ -682,6 +691,8 @@ export class HeadCiStatus {
         const until = await this.cooldownEnd(hash);
         if (until > this.now() || this.disposed || hash !== this.head) return;
         this.clearTimer();
+        // The refreshed detail's annotations are read again.
+        this.deps.diagnostics?.clear();
         await this.poll(this.run, { force: true });
     }
 
@@ -696,6 +707,7 @@ export class HeadCiStatus {
         this.run += 1;
         this.clearTimer();
         this.bar.dispose();
+        this.deps.diagnostics?.clear();
     }
 
     /** The switch went off: no timer and no publish; the next repository-change signal starts over. */
@@ -703,6 +715,7 @@ export class HeadCiStatus {
         this.run += 1;
         this.head = undefined;
         this.clearTimer();
+        this.deps.diagnostics?.clear();
     }
 
     private now(): number {
@@ -720,12 +733,17 @@ export class HeadCiStatus {
 
     private active(): boolean {
         const settings = this.deps.settings();
-        return this.deps.enabled() && (settings.statusBar || settings.notifyOnSettle);
+        const diagnostics = settings.problemsDiagnostics === true && !!this.deps.diagnostics;
+        return (
+            this.deps.enabled() && (settings.statusBar || settings.notifyOnSettle || diagnostics)
+        );
     }
 
     private async start(head: string | undefined): Promise<void> {
         this.run += 1;
         this.clearTimer();
+        // A HEAD move, sign-in change, settings change or restart drops the old annotations.
+        this.deps.diagnostics?.clear();
         this.head = head;
         this.headRepoKey = this.deps.repoKey();
         this.attempt = 0;
@@ -849,6 +867,8 @@ export class HeadCiStatus {
                 counts: detailCounts(settlement.detail),
                 summary: snapshot.summary,
             });
+            // Not awaited: the annotations never hold up the notification.
+            void this.deps.diagnostics?.show({ repoKey, hash, ctx, detail: settlement.detail });
         }
         if (settlement.state === "settled" && this.toast.pendingObserved.has(repoKey, hash)) {
             await this.offerToast({

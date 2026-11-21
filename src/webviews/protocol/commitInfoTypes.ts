@@ -17,6 +17,7 @@ import type {
     RequestCiHistoryMessage,
     RequestChangedSinceGreenMessage,
     OpenCiRangeDiffMessage,
+    OpenCiAnnotationMessage,
     OpenCommitChecksSettingsMessage,
     PreviewCiLogMessage,
     RequestCommitCiDetailMessage,
@@ -50,6 +51,7 @@ export type CommitInfoOutbound =
     | RequestCiHistoryMessage
     | RequestChangedSinceGreenMessage
     | OpenCiRangeDiffMessage
+    | OpenCiAnnotationMessage
     | OpenCommitChecksSettingsMessage
     | {
           /** Request to open a CI run, job or check URL outside the webview. */

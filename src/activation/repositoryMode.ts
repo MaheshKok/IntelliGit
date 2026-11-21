@@ -48,7 +48,7 @@ import { createCiTrace } from "../services/commitChecks/ciTrace";
 import { CiLogMemoryStore, type CiLogSource } from "../services/commitChecks/ciLogMemoryStore";
 import { registerCiLogDocumentProvider } from "../services/commitChecks/ciLogDocument";
 import { createCommitChecksProviders, writeActionsHelpUrl } from "./commitChecksProviders";
-import { registerHeadChecks } from "./headChecks";
+import { createCiDiagnostics, registerHeadChecks } from "./headChecks";
 import { captureWebviewViewProvider } from "../e2e/webviewCapture";
 import { readE2eCiFixture, readE2eCiFixtureLog } from "../e2e/ciFixture";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
@@ -380,6 +380,15 @@ export async function activateRepositoryMode(
         | undefined;
 
     const ciFixture = (hash: string) => readE2eCiFixture(context.globalState, hash);
+    // Reads through the Git Log graph's coordinator, which exists by the time HEAD settles.
+    const ciDiagnostics = createCiDiagnostics({
+        context,
+        executor,
+        repoRoot: () => repoRoot,
+        generations: ciGenerations,
+        annotations: (hash, checkRunId, isCurrent) =>
+            commitGraph.headChecksSource().annotations(hash, checkRunId, isCurrent),
+    });
     const writeHelpUrl = writeActionsHelpUrl(context.extension?.packageJSON);
     const ciActions = ciActionFences && {
         fences: ciActionFences,
@@ -397,6 +406,7 @@ export async function activateRepositoryMode(
         ciFixture,
         ciLogStore,
         ciActions,
+        ciAnnotations: ciDiagnostics,
     });
     const sidebarGraph = new CommitGraphViewProvider(
         context.extensionUri,
@@ -435,6 +445,7 @@ export async function activateRepositoryMode(
         requestGates: requestGateRegistry,
         fences: ciActionFences,
         trace: ciTrace,
+        diagnostics: ciDiagnostics,
     });
     const commitPanel = new CommitPanelViewProvider(
         context.extensionUri,
@@ -464,7 +475,10 @@ export async function activateRepositoryMode(
             (repository) => !nextRepositories.some((next) => next.root === repository.root),
         );
         // CI work started for a repository that just closed must not publish.
-        if (closed) ciGenerations.bumpLifecycle();
+        if (closed) {
+            ciGenerations.bumpLifecycle();
+            ciDiagnostics.clear();
+        }
         repositories = nextRepositories;
         void setViewContext(HAS_MULTIPLE_REPOSITORIES_CONTEXT, repositories.length > 1);
         sidebarGraph.setShowRepositoryLabel(repositories.length > 1);
@@ -970,6 +984,7 @@ export async function activateRepositoryMode(
                 ciFixture,
                 ciLogStore,
                 ciActions,
+                ciAnnotations: ciDiagnostics,
                 commitChecksProviders,
                 commitMessageGenerationCoordinator,
                 onSelectedRepositoryRootChanged: async (root) => {
@@ -1443,6 +1458,7 @@ export async function activateRepositoryMode(
     const refreshCommitCheckBadges = async (): Promise<void> => {
         requestGateRegistry.reset();
         ciGenerations.bumpAuth();
+        ciDiagnostics.clear();
         ciLogStore.clear();
         commitGraph.clearChecksCache();
         sidebarGraph.clearChecksCache();

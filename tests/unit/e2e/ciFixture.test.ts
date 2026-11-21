@@ -249,6 +249,102 @@ describe("CommitChecksCoordinator.ciLogTarget", () => {
     });
 });
 
+describe("CommitChecksCoordinator.annotations", () => {
+    const REMOTE = "git@github.com:owner/repo.git";
+    const ANNOTATION = {
+        path: "src/a.ts",
+        startLine: 2,
+        endLine: 2,
+        level: "failure",
+        message: "m",
+    };
+
+    function providerCoordinator(provider: Partial<CommitChecksProvider>, enabled = true) {
+        const full: CommitChecksProvider = {
+            id: "github",
+            match: (url) => (url === REMOTE ? { host: "github.com" } : null),
+            keyFor: (ref) => `github:${ref.host}`,
+            getChecks: vi.fn(),
+            ...provider,
+        };
+        const gitOps = {
+            getRemotes: vi.fn(async () => ["origin"]),
+            getRemoteUrl: vi.fn(async () => REMOTE),
+        } as unknown as GitOps;
+        return new CommitChecksCoordinator(gitOps, [full], {}, { enabled });
+    }
+
+    it("serves a seeded check run's annotations and nothing for another", async () => {
+        setE2eControlChannelActive(true);
+        const store = memento({
+            detail: seededDetail(),
+            capabilities: { ...NO_CI_CAPABILITIES, annotations: true },
+            annotations: { "5001": [ANNOTATION] },
+        });
+        const coordinator = new CommitChecksCoordinator(
+            {} as GitOps,
+            [],
+            {},
+            { fixture: (hash) => readE2eCiFixture(store, hash) },
+        );
+        expect(await coordinator.annotations(HASH, "5001", () => true)).toEqual({
+            annotations: [ANNOTATION],
+            coverage: "full",
+        });
+        expect((await coordinator.annotations(HASH, "5002", () => true)).annotations).toEqual([]);
+    });
+
+    it("fails loudly when the seeded annotations are not check runs mapped to lists", () => {
+        setE2eControlChannelActive(true);
+        const seed = (annotations: unknown) =>
+            memento({ detail: seededDetail(), capabilities: NO_CI_CAPABILITIES, annotations });
+        expect(() => readE2eCiFixture(seed("x"), HASH)).toThrow(E2E_CI_FIXTURE_KEY);
+        expect(() => readE2eCiFixture(seed({ "5001": "x" }), HASH)).toThrow(E2E_CI_FIXTURE_KEY);
+    });
+
+    it("asks the provider for the check run's annotations while the caller is current", async () => {
+        const result = { annotations: [ANNOTATION], coverage: "full" as const };
+        const getAnnotations = vi.fn(async () => result);
+        const coordinator = providerCoordinator({
+            capabilities: { ...NO_CI_CAPABILITIES, annotations: true },
+            getAnnotations,
+        });
+        expect(await coordinator.annotations(HASH, "11", () => true)).toEqual(result);
+        expect(getAnnotations).toHaveBeenCalledWith({ host: "github.com" }, "11");
+    });
+
+    it("sends nothing for a stale caller, a provider without annotations, or turned-off checks", async () => {
+        const getAnnotations = vi.fn();
+        const capabilities = { ...NO_CI_CAPABILITIES, annotations: true };
+        await expect(
+            providerCoordinator({ capabilities, getAnnotations }).annotations(
+                HASH,
+                "11",
+                () => false,
+            ),
+            "a caller no longer current is refused before the request",
+        ).rejects.toThrow();
+        expect(
+            (
+                await providerCoordinator({
+                    capabilities: NO_CI_CAPABILITIES,
+                    getAnnotations,
+                }).annotations(HASH, "11", () => true)
+            ).annotations,
+        ).toEqual([]);
+        expect(
+            (
+                await providerCoordinator({ capabilities, getAnnotations }, false).annotations(
+                    HASH,
+                    "11",
+                    () => true,
+                )
+            ).annotations,
+        ).toEqual([]);
+        expect(getAnnotations).not.toHaveBeenCalled();
+    });
+});
+
 describe("CommitChecksCoordinator fixture", () => {
     it("serves the seeded detail and snapshot without resolving a provider", async () => {
         setE2eControlChannelActive(true);

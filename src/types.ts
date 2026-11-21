@@ -364,7 +364,24 @@ export interface CommitCiDetail extends CommitCiDetailData {
      * that earlier one, and this is the refresh's error (empty when the provider gave none).
      */
     refreshError?: string;
+    /** HEAD's CI annotations as the Problems panel holds them (never stored). */
+    annotations?: CiAnnotationsView;
 }
+
+/** The Checks tab's "Annotations" section: what the Problems panel shows for HEAD. */
+export interface CiAnnotationsView {
+    /** One per placed annotation; `line` is 1-based and inside the file. */
+    items: { path: string; line: number; level: CiAnnotationLevel; message: string; job: string }[];
+    /** Annotations dropped for an unsafe path or an impossible line range. */
+    rejected: number;
+    /** A check run had more annotations than the page bound; only the first 1 000 are placed. */
+    truncated: boolean;
+    /** The read failed: 403 (`forbidden`) or another error; nothing is placed. */
+    unavailable?: { forbidden: true } | { reason: string };
+}
+
+/** A CI annotation's level: Error, Warning and Information in the Problems panel. */
+export type CiAnnotationLevel = "failure" | "warning" | "notice";
 
 /**
  * Per-file change summary for a committed revision.

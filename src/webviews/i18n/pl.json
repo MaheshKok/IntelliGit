@@ -599,5 +599,15 @@
     "commit.checks.tab.changedSinceGreenNone": "Brak udanego uruchomienia tego zadania we wczytanej historii",
     "commit.checks.tab.changedSinceGreenAmbiguous": "Nie można dopasować tego zadania w starszych commitach",
     "commit.checks.tab.changedSinceGreenFailed": "Nie można porównać: {error}",
-    "commit.checks.tab.changedSinceGreenLoading": "Szukanie ostatniego udanego uruchomienia…"
+    "commit.checks.tab.changedSinceGreenLoading": "Szukanie ostatniego udanego uruchomienia…",
+    "commit.checks.tab.annotations": "Adnotacje",
+    "commit.checks.tab.annotationsRejected": {
+        "few": "Nie udało się umieścić {count} adnotacji",
+        "many": "Nie udało się umieścić {count} adnotacji",
+        "one": "Nie udało się umieścić {count} adnotacji",
+        "other": "Nie udało się umieścić {count} adnotacji"
+    },
+    "commit.checks.tab.annotationsTruncated": "Wyświetlanie pierwszych 1 000 adnotacji",
+    "commit.checks.tab.annotationsForbidden": "Adnotacje niedostępne z tym tokenem",
+    "commit.checks.tab.annotationsUnavailable": "Adnotacje niedostępne: {reason}"
 }

@@ -5,6 +5,7 @@ import type { CiLoadedCommit } from "../../../protocol/commitCiMessages";
 import { SPIN_KEYFRAMES } from "../../shared/components/iconStyles";
 import { t } from "../../shared/i18n";
 import { getVsCodeApi } from "../../shared/vscodeApi";
+import { CheckAnnotations } from "./CheckAnnotations";
 import { CheckJobDetail } from "./CheckJobDetail";
 import { CheckTree } from "./CheckTree";
 import { ChecksHeader } from "./ChecksHeader";
@@ -230,6 +231,7 @@ export function ChecksTab({
                 ) : (
                     <StateMessage state={state} detail={detail} onRefresh={refresh} />
                 )}
+                <CheckAnnotations repoKey={repoKey} hash={hash} detail={loaded} />
             </div>
         </div>
     );

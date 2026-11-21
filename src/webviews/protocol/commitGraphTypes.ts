@@ -29,6 +29,7 @@ import type {
     RequestCiHistoryMessage,
     RequestChangedSinceGreenMessage,
     OpenCiRangeDiffMessage,
+    OpenCiAnnotationMessage,
     OpenCommitChecksSettingsMessage,
     OpenChecksTabMessage,
     OpenCommitInChecksMessage,
@@ -266,6 +267,7 @@ export type CommitGraphOutbound =
     | RequestCiHistoryMessage
     | RequestChangedSinceGreenMessage
     | OpenCiRangeDiffMessage
+    | OpenCiAnnotationMessage
     | OpenCommitChecksSettingsMessage
     | OpenCommitInChecksMessage;
 

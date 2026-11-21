@@ -4,7 +4,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setE2eControlChannelActive } from "../../../src/e2e/activationState";
 import { CiGenerations } from "../../../src/services/commitChecks/ciGenerations";
-import type { CiFailedScan, CommitCiDetail } from "../../../src/types";
+import type { CiAnnotationsAccess } from "../../../src/services/commitChecks/ciDiagnostics";
+import type { CiAnnotationsView, CiFailedScan, CommitCiDetail } from "../../../src/types";
 import { NO_CI_CAPABILITIES } from "../../../src/shared/ci/capabilities";
 import { CommitCiDetailService } from "../../../src/services/commitChecks/detailService";
 import {
@@ -155,6 +156,46 @@ describe("answerCommitCiDetailRequest", () => {
         );
         expect(getDetail, "no CI detail is fetched").not.toHaveBeenCalled();
         expect(post, "no reply is posted").not.toHaveBeenCalled();
+    });
+
+    it("attaches HEAD's annotations to the reply and re-posts when they change, until stopped", async () => {
+        const view: CiAnnotationsView = { items: [], rejected: 2, truncated: false };
+        let published: CiAnnotationsView | undefined;
+        const listeners = new Set<() => void>();
+        const annotations: CiAnnotationsAccess = {
+            viewFor: (repoKey, hash) =>
+                repoKey === "/repo" && hash === HASH ? published : undefined,
+            onDidChange: (listener) => {
+                listeners.add(listener);
+                return { dispose: () => listeners.delete(listener) };
+            },
+            open: vi.fn(),
+        };
+        const post = vi.fn();
+        const loops = new CommitCiDetailLoops();
+        await answerCommitCiDetailRequest(
+            {
+                repoKey: () => "/repo",
+                generations: new CiGenerations(),
+                getDetail: async () => detail("/repo"),
+                annotations,
+            },
+            { type: "requestCommitCiDetail", requestId: 1, repoKey: "/repo", hash: HASH },
+            post,
+            loops,
+        );
+        expect(post.mock.calls[0][0].detail, "nothing published yet").not.toHaveProperty(
+            "annotations",
+        );
+        published = view;
+        for (const listener of listeners) listener();
+        expect(post).toHaveBeenCalledTimes(2);
+        expect(post.mock.calls[1][0]).toMatchObject({
+            requestId: 1,
+            detail: { annotations: view },
+        });
+        loops.dispose();
+        expect(listeners.size, "a stopped request stops listening").toBe(0);
     });
 
     it("a failed forced Refresh of a running overflow scan is not re-read automatically", async () => {
