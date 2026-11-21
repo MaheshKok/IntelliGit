@@ -95,7 +95,8 @@ type MkdirFn = (target: string, options?: { recursive?: boolean }) => Promise<un
 /** What the status bar shows. */
 export type HeadStatusView =
     | { kind: "status"; counts: HeadStatusCounts; summary: string; startedAt?: number }
-    | { kind: "paused"; message: string };
+    | { kind: "paused"; message: string }
+    | { kind: "unavailable"; message: string };
 
 /**
  * Formats the status bar text.
@@ -149,6 +150,16 @@ function earliestIncompleteStart(detail: CommitCiDetail | undefined): number | u
         .map((run) => (run.startedAt ? Date.parse(run.startedAt) : Number.NaN))
         .filter((value) => Number.isFinite(value));
     return starts.length > 0 ? Math.min(...starts) : undefined;
+}
+
+/** The status view of a snapshot's own counts, with the elapsed start time once known. */
+function snapshotView(snapshot: CommitChecksSnapshot): (startedAt?: number) => HeadStatusView {
+    return (startedAt) => ({
+        kind: "status",
+        counts: snapshotCounts(snapshot),
+        summary: snapshot.summary,
+        ...(startedAt !== undefined && { startedAt }),
+    });
 }
 
 /** Status bar item dependencies. */
@@ -212,6 +223,13 @@ export class HeadStatusBar {
             item.command = REFRESH_HEAD_CHECKS_COMMAND;
             return;
         }
+        if (view.kind === "unavailable") {
+            item.text = `$(warning) ${vscode.l10n.t("CI unavailable")}`;
+            item.tooltip = view.message;
+            // No automatic retry: the user refreshes by hand.
+            item.command = REFRESH_HEAD_CHECKS_COMMAND;
+            return;
+        }
         const now = this.deps.now?.() ?? Date.now();
         item.text = formatHeadStatusText(
             view.counts,
@@ -236,6 +254,9 @@ interface PendingObservedEntry {
 /** The pending-observed set (K27) with serialized writes. */
 export class PendingObservedSet {
     private writes: Promise<void> = Promise.resolve();
+    // Observed commits whose write has not been stored: a failed write keeps the
+    // observation for this session, so the settle is still announced.
+    private readonly unsaved = new Set<string>();
 
     /**
      * Creates the set over a memento.
@@ -250,20 +271,26 @@ export class PendingObservedSet {
 
     /** Whether the commit was seen incomplete in the last 7 days. */
     has(repoKey: string, hash: string): boolean {
-        return this.read().some((entry) => entry.repoKey === repoKey && entry.hash === hash);
+        return (
+            this.unsaved.has(`${repoKey}\0${hash}`) ||
+            this.read().some((entry) => entry.repoKey === repoKey && entry.hash === hash)
+        );
     }
 
-    /** Adds the commit; resolves once the write is stored. */
-    add(repoKey: string, hash: string): Promise<void> {
-        return this.write((entries) =>
+    /** Adds the commit; resolves once the write is stored, rejects when it fails. */
+    async add(repoKey: string, hash: string): Promise<void> {
+        this.unsaved.add(`${repoKey}\0${hash}`);
+        await this.write((entries) =>
             entries.some((entry) => entry.repoKey === repoKey && entry.hash === hash)
                 ? entries
                 : [...entries, { repoKey, hash, observedAt: this.now() }],
         );
+        this.unsaved.delete(`${repoKey}\0${hash}`);
     }
 
     /** Removes the commit; resolves once the write is stored. */
     remove(repoKey: string, hash: string): Promise<void> {
+        this.unsaved.delete(`${repoKey}\0${hash}`);
         return this.write((entries) =>
             entries.filter((entry) => entry.repoKey !== repoKey || entry.hash !== hash),
         );
@@ -346,9 +373,10 @@ export class HeadSettleToast {
     /**
      * Claims the commit and shows the notification. An unfocused window keeps the commit
      * in its pending-observed set and gets `"unfocused"`; the monitor calls this again on
-     * the next focus.
+     * the next focus. A claim that failed for a storage reason gets `"retry"`: the monitor
+     * holds the event for the next focus the same way.
      */
-    async settled(event: HeadSettledEvent): Promise<"unfocused" | undefined> {
+    async settled(event: HeadSettledEvent): Promise<"unfocused" | "retry" | undefined> {
         // Ships hidden until Phase 18: no notification while the Checks tab switch is off.
         if (!this.deps.switchOn()) return undefined;
         const { repoKey, hash } = event;
@@ -377,7 +405,7 @@ export class HeadSettleToast {
                 hash,
                 reason: "storage",
             });
-            return undefined;
+            return "retry";
         }
         await this.pendingObserved.remove(repoKey, hash).catch(() => undefined);
         // At most once: a HEAD that moved during the claim loses its notification.
@@ -426,6 +454,17 @@ export interface HeadFetchOptions {
     force?: boolean;
 }
 
+/** What one poll carries to the handler of its snapshot. */
+interface PollContext {
+    run: number;
+    hash: string;
+    repoKey: string;
+    options: HeadFetchOptions;
+    ctx: CiOperationContext;
+    current: () => boolean;
+    capabilities: ProviderCiCapabilities;
+}
+
 /** HEAD monitor dependencies. */
 export interface HeadCiStatusDeps extends HeadSettleToastDeps, HeadStatusBarDeps {
     /** `intelligit.commitChecks.enabled`. */
@@ -443,8 +482,8 @@ export interface HeadCiStatusDeps extends HeadSettleToastDeps, HeadStatusBarDeps
     ): Promise<CommitCiDetail | undefined>;
     /** Drops the cached and in-flight detail of the commit, never its snapshot. */
     invalidateDetail(hash: string): Promise<void>;
-    /** End of the provider's request cooldown in epoch ms; 0 or past when none. */
-    cooldownUntil(): number;
+    /** End of the request cooldown of the provider serving `hash`, in epoch ms; 0 or past when none. */
+    cooldownUntil(hash: string): number | Promise<number>;
     isFenced(hash: string): boolean;
     generations: CiGenerations;
 }
@@ -460,6 +499,10 @@ export class HeadCiStatus {
     private timer?: ReturnType<typeof setTimeout>;
     // Bumped on every HEAD change, restart and dispose; a poll from an older run is dropped.
     private run = 0;
+    // Bumped on every HEAD lookup; a lookup that a newer one overtook is dropped.
+    private lookup = 0;
+    // Bumped on every poll; only the newest poll may write or schedule.
+    private pollSequence = 0;
     private detailSequence = 0;
     // A settlement detail came back `unknown`: every later complete poll fetches it again.
     private lastUnknown = false;
@@ -480,7 +523,10 @@ export class HeadCiStatus {
     async onRepositoryChanged(): Promise<void> {
         // Ships hidden until Phase 18: no timer and no request while the switch is off.
         if (!this.deps.switchOn() || this.disposed) return;
+        const lookup = ++this.lookup;
         const head = await this.deps.headHash();
+        // A newer lookup or a dispose during the wait owns the schedule now.
+        if (lookup !== this.lookup || this.disposed) return;
         // Worktrees of one repository can share a HEAD commit, so the repository counts too.
         if (head !== undefined && head === this.head && this.deps.repoKey() === this.headRepoKey) {
             return;
@@ -491,7 +537,10 @@ export class HeadCiStatus {
     /** Settings, sign-in or provider changes: starts over on the current HEAD. */
     async restart(): Promise<void> {
         if (!this.deps.switchOn() || this.disposed) return;
-        await this.start(await this.deps.headHash());
+        const lookup = ++this.lookup;
+        const head = await this.deps.headHash();
+        if (lookup !== this.lookup || this.disposed) return;
+        await this.start(head);
     }
 
     /** `onDidChangeWindowState` with `focused: true`: offers a held notification again. */
@@ -512,8 +561,10 @@ export class HeadCiStatus {
 
     /** `intelligit.ci.refreshHeadChecks`: polls now unless the cooldown still runs. */
     async refresh(): Promise<void> {
-        if (!this.deps.switchOn() || this.disposed || !this.head) return;
-        if (this.deps.cooldownUntil() > this.now()) return;
+        const hash = this.head;
+        if (!this.deps.switchOn() || this.disposed || !hash) return;
+        const until = await this.cooldownEnd(hash);
+        if (until > this.now() || this.disposed || hash !== this.head) return;
         this.clearTimer();
         await this.poll(this.run, { force: true });
     }
@@ -533,6 +584,15 @@ export class HeadCiStatus {
 
     private now(): number {
         return this.deps.now?.() ?? Date.now();
+    }
+
+    /** The cooldown end for `hash`'s provider; an unreadable remote counts as none, the fetch reports it. */
+    private async cooldownEnd(hash: string): Promise<number> {
+        try {
+            return await this.deps.cooldownUntil(hash);
+        } catch {
+            return 0;
+        }
     }
 
     private active(): boolean {
@@ -570,25 +630,20 @@ export class HeadCiStatus {
         const hash = this.head;
         const repoKey = this.deps.repoKey();
         if (run !== this.run || !hash || !repoKey) return;
-        if (!this.active()) return this.bar.hide();
-        const cooldownEnd = this.deps.cooldownUntil();
-        if (cooldownEnd > this.now()) {
-            this.deps.trace?.({ kind: "monitor", outcome: "paused", repoKey, hash });
-            this.bar.render({
-                kind: "paused",
-                message: vscode.l10n.t(
-                    "Commit-check requests are temporarily paused due to rate limiting.",
-                ),
-            });
-            // The attempt number is kept: the ladder resumes where the cooldown stopped it.
-            return this.schedule(run, cooldownEnd - this.now());
-        }
+        // A poll scheduled before the switch went off sends nothing and re-arms nothing.
+        if (!this.deps.switchOn() || !this.active()) return this.bar.hide();
+        const sequence = ++this.pollSequence;
         const ctx = this.deps.generations.capture(repoKey);
         const current = () =>
+            sequence === this.pollSequence &&
+            this.deps.switchOn() &&
             run === this.run &&
             this.head === hash &&
             this.deps.repoKey() === repoKey &&
             this.deps.generations.isCurrent(ctx, repoKey);
+        const cooldownEnd = await this.cooldownEnd(hash);
+        if (!current()) return;
+        if (cooldownEnd > this.now()) return this.pause(run, repoKey, hash, cooldownEnd);
         // Unreadable remotes count as no provider until the next HEAD change or restart.
         const capabilities = await this.deps.capabilities(hash).catch(() => undefined);
         if (!current()) return;
@@ -604,27 +659,62 @@ export class HeadCiStatus {
             this.deps.trace?.({ kind: "monitor", outcome: "discarded-generation", repoKey, hash });
             return;
         }
-        if (snapshot.state === "none") return this.onNone(run, hash, snapshot);
-        if (snapshot.state === "unavailable") {
-            this.bar.hide();
-            return;
-        }
-        const view = (startedAt?: number): HeadStatusView => ({
-            kind: "status",
-            counts: snapshotCounts(snapshot),
-            summary: snapshot.summary,
-            ...(startedAt !== undefined && { startedAt }),
-        });
-        if (!isCompleteSnapshot(snapshot)) {
-            this.bar.render(view());
-            await this.toast.pendingObserved.add(repoKey, hash);
-            if (!current()) return;
-            if (capabilities.runs) this.trackElapsed(hash, options, ctx, current, view);
-            return this.schedule(run, headMonitorDelayMs(this.attempt++));
-        }
+        if (snapshot.state === "none") return this.onNone(run, hash, snapshot, current);
+        const poll: PollContext = { run, hash, repoKey, options, ctx, current, capabilities };
+        if (snapshot.state === "unavailable") return this.onUnavailable(poll, snapshot);
+        if (!isCompleteSnapshot(snapshot)) return this.onIncomplete(poll, snapshot);
+        await this.onComplete(poll, snapshot);
+    }
+
+    private async onUnavailable(
+        { run, hash, repoKey, current }: PollContext,
+        snapshot: CommitChecksSnapshot,
+    ): Promise<void> {
+        // The fetch itself may have found the cooldown: read the gate again.
+        const until = await this.cooldownEnd(hash);
+        if (!current()) return;
+        if (until > this.now()) return this.pause(run, repoKey, hash, until);
+        this.bar.render({ kind: "unavailable", message: snapshot.error ?? snapshot.summary });
+    }
+
+    private async onIncomplete(
+        { run, hash, repoKey, options, ctx, current, capabilities }: PollContext,
+        snapshot: CommitChecksSnapshot,
+    ): Promise<void> {
+        const view = snapshotView(snapshot);
         this.bar.render(view());
+        try {
+            await this.toast.pendingObserved.add(repoKey, hash);
+        } catch {
+            // The set keeps the observation in memory, so the settle is still announced.
+            this.deps.trace?.({
+                kind: "monitor",
+                outcome: "failed",
+                repoKey,
+                hash,
+                reason: "storage",
+            });
+        }
+        if (!current()) return;
+        if (capabilities.runs) this.trackElapsed(hash, options, ctx, current, view);
+        this.schedule(run, headMonitorDelayMs(this.attempt++));
+    }
+
+    private async onComplete(
+        { run, hash, repoKey, ctx, current, capabilities }: PollContext,
+        snapshot: CommitChecksSnapshot,
+    ): Promise<void> {
+        this.bar.render(snapshotView(snapshot)());
         const settlement = await this.settlementDetail(hash, repoKey, capabilities, snapshot, ctx);
         if (!current()) return;
+        // The detail counts jobs; the snapshot only aggregates them.
+        if (settlement.state === "settled" && settlement.detail) {
+            this.bar.render({
+                kind: "status",
+                counts: detailCounts(settlement.detail),
+                summary: snapshot.summary,
+            });
+        }
         if (settlement.state === "settled" && this.toast.pendingObserved.has(repoKey, hash)) {
             await this.offerToast({
                 repoKey,
@@ -638,7 +728,7 @@ export class HeadCiStatus {
         }
         if (!current()) return;
         if (settlement.state !== "settled" || this.deps.isFenced(hash)) {
-            return this.schedule(run, headMonitorDelayMs(this.attempt++));
+            this.schedule(run, headMonitorDelayMs(this.attempt++));
         }
     }
 
@@ -692,12 +782,28 @@ export class HeadCiStatus {
             .catch(() => undefined);
     }
 
-    private async onNone(run: number, hash: string, snapshot: CommitChecksSnapshot): Promise<void> {
-        if (await this.deps.isUnpushed(hash)) {
-            if (run === this.run) this.bar.hide();
-            return;
-        }
-        if (run !== this.run) return;
+    private pause(run: number, repoKey: string, hash: string, until: number): void {
+        this.deps.trace?.({ kind: "monitor", outcome: "paused", repoKey, hash });
+        this.bar.render({
+            kind: "paused",
+            message: vscode.l10n.t(
+                "Commit-check requests are temporarily paused due to rate limiting.",
+            ),
+        });
+        // The attempt number is kept: the ladder resumes where the cooldown stopped it.
+        this.schedule(run, until - this.now());
+    }
+
+    private async onNone(
+        run: number,
+        hash: string,
+        snapshot: CommitChecksSnapshot,
+        current: () => boolean,
+    ): Promise<void> {
+        const unpushed = await this.deps.isUnpushed(hash);
+        // Sign-out, a HEAD move or a newer poll during the lookup drops this answer.
+        if (!current()) return;
+        if (unpushed) return this.bar.hide();
         this.bar.render({
             kind: "status",
             counts: snapshotCounts(snapshot),
@@ -709,6 +815,7 @@ export class HeadCiStatus {
     }
 
     private async offerToast(event: HeadSettledEvent): Promise<void> {
-        if ((await this.toast.settled(event)) === "unfocused") this.awaitingFocus = event;
+        const outcome = await this.toast.settled(event);
+        if (outcome === "unfocused" || outcome === "retry") this.awaitingFocus = event;
     }
 }

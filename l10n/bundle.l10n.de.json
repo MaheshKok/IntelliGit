@@ -1004,5 +1004,6 @@
     "Open Checks": "Prüfungen öffnen",
     "Open log": "Protokoll öffnen",
     "Re-run failed": "Fehlgeschlagene erneut ausführen",
-    "Your sign-in cannot re-run this CI run.": "Deine Anmeldung kann diesen CI-Lauf nicht erneut ausführen."
+    "Your sign-in cannot re-run this CI run.": "Deine Anmeldung kann diesen CI-Lauf nicht erneut ausführen.",
+    "CI unavailable": "CI nicht verfügbar"
 }

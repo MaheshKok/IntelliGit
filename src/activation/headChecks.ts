@@ -8,6 +8,7 @@ import type { GitOps } from "../git/operations";
 import type { CiActionFenceStore } from "../services/commitChecks/ciActionFence";
 import type { CiGenerations } from "../services/commitChecks/ciGenerations";
 import type { CiTrace } from "../services/commitChecks/ciTrace";
+import type { CommitChecksCoordinator } from "../services/commitChecks/coordinator";
 import {
     HeadCiStatus,
     readHeadStatusSettings,
@@ -31,6 +32,24 @@ export interface HeadChecksOptions {
     requestGates: CommitChecksRequestGateRegistry;
     fences: CiActionFenceStore | undefined;
     trace: CiTrace;
+}
+
+/**
+ * The cooldown end of the request-gate bucket HEAD's own provider and API origin use, so a
+ * cooldown on another forge never pauses HEAD.
+ *
+ * @param checks - The coordinator that knows which provider serves the repository.
+ * @param gates - The request gates holding each bucket's cooldown.
+ * @param hash - HEAD's commit hash.
+ * @returns Epoch milliseconds, or 0 when the bucket is not cooling down or HEAD has none.
+ */
+export async function headCooldownEnd(
+    checks: Pick<CommitChecksCoordinator, "requestBucket">,
+    gates: Pick<CommitChecksRequestGateRegistry, "cooldownEnd">,
+    hash: string,
+): Promise<number> {
+    const bucket = await checks.requestBucket(hash);
+    return bucket ? gates.cooldownEnd(bucket.providerId, bucket.url) : 0;
 }
 
 /**
@@ -73,10 +92,8 @@ export function registerHeadChecks(options: HeadChecksOptions): HeadCiStatus | u
                   snapshot: (hash, fetch) => checks.getChecks(hash, fetch),
                   detail: (hash, fetch, ctx) => checks.getDetail(hash, fetch, ctx),
                   invalidateDetail: (hash) => checks.invalidateDetail(hash),
-                  // Any bucket's cooldown pauses the monitor: in a workspace whose repositories
-                  // use different forges, another forge's cooldown also pauses it. Key the read
-                  // by HEAD's provider and API origin if that ever matters.
-                  cooldownUntil: () => options.requestGates.latestCooldownEnd(),
+                  // Only the cooldown of HEAD's own provider and API origin pauses the monitor.
+                  cooldownUntil: (hash) => headCooldownEnd(checks, options.requestGates, hash),
                   isFenced: (hash) => options.fences?.isFenced(hash) ?? false,
                   generations: options.generations,
                   workspaceState: context.workspaceState,

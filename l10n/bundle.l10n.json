@@ -1000,6 +1000,7 @@
     "Loading the log of {0}…": "Loading the log of {0}…",
     "This provider cannot re-run or cancel CI runs.": "This provider cannot re-run or cancel CI runs.",
     "CI paused": "CI paused",
+    "CI unavailable": "CI unavailable",
     "CI finished for {0}: {1} failed, {2} passed.": "CI finished for {0}: {1} failed, {2} passed.",
     "Open Checks": "Open Checks",
     "Open log": "Open log",

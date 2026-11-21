@@ -826,6 +826,32 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
         expect(opens()).toHaveLength(2);
     });
 
+    it("a repository switch before ready cannot relabel a held Checks request", async () => {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        let repo = "/repo";
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            { ...buildProviderOptions("card"), ciRepoKey: () => repo },
+        );
+        const { webviewView, posted, receiveMessage } =
+            createInspectableFakeCommitGraphWebviewView();
+        const opens = () =>
+            posted.filter((message) => isRecord(message) && message.type === "openChecksTab");
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        provider.openChecksTab("a".repeat(40));
+        repo = "/other";
+        await receiveMessage({ type: "ready" });
+        expect(opens()).toEqual([]);
+        provider.openChecksTab("b".repeat(40));
+        expect(opens()).toEqual([
+            { type: "openChecksTab", repoKey: "/other", hash: "b".repeat(40) },
+        ]);
+    });
+
     it("opens only a file its latest changed-since-green answer listed, until the webview is retired", async () => {
         const gitOps = new GitOps(
             new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),

@@ -242,6 +242,11 @@ export class GitHubProvider implements CommitChecksProvider {
         private readonly write: WriteJson = httpRequestJson,
     ) {}
 
+    /** The REST API origin, whose request-gate bucket this repository's requests use. */
+    apiUrl(ref: ProviderRepoRef): string {
+        return apiBase(ref);
+    }
+
     /** A GitHub re-run, of failed jobs or of one job, starts a new attempt of the run. */
     actionEvidence(action: CiAction): CiActionEvidence {
         return action === "cancel" ? "cancelled" : "runAttempt";

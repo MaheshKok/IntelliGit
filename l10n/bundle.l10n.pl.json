@@ -1004,5 +1004,6 @@
     "Open Checks": "Otwórz sprawdzenia",
     "Open log": "Otwórz dziennik",
     "Re-run failed": "Uruchom ponownie nieudane",
-    "Your sign-in cannot re-run this CI run.": "Twoje logowanie nie pozwala ponownie uruchomić tego przebiegu CI."
+    "Your sign-in cannot re-run this CI run.": "Twoje logowanie nie pozwala ponownie uruchomić tego przebiegu CI.",
+    "CI unavailable": "CI niedostępne"
 }

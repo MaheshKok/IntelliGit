@@ -718,6 +718,23 @@ export class CommitChecksCoordinator {
     }
 
     /**
+     * The request-gate bucket (provider id and a URL on its API origin) this repository's
+     * requests go through, so the HEAD monitor pauses only for its own bucket. Undefined when
+     * checks are off, for an E2E fixture (it sends nothing) or when no provider matches.
+     * Throws when the remotes cannot be read.
+     *
+     * @param hash - Full Git commit hash.
+     */
+    async requestBucket(
+        hash: string,
+    ): Promise<{ providerId: ProviderId; url: string } | undefined> {
+        if (!this.enabled || this.fixture?.(hash)) return undefined;
+        const match = await this.resolveEnabledMatch();
+        const url = match?.provider.apiUrl?.(match.ref);
+        return match && url ? { providerId: match.provider.id, url } : undefined;
+    }
+
+    /**
      * The provider and repository a write action on this repository goes to, or null when
      * none applies (feature or provider off, no matching remote, or an E2E fixture, which
      * never sends a request). Throws when the remotes cannot be read.

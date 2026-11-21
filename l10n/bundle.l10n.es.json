@@ -1004,5 +1004,6 @@
     "Open Checks": "Abrir comprobaciones",
     "Open log": "Abrir registro",
     "Re-run failed": "Volver a ejecutar los fallidos",
-    "Your sign-in cannot re-run this CI run.": "Tu inicio de sesión no puede volver a ejecutar esta ejecución de CI."
+    "Your sign-in cannot re-run this CI run.": "Tu inicio de sesión no puede volver a ejecutar esta ejecución de CI.",
+    "CI unavailable": "CI no disponible"
 }

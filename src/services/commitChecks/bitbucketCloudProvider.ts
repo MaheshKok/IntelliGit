@@ -145,6 +145,11 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         return `bitbucket-cloud:${host.toLowerCase()}:${workspace.toLowerCase()}/${repo.toLowerCase()}`;
     }
 
+    /** The Bitbucket Cloud API origin, whose request-gate bucket this provider shares. */
+    apiUrl(): string {
+        return API_BASE;
+    }
+
     /** Fingerprint of the token stored for the host; never the token. */
     accountKey(ref: ProviderRepoRef): Promise<string> {
         return tokenAccountKey(() => this.store.get(ref.host));

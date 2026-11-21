@@ -948,3 +948,242 @@ describe("HeadCiStatus", () => {
         expect(on.openChecks).toHaveBeenCalledWith(HASH);
     });
 });
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => {
+        resolve = done;
+    });
+    return { promise, resolve };
+}
+
+function unavailableSnapshot(error: string): CommitChecksSnapshot {
+    return { hash: HASH, state: "unavailable", summary: "unavailable", items: [], error };
+}
+
+describe("HeadCiStatus review round 1", () => {
+    it("an older repository HEAD lookup cannot replace a newer one", async () => {
+        const h = makeHarness({ caps: NO_CI_CAPABILITIES });
+        const lookups = [deferred<string | undefined>(), deferred<string | undefined>()];
+        let next = 0;
+        h.deps.headHash = () => lookups[next++].promise;
+        const status = track(new HeadCiStatus(h.deps));
+        const older = status.onRepositoryChanged();
+        const newer = status.onRepositoryChanged();
+        lookups[1].resolve(NEXT_HASH);
+        await newer;
+        lookups[0].resolve(HASH);
+        await older;
+        expect(h.snapshot.mock.calls.map((call) => call[0])).toEqual([NEXT_HASH]);
+    });
+
+    it("an older restart HEAD lookup cannot replace a newer one", async () => {
+        const h = makeHarness({ caps: NO_CI_CAPABILITIES });
+        const lookups = [deferred<string | undefined>(), deferred<string | undefined>()];
+        let next = 0;
+        h.deps.headHash = () => lookups[next++].promise;
+        const status = track(new HeadCiStatus(h.deps));
+        const older = status.restart();
+        const newer = status.restart();
+        lookups[1].resolve(NEXT_HASH);
+        await newer;
+        lookups[0].resolve(HASH);
+        await older;
+        expect(h.snapshot.mock.calls.map((call) => call[0])).toEqual([NEXT_HASH]);
+    });
+
+    it("disposing while HEAD lookup waits starts no request and no timer", async () => {
+        const h = makeHarness();
+        const lookup = deferred<string | undefined>();
+        h.deps.headHash = () => lookup.promise;
+        const status = track(new HeadCiStatus(h.deps));
+        const run = status.onRepositoryChanged();
+        status.dispose();
+        lookup.resolve(HASH);
+        await run;
+        expect(h.snapshot).not.toHaveBeenCalled();
+        expect(status.isPolling()).toBe(false);
+    });
+
+    it("pending-observed write failure is traced and the monitor keeps polling and toasts", async () => {
+        const memento = fakeMemento();
+        memento.update = async () => {
+            throw new Error("memento disk full");
+        };
+        const h = makeHarness({
+            memento,
+            snapshots: [snapshotOf(["pending"]), snapshotOf(["success"])],
+            details: [detailOf(["running"]), detailOf(["success"])],
+            claimDir,
+        });
+        const trace = vi.fn();
+        h.deps.trace = trace;
+        const status = track(new HeadCiStatus(h.deps));
+        await expect(status.onRepositoryChanged()).resolves.toBeUndefined();
+        expect(trace).toHaveBeenCalledWith(
+            expect.objectContaining({ kind: "monitor", outcome: "failed", reason: "storage" }),
+        );
+        expect(status.isPolling()).toBe(true);
+        await status.refresh();
+        await settle();
+        // The observation lived in memory, so the settle still earns its one toast.
+        expect(h.show).toHaveBeenCalledTimes(1);
+    });
+
+    it("a pending observation write finishing after a newer settled refresh schedules nothing", async () => {
+        const memento = fakeMemento();
+        const held = deferred<void>();
+        const store = memento.update;
+        let writes = 0;
+        memento.update = async (key, value) => {
+            writes += 1;
+            if (writes === 1) await held.promise;
+            return store(key, value);
+        };
+        const h = makeHarness({
+            memento,
+            caps: NO_CI_CAPABILITIES,
+            notifyOnSettle: false,
+            snapshots: [snapshotOf(["pending"]), snapshotOf(["success"])],
+        });
+        const status = track(new HeadCiStatus(h.deps));
+        const older = status.onRepositoryChanged();
+        await vi.waitFor(() => expect(writes).toBe(1));
+        await status.refresh();
+        expect(status.isPolling()).toBe(false);
+        held.resolve();
+        await older;
+        expect(status.isPolling()).toBe(false);
+    });
+
+    it("sign-out while the unpushed lookup waits publishes nothing and schedules nothing", async () => {
+        const h = makeHarness({ caps: NO_CI_CAPABILITIES, snapshots: [snapshotOf([])] });
+        const unpushed = deferred<boolean>();
+        const lookup = vi.fn(() => unpushed.promise);
+        h.deps.isUnpushed = lookup;
+        const status = track(new HeadCiStatus(h.deps));
+        const run = status.onRepositoryChanged();
+        await vi.waitFor(() => expect(lookup).toHaveBeenCalledTimes(1));
+        h.generations.bumpAuth();
+        unpushed.resolve(false);
+        await run;
+        expect(h.items.some((item) => item.shown)).toBe(false);
+        expect(status.isPolling()).toBe(false);
+    });
+
+    it("turning the switch off after scheduling sends no request and re-arms nothing", async () => {
+        vi.useFakeTimers();
+        const h = makeHarness();
+        let on = true;
+        h.deps.switchOn = () => on;
+        const status = track(new HeadCiStatus(h.deps));
+        await status.onRepositoryChanged();
+        expect(status.isPolling()).toBe(true);
+        expect(h.items.some((item) => item.shown)).toBe(true);
+        on = false;
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(h.snapshot).toHaveBeenCalledTimes(1);
+        expect(status.isPolling()).toBe(false);
+        expect(h.items.some((item) => item.shown)).toBe(false);
+    });
+
+    it("turning the switch off while a fetch waits schedules nothing", async () => {
+        const fetched = deferred<CommitChecksSnapshot>();
+        const h = makeHarness({ snapshots: [() => fetched.promise] });
+        let on = true;
+        h.deps.switchOn = () => on;
+        const status = track(new HeadCiStatus(h.deps));
+        const run = status.onRepositoryChanged();
+        await vi.waitFor(() => expect(h.snapshot).toHaveBeenCalledTimes(1));
+        on = false;
+        fetched.resolve(snapshotOf(["pending"]));
+        await run;
+        expect(status.isPolling()).toBe(false);
+        expect(h.items.some((item) => item.shown)).toBe(false);
+    });
+
+    it("rate limit discovered during a fetch pauses, then resumes when the cooldown ends", async () => {
+        vi.useFakeTimers();
+        const h = makeHarness({
+            caps: NO_CI_CAPABILITIES,
+            snapshots: [
+                async () => {
+                    h.setCooldown(Date.now() + 60_000);
+                    return unavailableSnapshot("HTTP 429");
+                },
+                snapshotOf(["pending"]),
+            ],
+        });
+        const status = track(new HeadCiStatus(h.deps));
+        await status.onRepositoryChanged();
+        expect(h.items[0]?.text).toBe("$(debug-pause) CI paused");
+        expect(h.items[0]?.command).toBe("intelligit.ci.refreshHeadChecks");
+        expect(status.isPolling()).toBe(true);
+        h.setCooldown(0);
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(h.snapshot).toHaveBeenCalledTimes(2);
+        expect(h.items[0]?.text).toBe("$(error) 0 · $(sync~spin) 1 · $(check) 0");
+    });
+
+    it("claim storage failure retries on the next focused-window event", async () => {
+        let failures = 1;
+        const flaky: HeadCiStatusDeps["mkdir"] = async (target, options) => {
+            if (!options?.recursive && failures-- > 0) {
+                const error = new Error("denied") as NodeJS.ErrnoException;
+                error.code = "EACCES";
+                throw error;
+            }
+            return mkdir(target, options);
+        };
+        const h = makeHarness({
+            snapshots: [snapshotOf(["pending"]), snapshotOf(["success"])],
+            details: [detailOf(["running"]), detailOf(["success"])],
+            claimDir,
+            mkdir: flaky,
+        });
+        const status = track(new HeadCiStatus(h.deps));
+        await status.onRepositoryChanged();
+        await status.refresh();
+        await settle();
+        expect(h.show).not.toHaveBeenCalled();
+        await status.onWindowFocused();
+        await settle();
+        expect(h.show).toHaveBeenCalledTimes(1);
+    });
+
+    it("settled detail replaces aggregate snapshot counts in the status bar", async () => {
+        const h = makeHarness({
+            snapshots: [snapshotOf(["failure"])],
+            details: [detailOf(["failure", "success", "success"])],
+        });
+        await track(new HeadCiStatus(h.deps)).onRepositoryChanged();
+        expect(h.items[0]?.text).toBe("$(error) 1 · $(sync~spin) 0 · $(check) 2");
+    });
+
+    it("provider read unavailable stays visible with the error and sends no retry", async () => {
+        vi.useFakeTimers();
+        const h = makeHarness({ snapshots: [unavailableSnapshot("boom")] });
+        const status = track(new HeadCiStatus(h.deps));
+        await status.onRepositoryChanged();
+        expect(h.items[0]?.shown).toBe(true);
+        expect(h.items[0]?.text).toBe("$(warning) CI unavailable");
+        expect(h.items[0]?.tooltip).toBe("boom");
+        await vi.advanceTimersByTimeAsync(600_000);
+        expect(h.snapshot).toHaveBeenCalledTimes(1);
+        expect(status.isPolling()).toBe(false);
+    });
+
+    it("failed plus running snapshot is recorded as pending-observed and toasts once when it settles", async () => {
+        const h = makeHarness({
+            snapshots: [snapshotOf(["failure", "pending"]), snapshotOf(["failure", "success"])],
+            details: [detailOf(["failure", "running"]), detailOf(["failure", "success"])],
+            claimDir,
+        });
+        const status = track(new HeadCiStatus(h.deps));
+        await status.onRepositoryChanged();
+        expect(pendingObserved(h.memento)).toEqual([{ hash: HASH }]);
+        await status.refresh();
+        await settle();
+        expect(h.show).toHaveBeenCalledTimes(1);
+    });
+});

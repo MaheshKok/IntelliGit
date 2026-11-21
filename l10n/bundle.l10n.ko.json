@@ -1004,5 +1004,6 @@
     "Open Checks": "검사 열기",
     "Open log": "로그 열기",
     "Re-run failed": "실패한 작업 다시 실행",
-    "Your sign-in cannot re-run this CI run.": "현재 로그인으로는 이 CI 실행을 다시 실행할 수 없습니다."
+    "Your sign-in cannot re-run this CI run.": "현재 로그인으로는 이 CI 실행을 다시 실행할 수 없습니다.",
+    "CI unavailable": "CI 사용할 수 없음"
 }

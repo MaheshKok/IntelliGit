@@ -1004,5 +1004,6 @@
     "Open Checks": "Ouvrir les vérifications",
     "Open log": "Ouvrir le journal",
     "Re-run failed": "Relancer les échecs",
-    "Your sign-in cannot re-run this CI run.": "Votre connexion ne permet pas de relancer cette exécution CI."
+    "Your sign-in cannot re-run this CI run.": "Votre connexion ne permet pas de relancer cette exécution CI.",
+    "CI unavailable": "CI indisponible"
 }

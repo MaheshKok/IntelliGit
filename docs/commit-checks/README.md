@@ -193,9 +193,11 @@ this section.
 
 The status bar shows the CI of the commit you have checked out: failed, running and passed
 counts, and while anything still runs, how long it has been running. Clicking it opens the
-Checks tab for that commit. During a rate-limit pause it reads **CI paused**, and clicking
-it asks again once the pause is over. It hides when commit checks are off, when the commit
-has no checks and is not pushed yet, or when no provider serves the repository.
+Checks tab for that commit. During a rate-limit pause of the commit's own provider it reads
+**CI paused**, and clicking it asks again once the pause is over. When the provider cannot
+be read it reads **CI unavailable** with the error as its tooltip, asks again only when you
+click it or the checked-out commit changes. It hides when commit checks are off, when the
+commit has no checks and is not pushed yet, or when no provider serves the repository.
 
 IntelliGit asks the provider again after 3, 5, 10, 20 and 30 seconds, then twice a minute
 apart, then every 2 minutes for as long as the commit's checks are still running, so an

@@ -17,26 +17,22 @@
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
 ## Phase 13: review pending, started at 1860b1475c08f0fb8502dba7e1cdb681b68d7abf
-- Built test-first, no Codex round yet. New: `src/services/commitChecks/headStatus.ts` (status bar, settle notification, monitor), `src/activation/headChecks.ts` (wiring, both commands), `tests/unit/services/commitChecks/headStatus.test.ts` (29 tests, the 25 spec names plus 4), `tests/e2e/ciHeadStatus.spec.ts` (not run locally; CI runs it). Coordinator gained `invalidateDetail` and `capabilities`; request gates `latestCooldownEnd`; CommitGraphViewProvider `openChecksTab` (held until the webview is ready) and `headChecksSource`.
-- Mutations on a copy: 24 of 24 red, each red line names the planned test. Not mutated: "claims are never pruned" (no pruning code exists to break) and "settles during the restart gap" (no in-memory-set variant tried).
-- Gates: format, lint:strict, typecheck, architecture, react-doctor, verify:manifest, Gate L (l10n sync/import/validate/audit), build, build:prod, package green. `bun run test` 8 of 8498 red, all in tests/webview/unit/commit-list-column-resize.test.tsx (Node 26.5.0), also 8 of 8 red at 1860b147 on an extracted copy: PRE-EXISTING. "claim taken before toast" once flaked under full-suite load (waited a fixed tick count for the fake's async read); it now awaits the fake's own promise, and 24 parallel runs passed.
+- Build commit 96e3c78e (0.43.17, ships hidden behind the Checks tab switch). Fix round 1 (13 Codex findings) is the commit after it, on the same branch; a fresh Codex review of it is next.
+- Every finding has a regression test that was red before the fix (red lines in `/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/red1.log`) and a mutation on a copy that went red naming that test: M01-M19 all red after strengthening the M08 and M16 tests. The M06-survivor test (failed plus running) passes before the fix by design and goes red only under its mutation.
+- Gates green: focused tests, format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package, verify:manifest, Gate L (l10n import/validate/audit). `bun run test`: 18 red of 8518 under load; 8 are the known commit-list-column-resize reds (Node 26), the other 10 (git integration, shelf, fixtures, e2e known-bad, changeWorkflowHost) pass when rerun alone except one timing flake that also passes alone: unrelated to this diff.
+- GitNexus detect-changes (scope all, main checkout runner on this worktree): 30 files, 24 symbols, 0 flows, risk low.
 
 ## Decisions and why
-- Wiring lives in `src/activation/headChecks.ts` (called from repositoryMode.ts), not extension.ts: repository mode owns the providers, generations and gates the monitor reads.
-- Cooldown pauses read the latest end across all request-gate buckets (`latestCooldownEnd`); in a multi-forge workspace another forge's cooldown also pauses HEAD (comment at the call site).
-- A pushed `none` HEAD uses the short HEAD_NONE ladder, then stops; `unavailable` hides the item and stops until the next HEAD change or restart.
-- The toast is at most once: a HEAD that moves during the claim loses its notification. A non-EEXIST mkdir error keeps the hash and the next focus retries.
-- Without workspace or global storage (activation test contexts) the monitor is not created; the commands still register and do nothing.
-- K7 (diagnostics) is not read here; Phase 14. Settings K5/K6 are read with `get(key, default)` and are not contributed (Phase 18); verify:manifest and the l10n checks accept that.
-- The e2e spec restarts the monitor through the visible "Refresh Commit Check Badges" command (the two new commands are hidden from the palette).
+- Per-forge cooldown: providers expose `apiUrl(ref)`; `coordinator.requestBucket(hash)` names HEAD's own provider and API-origin bucket; `headCooldownEnd` reads only that bucket (all four providers, so Bitbucket NearLimit still pauses). `latestCooldownEnd` is removed (orphaned by this).
+- The monitor is fenced three ways: `lookup` (HEAD lookups), `pollSequence` (older poll vs newer settled refresh) and the `current()` closure, which now also checks the switch.
+- Pending-observed keeps an in-memory `unsaved` set so a failed or slow write still counts for the session; the write failure is traced and polling continues.
+- A non-EEXIST claim failure returns `"retry"` so the next focused-window event tries again.
+- Ordinary unavailable results show "CI unavailable" (new l10n string, 11 locales) with the error as tooltip; click retries.
+- A held Checks request carries its repoKey and is dropped, not relabelled, after a repository switch.
 
 ## Open risks
-- GitNexus detect-changes (scope all, scratch index): 40 files, 38 symbols, 23 flows, risk "critical", driven by flows through `refreshActiveRepositoryWithGuard` and `activateRepositoryMode` (one added line each). Impact before edits: CommitChecksCoordinator HIGH (53), CommitChecksRequestGateRegistry HIGH (15), CommitGraphViewProvider HIGH (11), activateRepositoryMode UNKNOWN; every edit there is additive.
-- E2E not run locally: the status bar locator assumes the only status entry with both `codicon-error` and `codicon-check` is ours; the toast test relies on the window being focused (the spec calls `focus()`).
-- R1 (Fable) review still due: async ordering and cross-window claim concurrency.
-
-## Next phase: 13
-- Owner's answer 2026-11-20, "A: hide them": Phase 13 ships hidden behind the Checks tab switch (`isE2eControlChannelActive()` on the host). While it is off there is no status bar item, no settle notification, and the HEAD watcher starts no timer and sends no CI request for HEAD; the two `intelligit.ci.*HeadChecks` commands stay registered (both e2e inventories) and do nothing; the `statusBar` and `notifyOnSettle` settings are read with their defaults but contributed (package.json + NLS) only in Phase 18; Patch bump with a groundwork CHANGELOG line, and Phase 18 carries the visible line and deletes the switch checks and their switch-off tests.
+- E2E not run locally (CI runs `ciHeadStatus.spec.ts`); the status bar locator and focus assumptions are unchanged.
+- R1 (Fable) review still due for Phase 13: async ordering and cross-window claim concurrency.
 
 ## Next phase: 14
 
@@ -47,4 +43,5 @@
 - `bun run package` can pack ignored `output/` leftovers; noRepositoryMode.ts registers a placeholder `refreshBadges`.
 - Mutation copies must link the main checkout's node_modules; a copy has no .git or dist.
 - GitLab snapshot could follow `x-next-page` pages if getChecks moved to `fetchWithMeta`.
-- The main checkout's GitNexus index is stale (indexed 64d390b, checkout at 3d70e16).
+- The main checkout's GitNexus index is stale and has no run.cjs inside worktrees; the main checkout's runner works with `--repo <worktree>`.
+- A full `bun run test` on this machine takes minutes and shows load-dependent flakes in changeWorkflowHost and fixtures tests.

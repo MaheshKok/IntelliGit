@@ -101,7 +101,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
 
     private view?: vscode.WebviewView;
     // A held "open the Checks tab" request, posted once the current webview has loaded.
-    private pendingChecksHash?: string;
+    private pendingChecks?: { repoKey: string; hash: string };
     private checksReady = false;
     private currentBranch: string | null = null;
     private filterText = "";
@@ -286,23 +286,27 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
      * @param hash - Full Git commit hash.
      */
     openChecksTab(hash: string): void {
-        if (!this.options.ciRepoKey) return;
-        this.pendingChecksHash = hash;
+        const repoKey = this.options.ciRepoKey;
+        if (!repoKey) return;
+        // The hash belongs to the repository it was asked in, not the one current when posted.
+        this.pendingChecks = { repoKey: repoKey(), hash };
         this.postPendingChecksTab();
     }
 
     private postPendingChecksTab(): void {
-        const hash = this.pendingChecksHash;
+        const pending = this.pendingChecks;
         const repoKey = this.options.ciRepoKey;
-        if (!this.checksReady || !this.view || hash === undefined || !repoKey) return;
-        this.pendingChecksHash = undefined;
-        this.postToWebview({ type: "openChecksTab", repoKey: repoKey(), hash });
+        if (!this.checksReady || !this.view || !pending || !repoKey) return;
+        this.pendingChecks = undefined;
+        // A repository switch before the webview was ready drops the request.
+        if (repoKey() !== pending.repoKey) return;
+        this.postToWebview({ type: "openChecksTab", ...pending });
     }
 
     /** The HEAD monitor's view of this graph's CI coordinator. */
     headChecksSource(): Pick<
         CommitChecksCoordinator,
-        "getChecks" | "getDetail" | "invalidateDetail" | "capabilities"
+        "getChecks" | "getDetail" | "invalidateDetail" | "capabilities" | "requestBucket"
     > {
         return this.commitChecks;
     }

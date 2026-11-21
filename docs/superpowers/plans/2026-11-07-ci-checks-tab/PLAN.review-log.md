@@ -1378,3 +1378,7 @@ PHASE 12: HALT review still failing after takeover
 - Proof: verify.py gates --stage round GREEN (format, lint:strict, typecheck, architecture, react-doctor); verify:manifest and Gate L OK; accept stage build, build-prod, package OK; test 8 of 8498 red, all tests/webview/unit/commit-list-column-resize.test.tsx (Node 26.5.0), 8 of 8 red at 1860b147 too: PRE-EXISTING.
 - GitNexus detect-changes scope all: 40 files, 38 symbols, 23 flows, risk critical (flows through refreshActiveRepositoryWithGuard and activateRepositoryMode, one added line each).
 - Phase 13: built, review pending
+
+## Phase 13: fix round 1 (13 Codex findings), 2026-11-21
+- Builder fix round, test-first: each finding has a test red before the fix (red1.log) and a mutation on a copy red after (M01-M19, all named by their test). Findings 1-13 fixed: spec path join, HEAD lookup fence, held Checks request keyed to its repository, rejected pending-observed write traced, poll sequence fence, re-check after `isUnpushed`, switch re-check on scheduled polls, cooldown found by the fetch pauses and resumes, claim failure keeps an event, settled detail repaints counts, "CI unavailable" with tooltip, failed-plus-running test now guards incomplete observation, per-provider cooldown bucket.
+- Gates: Gate G all green (full `bun run test` 18 red of 8518 under load: 8 known resize reds plus load flakes that pass alone), Gate L green, Gate E specs listed in package.json. No PLAN.md amendment.

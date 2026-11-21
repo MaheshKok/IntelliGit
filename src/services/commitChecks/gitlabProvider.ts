@@ -285,6 +285,11 @@ export class GitLabProvider implements CommitChecksProvider {
         private readonly write: WriteJson = httpRequestJson,
     ) {}
 
+    /** The project API URL, whose host's request-gate bucket this repository's requests use. */
+    apiUrl(ref: ProviderRepoRef): string {
+        return projectApiUrl(ref as GitLabRepoRef);
+    }
+
     /**
      * A GitLab retry creates new jobs instead of a new attempt: a job retry is seen as a newer job
      * with the same logical id, a pipeline retry as any newer job in the pipeline.

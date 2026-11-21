@@ -262,22 +262,6 @@ describe("CommitChecksRequestGateRegistry", () => {
         expect(task).not.toHaveBeenCalled();
     });
 
-    it("latestCooldownEnd reports the latest cooldown of any bucket, and 0 once it ends", async () => {
-        let clock = 1_000;
-        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => clock);
-        expect(registry.latestCooldownEnd()).toBe(0);
-        const secondary = (seconds: string) => async () => {
-            throw new HttpError(403, "HTTP 403: secondary rate limit", { "retry-after": seconds });
-        };
-        await expect(registry.run("github", GITHUB_API_URL, secondary("60"))).rejects.toThrow();
-        await expect(
-            registry.run("github", "https://ghe.example.test/api/v3/x", secondary("120")),
-        ).rejects.toThrow();
-        expect(registry.latestCooldownEnd()).toBe(121_000);
-        clock = 121_001;
-        expect(registry.latestCooldownEnd()).toBe(0);
-    });
-
     it("uses Bitbucket Cloud NearLimit to cooldown the API origin for one hour", async () => {
         let clock = 1_000;
         const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => clock);

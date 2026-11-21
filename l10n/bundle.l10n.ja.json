@@ -1004,5 +1004,6 @@
     "Open Checks": "チェックを開く",
     "Open log": "ログを開く",
     "Re-run failed": "失敗したジョブを再実行",
-    "Your sign-in cannot re-run this CI run.": "現在のサインインでは、この CI 実行を再実行できません。"
+    "Your sign-in cannot re-run this CI run.": "現在のサインインでは、この CI 実行を再実行できません。",
+    "CI unavailable": "CI は利用できません"
 }

@@ -1004,5 +1004,6 @@
     "Open Checks": "開啟檢查",
     "Open log": "開啟記錄",
     "Re-run failed": "重新執行失敗的作業",
-    "Your sign-in cannot re-run this CI run.": "您的登入無法重新執行此 CI 執行。"
+    "Your sign-in cannot re-run this CI run.": "您的登入無法重新執行此 CI 執行。",
+    "CI unavailable": "CI 無法使用"
 }

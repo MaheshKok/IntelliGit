@@ -163,6 +163,11 @@ export class BitbucketServerProvider implements CommitChecksProvider {
         return `bitbucket-server:${host.toLowerCase()}:${project.toLowerCase()}/${repo.toLowerCase()}`;
     }
 
+    /** The host's API origin, whose request-gate bucket this repository's requests use. */
+    apiUrl(ref: ProviderRepoRef): string {
+        return `https://${ref.host}`;
+    }
+
     /** Fingerprint of the token stored for the host; never the token. */
     accountKey(ref: ProviderRepoRef): Promise<string> {
         return tokenAccountKey(() => this.store.get(ref.host));
