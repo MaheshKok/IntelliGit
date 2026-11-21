@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, symlink, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -500,9 +500,43 @@ describe("CiDiagnostics", () => {
         expect(h.diagnostics.viewFor(root, HASH)).toEqual({
             items: [],
             rejected: 0,
-            truncated: false,
+            coverage: "full",
             unavailable: { reason: "socket hang up" },
         });
+    });
+
+    it("a failed read that lands after HEAD moved publishes no unavailable view", async () => {
+        let fail!: (error: unknown) => void;
+        const reply = new Promise<CiAnnotations>((_, reject) => {
+            fail = reject;
+        });
+        const h = harness(() => reply);
+
+        const shown = h.diagnostics.show(target(h));
+        await settle();
+        h.setHead(NEXT_HASH);
+        fail(new Error("old HEAD request failed"));
+        await shown;
+
+        expect(h.diagnostics.viewFor(root, HASH)).toBeUndefined();
+    });
+
+    it("a failed read that lands after the Checks tab switch went off publishes nothing", async () => {
+        let fail!: (error: unknown) => void;
+        const reply = new Promise<CiAnnotations>((_, reject) => {
+            fail = reject;
+        });
+        const h = harness(() => reply);
+        let on = true;
+        h.setSwitch(() => on);
+
+        const shown = h.diagnostics.show(target(h));
+        await settle();
+        on = false;
+        fail(new Error("request failed"));
+        await shown;
+
+        expect(h.diagnostics.viewFor(root, HASH)).toBeUndefined();
     });
 
     it("rejects absolute, traversal, drive-letter and symlink-escape paths but keeps valid ones", async () => {
@@ -571,7 +605,85 @@ describe("CiDiagnostics", () => {
         await h.diagnostics.show(target(h));
 
         expect(h.collection.entries.get(appFile())).toHaveLength(1);
-        expect(h.diagnostics.viewFor(root, HASH)?.truncated).toBe(true);
+        expect(h.diagnostics.viewFor(root, HASH)?.coverage).toEqual({
+            reason: "pageBound",
+            shown: 1000,
+        });
+    });
+
+    it("a check run is fully read when its coverage is full", async () => {
+        const h = harness();
+
+        await h.diagnostics.show(target(h));
+
+        expect(h.diagnostics.viewFor(root, HASH)?.coverage).toBe("full");
+    });
+
+    it("a refused continuation shows as rejectedNext, even beside a page-bound run", async () => {
+        const coverages: CiAnnotations["coverage"][] = [
+            { reason: "pageBound", shown: 1000 },
+            { reason: "rejectedNext", shown: 1 },
+        ];
+        const h = harness(async (checkRunId) => ({
+            annotations: [annotation()],
+            coverage: coverages[Number(checkRunId) - 11],
+        }));
+        const jobs = [job({ checkRunId: "11" }), job({ id: "2", checkRunId: "12" })];
+
+        await h.diagnostics.show(target(h, detail(jobs)));
+
+        expect(h.diagnostics.viewFor(root, HASH)?.coverage).toEqual({
+            reason: "rejectedNext",
+            shown: 1,
+        });
+    });
+
+    it("a next link to another host is refused: one request, no token sent there, rejectedNext", async () => {
+        const requests: { url: string; headers: Record<string, string> }[] = [];
+        const provider = new GitHubProvider(undefined, undefined, async (url, headers) => {
+            requests.push({ url, headers });
+            return {
+                statusCode: 200,
+                headers: {
+                    link: '<https://evil.example/repos/microsoft/vscode/check-runs/11/annotations?page=2>; rel="next"',
+                },
+                body: [annotationJson()],
+            };
+        });
+        const h = harness((id) => provider.getAnnotations(REF, id));
+
+        await h.diagnostics.show(target(h));
+
+        expect(requests.map((request) => new URL(request.url).host)).toEqual(["api.github.com"]);
+        expect(h.diagnostics.viewFor(root, HASH)?.coverage).toEqual({
+            reason: "rejectedNext",
+            shown: 1,
+        });
+        expect(h.diagnostics.viewFor(root, HASH)?.items).toHaveLength(1);
+    });
+
+    it("annotation pages stop at ten: eleven pages offered, ten requested, 1 000 placed, pageBound", async () => {
+        const urls: string[] = [];
+        const provider = new GitHubProvider(undefined, undefined, async (url) => {
+            urls.push(url);
+            const next = new URL(url);
+            next.searchParams.set("page", String(urls.length + 1));
+            return {
+                statusCode: 200,
+                headers: { link: `<${next.toString()}>; rel="next"` },
+                body: Array.from({ length: 100 }, annotationJson),
+            };
+        });
+        const h = harness((id) => provider.getAnnotations(REF, id));
+
+        await h.diagnostics.show(target(h));
+
+        expect(urls).toHaveLength(10);
+        expect(h.diagnostics.viewFor(root, HASH)?.items).toHaveLength(1000);
+        expect(h.diagnostics.viewFor(root, HASH)?.coverage).toEqual({
+            reason: "pageBound",
+            shown: 1000,
+        });
     });
 
     it("403 leaves Problems empty and reports unavailable", async () => {
@@ -629,6 +741,39 @@ describe("CiDiagnostics", () => {
         ];
         expect(uri.fsPath).toBe(appFile());
         expect(options.selection.start.line).toBe(1);
+    });
+
+    it("a click opens nothing once the placed file became a symlink out of the repository", async () => {
+        const h = harness();
+        await h.diagnostics.show(target(h));
+        await unlink(appFile());
+        await symlink(path.join(outside, "secret.ts"), appFile());
+
+        await h.diagnostics.open(root, HASH, "src/app.ts", 2);
+
+        expect(mocks.showTextDocument).not.toHaveBeenCalled();
+    });
+
+    it("a click opens nothing once the placed file is gone", async () => {
+        const h = harness();
+        await h.diagnostics.show(target(h));
+        await unlink(appFile());
+
+        await h.diagnostics.open(root, HASH, "src/app.ts", 2);
+
+        expect(mocks.showTextDocument).not.toHaveBeenCalled();
+    });
+
+    it("a click opens the file's real path when it is a symlink inside the repository", async () => {
+        const h = harness();
+        await h.diagnostics.show(target(h));
+        await unlink(appFile());
+        await symlink(path.join(root, "src", "other.ts"), appFile());
+
+        await h.diagnostics.open(root, HASH, "src/app.ts", 2);
+
+        const [uri] = mocks.showTextDocument.mock.calls[0] as [{ fsPath: string }];
+        expect(uri.fsPath).toBe(path.join(root, "src", "other.ts"));
     });
 });
 

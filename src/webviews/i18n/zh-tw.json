@@ -575,6 +575,7 @@
         "other": "有 {count} 則註解無法放置"
     },
     "commit.checks.tab.annotationsTruncated": "顯示前 1 000 則註解",
+    "commit.checks.tab.annotationsRejectedNext": "顯示前 {count} 則註解 — 提供者的下一頁連結遭到拒絕",
     "commit.checks.tab.annotationsForbidden": "此權杖無法使用註解",
     "commit.checks.tab.annotationsUnavailable": "註解無法使用：{reason}"
 }

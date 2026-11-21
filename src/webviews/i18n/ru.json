@@ -608,6 +608,7 @@
         "other": "Не удалось разместить аннотации: {count}"
     },
     "commit.checks.tab.annotationsTruncated": "Показаны первые 1 000 аннотаций",
+    "commit.checks.tab.annotationsRejectedNext": "Показано первых аннотаций: {count} — ссылка поставщика на следующую страницу отклонена",
     "commit.checks.tab.annotationsForbidden": "Аннотации недоступны с этим токеном",
     "commit.checks.tab.annotationsUnavailable": "Аннотации недоступны: {reason}"
 }

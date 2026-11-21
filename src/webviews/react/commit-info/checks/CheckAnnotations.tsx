@@ -74,9 +74,13 @@ export function CheckAnnotations({
                     {t("commit.checks.tab.annotationsRejected", { count: view.rejected })}
                 </div>
             ) : null}
-            {view.truncated ? (
+            {view.coverage !== "full" ? (
                 <div data-testid="ci-annotations-truncated" style={checksStyles.note}>
-                    {t("commit.checks.tab.annotationsTruncated")}
+                    {view.coverage.reason === "pageBound"
+                        ? t("commit.checks.tab.annotationsTruncated")
+                        : t("commit.checks.tab.annotationsRejectedNext", {
+                              count: String(view.coverage.shown),
+                          })}
                 </div>
             ) : null}
         </section>

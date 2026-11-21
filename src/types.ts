@@ -374,8 +374,11 @@ export interface CiAnnotationsView {
     items: { path: string; line: number; level: CiAnnotationLevel; message: string; job: string }[];
     /** Annotations dropped for an unsafe path or an impossible line range. */
     rejected: number;
-    /** A check run had more annotations than the page bound; only the first 1 000 are placed. */
-    truncated: boolean;
+    /**
+     * `pageBound` when a check run had more annotations than the page bound (only the first
+     * 1 000 are placed), `rejectedNext` when the provider's next-page link was refused.
+     */
+    coverage: CiCoverage;
     /** The read failed: 403 (`forbidden`) or another error; nothing is placed. */
     unavailable?: { forbidden: true } | { reason: string };
 }

@@ -575,6 +575,7 @@
         "other": "주석 {count}개를 배치할 수 없습니다"
     },
     "commit.checks.tab.annotationsTruncated": "처음 1 000개의 주석을 표시합니다",
+    "commit.checks.tab.annotationsRejectedNext": "처음 {count}개의 주석을 표시하는 중 — 공급자의 다음 페이지 링크가 거부되었습니다",
     "commit.checks.tab.annotationsForbidden": "이 토큰으로는 주석을 사용할 수 없습니다",
     "commit.checks.tab.annotationsUnavailable": "주석을 사용할 수 없음: {reason}"
 }

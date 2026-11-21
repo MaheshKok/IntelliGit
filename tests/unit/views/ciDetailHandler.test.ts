@@ -159,7 +159,7 @@ describe("answerCommitCiDetailRequest", () => {
     });
 
     it("attaches HEAD's annotations to the reply and re-posts when they change, until stopped", async () => {
-        const view: CiAnnotationsView = { items: [], rejected: 2, truncated: false };
+        const view: CiAnnotationsView = { items: [], rejected: 2, coverage: "full" };
         let published: CiAnnotationsView | undefined;
         const listeners = new Set<() => void>();
         const annotations: CiAnnotationsAccess = {

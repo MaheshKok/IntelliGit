@@ -5,7 +5,13 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import type { CiAnnotationLevel, CiAnnotationsView, CiJob, CommitCiDetail } from "../../types";
+import type {
+    CiAnnotationLevel,
+    CiAnnotationsView,
+    CiCoverage,
+    CiJob,
+    CommitCiDetail,
+} from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import type { CiGenerations, CiOperationContext } from "./ciGenerations";
 import { HttpError } from "./http";
@@ -115,13 +121,14 @@ export class CiDiagnostics implements CiAnnotationsAccess {
                 read.push({ job, result });
             }
         } catch (error) {
-            if (!live()) return;
+            // The same final check as a success: the failure belongs to this HEAD only while it is HEAD.
+            if (!this.deps.switchOn() || !live() || (await this.deps.headHash()) !== hash) return;
             this.deps.collection.clear();
             const forbidden = error instanceof HttpError && error.statusCode === 403;
             this.publish(repoKey, hash, {
                 items: [],
                 rejected: 0,
-                truncated: false,
+                coverage: "full",
                 unavailable: forbidden ? { forbidden: true } : { reason: getErrorMessage(error) },
             });
             return;
@@ -155,7 +162,7 @@ export class CiDiagnostics implements CiAnnotationsAccess {
                 job: item.job,
             })),
             rejected,
-            truncated: read.some(({ result }) => result.coverage !== "full"),
+            coverage: worstCoverage(read.map(({ result }) => result.coverage)),
         });
     }
 
@@ -194,7 +201,10 @@ export class CiDiagnostics implements CiAnnotationsAccess {
             (item) => item.path === filePath && item.line === line,
         );
         if (!listed) return;
-        await vscode.window.showTextDocument(vscode.Uri.file(path.join(repoKey, filePath)), {
+        // The file may have changed since it was placed: contain it again and open what that finds.
+        const real = await realInside(repoKey, filePath);
+        if (!real) return;
+        await vscode.window.showTextDocument(vscode.Uri.file(real), {
             selection: new vscode.Range(line - 1, 0, line - 1, 0),
         });
     }
@@ -296,17 +306,38 @@ function safeRelativePath(raw: unknown): string | undefined {
 }
 
 /**
- * The file's lines when it exists and its real path, symlinks resolved, stays inside the
- * repository's real path; undefined otherwise.
+ * The file's real path, symlinks resolved, when it exists and stays inside the repository's
+ * real path; undefined otherwise. The repository path itself is resolved here, so a caller
+ * holding only `repoKey` gets the same containment check as placement.
  */
+async function realInside(repoKey: string, relPath: string): Promise<string | undefined> {
+    try {
+        return await realInsideRoot(await fs.realpath(repoKey), relPath);
+    } catch {
+        return undefined;
+    }
+}
+
+async function realInsideRoot(rootReal: string, relPath: string): Promise<string | undefined> {
+    const real = await fs.realpath(path.join(rootReal, relPath));
+    return real.startsWith(rootReal + path.sep) ? real : undefined;
+}
+
+/** The file's lines when it exists and stays inside the repository; undefined otherwise. */
 async function readInside(rootReal: string, relPath: string): Promise<string[] | undefined> {
     try {
-        const real = await fs.realpath(path.join(rootReal, relPath));
-        if (!real.startsWith(rootReal + path.sep)) return undefined;
+        const real = await realInsideRoot(rootReal, relPath);
+        if (!real) return undefined;
         return (await fs.readFile(real, "utf8")).split(/\r?\n/);
     } catch {
         return undefined;
     }
+}
+
+/** A refused continuation outranks a page bound; "full" only when every read was complete. */
+function worstCoverage(coverages: readonly CiCoverage[]): CiCoverage {
+    const partial = coverages.filter((coverage) => coverage !== "full");
+    return partial.find((coverage) => coverage.reason === "rejectedNext") ?? partial[0] ?? "full";
 }
 
 function isLine(value: unknown): value is number {

@@ -126,7 +126,7 @@ const ITEMS: CiAnnotationsView["items"] = [
 
 describe("Checks tab annotations", () => {
     it("lists each placed note and clicking one asks the host to open its line", () => {
-        const container = show(detail({ items: ITEMS, rejected: 0, truncated: false }));
+        const container = show(detail({ items: ITEMS, rejected: 0, coverage: "full" }));
         const rows = [...container.querySelectorAll('[data-testid="ci-annotation"]')];
         expect(rows.map((row) => row.textContent)).toEqual(["src/a.ts:2", "src/b.ts:9"]);
         expect(section(container)?.textContent).toContain("expected 1");
@@ -145,7 +145,13 @@ describe("Checks tab annotations", () => {
     });
 
     it("discloses the notes it could not place and the page bound", () => {
-        const container = show(detail({ items: ITEMS, rejected: 3, truncated: true }));
+        const container = show(
+            detail({
+                items: ITEMS,
+                rejected: 3,
+                coverage: { reason: "pageBound", shown: 1000 },
+            }),
+        );
         expect(
             container.querySelector('[data-testid="ci-annotations-rejected"]')?.textContent,
         ).toBe("3 annotations could not be placed");
@@ -154,9 +160,22 @@ describe("Checks tab annotations", () => {
         ).toBe("Showing the first 1 000 annotations");
     });
 
+    it("a refused next-page link says so with the count shown, not the page bound", () => {
+        const container = show(
+            detail({
+                items: ITEMS.slice(0, 1),
+                rejected: 0,
+                coverage: { reason: "rejectedNext", shown: 1 },
+            }),
+        );
+        expect(
+            container.querySelector('[data-testid="ci-annotations-truncated"]')?.textContent,
+        ).toBe("Showing the first 1 annotations — the provider's next-page link was refused");
+    });
+
     it("a token without the scope says so", () => {
         const container = show(
-            detail({ items: [], rejected: 0, truncated: false, unavailable: { forbidden: true } }),
+            detail({ items: [], rejected: 0, coverage: "full", unavailable: { forbidden: true } }),
         );
         expect(section(container)?.querySelector('[role="alert"]')?.textContent).toBe(
             "Annotations unavailable with this token",
@@ -168,7 +187,7 @@ describe("Checks tab annotations", () => {
             detail({
                 items: [],
                 rejected: 0,
-                truncated: false,
+                coverage: "full",
                 unavailable: { reason: "network down" },
             }),
         );

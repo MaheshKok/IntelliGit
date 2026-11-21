@@ -608,6 +608,7 @@
         "other": "Nie udało się umieścić {count} adnotacji"
     },
     "commit.checks.tab.annotationsTruncated": "Wyświetlanie pierwszych 1 000 adnotacji",
+    "commit.checks.tab.annotationsRejectedNext": "Liczba wyświetlonych pierwszych adnotacji: {count} — odrzucono link dostawcy do następnej strony",
     "commit.checks.tab.annotationsForbidden": "Adnotacje niedostępne z tym tokenem",
     "commit.checks.tab.annotationsUnavailable": "Adnotacje niedostępne: {reason}"
 }

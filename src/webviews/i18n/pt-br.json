@@ -597,6 +597,7 @@
         "other": "{count} anotações não puderam ser posicionadas"
     },
     "commit.checks.tab.annotationsTruncated": "Mostrando as primeiras 1 000 anotações",
+    "commit.checks.tab.annotationsRejectedNext": "Mostrando as primeiras {count} anotações — o link da próxima página do provedor foi recusado",
     "commit.checks.tab.annotationsForbidden": "Anotações indisponíveis com este token",
     "commit.checks.tab.annotationsUnavailable": "Anotações indisponíveis: {reason}"
 }

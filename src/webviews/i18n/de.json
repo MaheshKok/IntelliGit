@@ -586,6 +586,7 @@
         "other": "{count} Anmerkungen konnten nicht platziert werden"
     },
     "commit.checks.tab.annotationsTruncated": "Die ersten 1 000 Anmerkungen werden angezeigt",
+    "commit.checks.tab.annotationsRejectedNext": "Die ersten {count} Anmerkungen werden angezeigt – der Link des Anbieters zur nächsten Seite wurde abgelehnt",
     "commit.checks.tab.annotationsForbidden": "Anmerkungen mit diesem Token nicht verfügbar",
     "commit.checks.tab.annotationsUnavailable": "Anmerkungen nicht verfügbar: {reason}"
 }

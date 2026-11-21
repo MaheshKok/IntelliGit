@@ -597,6 +597,7 @@
         "other": "{count} annotations n'ont pas pu être placées"
     },
     "commit.checks.tab.annotationsTruncated": "Affichage des 1 000 premières annotations",
+    "commit.checks.tab.annotationsRejectedNext": "Affichage des {count} premières annotations — le lien de page suivante du fournisseur a été refusé",
     "commit.checks.tab.annotationsForbidden": "Annotations indisponibles avec ce jeton",
     "commit.checks.tab.annotationsUnavailable": "Annotations indisponibles : {reason}"
 }

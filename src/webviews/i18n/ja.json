@@ -575,6 +575,7 @@
         "other": "{count} 件のアノテーションを配置できませんでした"
     },
     "commit.checks.tab.annotationsTruncated": "最初の 1 000 件のアノテーションを表示しています",
+    "commit.checks.tab.annotationsRejectedNext": "最初の {count} 件のアノテーションを表示しています — プロバイダーの次ページのリンクは拒否されました",
     "commit.checks.tab.annotationsForbidden": "このトークンではアノテーションを利用できません",
     "commit.checks.tab.annotationsUnavailable": "アノテーションを利用できません: {reason}"
 }
