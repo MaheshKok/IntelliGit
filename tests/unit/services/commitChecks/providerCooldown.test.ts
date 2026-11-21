@@ -80,7 +80,7 @@ describe("request bucket of a repository for the HEAD monitor", () => {
             "bb.example.test": "bitbucket-server",
         });
         if (!cloudRef || !serverRef) throw new Error("no match");
-        expect(new URL(cloud.apiUrl(cloudRef)).origin).toBe("https://api.bitbucket.org");
+        expect(new URL(cloud.apiUrl()).origin).toBe("https://api.bitbucket.org");
         expect(new URL(server.apiUrl(serverRef)).origin).toBe("https://bb.example.test");
     });
 });

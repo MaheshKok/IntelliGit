@@ -785,14 +785,42 @@ describe("HeadCiStatus", () => {
 
     it("a new HEAD restarts the ladder and the old HEAD's late result is dropped", async () => {
         vi.useFakeTimers();
-        const h = makeHarness({ caps: NO_CI_CAPABILITIES });
+        let releaseOld: (snapshot: CommitChecksSnapshot) => void = () => undefined;
+        const h = makeHarness({
+            caps: NO_CI_CAPABILITIES,
+            snapshots: [
+                snapshotOf(["pending"]),
+                snapshotOf(["pending"]),
+                // The old HEAD's third request stays open until the new HEAD is shown.
+                () =>
+                    new Promise<CommitChecksSnapshot>((done) => {
+                        releaseOld = done;
+                    }),
+                snapshotOf(["pending"]),
+            ],
+        });
         const status = track(new HeadCiStatus(h.deps));
         await status.onRepositoryChanged();
         await vi.advanceTimersByTimeAsync(8_000);
         expect(h.snapshot).toHaveBeenCalledTimes(3);
+        expect(h.snapshot.mock.calls[2][0]).toBe(HASH);
         h.setHead(NEXT_HASH);
         await status.onRepositoryChanged();
         expect(h.snapshot.mock.calls[3][0]).toBe(NEXT_HASH);
+        const shown = h.items[0]?.text;
+        releaseOld(snapshotOf(["failure"]));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(
+            h.items[0]?.text,
+            "the old HEAD's late failure must not replace the new HEAD's status",
+        ).toBe(shown);
+        expect(
+            h.show,
+            "the old HEAD's late failure must not announce a settle",
+        ).not.toHaveBeenCalled();
+        expect(status.isPolling(), "the new HEAD's schedule must survive the late result").toBe(
+            true,
+        );
         // The same HEAD again keeps its schedule instead of restarting it.
         await status.onRepositoryChanged();
         expect(h.snapshot).toHaveBeenCalledTimes(4);
