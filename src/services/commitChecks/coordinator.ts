@@ -378,7 +378,8 @@ export class CommitChecksCoordinator {
      *
      * @param hash - Full Git commit hash.
      * @param options - `force` bypasses the detail caches (and the snapshot caches for a
-     *   provider without its own detail).
+     *   provider without its own detail). `isCurrent` is the caller's own liveness check: once
+     *   it is false after an await, no provider request starts and the result is undefined.
      * @param ctx - Context captured when the operation started. A sign-in change, a CI
      *   settings change, a closed repository or a repository switch after it was captured
      *   also yields undefined, so the caller publishes nothing.
@@ -387,7 +388,7 @@ export class CommitChecksCoordinator {
      */
     async getDetail(
         hash: string,
-        options: CommitChecksFetchOptions,
+        options: CommitChecksFetchOptions & { isCurrent?: () => boolean },
         ctx: CiOperationContext,
         onScanUpdate?: (detail: CommitCiDetail) => void,
     ): Promise<CommitCiDetail | undefined> {
@@ -396,13 +397,15 @@ export class CommitChecksCoordinator {
         if (seeded)
             return { ...seeded.detail, capabilities: seeded.capabilities, repoKey: ctx.repoKey };
         const providerGeneration = this.providerGeneration;
+        const live = (): boolean =>
+            this.isCurrent(ctx, providerGeneration) && options.isCurrent?.() !== false;
         let match: ProviderMatch | null;
         try {
             match = await this.resolveEnabledMatch();
         } catch {
             return undefined;
         }
-        if (!this.isCurrent(ctx, providerGeneration)) return this.discard(ctx, hash);
+        if (!live()) return this.discard(ctx, hash);
         if (!match) return undefined;
         const { provider, ref } = match;
         const getDetail = provider.getDetail?.bind(provider);
@@ -429,6 +432,8 @@ export class CommitChecksCoordinator {
             match,
             fetchDetail,
             async (account, checkedFetch, confirm) => {
+                // The account read was awaited: a caller gone stale meanwhile sends nothing.
+                if (!live()) return undefined;
                 // Read beside the detail and applied at serve time, so the detail cache never holds it.
                 const required = this.readRequired(match, account, confirm);
                 const markRequired = (
@@ -492,7 +497,7 @@ export class CommitChecksCoordinator {
             },
             unavailable,
         );
-        if (!this.isCurrent(ctx, providerGeneration)) return this.discard(ctx, hash, provider.id);
+        if (!live()) return this.discard(ctx, hash, provider.id);
         return marked;
     }
 

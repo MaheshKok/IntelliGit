@@ -18,6 +18,7 @@ import type {
     CommitChecksSnapshot,
     CommitCiDetail,
 } from "../../types";
+import { getErrorMessage } from "../../utils/errors";
 import type { CiGenerations, CiOperationContext } from "./ciGenerations";
 import type { CiTrace } from "./ciTrace";
 
@@ -180,8 +181,12 @@ export class HeadStatusBar {
      * Creates the bar; the item itself is created on first show.
      *
      * @param deps - The switch, the settings and the item factory.
+     * @param onSwitchOff - Called when the elapsed ticker finds the switch off.
      */
-    constructor(private readonly deps: HeadStatusBarDeps) {}
+    constructor(
+        private readonly deps: HeadStatusBarDeps,
+        private readonly onSwitchOff: () => void = () => undefined,
+    ) {}
 
     /** Shows a view, or hides the item when the setting or the switch is off. */
     render(view: HeadStatusView): void {
@@ -194,7 +199,14 @@ export class HeadStatusBar {
         this.item.show();
         const ticking = view.kind === "status" && view.startedAt !== undefined;
         if (ticking && !this.ticker) {
-            this.ticker = setInterval(() => this.paint(), ELAPSED_TICK_MS);
+            this.ticker = setInterval(() => {
+                // The switch can go off between polls: stop publishing and stop the monitor.
+                if (!this.deps.switchOn()) {
+                    this.hide();
+                    return this.onSwitchOff();
+                }
+                this.paint();
+            }, ELAPSED_TICK_MS);
         } else if (!ticking) {
             this.stopTicker();
         }
@@ -403,55 +415,89 @@ export class HeadSettleToast {
         this.claims.set(key, undefined);
         try {
             if (!this.claimedUnshown.has(key)) {
-                const failed = await this.claim(repoKey, hash, key);
-                if (failed) return failed === "exists" ? undefined : "retry";
+                const failed = await this.claim(event, key);
+                if (failed) return failed === "failed" ? "retry" : undefined;
             }
-            const owner = [event, this.claims.get(key)].find((candidate) => candidate?.isCurrent());
+            if (!this.liveOwner(event, key)) return this.keepUnshown(key);
+            // Section 10: remove the commit from the set, then show the notification.
+            await this.pendingObserved.remove(repoKey, hash).catch(() => undefined);
+            const owner = this.liveOwner(event, key);
             if (!owner) {
-                // This poll went stale and no newer one has confirmed yet: the claim is kept, and
-                // the next poll that confirms the settlement shows the notification.
-                this.claimedUnshown.add(key);
-                this.running.delete(key);
-                return undefined;
+                // Stale during the removal: the observation goes back for the next confirming poll.
+                await this.pendingObserved.add(repoKey, hash).catch(() => undefined);
+                return this.keepUnshown(key);
             }
             this.claimedUnshown.delete(key);
             this.show(owner);
-            await this.pendingObserved.remove(repoKey, hash).catch(() => undefined);
             return undefined;
         } finally {
             this.claims.delete(key);
         }
     }
 
-    /** Takes the claim directory; `"exists"` when another window holds it, `"failed"` on a storage error. */
+    /** The offering event, or the newer one queued behind it, that may still publish. */
+    private liveOwner(event: HeadSettledEvent, key: string): HeadSettledEvent | undefined {
+        if (!this.deps.switchOn()) return undefined;
+        return [event, this.claims.get(key)].find((candidate) => candidate?.isCurrent());
+    }
+
+    /**
+     * The offering poll went stale and no newer one has confirmed yet: the claim is kept, and
+     * the next poll that confirms the settlement shows the notification.
+     */
+    private keepUnshown(key: string): undefined {
+        this.claimedUnshown.add(key);
+        this.running.delete(key);
+        return undefined;
+    }
+
+    /**
+     * Takes the claim directory; `"exists"` when another window holds it, `"failed"` on a
+     * storage error, `"stale"` when the switch, HEAD, repository, sign-in or lifecycle changed
+     * while the parent folder was created.
+     */
     private async claim(
-        repoKey: string,
-        hash: string,
+        event: HeadSettledEvent,
         key: string,
-    ): Promise<"exists" | "failed" | undefined> {
+    ): Promise<"exists" | "failed" | "stale" | undefined> {
+        const { repoKey, hash } = event;
         const mkdir = this.deps.mkdir ?? ((target, options) => fs.mkdir(target, options));
         const claim = path.join(this.deps.claimDir, createHash("sha256").update(key).digest("hex"));
         try {
             await mkdir(this.deps.claimDir, { recursive: true });
+        } catch {
+            // Only the claim's own non-recursive mkdir proves another window toasted.
+            return this.claimFailed(repoKey, hash, key);
+        }
+        if (!this.liveOwner(event, key)) {
+            // Nothing claimed: the commit stays in the set for the next confirming poll.
+            this.running.delete(key);
+            return "stale";
+        }
+        try {
             await mkdir(claim);
             return undefined;
         } catch (error) {
-            if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-                this.deps.trace?.({ kind: "claim", outcome: "claim-exists", repoKey, hash });
-                await this.pendingObserved.remove(repoKey, hash).catch(() => undefined);
-                return "exists";
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+                return this.claimFailed(repoKey, hash, key);
             }
-            // The commit stays in the set and the next focus tries again.
-            this.running.delete(key);
-            this.deps.trace?.({
-                kind: "claim",
-                outcome: "failed",
-                repoKey,
-                hash,
-                reason: "storage",
-            });
-            return "failed";
+            this.deps.trace?.({ kind: "claim", outcome: "claim-exists", repoKey, hash });
+            await this.pendingObserved.remove(repoKey, hash).catch(() => undefined);
+            return "exists";
         }
+    }
+
+    /** A storage error: the commit stays in the set and the next focus tries again. */
+    private claimFailed(repoKey: string, hash: string, key: string): "failed" {
+        this.running.delete(key);
+        this.deps.trace?.({
+            kind: "claim",
+            outcome: "failed",
+            repoKey,
+            hash,
+            reason: "storage",
+        });
+        return "failed";
     }
 
     private show(event: HeadSettledEvent): void {
@@ -493,6 +539,8 @@ export class HeadSettleToast {
 /** Snapshot and detail fetch options; `force` skips the caches. */
 export interface HeadFetchOptions {
     force?: boolean;
+    /** The poll's liveness check, run again before any provider request (detail only). */
+    isCurrent?: () => boolean;
 }
 
 /** What one poll carries to the handler of its snapshot. */
@@ -557,7 +605,7 @@ export class HeadCiStatus {
      * @param deps - Everything the monitor reads, fetches and shows.
      */
     constructor(private readonly deps: HeadCiStatusDeps) {
-        this.bar = new HeadStatusBar(deps);
+        this.bar = new HeadStatusBar(deps, () => this.stop());
         this.toast = new HeadSettleToast(deps);
     }
 
@@ -596,9 +644,10 @@ export class HeadCiStatus {
 
     /** `intelligit.ci.showHeadChecks`: opens the Checks tab for HEAD. */
     async showHeadChecks(): Promise<void> {
-        if (!this.deps.switchOn()) return;
+        if (!this.deps.switchOn() || this.disposed) return;
         const head = await this.deps.headHash();
-        if (head) await this.deps.openChecks(head);
+        // The switch may have gone off, or the monitor been disposed, during the lookup.
+        if (head && this.deps.switchOn() && !this.disposed) await this.deps.openChecks(head);
     }
 
     /** `intelligit.ci.refreshHeadChecks`: polls now unless the cooldown still runs. */
@@ -622,6 +671,13 @@ export class HeadCiStatus {
         this.run += 1;
         this.clearTimer();
         this.bar.dispose();
+    }
+
+    /** The switch went off: no timer and no publish; the next repository-change signal starts over. */
+    private stop(): void {
+        this.run += 1;
+        this.head = undefined;
+        this.clearTimer();
     }
 
     private now(): number {
@@ -721,12 +777,9 @@ export class HeadCiStatus {
         this.bar.render({ kind: "unavailable", message });
     }
 
-    private async onIncomplete(
-        { run, hash, repoKey, options, ctx, current, capabilities }: PollContext,
-        snapshot: CommitChecksSnapshot,
-    ): Promise<void> {
-        const view = snapshotView(snapshot);
-        this.bar.render(view());
+    private async onIncomplete(poll: PollContext, snapshot: CommitChecksSnapshot): Promise<void> {
+        const { run, hash, repoKey, current, capabilities } = poll;
+        this.bar.render(snapshotView(snapshot)());
         try {
             await this.toast.pendingObserved.add(repoKey, hash);
         } catch {
@@ -740,7 +793,7 @@ export class HeadCiStatus {
             });
         }
         if (!current()) return;
-        if (capabilities.runs) this.trackElapsed(hash, options, ctx, current, view);
+        if (capabilities.runs) this.trackElapsed(poll, snapshot);
         this.schedule(run, headMonitorDelayMs(this.attempt++));
     }
 
@@ -758,7 +811,10 @@ export class HeadCiStatus {
         if (!current()) return;
         // A provider failure is not unknown coverage: show it and wait for the user's refresh.
         if (settlement.state === "unavailable") {
-            return this.onUnavailable(poll, settlement.detail?.error ?? snapshot.summary);
+            return this.onUnavailable(
+                poll,
+                settlement.error ?? settlement.detail?.error ?? snapshot.summary,
+            );
         }
         // The detail counts jobs; the snapshot only aggregates them.
         if (settlement.state === "settled" && settlement.detail) {
@@ -799,7 +855,7 @@ export class HeadCiStatus {
         snapshot: CommitChecksSnapshot,
         ctx: CiOperationContext,
         current: () => boolean,
-    ): Promise<{ state: CiSettlement | "unavailable"; detail?: CommitCiDetail }> {
+    ): Promise<{ state: CiSettlement | "unavailable"; detail?: CommitCiDetail; error?: string }> {
         if (!capabilities.runs) return { state: "settled" };
         const transition = this.lastUnknown || this.toast.pendingObserved.has(repoKey, hash);
         if (!transition && snapshot.state !== "failure") return { state: "settled" };
@@ -811,9 +867,12 @@ export class HeadCiStatus {
                 // The switch, HEAD or a dispose may have changed during the invalidation: no request.
                 if (!current()) return { state: "unknown" };
             }
-            detail = await this.deps.detail(hash, transition ? { force: true } : {}, ctx);
-        } catch {
-            detail = undefined;
+            const options = { ...(transition && { force: true }), isCurrent: current };
+            detail = await this.deps.detail(hash, options, ctx);
+        } catch (error) {
+            // A failed read is a provider failure: shown, and only the user's refresh retries.
+            this.lastUnknown = true;
+            return { state: "unavailable", error: getErrorMessage(error) };
         }
         const state: CiSettlement | "unavailable" =
             detail?.outcome === "unavailable"
@@ -826,22 +885,33 @@ export class HeadCiStatus {
         return { state, ...(detail && { detail }) };
     }
 
-    /** Fetches the detail of an incomplete HEAD for the elapsed time; not awaited. */
-    private trackElapsed(
-        hash: string,
-        options: HeadFetchOptions,
-        ctx: CiOperationContext,
-        current: () => boolean,
-        view: (startedAt?: number) => HeadStatusView,
-    ): void {
+    /**
+     * Fetches the detail of an incomplete HEAD for the elapsed time; not awaited. A failed
+     * read shows "CI unavailable" and cancels the scheduled poll, as a failed snapshot does.
+     */
+    private trackElapsed(poll: PollContext, snapshot: CommitChecksSnapshot): void {
+        const { hash, options, ctx, current } = poll;
         const sequence = ++this.detailSequence;
+        const live = () => sequence === this.detailSequence && current();
+        const unavailable = (message: string): Promise<void> => {
+            this.clearTimer();
+            return this.onUnavailable(poll, message);
+        };
         void this.deps
-            .detail(hash, options, ctx)
-            .then((detail) => {
-                if (sequence !== this.detailSequence || !current()) return;
-                const startedAt = earliestIncompleteStart(detail);
-                if (startedAt !== undefined) this.bar.render(view(startedAt));
-            })
+            .detail(hash, { ...options, isCurrent: current }, ctx)
+            .then(
+                async (detail) => {
+                    if (!live()) return;
+                    if (detail?.outcome === "unavailable") {
+                        return unavailable(detail.error ?? snapshot.summary);
+                    }
+                    const startedAt = earliestIncompleteStart(detail);
+                    if (startedAt !== undefined) this.bar.render(snapshotView(snapshot)(startedAt));
+                },
+                async (error: unknown) => {
+                    if (live()) await unavailable(getErrorMessage(error));
+                },
+            )
             .catch(() => undefined);
     }
 

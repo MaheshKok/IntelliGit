@@ -389,7 +389,7 @@ describe("HeadCiStatus", () => {
         await status.onRepositoryChanged();
         expect(h.detail).toHaveBeenCalledTimes(1);
         // Cache first: a HEAD that was already complete is not forced.
-        expect(h.detail.mock.calls[0][1]).toEqual({});
+        expect(h.detail.mock.calls[0][1].force).toBeUndefined();
         expect(h.invalidateDetail).not.toHaveBeenCalled();
     });
 

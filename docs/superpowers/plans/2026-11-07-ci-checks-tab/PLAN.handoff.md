@@ -17,20 +17,24 @@
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
 ## Phase 13: review pending, started at 1860b1475c08f0fb8502dba7e1cdb681b68d7abf
-- Build commit 96e3c78e (0.43.17, ships hidden behind the Checks tab switch). Fix round 1 is 19458d72. Fix round 2 (4 Codex findings) is the commit after it, on the same branch; a fresh Codex review is next.
-- Round 2 regression tests live in `tests/unit/services/commitChecks/headStatus.review.test.ts` (7 tests); red lines before the fix are in `/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/red2.log`. Mutations M1-M7 on a copy each went red naming their test.
-- Gates green: both head status test files (49 tests), format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build; see the review log entry for the full-suite, build:prod, package and verify:manifest results. Gate L not re-run: no l10n string changed this round.
+- Build 96e3c78e (0.43.17, hidden behind the Checks tab switch); fix round 1 19458d72; fix round 2 5c036b03; takeover (7 findings of review 13-2) is the commit after 5c036b03 on the same branch. A fresh review is next.
+- Takeover regression tests: `tests/unit/services/commitChecks/headStatus.independent.test.ts` (the reviewer's reproductions plus 4 tests for branches the fix added). Red run before the fix: `/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/red-takeover.log` (8 red). Mutants M1-M11 on copies each went red naming their test.
+- Gates green: focused head status + coordinator tests (125), format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package, verify:manifest. `bun run test`: 8 red of 8545, all the known commit-list-column-resize Node 26 reds. Gate L not needed (no new string).
 
 ## Decisions and why
-- Per-forge cooldown, three-way monitor fence and pending-observed `unsaved` set: as in round 1; `unsaved` now keeps each observation's timestamp and applies the same 7-day expiry as the stored set.
-- After the awaited detail invalidation the monitor re-checks `current()` (switch, HEAD, dispose, repo, auth, newest poll) before the forced detail fetch.
-- A newer poll that confirms the same settlement while the claim runs is queued on the toast; the claimant shows it when its own poll went stale. A claimant that is stale with nothing queued keeps the claim and the pending-observed entry (`claimedUnshown`), so the next confirming poll shows the one toast. A failed claim holds the newest offered event for the next focus.
-- An unavailable settled detail is a provider failure, not unknown coverage: the bar shows "CI unavailable" with the detail's error, nothing re-arms the schedule (a cooldown still pauses and resumes), and the user's refresh forces a fresh detail fetch. A thrown detail fetch stays `unknown` and retries as before.
+- Per-forge cooldown, three-way monitor fence, pending-observed `unsaved` set with 7-day expiry: as in rounds 1 and 2.
+- The monitor passes its poll liveness check as `isCurrent` in the detail options; `CommitChecksCoordinator.getDetail` checks it after the remote resolution and after the account read, so no provider request starts once the switch, HEAD, repository, sign-in or lifecycle changed. Other callers pass no `isCurrent` and are unchanged.
+- Any failed detail read (unavailable outcome or a throw), incomplete or settled HEAD, is a provider failure per the Failure table's HEAD monitor row: "CI unavailable" with the error tooltip, the scheduled poll is cancelled, a cooldown still pauses and resumes, and the user's refresh fetches again. This replaces round 2's "a thrown detail stays unknown and retries".
+- Toast claim: only the claim's own non-recursive mkdir answers EEXIST = already toasted; a parent-folder error is a storage failure (observation kept, retried on focus). After the parent mkdir the switch and the offering poll (or the newer queued one) are re-checked before the claim mkdir.
+- Section 10 order kept: the pending-observed removal is awaited before the toast; if the poll went stale during it, the observation is written back and the claim kept (`claimedUnshown`), so the next confirming poll shows the one toast.
+- The elapsed ticker re-checks the switch each second; off = hide the item and stop the monitor (timer cleared, HEAD forgotten so the next repository-change signal starts over).
+- Show HEAD Checks re-checks the switch and dispose after its HEAD lookup.
 
 ## Open risks
-- E2E not run locally (CI runs `ciHeadStatus.spec.ts`); the status bar locator and focus assumptions are unchanged.
-- R1 (Fable) review still due for Phase 13: async ordering and cross-window claim concurrency (the claim queue added this round is part of it).
-- A commit whose claim was kept after a genuine HEAD move (`claimedUnshown`) toasts if HEAD later returns to it still settled and pending-observed (within 7 days); at most once per window.
+- E2E not run locally (CI runs `ciHeadStatus.spec.ts`).
+- R1 (Fable) review still due for Phase 13: async ordering and cross-window claim concurrency.
+- GitNexus index is stale: detect-changes saw only coordinator.ts (risk low); headStatus.ts symbols are not in the index.
+- A commit whose claim was kept after a genuine HEAD move toasts if HEAD later returns to it still settled and pending-observed (within 7 days); at most once per window.
 
 ## Next phase: 14
 
@@ -42,5 +46,5 @@
 - Mutation copies must link the main checkout's node_modules; a copy has no .git or dist.
 - GitLab snapshot could follow `x-next-page` pages if getChecks moved to `fetchWithMeta`.
 - The main checkout's GitNexus index is stale and has no run.cjs inside worktrees; the main checkout's runner works with `--repo <worktree>`.
-- A full `bun run test` on this machine takes minutes and shows load-dependent flakes in changeWorkflowHost and fixtures tests.
-- Any Bash command that mentions the path segment "IntelliGit" next to a script is refused by the worktree git guard as "too complex"; put scripts under the TMPDIR phase-run folder.
+- A full `bun run test` on this machine takes about 8 minutes and shows load-dependent flakes in changeWorkflowHost and fixtures tests.
+- Any Bash command that mentions the path segment "IntelliGit" next to a script, or ".gitnexus", is refused by the worktree git guard as "too complex"; put scripts under the TMPDIR phase-run folder.
