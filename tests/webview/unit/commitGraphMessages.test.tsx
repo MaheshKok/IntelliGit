@@ -9,6 +9,11 @@ import { useCommitGraphMessages } from "../../../src/webviews/react/commit-graph
 import type { CommitGraphPanelAction } from "../../../src/webviews/react/commit-graph/types";
 import type { VsCodeApi } from "../../../src/webviews/react/shared/vscodeApi";
 
+const checksTab = vi.hoisted(() => ({ open: vi.fn() }));
+vi.mock("../../../src/webviews/react/commit-info/checks/checksTabState", () => ({
+    openChecksTab: checksTab.open,
+}));
+
 function makeCommit(hash: string, message: string): Commit {
     return {
         hash,
@@ -26,11 +31,13 @@ function Harness({
     dispatch,
     postMessage,
     selectedHash,
+    ciRepoKey,
     onShowRebaseDialog,
 }: {
     dispatch: React.Dispatch<CommitGraphPanelAction>;
     postMessage: (message: unknown) => void;
     selectedHash: string | null;
+    ciRepoKey?: string;
     onShowRebaseDialog?: (dialog: {
         requestId: string;
         commits: readonly InteractiveRebaseRangeCommit[];
@@ -49,9 +56,16 @@ function Harness({
         sendReady: false,
         loadingMore,
         selectedHash,
+        ...(ciRepoKey !== undefined && { ciRepoKey }),
         onShowRebaseDialog,
     });
     return null;
+}
+
+function post(data: unknown): void {
+    act(() => {
+        window.dispatchEvent(new MessageEvent("message", { data }));
+    });
 }
 
 beforeAll(() => {
@@ -384,5 +398,123 @@ describe("useCommitGraphMessages", () => {
             });
             host.remove();
         }
+    });
+
+    describe("an Open Checks request that arrives before any commit detail", () => {
+        const HEAD = "c".repeat(40);
+        const FIRST = "d".repeat(40);
+
+        async function mountWithoutDetail(postMessage = vi.fn(), dispatch = vi.fn()) {
+            const host = document.createElement("div");
+            document.body.appendChild(host);
+            const root = createRoot(host);
+            checksTab.open.mockClear();
+            await act(async () => {
+                root.render(
+                    <Harness dispatch={dispatch} postMessage={postMessage} selectedHash={null} />,
+                );
+            });
+            return async () => {
+                await act(async () => {
+                    root.unmount();
+                });
+                host.remove();
+            };
+        }
+
+        it("opens the Checks tab once the first detail shows the same repository", async () => {
+            const postMessage = vi.fn();
+            const dispatch = vi.fn();
+            const unmount = await mountWithoutDetail(postMessage, dispatch);
+            try {
+                // The host's ready handler posts no detail, then the held request (journey 4).
+                post({ type: "clearCommitDetail" });
+                post({ type: "openChecksTab", repoKey: "/repo", hash: HEAD });
+                post({ type: "setCommitDetail", detail: { hash: FIRST }, ciRepoKey: "/repo" });
+                expect(postMessage).toHaveBeenCalledWith({ type: "selectCommit", hash: HEAD });
+                expect(
+                    dispatch,
+                    "the held request must select its commit in the list",
+                ).toHaveBeenCalledWith({ type: "selectCommit", hash: HEAD });
+                // A later detail must not fire the request again.
+                post({ type: "setCommitDetail", detail: { hash: HEAD }, ciRepoKey: "/repo" });
+
+                expect(
+                    checksTab.open,
+                    "a request held until the first detail must open the Checks tab once",
+                ).toHaveBeenCalledTimes(1);
+            } finally {
+                await unmount();
+            }
+        });
+
+        it("applies a request posted right after a detail, before React re-renders", async () => {
+            const unmount = await mountWithoutDetail();
+            try {
+                // A reload with a detail cached: the host posts both back to back.
+                act(() => {
+                    window.dispatchEvent(
+                        new MessageEvent("message", {
+                            data: {
+                                type: "setCommitDetail",
+                                detail: { hash: HEAD },
+                                ciRepoKey: "/repo",
+                            },
+                        }),
+                    );
+                    window.dispatchEvent(
+                        new MessageEvent("message", {
+                            data: { type: "openChecksTab", repoKey: "/repo", hash: HEAD },
+                        }),
+                    );
+                });
+
+                expect(
+                    checksTab.open,
+                    "the detail's repository must count before the next render",
+                ).toHaveBeenCalledTimes(1);
+            } finally {
+                await unmount();
+            }
+        });
+
+        it("opens at once for the shown repository and drops another one", async () => {
+            const unmount = await mountWithoutDetail();
+            try {
+                post({ type: "setCommitDetail", detail: { hash: FIRST }, ciRepoKey: "/repo" });
+                post({ type: "openChecksTab", repoKey: "/other-repo", hash: HEAD });
+                expect(
+                    checksTab.open,
+                    "a request for a repository other than the shown one must be dropped",
+                ).not.toHaveBeenCalled();
+                post({ type: "openChecksTab", repoKey: "/repo", hash: HEAD });
+                expect(
+                    checksTab.open,
+                    "a request for the shown repository must open the Checks tab at once",
+                ).toHaveBeenCalledTimes(1);
+            } finally {
+                await unmount();
+            }
+        });
+
+        it("drops the held request when the first detail shows another repository", async () => {
+            const postMessage = vi.fn();
+            const unmount = await mountWithoutDetail(postMessage);
+            try {
+                post({ type: "openChecksTab", repoKey: "/old-repo", hash: HEAD });
+                post({ type: "setCommitDetail", detail: { hash: FIRST }, ciRepoKey: "/repo" });
+                post({ type: "setCommitDetail", detail: { hash: FIRST }, ciRepoKey: "/old-repo" });
+
+                expect(
+                    checksTab.open,
+                    "a held request for another repository must not open the Checks tab",
+                ).not.toHaveBeenCalled();
+                expect(postMessage).not.toHaveBeenCalledWith(
+                    expect.objectContaining({ type: "selectCommit" }),
+                );
+            } finally {
+                await unmount();
+            }
+        });
     });
 });
