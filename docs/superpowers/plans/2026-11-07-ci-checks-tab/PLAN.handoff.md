@@ -46,6 +46,7 @@
 - A commit whose claim was kept after a genuine HEAD move toasts if HEAD later returns to it still settled and pending-observed (within 7 days); at most once per window.
 
 ## Next phase: 14
+- Owner answer "A: hide them" (2026-11-20) covers Phase 14: it ships hidden as a Patch groundwork release. While the Checks tab switch (`isE2eControlChannelActive()`) is off, no annotations request is sent and no CI entry reaches the Problems panel, each behind its own switch check with a switch-off test (and any new Annotations host handler too); the setting `intelligit.commitChecks.problemsDiagnostics` is read with its default but contributed in Phase 18; the docs ship under a "Planned" note; Phase 18 carries the visible CHANGELOG line and deletes these checks (PLAN.md Phase 14 "Ships hidden", Phase 18).
 
 ## Found outside scope
 - Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
