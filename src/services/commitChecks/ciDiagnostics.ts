@@ -122,7 +122,8 @@ export class CiDiagnostics implements CiAnnotationsAccess {
             }
         } catch (error) {
             // The same final check as a success: the failure belongs to this HEAD only while it is HEAD.
-            if (!this.deps.switchOn() || !live() || (await this.deps.headHash()) !== hash) return;
+            const head = await this.deps.headHash();
+            if (!this.deps.switchOn() || !live() || head !== hash) return;
             this.deps.collection.clear();
             const forbidden = error instanceof HttpError && error.statusCode === 403;
             this.publish(repoKey, hash, {

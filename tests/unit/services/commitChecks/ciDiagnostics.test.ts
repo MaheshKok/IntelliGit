@@ -521,6 +521,61 @@ describe("CiDiagnostics", () => {
         expect(h.diagnostics.viewFor(root, HASH)).toBeUndefined();
     });
 
+    /** A diagnostics whose second HEAD read (the failure branch's last await) waits for the test. */
+    function withHeldFinalHead(
+        h: Harness,
+        annotations: (checkRunId: string) => Promise<CiAnnotations>,
+    ) {
+        const finalHead = deferred<string>();
+        let reads = 0;
+        const diagnostics = new CiDiagnostics({
+            switchOn: () => true,
+            enabled: () => true,
+            repoKey: () => root,
+            headHash: () => (++reads === 2 ? finalHead.promise : Promise.resolve(HASH)),
+            generations: h.generations,
+            collection: h.collection as unknown as CiDiagnosticsDeps["collection"],
+            annotations: (_hash, checkRunId) => annotations(checkRunId),
+        });
+        return { diagnostics, finalHead, reads: () => reads };
+    }
+
+    it("a clear during a failed read's final HEAD await keeps its unavailable view unpublished", async () => {
+        const h = harness();
+        const held = withHeldFinalHead(h, async () => {
+            throw new Error("read failed");
+        });
+
+        const shown = held.diagnostics.show(target(h));
+        await vi.waitFor(() => expect(held.reads()).toBe(2));
+        held.diagnostics.clear();
+        held.finalHead.resolve(HASH);
+        await shown;
+
+        expect(held.diagnostics.viewFor(root, HASH)).toBeUndefined();
+    });
+
+    it("a sign-in placement survives an older failed read's final HEAD await", async () => {
+        const h = harness();
+        let requests = 0;
+        const held = withHeldFinalHead(h, async () => {
+            if (++requests === 1) throw new Error("old signed-out read failed");
+            return { annotations: [annotation({ message: "new sign-in" })], coverage: "full" };
+        });
+
+        const old = held.diagnostics.show(target(h));
+        await vi.waitFor(() => expect(held.reads()).toBe(2));
+        h.generations.bumpAuth();
+        held.diagnostics.clear();
+        h.generations.bumpAuth();
+        await held.diagnostics.show(target(h));
+        held.finalHead.resolve(HASH);
+        await old;
+
+        expect(h.collection.entries.get(appFile())?.map((d) => d.message)).toEqual(["new sign-in"]);
+        expect(held.diagnostics.viewFor(root, HASH)?.unavailable).toBeUndefined();
+    });
+
     it("a failed read that lands after the Checks tab switch went off publishes nothing", async () => {
         let fail!: (error: unknown) => void;
         const reply = new Promise<CiAnnotations>((_, reject) => {
