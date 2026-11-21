@@ -1,8 +1,17 @@
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const vscodeMock = vi.hoisted(() => ({
     commands: new Map<string, (...args: unknown[]) => unknown>(),
     executeCommand: vi.fn(async (..._args: unknown[]) => undefined),
+    showInformationMessage: vi.fn(
+        async (..._args: unknown[]): Promise<string | undefined> => undefined,
+    ),
+    showErrorMessage: vi.fn(async (..._args: unknown[]) => undefined),
+    answerCiLogMessage: vi.fn(),
 }));
 
 vi.mock("vscode", () => ({
@@ -14,8 +23,8 @@ vi.mock("vscode", () => ({
             dispose: () => undefined,
         }),
         onDidChangeWindowState: () => ({ dispose: () => undefined }),
-        showInformationMessage: async () => undefined,
-        showErrorMessage: async () => undefined,
+        showInformationMessage: vscodeMock.showInformationMessage,
+        showErrorMessage: vscodeMock.showErrorMessage,
     },
     workspace: {
         getConfiguration: () => ({ get: (_key: string, fallback?: unknown) => fallback }),
@@ -33,16 +42,22 @@ vi.mock("vscode", () => ({
 }));
 
 vi.mock("../../../src/e2e/activationState", () => ({ isE2eControlChannelActive: () => true }));
+vi.mock("../../../src/views/ciLogHandler", () => ({
+    answerCiLogMessage: vscodeMock.answerCiLogMessage,
+}));
 
 import { headCooldownEnd, registerHeadChecks } from "../../../src/activation/headChecks";
 import { CiActionFenceStore } from "../../../src/services/commitChecks/ciActionFence";
 import { CiGenerations } from "../../../src/services/commitChecks/ciGenerations";
 import { HttpError } from "../../../src/services/commitChecks/http";
 import {
+    PENDING_OBSERVED_KEY,
     REFRESH_HEAD_CHECKS_COMMAND,
     SHOW_HEAD_CHECKS_COMMAND,
 } from "../../../src/services/commitChecks/headStatus";
 import { CommitChecksRequestGateRegistry } from "../../../src/services/commitChecks/requestGate";
+import { NO_CI_CAPABILITIES } from "../../../src/shared/ci/capabilities";
+import type { CommitCiDetail } from "../../../src/types";
 
 const HASH = "a".repeat(40);
 
@@ -79,7 +94,10 @@ describe("headCooldownEnd", () => {
 });
 
 describe("registerHeadChecks commands", () => {
-    function register(fences?: unknown) {
+    function register(
+        fences?: unknown,
+        extra: { storage?: string; workspaceState?: unknown; source?: unknown } = {},
+    ) {
         vscodeMock.commands.clear();
         vscodeMock.executeCommand.mockClear();
         const checks = {
@@ -90,18 +108,21 @@ describe("registerHeadChecks commands", () => {
             requestBucket: vi.fn(async () => undefined),
         };
         const commitGraph = {
-            ciDetailSource: () => ({}),
+            ciDetailSource: () => extra.source ?? {},
             headChecksSource: () => checks,
             openChecksTab: vi.fn(),
         };
         const monitor = registerHeadChecks({
             context: {
                 subscriptions: [],
-                globalStorageUri: { fsPath: "/storage" },
-                workspaceState: { get: () => undefined, update: async () => undefined },
+                globalStorageUri: { fsPath: extra.storage ?? "/storage" },
+                workspaceState: extra.workspaceState ?? {
+                    get: () => undefined,
+                    update: async () => undefined,
+                },
             } as never,
             commitGraph: commitGraph as never,
-            gitOps: {} as never,
+            gitOps: { getUnpushedCommitHashes: async () => [] } as never,
             executor: { run: async () => `${HASH}\n` } as never,
             repoRoot: () => "/repo",
             generations: new CiGenerations(),
@@ -209,5 +230,124 @@ describe("registerHeadChecks commands", () => {
         await vscodeMock.commands.get(REFRESH_HEAD_CHECKS_COMMAND)?.();
         expect(refresh, "Refresh HEAD checks runs the refresh").toHaveBeenCalledTimes(1);
         monitor?.dispose();
+    });
+
+    describe("forge text in error notifications", () => {
+        // VS Code turns "[label](command:...)" in a notification into a link that runs the command.
+        const LINK = "[Open Checks](command:workbench.action.terminal.new)";
+        const PLAIN = "Open Checks(command:workbench.action.terminal.new)";
+
+        function failedDetail(): CommitCiDetail {
+            return {
+                hash: HASH,
+                provider: "github",
+                complete: true,
+                outcome: "failure",
+                runs: [
+                    {
+                        id: "run-1",
+                        name: "CI",
+                        state: "failure",
+                        jobs: [
+                            {
+                                id: "job-0",
+                                logicalId: "ci/job-0",
+                                name: "job-0",
+                                checkName: "job-0",
+                                state: "failure",
+                                steps: [],
+                            },
+                        ],
+                        jobsCoverage: "full",
+                    },
+                ],
+                runsCoverage: "full",
+                otherChecks: [],
+                otherChecksCoverage: "full",
+                capabilities: {
+                    ...NO_CI_CAPABILITIES,
+                    runs: true,
+                    jobs: true,
+                    logs: true,
+                    rerunFailed: true,
+                },
+                repoKey: "/repo",
+            };
+        }
+
+        /** Settles HEAD as failed, the user picks `choice` on the toast, and returns the error texts shown. */
+        async function chooseOnFailedToast(choice: string, source: unknown): Promise<unknown[]> {
+            const storage = await mkdtemp(path.join(os.tmpdir(), "intelligit-head-checks-"));
+            try {
+                const values = new Map<string, unknown>([
+                    [
+                        PENDING_OBSERVED_KEY,
+                        [{ repoKey: "/repo", hash: HASH, observedAt: Date.now() }],
+                    ],
+                ]);
+                const workspaceState = {
+                    get: (key: string) => values.get(key),
+                    update: async (key: string, value: unknown) => {
+                        values.set(key, value);
+                    },
+                };
+                vscodeMock.showErrorMessage.mockClear();
+                vscodeMock.showInformationMessage.mockClear();
+                vscodeMock.showInformationMessage.mockResolvedValueOnce(choice);
+                const { checks, monitor } = register(undefined, {
+                    storage,
+                    workspaceState,
+                    source,
+                });
+                checks.capabilities.mockResolvedValue(failedDetail().capabilities);
+                checks.getChecks.mockResolvedValue({
+                    hash: HASH,
+                    state: "failure",
+                    summary: "",
+                    items: [
+                        { name: "job-0", description: "", state: "failure", source: "check-run" },
+                    ],
+                });
+                checks.getDetail.mockResolvedValue(failedDetail());
+                await monitor?.onRepositoryChanged();
+                for (let i = 0; i < 10; i += 1)
+                    await new Promise((resolve) => setImmediate(resolve));
+                expect(
+                    vscodeMock.showInformationMessage,
+                    "the failed HEAD must show its settle toast",
+                ).toHaveBeenCalledTimes(1);
+                monitor?.dispose();
+                return vscodeMock.showErrorMessage.mock.calls.map((call) => call[0]);
+            } finally {
+                await removeScratchDirectories(storage);
+            }
+        }
+
+        it("a log-open error holding a command link is shown without brackets", async () => {
+            vscodeMock.answerCiLogMessage.mockImplementationOnce(
+                async (_source: unknown, _message: unknown, reply: (r: unknown) => void) => {
+                    reply({ outcome: "failed", message: LINK });
+                },
+            );
+            const shown = await chooseOnFailedToast("Open log", {});
+            expect(
+                shown,
+                "headChecks openLog reply.message must reach the error notification as plain text",
+            ).toEqual([PLAIN]);
+        });
+
+        it.each(["failed", "signedOut"])(
+            "a %s re-run error holding a command link is shown without brackets",
+            async (outcome) => {
+                const source = {
+                    actions: { run: vi.fn(async () => ({ outcome, message: LINK })) },
+                };
+                const shown = await chooseOnFailedToast("Re-run failed", source);
+                expect(
+                    shown,
+                    "headChecks rerunFailed result.message must reach the error notification as plain text",
+                ).toEqual([PLAIN]);
+            },
+        );
     });
 });

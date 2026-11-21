@@ -227,6 +227,36 @@ describe("Checks tab log messages", () => {
         });
     });
 
+    it("a job name holding a command link reaches the progress notification without brackets", async () => {
+        // VS Code turns "[label](command:...)" in a notification into a link that runs the command.
+        const { send, getDetail } = setup();
+        const base = detail("failure");
+        const run = base.runs[0]!;
+        getDetail.mockResolvedValue({
+            ...base,
+            runs: [
+                {
+                    ...run,
+                    jobs: [
+                        {
+                            ...run.jobs[0]!,
+                            name: "[Open Checks](command:workbench.action.terminal.new)",
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await send("openCiLog", 1);
+
+        expect(
+            mocks.withProgress.mock.calls[0]?.[0],
+            "ciLogHandler job.name must reach the progress notification title as plain text",
+        ).toMatchObject({
+            title: "Loading the log of Open Checks(command:workbench.action.terminal.new)…",
+        });
+    });
+
     it("running job gets outcome running and no request", async () => {
         for (const state of ["running", "queued"] as const) {
             const { replies, send, download, target } = setup(state);

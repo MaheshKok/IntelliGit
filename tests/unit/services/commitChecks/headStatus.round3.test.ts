@@ -792,3 +792,40 @@ describe("round 4 fix round 2", () => {
         ).not.toHaveBeenCalled();
     });
 });
+
+describe("forge text in the settle notification", () => {
+    // VS Code turns "[label](command:...)" in a notification into a link that runs the command.
+    const LINK = "[Open Checks](command:workbench.action.terminal.new)";
+
+    it("a failed job name holding a command link reaches the notification without brackets", async () => {
+        const base = detailOf("failure", "failure");
+        const run = base.runs[0]!;
+        const s = setup({
+            snapshot: "failure",
+            detail: async () => ({
+                ...base,
+                runs: [{ ...run, jobs: [{ ...run.jobs[0]!, name: LINK }] }],
+            }),
+            claimDir,
+        });
+        await track(new HeadCiStatus(s.deps)).onRepositoryChanged();
+        expect(
+            s.show.mock.calls[0]?.[0],
+            "headStatus failedName from a detail job must reach the notification as plain text",
+        ).toBe("CI failed on aaaaaaa: Open Checks(command:workbench.action.terminal.new)");
+    });
+
+    it("a failed snapshot check name holding a command link reaches the notification without brackets", async () => {
+        const s = setup({ snapshot: "failure", detail: async () => undefined, claimDir });
+        s.deps.capabilities = async () => NO_CI_CAPABILITIES;
+        s.deps.snapshot = async () => {
+            const snapshot = snapshotOf("failure");
+            return { ...snapshot, items: [{ ...snapshot.items[0]!, name: LINK }] };
+        };
+        await track(new HeadCiStatus(s.deps)).onRepositoryChanged();
+        expect(
+            s.show.mock.calls[0]?.[0],
+            "headStatus failedName from a snapshot check must reach the notification as plain text",
+        ).toBe("CI failed on aaaaaaa: Open Checks(command:workbench.action.terminal.new)");
+    });
+});

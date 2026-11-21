@@ -14,7 +14,25 @@ vi.mock("vscode", () => vscodeMock);
 import {
     showTimedInformationMessage,
     showTimedWarningMessage,
+    withoutLinkBrackets,
 } from "../../../src/utils/notifications";
+
+describe("withoutLinkBrackets", () => {
+    it.each([
+        [
+            "[Open Checks](command:workbench.action.terminal.new)",
+            "Open Checks(command:workbench.action.terminal.new)",
+        ],
+        [
+            "[[Open Checks]](command:workbench.action.terminal.new)",
+            "Open Checks(command:workbench.action.terminal.new)",
+        ],
+        ["][a]][[b](command:x)", "ab(command:x)"],
+        ["plain job name", "plain job name"],
+    ])("removes every bracket from %j", (input, expected) => {
+        expect(withoutLinkBrackets(input), "no [ or ] may survive, however nested").toBe(expected);
+    });
+});
 
 describe("notifications", () => {
     beforeEach(() => {

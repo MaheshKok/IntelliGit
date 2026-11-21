@@ -19,6 +19,7 @@ import type {
     CommitCiDetail,
 } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
+import { withoutLinkBrackets } from "../../utils/notifications";
 import type { CiGenerations, CiOperationContext } from "./ciGenerations";
 import type { CiTrace } from "./ciTrace";
 
@@ -540,7 +541,11 @@ export class HeadSettleToast {
         const message =
             failedName === undefined
                 ? vscode.l10n.t("CI passed on {0}", hash.slice(0, 7))
-                : vscode.l10n.t("CI failed on {0}: {1}", hash.slice(0, 7), failedName);
+                : vscode.l10n.t(
+                      "CI failed on {0}: {1}",
+                      hash.slice(0, 7),
+                      withoutLinkBrackets(failedName),
+                  );
         // Not awaited: the promise settles only when the user dismisses the notification.
         // Each button's handler reports its own errors.
         void Promise.resolve(this.deps.showInformationMessage(message, ...buttons))

@@ -10,6 +10,15 @@ function stripCodiconPrefix(message: string): string {
     return message.replace(/^\$\([^)]+\)\s*/, "");
 }
 
+/**
+ * Removes `[` and `]` from text that came from outside the extension (a CI job name, a forge
+ * error), so VS Code cannot read `[label](command:...)` in a notification as a clickable command
+ * link. Apply it to the inserted value, never to the localized template.
+ */
+export function withoutLinkBrackets(text: string): string {
+    return text.replace(/[[\]]/g, "");
+}
+
 /** Shows a non-blocking information notification with the IntelliGit product prefix. */
 export function showTimedInformationMessage(message: string): void {
     void vscode.window.showInformationMessage(withPrefix(message));

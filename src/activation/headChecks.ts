@@ -19,6 +19,7 @@ import {
 import type { CommitChecksRequestGateRegistry } from "../services/commitChecks/requestGate";
 import { normalizeCommitChecksSettings } from "../services/commitChecks/settingsConfig";
 import type { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
+import { withoutLinkBrackets } from "../utils/notifications";
 import { answerCiLogMessage } from "../views/ciLogHandler";
 
 /** What the HEAD monitor needs from repository mode. */
@@ -121,7 +122,9 @@ export function registerHeadChecks(options: HeadChecksOptions): HeadCiStatus | u
                           },
                           (reply) => {
                               if (reply.outcome === "failed" && reply.message) {
-                                  void vscode.window.showErrorMessage(reply.message);
+                                  void vscode.window.showErrorMessage(
+                                      withoutLinkBrackets(reply.message),
+                                  );
                               }
                           },
                       ),
@@ -136,7 +139,9 @@ export function registerHeadChecks(options: HeadChecksOptions): HeadCiStatus | u
                               repoRoot,
                           );
                           if (result.outcome === "failed" || result.outcome === "signedOut") {
-                              void vscode.window.showErrorMessage(result.message);
+                              void vscode.window.showErrorMessage(
+                                  withoutLinkBrackets(result.message),
+                              );
                           } else if (result.outcome === "forbidden") {
                               void vscode.window.showErrorMessage(
                                   vscode.l10n.t("Your sign-in cannot re-run this CI run."),
