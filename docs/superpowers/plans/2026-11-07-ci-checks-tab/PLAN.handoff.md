@@ -17,22 +17,20 @@
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
 ## Phase 13: review pending, started at 1860b1475c08f0fb8502dba7e1cdb681b68d7abf
-- Build commit 96e3c78e (0.43.17, ships hidden behind the Checks tab switch). Fix round 1 (13 Codex findings) is the commit after it, on the same branch; a fresh Codex review of it is next.
-- Every finding has a regression test that was red before the fix (red lines in `/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/red1.log`) and a mutation on a copy that went red naming that test: M01-M19 all red after strengthening the M08 and M16 tests. The M06-survivor test (failed plus running) passes before the fix by design and goes red only under its mutation.
-- Gates green: focused tests, format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package, verify:manifest, Gate L (l10n import/validate/audit). `bun run test`: 18 red of 8518 under load; 8 are the known commit-list-column-resize reds (Node 26), the other 10 (git integration, shelf, fixtures, e2e known-bad, changeWorkflowHost) pass when rerun alone except one timing flake that also passes alone: unrelated to this diff.
-- GitNexus detect-changes (scope all, main checkout runner on this worktree): 30 files, 24 symbols, 0 flows, risk low.
+- Build commit 96e3c78e (0.43.17, ships hidden behind the Checks tab switch). Fix round 1 is 19458d72. Fix round 2 (4 Codex findings) is the commit after it, on the same branch; a fresh Codex review is next.
+- Round 2 regression tests live in `tests/unit/services/commitChecks/headStatus.review.test.ts` (7 tests); red lines before the fix are in `/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/red2.log`. Mutations M1-M7 on a copy each went red naming their test.
+- Gates green: both head status test files (49 tests), format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build; see the review log entry for the full-suite, build:prod, package and verify:manifest results. Gate L not re-run: no l10n string changed this round.
 
 ## Decisions and why
-- Per-forge cooldown: providers expose `apiUrl(ref)`; `coordinator.requestBucket(hash)` names HEAD's own provider and API-origin bucket; `headCooldownEnd` reads only that bucket (all four providers, so Bitbucket NearLimit still pauses). `latestCooldownEnd` is removed (orphaned by this).
-- The monitor is fenced three ways: `lookup` (HEAD lookups), `pollSequence` (older poll vs newer settled refresh) and the `current()` closure, which now also checks the switch.
-- Pending-observed keeps an in-memory `unsaved` set so a failed or slow write still counts for the session; the write failure is traced and polling continues.
-- A non-EEXIST claim failure returns `"retry"` so the next focused-window event tries again.
-- Ordinary unavailable results show "CI unavailable" (new l10n string, 11 locales) with the error as tooltip; click retries.
-- A held Checks request carries its repoKey and is dropped, not relabelled, after a repository switch.
+- Per-forge cooldown, three-way monitor fence and pending-observed `unsaved` set: as in round 1; `unsaved` now keeps each observation's timestamp and applies the same 7-day expiry as the stored set.
+- After the awaited detail invalidation the monitor re-checks `current()` (switch, HEAD, dispose, repo, auth, newest poll) before the forced detail fetch.
+- A newer poll that confirms the same settlement while the claim runs is queued on the toast; the claimant shows it when its own poll went stale. A claimant that is stale with nothing queued keeps the claim and the pending-observed entry (`claimedUnshown`), so the next confirming poll shows the one toast. A failed claim holds the newest offered event for the next focus.
+- An unavailable settled detail is a provider failure, not unknown coverage: the bar shows "CI unavailable" with the detail's error, nothing re-arms the schedule (a cooldown still pauses and resumes), and the user's refresh forces a fresh detail fetch. A thrown detail fetch stays `unknown` and retries as before.
 
 ## Open risks
 - E2E not run locally (CI runs `ciHeadStatus.spec.ts`); the status bar locator and focus assumptions are unchanged.
-- R1 (Fable) review still due for Phase 13: async ordering and cross-window claim concurrency.
+- R1 (Fable) review still due for Phase 13: async ordering and cross-window claim concurrency (the claim queue added this round is part of it).
+- A commit whose claim was kept after a genuine HEAD move (`claimedUnshown`) toasts if HEAD later returns to it still settled and pending-observed (within 7 days); at most once per window.
 
 ## Next phase: 14
 
@@ -45,3 +43,4 @@
 - GitLab snapshot could follow `x-next-page` pages if getChecks moved to `fetchWithMeta`.
 - The main checkout's GitNexus index is stale and has no run.cjs inside worktrees; the main checkout's runner works with `--repo <worktree>`.
 - A full `bun run test` on this machine takes minutes and shows load-dependent flakes in changeWorkflowHost and fixtures tests.
+- Any Bash command that mentions the path segment "IntelliGit" next to a script is refused by the worktree git guard as "too complex"; put scripts under the TMPDIR phase-run folder.

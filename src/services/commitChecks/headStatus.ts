@@ -254,9 +254,9 @@ interface PendingObservedEntry {
 /** The pending-observed set (K27) with serialized writes. */
 export class PendingObservedSet {
     private writes: Promise<void> = Promise.resolve();
-    // Observed commits whose write has not been stored: a failed write keeps the
-    // observation for this session, so the settle is still announced.
-    private readonly unsaved = new Set<string>();
+    // Observed commits whose write has not been stored, with the time seen: a failed write
+    // keeps the observation for this session (and its 7-day expiry), so the settle is still announced.
+    private readonly unsaved = new Map<string, number>();
 
     /**
      * Creates the set over a memento.
@@ -271,15 +271,20 @@ export class PendingObservedSet {
 
     /** Whether the commit was seen incomplete in the last 7 days. */
     has(repoKey: string, hash: string): boolean {
-        return (
-            this.unsaved.has(`${repoKey}\0${hash}`) ||
-            this.read().some((entry) => entry.repoKey === repoKey && entry.hash === hash)
-        );
+        const key = `${repoKey}\0${hash}`;
+        const observedAt = this.unsaved.get(key);
+        if (observedAt !== undefined) {
+            if (observedAt >= this.now() - PENDING_OBSERVED_MAX_AGE_MS) return true;
+            this.unsaved.delete(key);
+        }
+        return this.read().some((entry) => entry.repoKey === repoKey && entry.hash === hash);
     }
 
     /** Adds the commit; resolves once the write is stored, rejects when it fails. */
     async add(repoKey: string, hash: string): Promise<void> {
-        this.unsaved.add(`${repoKey}\0${hash}`);
+        if (!this.unsaved.has(`${repoKey}\0${hash}`)) {
+            this.unsaved.set(`${repoKey}\0${hash}`, this.now());
+        }
         await this.write((entries) =>
             entries.some((entry) => entry.repoKey === repoKey && entry.hash === hash)
                 ? entries
@@ -357,6 +362,10 @@ export class HeadSettleToast {
     readonly pendingObserved: PendingObservedSet;
     // Set before the first await, so one window never claims the same commit twice.
     private readonly running = new Set<string>();
+    // Commits with a claim in flight, holding the newest event offered meanwhile.
+    private readonly claims = new Map<string, HeadSettledEvent | undefined>();
+    // Commits this window claimed but did not show, because the offering poll went stale.
+    private readonly claimedUnshown = new Set<string>();
 
     /**
      * Creates the notification over its pending-observed set.
@@ -381,20 +390,56 @@ export class HeadSettleToast {
         if (!this.deps.switchOn()) return undefined;
         const { repoKey, hash } = event;
         const key = `${repoKey}\0${hash}`;
-        if (this.running.has(key) || !this.deps.settings().notifyOnSettle) return undefined;
+        if (!this.deps.settings().notifyOnSettle) return undefined;
+        // A newer poll confirmed the same settlement while the claim runs: the claimant shows it.
+        if (this.claims.has(key)) {
+            this.claims.set(key, event);
+            return undefined;
+        }
+        if (this.running.has(key)) return undefined;
         if (!this.pendingObserved.has(repoKey, hash) || !event.isCurrent()) return undefined;
         if (!this.deps.focused()) return "unfocused";
         this.running.add(key);
+        this.claims.set(key, undefined);
+        try {
+            if (!this.claimedUnshown.has(key)) {
+                const failed = await this.claim(repoKey, hash, key);
+                if (failed) return failed === "exists" ? undefined : "retry";
+            }
+            const owner = [event, this.claims.get(key)].find((candidate) => candidate?.isCurrent());
+            if (!owner) {
+                // This poll went stale and no newer one has confirmed yet: the claim is kept, and
+                // the next poll that confirms the settlement shows the notification.
+                this.claimedUnshown.add(key);
+                this.running.delete(key);
+                return undefined;
+            }
+            this.claimedUnshown.delete(key);
+            this.show(owner);
+            await this.pendingObserved.remove(repoKey, hash).catch(() => undefined);
+            return undefined;
+        } finally {
+            this.claims.delete(key);
+        }
+    }
+
+    /** Takes the claim directory; `"exists"` when another window holds it, `"failed"` on a storage error. */
+    private async claim(
+        repoKey: string,
+        hash: string,
+        key: string,
+    ): Promise<"exists" | "failed" | undefined> {
         const mkdir = this.deps.mkdir ?? ((target, options) => fs.mkdir(target, options));
         const claim = path.join(this.deps.claimDir, createHash("sha256").update(key).digest("hex"));
         try {
             await mkdir(this.deps.claimDir, { recursive: true });
             await mkdir(claim);
+            return undefined;
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === "EEXIST") {
                 this.deps.trace?.({ kind: "claim", outcome: "claim-exists", repoKey, hash });
                 await this.pendingObserved.remove(repoKey, hash).catch(() => undefined);
-                return undefined;
+                return "exists";
             }
             // The commit stays in the set and the next focus tries again.
             this.running.delete(key);
@@ -405,12 +450,8 @@ export class HeadSettleToast {
                 hash,
                 reason: "storage",
             });
-            return "retry";
+            return "failed";
         }
-        await this.pendingObserved.remove(repoKey, hash).catch(() => undefined);
-        // At most once: a HEAD that moved during the claim loses its notification.
-        if (event.isCurrent()) this.show(event);
-        return undefined;
     }
 
     private show(event: HeadSettledEvent): void {
@@ -507,6 +548,7 @@ export class HeadCiStatus {
     // A settlement detail came back `unknown`: every later complete poll fetches it again.
     private lastUnknown = false;
     private awaitingFocus?: HeadSettledEvent;
+    private latestOffer?: HeadSettledEvent;
     private disposed = false;
 
     /**
@@ -661,20 +703,22 @@ export class HeadCiStatus {
         }
         if (snapshot.state === "none") return this.onNone(run, hash, snapshot, current);
         const poll: PollContext = { run, hash, repoKey, options, ctx, current, capabilities };
-        if (snapshot.state === "unavailable") return this.onUnavailable(poll, snapshot);
+        if (snapshot.state === "unavailable") {
+            return this.onUnavailable(poll, snapshot.error ?? snapshot.summary);
+        }
         if (!isCompleteSnapshot(snapshot)) return this.onIncomplete(poll, snapshot);
         await this.onComplete(poll, snapshot);
     }
 
     private async onUnavailable(
         { run, hash, repoKey, current }: PollContext,
-        snapshot: CommitChecksSnapshot,
+        message: string,
     ): Promise<void> {
         // The fetch itself may have found the cooldown: read the gate again.
         const until = await this.cooldownEnd(hash);
         if (!current()) return;
         if (until > this.now()) return this.pause(run, repoKey, hash, until);
-        this.bar.render({ kind: "unavailable", message: snapshot.error ?? snapshot.summary });
+        this.bar.render({ kind: "unavailable", message });
     }
 
     private async onIncomplete(
@@ -700,13 +744,22 @@ export class HeadCiStatus {
         this.schedule(run, headMonitorDelayMs(this.attempt++));
     }
 
-    private async onComplete(
-        { run, hash, repoKey, ctx, current, capabilities }: PollContext,
-        snapshot: CommitChecksSnapshot,
-    ): Promise<void> {
+    private async onComplete(poll: PollContext, snapshot: CommitChecksSnapshot): Promise<void> {
+        const { run, hash, repoKey, ctx, current, capabilities } = poll;
         this.bar.render(snapshotView(snapshot)());
-        const settlement = await this.settlementDetail(hash, repoKey, capabilities, snapshot, ctx);
+        const settlement = await this.settlementDetail(
+            hash,
+            repoKey,
+            capabilities,
+            snapshot,
+            ctx,
+            current,
+        );
         if (!current()) return;
+        // A provider failure is not unknown coverage: show it and wait for the user's refresh.
+        if (settlement.state === "unavailable") {
+            return this.onUnavailable(poll, settlement.detail?.error ?? snapshot.summary);
+        }
         // The detail counts jobs; the snapshot only aggregates them.
         if (settlement.state === "settled" && settlement.detail) {
             this.bar.render({
@@ -745,20 +798,30 @@ export class HeadCiStatus {
         capabilities: ProviderCiCapabilities,
         snapshot: CommitChecksSnapshot,
         ctx: CiOperationContext,
-    ): Promise<{ state: CiSettlement; detail?: CommitCiDetail }> {
+        current: () => boolean,
+    ): Promise<{ state: CiSettlement | "unavailable"; detail?: CommitCiDetail }> {
         if (!capabilities.runs) return { state: "settled" };
         const transition = this.lastUnknown || this.toast.pendingObserved.has(repoKey, hash);
         if (!transition && snapshot.state !== "failure") return { state: "settled" };
         this.detailSequence += 1;
         let detail: CommitCiDetail | undefined;
         try {
-            if (transition) await this.deps.invalidateDetail(hash);
+            if (transition) {
+                await this.deps.invalidateDetail(hash);
+                // The switch, HEAD or a dispose may have changed during the invalidation: no request.
+                if (!current()) return { state: "unknown" };
+            }
             detail = await this.deps.detail(hash, transition ? { force: true } : {}, ctx);
         } catch {
             detail = undefined;
         }
-        const state: CiSettlement =
-            detail && detail.outcome !== "unavailable" ? settlementOf(detail) : "unknown";
+        const state: CiSettlement | "unavailable" =
+            detail?.outcome === "unavailable"
+                ? "unavailable"
+                : detail
+                  ? settlementOf(detail)
+                  : "unknown";
+        // `unavailable` keeps the flag too, so the user's refresh fetches the detail afresh.
         this.lastUnknown = state !== "settled";
         return { state, ...(detail && { detail }) };
     }
@@ -815,7 +878,9 @@ export class HeadCiStatus {
     }
 
     private async offerToast(event: HeadSettledEvent): Promise<void> {
+        this.latestOffer = event;
         const outcome = await this.toast.settled(event);
-        if (outcome === "unfocused" || outcome === "retry") this.awaitingFocus = event;
+        // A newer poll's event may have been queued behind this claim: hold that one.
+        if (outcome === "unfocused" || outcome === "retry") this.awaitingFocus = this.latestOffer;
     }
 }
