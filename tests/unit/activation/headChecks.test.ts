@@ -35,6 +35,7 @@ vi.mock("vscode", () => ({
 vi.mock("../../../src/e2e/activationState", () => ({ isE2eControlChannelActive: () => true }));
 
 import { headCooldownEnd, registerHeadChecks } from "../../../src/activation/headChecks";
+import { CiActionFenceStore } from "../../../src/services/commitChecks/ciActionFence";
 import { CiGenerations } from "../../../src/services/commitChecks/ciGenerations";
 import { HttpError } from "../../../src/services/commitChecks/http";
 import {
@@ -116,7 +117,7 @@ describe("registerHeadChecks commands", () => {
         const disposeListener = vi.fn();
         const { checks, monitor } = register({
             isFenced: () => false,
-            onDidChange: (listener: typeof onFence) => {
+            onDidBegin: (listener: typeof onFence) => {
                 onFence = listener;
                 return { dispose: disposeListener };
             },
@@ -139,6 +140,46 @@ describe("registerHeadChecks commands", () => {
             "a new HEAD action fence must wake the settled monitor",
         ).toBeGreaterThan(before);
         monitor?.dispose();
+    });
+
+    it("real fence begin wakes a monitor that already stopped on a settled HEAD", async () => {
+        const values = new Map<string, unknown>();
+        const fences = new CiActionFenceStore({
+            get: <T>(key: string) => values.get(key) as T | undefined,
+            keys: () => [...values.keys()],
+            update: async (key, value) => {
+                values.set(key, value);
+            },
+        });
+        const { checks, monitor } = register(fences);
+        checks.capabilities.mockResolvedValue({ runs: true, jobs: true });
+        checks.getChecks.mockResolvedValue({
+            hash: HASH,
+            state: "success",
+            summary: "",
+            items: [],
+        });
+        await monitor?.onRepositoryChanged();
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(monitor?.isPolling(), "a settled HEAD stops the monitor").toBe(false);
+        const before = checks.getChecks.mock.calls.length;
+        await fences.begin({
+            repoKey: "/repo",
+            hash: HASH,
+            provider: "github",
+            action: "rerunFailed",
+            targetId: "77",
+            runId: "77",
+            before: { attempt: 1, state: "failure" },
+            evidence: "runAttempt",
+        });
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(
+            checks.getChecks.mock.calls.length,
+            "a new HEAD action fence on the real store must wake the settled monitor",
+        ).toBeGreaterThan(before);
+        monitor?.dispose();
+        fences.dispose();
     });
 
     it("Show HEAD checks opens the Git Log and posts openChecksTab for HEAD", async () => {

@@ -159,7 +159,7 @@ export function registerHeadChecks(options: HeadChecksOptions): HeadCiStatus | u
             // A new action fence on a settled HEAD (a re-run from the Checks tab) wakes the stopped monitor.
             ...(options.fences
                 ? [
-                      options.fences.onDidChange((change) => {
+                      options.fences.onDidBegin((change) => {
                           if (change.repoKey === repoRoot()) void monitor.restart();
                       }),
                   ]

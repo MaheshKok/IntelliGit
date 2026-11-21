@@ -156,6 +156,7 @@ export class CiActionFenceStore implements CiActionFenceView {
     // Fences whose not-seen timer fired; read with the clock so either one switches the label.
     private readonly notSeenFired = new Set<CiActionFenceRecord>();
     private readonly listeners = new Set<(change: CiActionFenceChange) => void>();
+    private readonly beginListeners = new Set<(change: CiActionFenceChange) => void>();
     private readonly endListeners = new Set<(hash: string) => unknown>();
     // Fences whose begin write has not settled: their action is not sent yet, so no
     // fetched detail can show it.
@@ -243,6 +244,7 @@ export class CiActionFenceStore implements CiActionFenceView {
         // Numbered once its write settled: a fetch started during the write predates the send.
         this.begunAt.set(record, ++this.begun);
         this.traceFence("fenced", record);
+        this.emit(this.beginListeners, { repoKey: record.repoKey, hash: record.hash });
     }
 
     /**
@@ -367,6 +369,18 @@ export class CiActionFenceStore implements CiActionFenceView {
     }
 
     /**
+     * Listens for a fence beginning, once its write settled and just before its action is
+     * sent; the HEAD monitor, stopped on a settled HEAD, wakes on it.
+     *
+     * @param listener - Called with the fenced commit.
+     * @returns A disposable that removes the listener.
+     */
+    onDidBegin(listener: (change: CiActionFenceChange) => void): { dispose(): void } {
+        this.beginListeners.add(listener);
+        return { dispose: () => this.beginListeners.delete(listener) };
+    }
+
+    /**
      * Listens for a commit's fence ending by evidence or the user's Refresh (not by a
      * definite failure). Called synchronously, before the end is stored, so the caches
      * drop what they hold for the commit before any later write. The end is stored only
@@ -387,6 +401,7 @@ export class CiActionFenceStore implements CiActionFenceView {
         for (const timer of this.timers.values()) clearTimeout(timer);
         this.timers.clear();
         this.listeners.clear();
+        this.beginListeners.clear();
         this.endListeners.clear();
     }
 
