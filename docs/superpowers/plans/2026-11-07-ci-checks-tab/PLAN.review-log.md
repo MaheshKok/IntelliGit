@@ -1417,3 +1417,4 @@ WORKTREE 0 13: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-ru
 - Regression tests on the real store, red before: headChecks.test.ts "real fence begin wakes a monitor that already stopped on a settled HEAD" ("expected 1 to be greater than 1"); ciActionFence.test.ts "begin announces the new fence on onDidBegin once its write settled; a failed begin does not" ("expected [] to deeply equal [ { repoKey: '/repo', …(1) } ]"). Green after; activation, commitChecks and views unit folders 2107 of 2107.
 - Mutations (copy mut-13-takeover-6): emit removed = both tests red on their assertions; emit moved before the write settles = "a fence whose write failed must not emit" red.
 - Proof chain: all steps before test exit 0; `bun run test` 8 of 8577 red, all commit-list-column-resize (known Node 26); build:prod, package, verify:manifest exit 0 run separately.
+PHASE 13: HALT review still failing after takeover
