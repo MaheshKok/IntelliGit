@@ -70,6 +70,15 @@ const ACCOUNT_ATTEMPTS = 2;
 class AccountChangedError extends Error {}
 
 /**
+ * The caller that started a shared fetch went stale before a provider request: nothing is
+ * sent or cached. A caller that joined that fetch and is still live starts its own.
+ */
+class StaleCallerError extends Error {}
+
+/** Fetch options with the caller's own liveness check, run again before any provider request. */
+type LiveFetchOptions = CommitChecksFetchOptions & { isCurrent?: () => boolean };
+
+/**
  * Default cache TTL for pending snapshots, aligned with the webview poll interval
  * (`PENDING_CHECK_REFRESH_MS`, 15s). Sub-poll bursts (scroll/re-render) serve cache while
  * the 15s poll still re-fetches; tunable host-side. `none` and `unavailable` use separate
@@ -194,12 +203,11 @@ export class CommitChecksCoordinator {
      * Returns the snapshot for a commit, serving a fresh cache hit unless a forced refresh is set.
      *
      * @param hash - Full Git commit hash requested by a visible graph row.
-     * @param options - Cache refresh controls, including forced cache-layer bypasses.
+     * @param options - Cache refresh controls, including forced cache-layer bypasses. Once
+     *   `isCurrent` is false after an await, no provider request starts and the snapshot is
+     *   the no-badge one.
      */
-    async getChecks(
-        hash: string,
-        options: CommitChecksFetchOptions = {},
-    ): Promise<CommitChecksSnapshot> {
+    async getChecks(hash: string, options: LiveFetchOptions = {}): Promise<CommitChecksSnapshot> {
         if (!this.enabled) {
             // Feature off: no badge, no remote resolution, no network. The webview also
             // never renders the button, so this is defense in depth.
@@ -388,7 +396,7 @@ export class CommitChecksCoordinator {
      */
     async getDetail(
         hash: string,
-        options: CommitChecksFetchOptions & { isCurrent?: () => boolean },
+        options: LiveFetchOptions,
         ctx: CiOperationContext,
         onScanUpdate?: (detail: CommitCiDetail) => void,
     ): Promise<CommitCiDetail | undefined> {
@@ -485,7 +493,17 @@ export class CommitChecksCoordinator {
                 const [detail, rule] = await Promise.all([
                     this.detailService.getOrFetch(
                         `${this.snapshotKey(match, account, hash)}#detail`,
-                        async () => this.withUsual(match, account, await checkedFetch(), confirm),
+                        async () => {
+                            // The detail caches were read first: a caller gone stale meanwhile sends nothing.
+                            if (!live()) throw new StaleCallerError();
+                            return this.withUsual(
+                                match,
+                                account,
+                                await checkedFetch(),
+                                confirm,
+                                live,
+                            );
+                        },
                         serve,
                         options,
                         confirm,
@@ -496,9 +514,14 @@ export class CommitChecksCoordinator {
                 return markRequired(detail, rule);
             },
             unavailable,
-        );
+        ).catch((err: unknown) => {
+            if (err instanceof StaleCallerError) return null;
+            throw err;
+        });
+        // Joined another caller's fetch that stopped: a caller still live starts its own.
+        if (marked === null && live()) return this.getDetail(hash, options, ctx, onScanUpdate);
         if (!live()) return this.discard(ctx, hash, provider.id);
-        return marked;
+        return marked ?? undefined;
     }
 
     /**
@@ -511,6 +534,7 @@ export class CommitChecksCoordinator {
         account: string | undefined,
         detail: CiDetailFetch,
         confirm: () => Promise<void>,
+        live: () => boolean,
     ): Promise<CiDetailFetch> {
         const { provider, ref } = match;
         const getUsualDuration = provider.getUsualDuration?.bind(provider);
@@ -524,6 +548,8 @@ export class CommitChecksCoordinator {
                 runs.push(run);
                 continue;
             }
+            // Each lookup is a request of its own: a caller gone stale sends no more.
+            if (!live()) throw new StaleCallerError();
             try {
                 // Serial, so a commit with many running runs never takes every gate slot at once.
                 // react-doctor-disable-next-line react-doctor/async-await-in-loop
@@ -762,7 +788,7 @@ export class CommitChecksCoordinator {
      */
     private async fetchFresh(
         hash: string,
-        options: CommitChecksFetchOptions,
+        options: LiveFetchOptions,
     ): Promise<CommitChecksSnapshot> {
         const providerGeneration = this.providerGeneration;
         let match: ProviderMatch | null;
@@ -772,10 +798,17 @@ export class CommitChecksCoordinator {
             return unavailableSnapshot(hash, getErrorMessage(err));
         }
         if (!match) return this.noneSnapshot(hash);
-        const snapshot = await this.fetchSnapshot(match, hash, options);
-        // The repository changed during the fetch: this answer belongs to the old one, and
-        // is dropped the same way a stale provider resolution is.
-        if (providerGeneration !== this.providerGeneration) {
+        let snapshot: CommitChecksSnapshot | undefined;
+        try {
+            snapshot = await this.fetchSnapshot(match, hash, options);
+        } catch (err) {
+            if (!(err instanceof StaleCallerError)) throw err;
+            // Joined another caller's fetch that stopped: a caller still live starts its own.
+            if (options.isCurrent?.() !== false) return this.fetchFresh(hash, options);
+        }
+        // The repository changed during the fetch, or the caller went stale: this answer
+        // belongs to the old state, and is dropped the same way a stale provider resolution is.
+        if (!snapshot || providerGeneration !== this.providerGeneration) {
             this.trace?.({
                 kind: "snapshot",
                 outcome: "discarded-generation",
@@ -867,9 +900,11 @@ export class CommitChecksCoordinator {
     private fetchSnapshot(
         match: ProviderMatch,
         hash: string,
-        options: CommitChecksFetchOptions,
+        options: LiveFetchOptions,
     ): Promise<CommitChecksSnapshot> {
         const fetchChecks = async (): Promise<CommitChecksSnapshot> => {
+            // The account and the caches were read first: a caller gone stale sends nothing.
+            if (options.isCurrent?.() === false) throw new StaleCallerError();
             try {
                 return await match.provider.getChecks(match.ref, hash);
             } catch (err) {

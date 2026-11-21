@@ -144,6 +144,17 @@ function detailCounts(detail: CommitCiDetail): HeadStatusCounts {
     };
 }
 
+/**
+ * The error of a failed detail read, or undefined when the read succeeded: an unavailable
+ * outcome, or a forced refresh that failed and kept the earlier detail (`refreshError`),
+ * which the Checks tab's actions treat as failed too.
+ */
+function detailFailure(detail: CommitCiDetail | undefined, fallback: string): string | undefined {
+    if (detail?.refreshError !== undefined) return detail.refreshError || fallback;
+    if (detail?.outcome === "unavailable") return detail.error ?? fallback;
+    return undefined;
+}
+
 /** Earliest start time of the detail's unfinished runs, in epoch ms. */
 function earliestIncompleteStart(detail: CommitCiDetail | undefined): number | undefined {
     const starts = (detail?.runs ?? [])
@@ -420,7 +431,9 @@ export class HeadSettleToast {
             }
             if (!this.liveOwner(event, key)) return this.keepUnshown(key);
             // Section 10: remove the commit from the set, then show the notification.
-            await this.pendingObserved.remove(repoKey, hash).catch(() => undefined);
+            await this.pendingObserved
+                .remove(repoKey, hash)
+                .catch(() => this.traceStorageFailure(repoKey, hash));
             const owner = this.liveOwner(event, key);
             if (!owner) {
                 // Stale during the removal: the observation goes back for the next confirming poll.
@@ -482,7 +495,9 @@ export class HeadSettleToast {
                 return this.claimFailed(repoKey, hash, key);
             }
             this.deps.trace?.({ kind: "claim", outcome: "claim-exists", repoKey, hash });
-            await this.pendingObserved.remove(repoKey, hash).catch(() => undefined);
+            await this.pendingObserved
+                .remove(repoKey, hash)
+                .catch(() => this.traceStorageFailure(repoKey, hash));
             return "exists";
         }
     }
@@ -490,6 +505,11 @@ export class HeadSettleToast {
     /** A storage error: the commit stays in the set and the next focus tries again. */
     private claimFailed(repoKey: string, hash: string, key: string): "failed" {
         this.running.delete(key);
+        this.traceStorageFailure(repoKey, hash);
+        return "failed";
+    }
+
+    private traceStorageFailure(repoKey: string, hash: string): void {
         this.deps.trace?.({
             kind: "claim",
             outcome: "failed",
@@ -497,12 +517,10 @@ export class HeadSettleToast {
             hash,
             reason: "storage",
         });
-        return "failed";
     }
 
     private show(event: HeadSettledEvent): void {
         const { capabilities, detail, hash, snapshot } = event;
-        const counts = detail ? detailCounts(detail) : snapshotCounts(snapshot);
         const failedJobs = detail
             ? detailJobs(detail).filter(({ job }) => job.state === "failure")
             : [];
@@ -515,12 +533,14 @@ export class HeadSettleToast {
             ...(capabilities.logs && failedJobs.length > 0 ? [openLog] : []),
             ...(capabilities.rerunFailed && failedRunIds.length > 0 ? [rerun] : []),
         ];
-        const message = vscode.l10n.t(
-            "CI finished for {0}: {1} failed, {2} passed.",
-            hash.slice(0, 7),
-            counts.failed,
-            counts.passed,
-        );
+        // A provider without runs has no jobs: the failed check of the snapshot is named instead.
+        const failedName =
+            failedJobs[0]?.job.name ??
+            snapshot.items.find((item) => FAILED_STATES.has(item.state))?.name;
+        const message =
+            failedName === undefined
+                ? vscode.l10n.t("CI passed on {0}", hash.slice(0, 7))
+                : vscode.l10n.t("CI failed on {0}: {1}", hash.slice(0, 7), failedName);
         // Not awaited: the promise settles only when the user dismisses the notification.
         // Each button's handler reports its own errors.
         void Promise.resolve(this.deps.showInformationMessage(message, ...buttons))
@@ -539,7 +559,7 @@ export class HeadSettleToast {
 /** Snapshot and detail fetch options; `force` skips the caches. */
 export interface HeadFetchOptions {
     force?: boolean;
-    /** The poll's liveness check, run again before any provider request (detail only). */
+    /** The poll's liveness check, run again before any provider request. */
     isCurrent?: () => boolean;
 }
 
@@ -748,7 +768,7 @@ export class HeadCiStatus {
         if (!capabilities) return this.bar.hide();
         let snapshot: CommitChecksSnapshot;
         try {
-            snapshot = await this.deps.snapshot(hash, options);
+            snapshot = await this.deps.snapshot(hash, { ...options, isCurrent: current });
         } catch {
             if (current()) this.bar.hide();
             return;
@@ -874,15 +894,12 @@ export class HeadCiStatus {
             this.lastUnknown = true;
             return { state: "unavailable", error: getErrorMessage(error) };
         }
+        const error = detailFailure(detail, snapshot.summary);
         const state: CiSettlement | "unavailable" =
-            detail?.outcome === "unavailable"
-                ? "unavailable"
-                : detail
-                  ? settlementOf(detail)
-                  : "unknown";
+            error !== undefined ? "unavailable" : detail ? settlementOf(detail) : "unknown";
         // `unavailable` keeps the flag too, so the user's refresh fetches the detail afresh.
         this.lastUnknown = state !== "settled";
-        return { state, ...(detail && { detail }) };
+        return { state, ...(detail && { detail }), ...(error !== undefined && { error }) };
     }
 
     /**
@@ -902,9 +919,8 @@ export class HeadCiStatus {
             .then(
                 async (detail) => {
                     if (!live()) return;
-                    if (detail?.outcome === "unavailable") {
-                        return unavailable(detail.error ?? snapshot.summary);
-                    }
+                    const error = detailFailure(detail, snapshot.summary);
+                    if (error !== undefined) return unavailable(error);
                     const startedAt = earliestIncompleteStart(detail);
                     if (startedAt !== undefined) this.bar.render(snapshotView(snapshot)(startedAt));
                 },

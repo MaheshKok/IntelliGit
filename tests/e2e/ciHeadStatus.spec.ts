@@ -173,9 +173,9 @@ test("toast buttons appear per capability", async ({ fixtureWorkspace }, testInf
 
         const toast = page
             .locator(".notifications-toasts .notification-toast")
-            .filter({ hasText: "CI finished for" });
+            .filter({ hasText: "CI failed on" });
         await expect(toast).toHaveCount(1, { timeout: 60_000 });
-        await expect(toast).toContainText("1 failed, 0 passed");
+        await expect(toast).toContainText(": unit-tests");
         await expect(toast.getByRole("button", { name: "Open Checks" })).toBeVisible();
         await expect(toast.getByRole("button", { name: "Open log" })).toBeVisible();
         await expect(toast.getByRole("button", { name: "Re-run failed" })).toHaveCount(0);

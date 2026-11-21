@@ -357,7 +357,7 @@ describe("HeadCiStatus", () => {
         // The same number of detail fetches when the provider has runs (§10 budget).
         expect(h.detail).toHaveBeenCalledTimes(36);
         // Only the first fetch on a new HEAD reads the caches; every poll after it is forced.
-        expect(h.snapshot.mock.calls[0][1]).toEqual({});
+        expect(h.snapshot.mock.calls[0][1].force).toBeUndefined();
         expect(h.snapshot.mock.calls.slice(1).every((call) => call[1].force === true)).toBe(true);
     });
 
@@ -442,8 +442,8 @@ describe("HeadCiStatus", () => {
         // Not awaited: joining the held request would never settle.
         const settling = status.refresh();
         await vi.waitFor(() => expect(h.show).toHaveBeenCalledTimes(1));
-        // Job states come from the second request: one failed job, one passed.
-        expect(h.show.mock.calls[0][0]).toContain("1 failed, 1 passed");
+        // Job states come from the second request: it has the failed job, the held one has none.
+        expect(h.show.mock.calls[0][0]).toContain("CI failed on");
         releaseHeld(detailOf(["running", "running"]));
         await settling;
         await settle();
