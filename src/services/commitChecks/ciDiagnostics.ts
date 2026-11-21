@@ -2,7 +2,7 @@
 // collection, filled only for a complete failing HEAD whose provider reads annotations. Every
 // path and line range comes from the provider and is validated before a Diagnostic exists.
 
-import { promises as fs } from "node:fs";
+import { promises as fs, realpathSync } from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type {
@@ -68,6 +68,8 @@ function severityOf(level: CiAnnotationLevel): vscode.DiagnosticSeverity {
 interface Placed {
     /** Relative path with `/` separators, as the tab lists it. */
     relPath: string;
+    /** The file's real path inside the repository, as validated; the Problems entry's URI. */
+    real: string;
     level: CiAnnotationLevel;
     /** 0-based, clamped to the file. */
     startLine: number;
@@ -83,7 +85,13 @@ export class CiDiagnostics implements CiAnnotationsAccess {
     private sequence = 0;
     // The commit the newest show ran for, so a later poll of the same HEAD sends nothing again.
     private target?: string;
-    private published?: { repoKey: string; hash: string; view: CiAnnotationsView };
+    // `live` is the publishing show's own liveness check, rerun when a click opens a file.
+    private published?: {
+        repoKey: string;
+        hash: string;
+        view: CiAnnotationsView;
+        live: () => boolean;
+    };
     private readonly listeners = new Set<() => void>();
 
     /**
@@ -112,7 +120,10 @@ export class CiDiagnostics implements CiAnnotationsAccess {
         if ((await this.deps.headHash()) !== hash || !live()) return;
         const read: { job: CiJob; result: CiAnnotations }[] = [];
         try {
-            for (const job of jobs) {
+            for (const [index, job] of jobs.entries()) {
+                // HEAD may have moved during the previous job's request, before its clear arrives.
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
+                if (index > 0 && (await this.deps.headHash()) !== hash) return;
                 // Ships hidden until Phase 18: no annotations request while the switch is off.
                 if (!this.deps.switchOn() || !live()) return;
                 // Serial: each request takes a slot of the provider's request gate.
@@ -126,7 +137,7 @@ export class CiDiagnostics implements CiAnnotationsAccess {
             if (!this.deps.switchOn() || !live() || head !== hash) return;
             this.deps.collection.clear();
             const forbidden = error instanceof HttpError && error.statusCode === 403;
-            this.publish(repoKey, hash, {
+            this.publish(repoKey, hash, live, {
                 items: [],
                 rejected: 0,
                 coverage: "full",
@@ -134,10 +145,14 @@ export class CiDiagnostics implements CiAnnotationsAccess {
             });
             return;
         }
-        const { placed, rejected } = await placeAll(repoKey, read);
+        const all = await placeAll(repoKey, read);
         const head = await this.deps.headHash();
         // Ships hidden until Phase 18: nothing reaches the Problems panel while the switch is off.
         if (!this.deps.switchOn() || !live() || head !== hash) return;
+        // A file swapped for a symlink since placement no longer resolves to itself. Synchronous,
+        // so nothing can change between this check and the publish below.
+        const placed = all.placed.filter((item) => resolvesToItself(item.real));
+        const rejected = all.rejected + all.placed.length - placed.length;
         this.deps.collection.clear();
         const byFile = new Map<string, vscode.Diagnostic[]>();
         for (const item of placed) {
@@ -147,14 +162,15 @@ export class CiDiagnostics implements CiAnnotationsAccess {
                 severityOf(item.level),
             );
             diagnostic.source = `CI: ${item.job}`;
-            const list = byFile.get(item.relPath) ?? [];
+            const list = byFile.get(item.real) ?? [];
             list.push(diagnostic);
-            byFile.set(item.relPath, list);
+            byFile.set(item.real, list);
         }
-        for (const [relPath, diagnostics] of byFile) {
-            this.deps.collection.set(vscode.Uri.file(path.join(repoKey, relPath)), diagnostics);
+        // The contained real path, never the provider's own spelling of it (K28).
+        for (const [real, diagnostics] of byFile) {
+            this.deps.collection.set(vscode.Uri.file(real), diagnostics);
         }
-        this.publish(repoKey, hash, {
+        this.publish(repoKey, hash, live, {
             items: placed.map((item) => ({
                 path: item.relPath,
                 line: item.startLine + 1,
@@ -198,20 +214,30 @@ export class CiDiagnostics implements CiAnnotationsAccess {
     }
 
     async open(repoKey: string, hash: string, filePath: string, line: number): Promise<void> {
-        const listed = this.viewFor(repoKey, hash)?.items.some(
-            (item) => item.path === filePath && item.line === line,
-        );
+        const published = this.published;
+        const listed =
+            published?.repoKey === repoKey &&
+            published.hash === hash &&
+            published.view.items.some((item) => item.path === filePath && item.line === line);
         if (!listed) return;
         // The file may have changed since it was placed: contain it again and open what that finds.
         const real = await realInside(repoKey, filePath);
-        if (!real) return;
+        const head = await this.deps.headHash();
+        // A clear, a newer show, a sign-out, the switch or a HEAD move during the awaits above
+        // retires the click: `live` is false once the sequence or a generation moved.
+        if (!real || head !== hash || !this.deps.switchOn() || !published.live()) return;
         await vscode.window.showTextDocument(vscode.Uri.file(real), {
             selection: new vscode.Range(line - 1, 0, line - 1, 0),
         });
     }
 
-    private publish(repoKey: string, hash: string, view: CiAnnotationsView): void {
-        this.published = { repoKey, hash, view };
+    private publish(
+        repoKey: string,
+        hash: string,
+        live: () => boolean,
+        view: CiAnnotationsView,
+    ): void {
+        this.published = { repoKey, hash, view, live };
         this.fire();
     }
 
@@ -248,7 +274,7 @@ async function placeAll(
     } catch {
         return { placed, rejected: read.reduce((n, r) => n + r.result.annotations.length, 0) };
     }
-    const files = new Map<string, Promise<string[] | undefined>>();
+    const files = new Map<string, Promise<InsideFile | undefined>>();
     for (const { job, result } of read) {
         for (const annotation of result.annotations) {
             // react-doctor-disable-next-line react-doctor/async-await-in-loop
@@ -265,25 +291,27 @@ async function place(
     annotation: CiAnnotation,
     job: string,
     rootReal: string,
-    files: Map<string, Promise<string[] | undefined>>,
+    files: Map<string, Promise<InsideFile | undefined>>,
 ): Promise<Placed | undefined> {
     const relPath = safeRelativePath(annotation.path);
     const { startLine, endLine } = annotation;
     if (relPath === undefined || !isLine(startLine) || !isLine(endLine) || endLine < startLine) {
         return undefined;
     }
-    let lines = files.get(relPath);
-    if (!lines) {
-        lines = readInside(rootReal, relPath);
-        files.set(relPath, lines);
+    let read = files.get(relPath);
+    if (!read) {
+        read = readInside(rootReal, relPath);
+        files.set(relPath, read);
     }
-    const text = await lines;
-    if (!text) return undefined;
+    const file = await read;
+    if (!file) return undefined;
+    const text = file.lines;
     const last = text.length;
     const start = Math.min(startLine, last) - 1;
     const end = Math.min(endLine, last) - 1;
     return {
         relPath,
+        real: file.real,
         level: levelOf(annotation.level),
         startLine: start,
         endLine: end,
@@ -324,14 +352,30 @@ async function realInsideRoot(rootReal: string, relPath: string): Promise<string
     return real.startsWith(rootReal + path.sep) ? real : undefined;
 }
 
-/** The file's lines when it exists and stays inside the repository; undefined otherwise. */
-async function readInside(rootReal: string, relPath: string): Promise<string[] | undefined> {
+interface InsideFile {
+    real: string;
+    lines: string[];
+}
+
+/** The file's real path and lines when it exists and stays inside the repository. */
+async function readInside(rootReal: string, relPath: string): Promise<InsideFile | undefined> {
     try {
         const real = await realInsideRoot(rootReal, relPath);
         if (!real) return undefined;
-        return (await fs.readFile(real, "utf8")).split(/\r?\n/);
+        return { real, lines: (await fs.readFile(real, "utf8")).split(/\r?\n/) };
     } catch {
         return undefined;
+    }
+}
+
+/** Whether a validated real path still names itself (no part of it became a symlink). */
+function resolvesToItself(real: string): boolean {
+    try {
+        // The native resolver, as `fs.promises.realpath` uses: Node's JS one can spell a Windows
+        // path differently, which would drop every annotation.
+        return realpathSync.native(real) === real;
+    } catch {
+        return false;
     }
 }
 

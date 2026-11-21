@@ -811,9 +811,14 @@ export class GitHubProvider implements CommitChecksProvider {
     /**
      * Reads one check run's annotations, 100 a page up to the page bound. A next link may also
      * name the check run under `/repositories/{id}/`: check-run ids are unique across GitHub, so
-     * the same id is the same check run.
+     * the same id is the same check run. `isCurrent` is read after the session await and before
+     * every page request: a caller that went stale (a sign-out, a HEAD move) sends nothing more.
      */
-    async getAnnotations(ref: ProviderRepoRef, checkRunId: string): Promise<CiAnnotations> {
+    async getAnnotations(
+        ref: ProviderRepoRef,
+        checkRunId: string,
+        isCurrent: () => boolean,
+    ): Promise<CiAnnotations> {
         const session = await openSession("");
         if (!isSession(session)) throw new HttpError(401, session.error ?? session.summary, {});
         const gitHubRef = ref as GitHubRepoRef;
@@ -825,7 +830,10 @@ export class GitHubProvider implements CommitChecksProvider {
         };
         try {
             const page = await paginate(
-                (url) => this.fetchWithMeta(url, githubHeaders(session)),
+                async (url) => {
+                    if (!isCurrent()) throw new Error("The annotations read was retired.");
+                    return this.fetchWithMeta(url, githubHeaders(session));
+                },
                 `${repoApiUrl(gitHubRef)}/check-runs/${encodeURIComponent(checkRunId)}/annotations?per_page=${CI_PAGE_SIZE}`,
                 linkHeaderNext,
                 (body) => (Array.isArray(body) ? body.map(toAnnotation) : []),

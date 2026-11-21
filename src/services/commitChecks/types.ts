@@ -175,9 +175,14 @@ export interface CommitChecksProvider {
     getJobLog?(ref: ProviderRepoRef, job: CiLogJob, signal: AbortSignal): Promise<DownloadedText>;
     /**
      * Reads one check run's file and line annotations, at most 1 000 (O1). Rejects on failure;
-     * an `HttpError` 403 means the credential cannot read them.
+     * an `HttpError` 403 means the credential cannot read them. Sends no request once
+     * `isCurrent` turns false, read after the session await and before every page.
      */
-    getAnnotations?(ref: ProviderRepoRef, checkRunId: string): Promise<CiAnnotations>;
+    getAnnotations?(
+        ref: ProviderRepoRef,
+        checkRunId: string,
+        isCurrent: () => boolean,
+    ): Promise<CiAnnotations>;
 }
 
 /**

@@ -784,7 +784,7 @@ export class CommitChecksCoordinator {
             return none;
         }
         if (!isCurrent()) throw new StaleCallerError();
-        return match.provider.getAnnotations(match.ref, checkRunId);
+        return match.provider.getAnnotations(match.ref, checkRunId, isCurrent);
     }
 
     /**

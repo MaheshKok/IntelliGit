@@ -1,3 +1,4 @@
+import { promises as nodeFs } from "node:fs";
 import { mkdir, mkdtemp, realpath, symlink, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -185,7 +186,7 @@ interface Harness {
 }
 
 function harness(
-    fetch: (checkRunId: string) => Promise<CiAnnotations> = async () => ({
+    fetch: (checkRunId: string, isCurrent: () => boolean) => Promise<CiAnnotations> = async () => ({
         annotations: [annotation()],
         coverage: "full",
     }),
@@ -195,7 +196,9 @@ function harness(
     let enabled = true;
     const collection = fakeCollection();
     const generations = new CiGenerations();
-    const annotations = vi.fn((_hash: string, checkRunId: string) => fetch(checkRunId));
+    const annotations = vi.fn((_hash: string, checkRunId: string, isCurrent: () => boolean) =>
+        fetch(checkRunId, isCurrent),
+    );
     const deps: CiDiagnosticsDeps = {
         switchOn: () => switchOn(),
         enabled: () => enabled,
@@ -464,7 +467,7 @@ describe("CiDiagnostics", () => {
             fakeAnnotationsApi(urls, [[annotationJson()]]),
         );
 
-        const read = await provider.getAnnotations(REF, "11");
+        const read = await provider.getAnnotations(REF, "11", () => true);
 
         expect(urls).toHaveLength(1);
         const url = new URL(urls[0]);
@@ -491,7 +494,9 @@ describe("CiDiagnostics", () => {
             undefined,
             fakeAnnotationsApi(urls, [[annotationJson()], new Error("socket hang up")]),
         );
-        const h = harness((checkRunId) => provider.getAnnotations(REF, checkRunId));
+        const h = harness((checkRunId, isCurrent) =>
+            provider.getAnnotations(REF, checkRunId, isCurrent),
+        );
 
         await h.diagnostics.show(target(h));
 
@@ -705,7 +710,7 @@ describe("CiDiagnostics", () => {
                 body: [annotationJson()],
             };
         });
-        const h = harness((id) => provider.getAnnotations(REF, id));
+        const h = harness((id, isCurrent) => provider.getAnnotations(REF, id, isCurrent));
 
         await h.diagnostics.show(target(h));
 
@@ -729,7 +734,7 @@ describe("CiDiagnostics", () => {
                 body: Array.from({ length: 100 }, annotationJson),
             };
         });
-        const h = harness((id) => provider.getAnnotations(REF, id));
+        const h = harness((id, isCurrent) => provider.getAnnotations(REF, id, isCurrent));
 
         await h.diagnostics.show(target(h));
 
@@ -829,6 +834,150 @@ describe("CiDiagnostics", () => {
 
         const [uri] = mocks.showTextDocument.mock.calls[0] as [{ fsPath: string }];
         expect(uri.fsPath).toBe(path.join(root, "src", "other.ts"));
+    });
+
+    it("a click on an annotation of a HEAD that moved opens nothing", async () => {
+        const h = harness();
+        await h.diagnostics.show(target(h));
+        h.setHead(NEXT_HASH);
+
+        await h.diagnostics.open(root, HASH, "src/app.ts", 2);
+
+        expect(
+            mocks.showTextDocument,
+            "a stale HEAD annotation must not open",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("a clear during the click's file check opens nothing", async () => {
+        const h = harness();
+        await h.diagnostics.show(target(h));
+        const entered = deferred<void>();
+        const release = deferred<void>();
+        const realpathOf = nodeFs.realpath.bind(nodeFs);
+        const spy = vi.spyOn(nodeFs, "realpath").mockImplementation(async (file) => {
+            if (file === root) {
+                entered.resolve();
+                await release.promise;
+            }
+            return realpathOf(file);
+        });
+        try {
+            const opening = h.diagnostics.open(root, HASH, "src/app.ts", 2);
+            await entered.promise;
+            h.generations.bumpAuth();
+            h.diagnostics.clear();
+            release.resolve();
+            await opening;
+
+            expect(
+                mocks.showTextDocument,
+                "a clear during click validation must retire the click",
+            ).not.toHaveBeenCalled();
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it("a symlink alias swapped out of the repository during the final HEAD await publishes the contained file", async () => {
+        const alias = path.join(root, "src", "alias.ts");
+        await symlink(appFile(), alias);
+        const h = harness();
+        const held = withHeldFinalHead(h, async () => ({
+            annotations: [annotation({ path: "src/alias.ts" })],
+            coverage: "full",
+        }));
+
+        const shown = held.diagnostics.show(target(h));
+        await vi.waitFor(() => expect(held.reads()).toBe(2));
+        await unlink(alias);
+        await symlink(path.join(outside, "secret.ts"), alias);
+        held.finalHead.resolve(HASH);
+        await shown;
+
+        expect(
+            [...h.collection.entries.keys()],
+            "the published URI must be the contained real file, not the swapped alias",
+        ).toEqual([appFile()]);
+    });
+
+    it("a placed file swapped out of the repository during the final HEAD await is not published", async () => {
+        const h = harness();
+        const held = withHeldFinalHead(h, async () => ({
+            annotations: [annotation()],
+            coverage: "full",
+        }));
+
+        const shown = held.diagnostics.show(target(h));
+        await vi.waitFor(() => expect(held.reads()).toBe(2));
+        await unlink(appFile());
+        await symlink(path.join(outside, "secret.ts"), appFile());
+        held.finalHead.resolve(HASH);
+        await shown;
+
+        expect(h.collection.entries.size, "the final containment check must drop it").toBe(0);
+        expect(held.diagnostics.viewFor(root, HASH)).toMatchObject({ items: [], rejected: 1 });
+    });
+
+    it("sends no annotations request after a sign-out during the session await", async () => {
+        const session = deferred<unknown>();
+        mocks.getSession.mockReturnValue(session.promise);
+        const sent: string[] = [];
+        const provider = new GitHubProvider(undefined, undefined, async (url) => {
+            sent.push(url);
+            return { statusCode: 200, headers: {}, body: [annotationJson()] };
+        });
+        const h = harness((id, isCurrent) => provider.getAnnotations(REF, id, isCurrent));
+
+        const shown = h.diagnostics.show(target(h));
+        await vi.waitFor(() => expect(mocks.getSession).toHaveBeenCalled());
+        h.generations.bumpAuth();
+        h.diagnostics.clear();
+        session.resolve({
+            id: "session",
+            accessToken: "old-token",
+            account: { id: "old", label: "Old" },
+            scopes: ["repo"],
+        });
+        await shown;
+
+        expect(sent, "retired annotations work must not send after the session await").toEqual([]);
+    });
+
+    it("requests no second annotations page after a sign-out on page one", async () => {
+        let h!: Harness;
+        const sent: string[] = [];
+        const provider = new GitHubProvider(undefined, undefined, async (url) => {
+            sent.push(url);
+            if (sent.length === 1) {
+                h.generations.bumpAuth();
+                h.diagnostics.clear();
+            }
+            return {
+                statusCode: 200,
+                headers: sent.length === 1 ? { link: `<${url}&page=2>; rel="next"` } : {},
+                body: [annotationJson()],
+            };
+        });
+        h = harness((id, isCurrent) => provider.getAnnotations(REF, id, isCurrent));
+
+        await h.diagnostics.show(target(h));
+
+        expect(sent, "a sign-out after page one must fence page two").toHaveLength(1);
+    });
+
+    it("rechecks HEAD before the next failed job's annotations request", async () => {
+        let h!: Harness;
+        h = harness(async () => {
+            h.setHead(NEXT_HASH);
+            return { annotations: [annotation()], coverage: "full" };
+        });
+
+        await h.diagnostics.show(target(h, detail([job(), job({ id: "2", checkRunId: "12" })])));
+
+        expect(h.annotations, "a moved HEAD must fence the next job request").toHaveBeenCalledTimes(
+            1,
+        );
     });
 });
 

@@ -309,8 +309,10 @@ describe("CommitChecksCoordinator.annotations", () => {
             capabilities: { ...NO_CI_CAPABILITIES, annotations: true },
             getAnnotations,
         });
-        expect(await coordinator.annotations(HASH, "11", () => true)).toEqual(result);
-        expect(getAnnotations).toHaveBeenCalledWith({ host: "github.com" }, "11");
+        const isCurrent = () => true;
+        expect(await coordinator.annotations(HASH, "11", isCurrent)).toEqual(result);
+        // The provider rechecks the caller after its session await and before every page.
+        expect(getAnnotations).toHaveBeenCalledWith({ host: "github.com" }, "11", isCurrent);
     });
 
     it("sends nothing for a stale caller, a provider without annotations, or turned-off checks", async () => {
