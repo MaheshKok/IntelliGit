@@ -32,6 +32,7 @@ interface CommitListRowsProps {
     showAuthor: boolean;
     showDate: boolean;
     metaWidths: MetaColumnWidths;
+    showCiColumn: boolean;
     commitChecks?: ReadonlyMap<string, CommitChecksSnapshot | "loading">;
     onSelectCommit: (hash: string, modifiers?: CommitSelectionModifiers) => void;
     /** Requests a commit's checks; `force` bypasses the host/provider cache. */
@@ -63,6 +64,7 @@ export function CommitListRows({
     showAuthor,
     showDate,
     metaWidths,
+    showCiColumn,
     commitChecks,
     onSelectCommit,
     onRequestCommitChecks,
@@ -112,6 +114,7 @@ export function CommitListRows({
                                 showDate={showDate}
                                 authorWidth={metaWidths.author}
                                 dateWidth={metaWidths.date}
+                                showCiColumn={showCiColumn}
                                 checks={commitChecks?.get(commit.hash)}
                                 onRequestChecks={onRequestCommitChecks}
                                 onOpenCheckUrl={onOpenCommitCheckUrl}

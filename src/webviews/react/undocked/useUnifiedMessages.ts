@@ -190,6 +190,7 @@ function handleGraphMessage(data: GraphInboundMessage, context: MessageContext):
                 folderIconsByName: data.folderIconsByName,
                 iconFonts: data.iconFonts,
                 commitChecksEnabled: data.commitChecksEnabled,
+                showCiColumn: data.showCiColumn,
             });
             return;
         case "setSelectedBranch":

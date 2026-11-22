@@ -62,6 +62,7 @@ import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordina
 import { GitOps } from "../../../src/git/operations";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
+import { normalizeCommitChecksSettings } from "../../../src/services/commitChecks/settingsConfig";
 import { ShelfService } from "../../../src/services/shelfService";
 import { resolveShelfPaths } from "../../../src/shelf/paths";
 import { ShelfStore } from "../../../src/shelf/store";
@@ -373,6 +374,61 @@ describe("UndockedViewProvider commit-detail re-post on webview reload", () => {
             }
         },
     );
+});
+
+describe("UndockedViewProvider CI column flag", () => {
+    it("the Git Log host posts the CI column as off while the Checks tab switch is off", async () => {
+        const parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-undocked-ci-column-"));
+        resetFakeWorkspaceConfigurationForTests();
+        try {
+            const template = await seedFixtureTemplate(path.join(parentDir, "repo"), {
+                homeParent: parentDir,
+            });
+            const gitOps = new GitOps(
+                new GitExecutor(template.root, undefined, toGitEnvironment(template.env)),
+            );
+            setFakeWorkspaceConfiguration(buildUndockedWorkspaceConfiguration());
+            /** The CI column flag of every `setBranches` message one panel posts on `ready`. */
+            const postedColumnFlags = async (showCiColumn: boolean): Promise<unknown[]> => {
+                const args = buildUndockedProviderConstructorArguments({
+                    repoRoot: template.root,
+                    gitOps,
+                });
+                args[6] = { ...normalizeCommitChecksSettings({}), showCiColumn };
+                const provider = createTestUndockedViewProvider(...args);
+                try {
+                    const panel = openTestPanel(provider);
+                    const posted = attachPostedMessageRecorder(panel);
+                    await panel.receiveMessage({ type: "ready" });
+                    await flushMicrotasks();
+                    const branches = posted.filter(
+                        (message): message is Record<string, unknown> =>
+                            isRecord(message) && message.type === "setBranches",
+                    );
+                    expect(branches.length, "ready posts the branches message").toBeGreaterThan(0);
+                    return branches.map((message) => message.showCiColumn);
+                } finally {
+                    provider.dispose();
+                }
+            };
+            setE2eControlChannelActive(false);
+            expect(
+                (await postedColumnFlags(true)).every((flag) => flag !== true),
+                "the setting is on but the switch is off: the column stays off",
+            ).toBe(true);
+            setE2eControlChannelActive(true);
+            expect(
+                await postedColumnFlags(true),
+                "the control: with the switch on the setting reaches the webview",
+            ).toContain(true);
+        } finally {
+            setE2eControlChannelActive(false);
+            for (const createdPanel of getCreatedWebviewPanels()) createdPanel.dispose();
+            resetCreatedWebviewPanelsForTests();
+            resetFakeWorkspaceConfigurationForTests();
+            await removeScratchDirectories(parentDir);
+        }
+    });
 });
 
 describe("UndockedViewProvider native commit bridge wiring", () => {

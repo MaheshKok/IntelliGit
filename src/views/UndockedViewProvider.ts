@@ -81,6 +81,7 @@ import {
     type CommitChecksCoordinatorOptions,
 } from "../services/commitChecks/coordinator";
 import { summaryForState } from "../services/commitChecks/normalize";
+import { isE2eControlChannelActive } from "../e2e/activationState";
 import {
     commitChecksSettingsFingerprint,
     type CommitChecksSettings,
@@ -2330,6 +2331,9 @@ export class UndockedViewProvider {
             currentBranchName: currentBranchStatus.name,
             currentBranchUpstream: currentBranchStatus.upstream,
             commitChecksEnabled: this.commitChecksSettings?.enabled ?? true,
+            // The CI column ships hidden: off while the Checks tab switch is off (Phase 18 removes this).
+            ...(isE2eControlChannelActive() &&
+                this.commitChecksSettings?.showCiColumn === true && { showCiColumn: true }),
         });
     }
 

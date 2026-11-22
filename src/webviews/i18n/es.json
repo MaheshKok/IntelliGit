@@ -128,6 +128,8 @@
     "commit.list.header.commit": "Commit",
     "commit.list.header.author": "Autor",
     "commit.list.header.date": "Fecha",
+    "commit.list.header.ci": "CI",
+    "commit.list.ci.label": "Comprobaciones de CI: {summary}",
     "commit.menu.copyRevision": "Número de revisión de la copia",
     "commit.menu.createPatch": "Crear parche…",
     "commit.menu.cherryPick": "Cherry-pick",

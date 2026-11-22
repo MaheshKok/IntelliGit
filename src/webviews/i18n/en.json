@@ -157,6 +157,8 @@
     "commit.list.header.commit": "Commit",
     "commit.list.header.author": "Author",
     "commit.list.header.date": "Date",
+    "commit.list.header.ci": "CI",
+    "commit.list.ci.label": "CI checks: {summary}",
     "commit.checks.title": "Commit Checks",
     "commit.checks.loading": "Loading checks…",
     "commit.checks.none": "No checks found",

@@ -129,6 +129,8 @@
     "commit.list.header.commit": "Commit",
     "commit.list.header.author": "Autor",
     "commit.list.header.date": "Data",
+    "commit.list.header.ci": "CI",
+    "commit.list.ci.label": "Kontrole CI: {summary}",
     "commit.menu.copyRevision": "Kopiuj numer rewizji",
     "commit.menu.createPatch": "Utwórz poprawkę…",
     "commit.menu.cherryPick": "Cherry-pick",

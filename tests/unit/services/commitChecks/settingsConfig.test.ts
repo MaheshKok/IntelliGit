@@ -5,9 +5,33 @@
 // implementation. The normalizer is pure: no VS Code, no I/O.
 
 import { describe, expect, it } from "vitest";
-import { normalizeCommitChecksSettings } from "../../../../src/services/commitChecks/settingsConfig";
+import {
+    normalizeCommitChecksSettings,
+    readShowCiColumn,
+} from "../../../../src/services/commitChecks/settingsConfig";
 
 const ALL_PROVIDERS = ["github", "gitlab", "bitbucket-cloud", "bitbucket-server"] as const;
+
+describe("readShowCiColumn — intelligit.commitChecks.showCiColumn", () => {
+    /** A configuration section whose `get` returns `value`, or the caller's default when absent. */
+    const config = (value?: unknown) => ({
+        get: <T>(key: string, defaultValue: T): T => {
+            expect(key).toBe("commitChecks.showCiColumn");
+            return value === undefined ? defaultValue : (value as T);
+        },
+    });
+
+    it("is off when the setting is absent", () => {
+        expect(readShowCiColumn(config())).toBe(false);
+    });
+
+    it("is on only for an explicit true", () => {
+        expect(readShowCiColumn(config(true))).toBe(true);
+        expect(readShowCiColumn(config(false))).toBe(false);
+        expect(readShowCiColumn(config("true")), "a stray string is not a switch").toBe(false);
+        expect(readShowCiColumn(config(1))).toBe(false);
+    });
+});
 
 describe("normalizeCommitChecksSettings — defaults", () => {
     it("enables the feature and every provider when raw is undefined", () => {

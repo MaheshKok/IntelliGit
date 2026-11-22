@@ -8,6 +8,7 @@ import { computeGraph, LANE_WIDTH, ROW_HEIGHT } from "./graph";
 import { ContextMenu } from "./shared/components/ContextMenu";
 import { ClearIcon, SearchIcon } from "./shared/components/Icons";
 import { getCommitMenuItems } from "./commit-list/commitMenu";
+import { CiColumnHeader } from "./commit-list/CiColumnCell";
 import { CommitListRows } from "./commit-list/CommitListRows";
 import type { CommitSelectionModifiers } from "./commit-list/CommitRow";
 import {
@@ -28,6 +29,7 @@ import { t } from "./shared/i18n";
 import {
     BRANCH_SCOPE_STYLE,
     CHECKS_COL_WIDTH,
+    ciColumnFits,
     FILTER_BAR_STYLE,
     FILTER_CLEAR_BUTTON_STYLE,
     FILTER_ICON_STYLE,
@@ -84,6 +86,11 @@ interface Props {
     onOpenCommitInChecks?: (hash: string) => void;
     showSearch?: boolean;
     showAuthorDate?: boolean;
+    /**
+     * Shows the CI column in place of the check badge, when it fits beside the Author and
+     * Date columns the list shows without it. Off by default.
+     */
+    showCiColumn?: boolean;
     headerLabel?: string;
     /**
      * Host-driven visibility of the surface embedding this list. Defaults to
@@ -187,6 +194,7 @@ export function CommitList({
     onOpenCommitInChecks,
     showSearch = true,
     showAuthorDate = true,
+    showCiColumn,
     headerLabel,
     isViewVisible = true,
 }: Props): React.ReactElement {
@@ -458,6 +466,14 @@ export function CommitList({
     );
     const showAuthor = showAuthorDate && measuredMetaColumns.author;
     const showDate = showAuthorDate && measuredMetaColumns.date;
+    // The CI column replaces the badge only where it fits beside the columns shown without it.
+    const showCiCell = ciColumnFits(
+        Boolean(showCiColumn && onRequestCommitChecks),
+        metaAvailableWidth,
+        metaWidths,
+        { author: showAuthor, date: showDate },
+    );
+    const showBadgeColumn = showChecksColumn && !showCiCell;
     // Centred on the divider: the 2px guide straddles the column's left edge.
     const resizeGuideRight =
         resizingColumn === null
@@ -466,7 +482,7 @@ export function CommitList({
                   resizingColumn,
                   metaWidths,
                   showDate,
-                  showChecksColumn,
+                  showBadgeColumn,
                   ROW_SIDE_PADDING,
               ) - 1;
 
@@ -678,8 +694,9 @@ export function CommitList({
                     />
                 ) : null}
                 {headerLabel ? null : (
-                    <div style={headerRowStyle(graphWidth)}>
+                    <div data-testid="commit-list-header" style={headerRowStyle(graphWidth)}>
                         <span style={{ flex: 1 }}>{t("commit.list.header.commit")}</span>
+                        <CiColumnHeader shown={showCiCell} beforeAuthor={showAuthor} />
                         {showAuthor && (
                             <span
                                 style={{
@@ -719,7 +736,7 @@ export function CommitList({
                                 {t("commit.list.header.date")}
                             </span>
                         )}
-                        {showAuthorDate && onRequestCommitChecks && onOpenCommitCheckUrl ? (
+                        {showBadgeColumn ? (
                             <span
                                 style={{
                                     width: CHECKS_COL_WIDTH,
@@ -746,6 +763,7 @@ export function CommitList({
                     showAuthor={showAuthor}
                     showDate={showDate}
                     metaWidths={metaWidths}
+                    showCiColumn={showCiCell}
                     commitChecks={commitChecks}
                     onSelectCommit={handleRowSelect}
                     onRequestCommitChecks={

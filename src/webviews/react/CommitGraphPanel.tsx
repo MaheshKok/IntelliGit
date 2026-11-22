@@ -143,6 +143,7 @@ interface CommitGraphPanelState {
     iconFonts: ThemeIconFont[];
     unpushedHashes: Set<string>;
     commitChecksEnabled: boolean;
+    showCiColumn: boolean;
     ciRepoKey?: string;
 }
 
@@ -160,6 +161,7 @@ const initialCommitGraphPanelState: CommitGraphPanelState = {
     iconFonts: [],
     unpushedHashes: new Set(),
     commitChecksEnabled: true,
+    showCiColumn: false,
 };
 
 function commitGraphPanelReducer(
@@ -185,6 +187,7 @@ function commitGraphPanelReducer(
                 branchFolderIconsByName: action.folderIconsByName,
                 iconFonts: action.iconFonts ?? state.iconFonts,
                 commitChecksEnabled: action.commitChecksEnabled ?? state.commitChecksEnabled,
+                showCiColumn: action.showCiColumn === true,
             };
         case "setSelectedBranch":
             return { ...state, selectedBranch: action.branch };
@@ -274,6 +277,7 @@ export function CommitGraphPanel({
         iconFonts,
         unpushedHashes,
         commitChecksEnabled,
+        showCiColumn,
         ciRepoKey,
     } = state;
     const [branchWidth, setBranchWidth] = useState(() => {
@@ -604,6 +608,7 @@ export function CommitGraphPanel({
                             commitChecksEnabled ? handleSignInForCommitChecks : undefined
                         }
                         onOpenCommitInChecks={commitChecksEnabled ? openChecksTab : undefined}
+                        showCiColumn={showCiColumn}
                         isViewVisible={viewVisible}
                     />
                 </div>

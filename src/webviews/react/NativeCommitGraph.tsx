@@ -44,6 +44,7 @@ interface NativeCommitGraphState {
     unpushedHashes: Set<string>;
     commitChecks: Map<string, CommitChecksValue>;
     commitChecksEnabled: boolean;
+    showCiColumn: boolean;
 }
 
 type NativeCommitGraphAction =
@@ -60,6 +61,7 @@ type NativeCommitGraphAction =
           type: "setBranches";
           branches: Branch[];
           commitChecksEnabled?: boolean;
+          showCiColumn?: boolean;
       }
     | { type: "loadError"; clearCommits: boolean }
     | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
@@ -77,6 +79,7 @@ const initialNativeCommitGraphState: NativeCommitGraphState = {
     unpushedHashes: new Set(),
     commitChecks: new Map(),
     commitChecksEnabled: true,
+    showCiColumn: false,
 };
 
 function nativeCommitGraphReducer(
@@ -99,6 +102,7 @@ function nativeCommitGraphReducer(
                 ...state,
                 branches: action.branches,
                 commitChecksEnabled: action.commitChecksEnabled ?? true,
+                showCiColumn: action.showCiColumn === true,
             };
         case "loadError":
             return {
@@ -148,6 +152,7 @@ export function NativeCommitGraph({
         unpushedHashes,
         commitChecks,
         commitChecksEnabled,
+        showCiColumn,
     } = state;
     const [isViewVisible, setIsViewVisible] = useState(true);
     const [rebaseDialog, setRebaseDialog] = useState<RebaseDialogMessage | null>(null);
@@ -233,6 +238,7 @@ export function NativeCommitGraph({
                         type: "setBranches",
                         branches: data.branches,
                         commitChecksEnabled: data.commitChecksEnabled,
+                        showCiColumn: data.showCiColumn,
                     });
                     break;
                 case "loadError":
@@ -366,6 +372,7 @@ export function NativeCommitGraph({
                     commitChecksEnabled ? handleSignInForCommitChecks : undefined
                 }
                 onOpenCommitInChecks={commitChecksEnabled ? handleOpenCommitInChecks : undefined}
+                showCiColumn={showCiColumn}
                 isViewVisible={isViewVisible}
                 showSearch={false}
                 showAuthorDate={false}

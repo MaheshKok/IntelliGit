@@ -126,6 +126,8 @@
     "commit.list.header.commit": "コミット",
     "commit.list.header.author": "著者",
     "commit.list.header.date": "日付",
+    "commit.list.header.ci": "CI",
+    "commit.list.ci.label": "CI チェック: {summary}",
     "commit.menu.copyRevision": "リビジョン番号をコピー",
     "commit.menu.createPatch": "パッチを作成中…",
     "commit.menu.cherryPick": "チェリーピック",

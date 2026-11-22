@@ -60,6 +60,7 @@ export interface UndockedLayoutProps {
     currentBranchHeadHash: string | null;
     commitChecks: Map<string, CommitChecksValue>;
     commitChecksEnabled: boolean;
+    showCiColumn: boolean;
     isViewVisible: boolean;
     selectedDetail: CommitDetail | null;
     commitDetailLoading: boolean;
@@ -155,6 +156,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         currentBranchHeadHash,
         commitChecks,
         commitChecksEnabled,
+        showCiColumn,
         isViewVisible,
         selectedDetail,
         commitDetailLoading,
@@ -400,6 +402,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                         onOpenCommitInChecks={
                                             commitChecksEnabled ? openChecksTab : undefined
                                         }
+                                        showCiColumn={showCiColumn}
                                         isViewVisible={isViewVisible}
                                     />
                                 </div>
