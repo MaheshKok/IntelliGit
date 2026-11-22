@@ -137,7 +137,7 @@ test("column on in light and dark themes at narrow and wide pane widths keeps Au
             await expect(date).toBeVisible();
             await expect(badge, "one checks control per row").toHaveCount(0);
             const cell = await box(ciCell, "CI cell");
-            expect(Math.round(cell.width), "CI column width (Figma frame 1:2)").toBe(CI_COL_WIDTH);
+            expect(Math.round(cell.width), "CI column width (Figma frame 1:2)").toBe(99);
             expect(
                 Math.abs((await box(ciHeader, "CI header")).x - cell.x),
                 "header over cells",

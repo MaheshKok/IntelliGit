@@ -165,7 +165,7 @@ describe("Git Log CI column", () => {
         const cell = ciCell(container);
         expect(cell, "the CI cell renders when the column is on").not.toBeNull();
         expect(cell!.textContent, "passed/total counts only successful checks").toBe("2/4");
-        expect(cell!.style.width, "the Figma frame 1:2 width").toBe(`${CI_COL_WIDTH}px`);
+        expect(cell!.style.width, "the Figma frame 1:2 width").toBe("99px");
         expect(cell!.title, "hover shows the snapshot's summary").toBe(mixed.summary);
         const segment = (state: string): string | undefined =>
             cell!.querySelector<HTMLElement>(`[data-testid="commit-ci-bar-${state}"]`)?.style.width;
@@ -178,6 +178,23 @@ describe("Git Log CI column", () => {
             "Author",
             "Date",
         ]);
+    });
+
+    // The Figma frame 1:2 numbers are written out here on purpose: importing the production
+    // constants would let a changed constant move the test with it.
+    it("keeps the Figma frame 1:2 dimensions: 99 px cell, 8 px inset, 44 x 8 px bar, 6 px gap", async () => {
+        const container = await renderList({ showCiColumn: true });
+
+        const cell = ciCell(container)!;
+        expect(cell.style.width, "cell width").toBe("99px");
+        expect(cell.style.paddingLeft, "cell inset before the bar").toBe("8px");
+        expect(cell.style.gap, "gap between bar and count").toBe("6px");
+        const bar = cell.querySelector<HTMLElement>('[aria-hidden="true"]')!;
+        expect(bar.style.width, "bar width").toBe("44px");
+        expect(bar.style.height, "bar height").toBe("8px");
+        const header = container.querySelector<HTMLElement>('[data-testid="commit-ci-header"]')!;
+        expect(header.style.width, "header width matches the cell").toBe("99px");
+        expect(header.style.paddingLeft, "header inset matches the cell").toBe("8px");
     });
 
     it("a commit without checks shows a dash in place of the count", async () => {
