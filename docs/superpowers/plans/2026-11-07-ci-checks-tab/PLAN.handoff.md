@@ -16,10 +16,10 @@
 - Phase 12: accepted by the owner by hand 2026-11-18 at c874d0b3 ("A: accept, file issue"; gaps in #443; squash-merged as #444, 29efe7ec).
 - Phase 13: owner accepted by hand 2026-11-21 at 3b31283b (answer "For phase 13 A"); open gaps in #447; the review log's last Phase 13 line stays HALT (squash-merged as #448, 49893e1f).
 - Phase 14: owner accepted by hand 2026-11-22 at ca1834d5 (answer "C: targeted fix"); the review log's last Phase 14 line stays HALT (squash-merged as #450, f3cf1afa).
-- Phase 15: accepted dd67fe22, verification incomplete.
+- Phase 15: accepted 20240fdf (squash-merged as #452; the wave accepted dd67fe22, verification incomplete).
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 15: accepted dd67fe22, verification incomplete, started at a2fa6a15158555a8eadacf8adf6402a9a5518be2 (owner answer "A: fix base, re-run", 2026-11-22: the first wave carried the Phase 14 branch head, which the squash merge left out of this branch's history)
+## Phase 15: squash-merged as #452 at 20240fdf; built and reviewed at dd67fe22, verification incomplete (owner answer "A: fix base, re-run", 2026-11-22: the first wave carried the Phase 14 branch head, which the squash merge left out of this branch's history)
 - Build ae49a11e (0.43.19): optional CI column in the Git Log, hidden behind the Checks tab switch. Details and proof in PLAN.review-log.md "Phase 15: built, review pending".
 - 12 mutations on copy mut-15-build-1, each red naming its planned test. Full chain exit 0 except `bun run test` (10 of 8687 red, the known set, see Open risks). verify.py gates --stage round GREEN.
 - Takeover (review pending again; test-only, no production change; after the review of 44dd15cb): a new integration test renders the real CommitList with `showAuthorDate={false}` (as NativeCommitGraph does), the CI column on and a checks requester, and asserts the CI cell renders and the old badge does not. Coupling mutation (`showAuthorDate &&` added at CommitList.tsx:471) on copy mut-15-takeover-1: red `CI cell renders independently of Author/Date: expected null not to be null`, the other 24 green. Full chain exit 0 except `bun run test` (10 of 8700 red, the known set).
@@ -45,6 +45,7 @@
 - `bun run test` known reds: 8 commit-list-column-resize (Node 26 has no localStorage; all 8 pass with NODE_OPTIONS=--localstorage-file), tsconfigCoverage and screenshotComparatorMeta (pass in a copy with linked node_modules).
 
 ## Next phase: per the phase-run dry run (Phases 16-18 per their Depends on lines)
+- Phase 16 ships hidden (owner 2026-11-20, "A: hide them"): the "Find where CI broke" row menu entry and the `startCiBisect` / `cancelCiBisect` host handlers stay off while the Checks tab switch (`isE2eControlChannelActive()`) is off, each with its own switch-off test, and the release is a groundwork patch; Phase 18 turns them on (PLAN.md Phase 16 "Ships hidden").
 
 ## Found outside scope
 - Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
