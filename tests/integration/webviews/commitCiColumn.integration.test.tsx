@@ -92,6 +92,7 @@ async function renderList(options: {
     onSelectCommit?: (hash: string) => void;
     withPane?: boolean;
     omitChecksRequester?: boolean;
+    showAuthorDate?: boolean;
 }): Promise<HTMLElement> {
     const list = (
         <CommitList
@@ -112,6 +113,9 @@ async function renderList(options: {
                 ? {}
                 : { onOpenCommitInChecks: options.onOpenCommitInChecks ?? vi.fn() })}
             {...(options.showCiColumn === undefined ? {} : { showCiColumn: options.showCiColumn })}
+            {...(options.showAuthorDate === undefined
+                ? {}
+                : { showAuthorDate: options.showAuthorDate })}
         />
     );
     const { container } = mount(
@@ -209,6 +213,16 @@ describe("Git Log CI column", () => {
         expect(cell.style.marginLeft, "cell margin before the column").toBe("4px");
         expect(header.style.marginLeft, "header margin before the column").toBe("4px");
         expect(header.style.marginRight, "header margin before Author").toBe("4px");
+    });
+
+    // The Native graph renders CommitList with showAuthorDate={false}; the CI column must not
+    // depend on the Author/Date gate there.
+    it("the CI cell renders with Author/Date turned off, and the old badge does not", async () => {
+        const container = await renderList({ showCiColumn: true, showAuthorDate: false });
+
+        expect(ciCell(container), "CI cell renders independently of Author/Date").not.toBeNull();
+        expect(ciCell(container)!.textContent, "the cell shows the counts").toBe("2/4");
+        expect(badge(container), "no old badge with Author/Date off").toBeNull();
     });
 
     it("the header drops its right margin when no Author header follows it", () => {
