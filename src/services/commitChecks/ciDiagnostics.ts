@@ -98,11 +98,13 @@ export class CiDiagnostics implements CiAnnotationsAccess {
     // The commit the newest show ran for, so a later poll of the same HEAD sends nothing again.
     private target?: string;
     // `live` is the publishing show's own check, rerun on HEAD when a click opens a file.
+    // `reals` maps each listed path to the real file it was placed on, so a click opens only that.
     private published?: {
         repoKey: string;
         hash: string;
         view: CiAnnotationsView;
         live: (head: string | undefined) => boolean;
+        reals: ReadonlyMap<string, string>;
     };
     private readonly listeners = new Set<() => void>();
 
@@ -150,7 +152,7 @@ export class CiDiagnostics implements CiAnnotationsAccess {
             if (!live(await this.deps.headHash())) return;
             this.deps.collection.clear();
             const forbidden = error instanceof HttpError && error.statusCode === 403;
-            this.publish(repoKey, hash, live, {
+            this.publish(repoKey, hash, live, new Map(), {
                 items: [],
                 rejected: 0,
                 coverage: "full",
@@ -182,7 +184,8 @@ export class CiDiagnostics implements CiAnnotationsAccess {
         for (const [real, diagnostics] of byFile) {
             this.deps.collection.set(vscode.Uri.file(real), diagnostics);
         }
-        this.publish(repoKey, hash, live, {
+        const reals = new Map(placed.map((item) => [item.relPath, item.real]));
+        this.publish(repoKey, hash, live, reals, {
             items: placed.map((item) => ({
                 path: item.relPath,
                 line: item.startLine + 1,
@@ -196,7 +199,14 @@ export class CiDiagnostics implements CiAnnotationsAccess {
     }
 
     async refresh(target: CiDiagnosticsTarget): Promise<void> {
-        if ((await this.deps.headHash()) !== target.hash) return;
+        const head = await this.deps.headHash();
+        // The repository may have changed during the HEAD read, possibly to one at the same commit.
+        if (
+            head !== target.hash ||
+            !this.deps.generations.isCurrent(target.ctx, this.deps.repoKey() ?? "")
+        ) {
+            return;
+        }
         // A commit that turned green (or lost its annotations) keeps no old entries.
         if (annotatedJobs(target.detail).length === 0) {
             this.clear();
@@ -244,11 +254,13 @@ export class CiDiagnostics implements CiAnnotationsAccess {
             published.hash === hash &&
             published.view.items.some((item) => item.path === filePath && item.line === line);
         if (!listed) return;
-        // The file may have changed since it was placed: contain it again and open what that finds.
+        // The file may have changed since it was placed: contain it again, and open it only while
+        // it is still the file the annotation was placed on, as its Problems entry opens.
         const real = await realInside(repoKey, filePath);
         // A clear, a newer show, a sign-out, the switch or a HEAD move during the awaits retires
         // the click.
-        if (!real || !published.live(await this.deps.headHash())) return;
+        if (!real || real !== published.reals.get(filePath)) return;
+        if (!published.live(await this.deps.headHash())) return;
         // No await from here to the open: a file swapped for a symlink during the awaits above
         // no longer resolves to itself (K28), and nothing can retire the click after `live`.
         if (!resolvesToItself(real)) return;
@@ -261,9 +273,10 @@ export class CiDiagnostics implements CiAnnotationsAccess {
         repoKey: string,
         hash: string,
         live: (head: string | undefined) => boolean,
+        reals: ReadonlyMap<string, string>,
         view: CiAnnotationsView,
     ): void {
-        this.published = { repoKey, hash, view, live };
+        this.published = { repoKey, hash, view, live, reals };
         this.fire();
     }
 
@@ -336,7 +349,8 @@ async function place(
     const start = Math.min(startLine, last) - 1;
     const end = Math.min(endLine, last) - 1;
     return {
-        relPath,
+        // The contained real path, as the Problems entry names it, not the provider's spelling.
+        relPath: path.relative(rootReal, file.real).split(path.sep).join("/"),
         real: file.real,
         level: levelOf(annotation.level),
         startLine: start,

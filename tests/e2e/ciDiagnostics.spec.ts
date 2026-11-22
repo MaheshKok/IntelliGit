@@ -141,6 +141,9 @@ test("Problems lists CI annotations and clicking opens the line", async ({
         await expect(
             page.locator(".tabs-container .tab").filter({ hasText: "ci-annotated.ts" }),
         ).toBeVisible();
-        await expect(page.locator('[id="status.editor.selection"]')).toContainText("Ln 2, Col 1");
+        // The Problems entry selects its range: the whole annotated line, 22 characters long.
+        await expect(page.locator('[id="status.editor.selection"]')).toContainText(
+            "Ln 2, Col 23 (22 selected)",
+        );
     });
 });

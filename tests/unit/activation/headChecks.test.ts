@@ -195,8 +195,13 @@ describe("createCiDiagnostics", () => {
             );
             expect(subscriptions).toEqual([vscodeMock.collection]);
             expect(vscodeMock.collection.set).toHaveBeenCalledTimes(1);
+            // `show` clears the collection too, so only a new call proves the explicit clear.
+            const clears = vscodeMock.collection.clear.mock.calls.length;
             diagnostics.clear();
-            expect(vscodeMock.collection.clear).toHaveBeenCalled();
+            expect(
+                vscodeMock.collection.clear,
+                "clear() must empty the created collection",
+            ).toHaveBeenCalledTimes(clears + 1);
         } finally {
             await removeScratchDirectories(root);
         }

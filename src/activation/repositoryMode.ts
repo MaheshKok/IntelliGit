@@ -732,6 +732,8 @@ export async function activateRepositoryMode(
                 [commitGraph, sidebarGraph, commitPanel],
                 repoRoot,
             );
+            // The old repository's annotations go now, even if the new one's reads fail.
+            ciDiagnostics.clear();
         }
         activeRepository = repository;
         repoRoot = repository.root;

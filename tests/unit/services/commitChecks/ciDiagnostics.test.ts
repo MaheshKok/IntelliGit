@@ -837,7 +837,7 @@ describe("CiDiagnostics", () => {
         expect(mocks.showTextDocument).not.toHaveBeenCalled();
     });
 
-    it("a click opens the file's real path when it is a symlink inside the repository", async () => {
+    it("a click opens nothing once the placed file became a symlink to another repository file", async () => {
         const h = harness();
         await h.diagnostics.show(target(h));
         await unlink(appFile());
@@ -845,8 +845,27 @@ describe("CiDiagnostics", () => {
 
         await h.diagnostics.open(root, HASH, "src/app.ts", 2);
 
+        expect(
+            mocks.showTextDocument,
+            "a click must open only the file the annotation was placed on",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("an annotation placed through a symlink inside the repository lists and opens its real file", async () => {
+        await symlink(appFile(), path.join(root, "src", "alias.ts"));
+        const h = harness(async () => ({
+            annotations: [annotation({ path: "src/alias.ts" })],
+            coverage: "full",
+        }));
+        await h.diagnostics.show(target(h));
+
+        expect(
+            h.diagnostics.viewFor(root, HASH)?.items.map((item) => item.path),
+            "the Checks tab must list the contained real path, as the Problems entry uses",
+        ).toEqual(["src/app.ts"]);
+        await h.diagnostics.open(root, HASH, "src/app.ts", 2);
         const [uri] = mocks.showTextDocument.mock.calls[0] as [{ fsPath: string }];
-        expect(uri.fsPath).toBe(path.join(root, "src", "other.ts"));
+        expect(uri.fsPath).toBe(appFile());
     });
 
     it("a click on an annotation of a HEAD that moved opens nothing", async () => {
@@ -1324,5 +1343,92 @@ describe("interruptions before each outside effect", () => {
             loops.dispose();
             setE2eControlChannelActive(false);
         }
+    });
+
+    it("a Refresh whose repository context went stale during its HEAD read changes nothing", async () => {
+        const h = harness();
+        await h.diagnostics.show(target(h));
+        const stale = target(h, detail([job({ state: "success", annotationCount: 0 })]));
+        const held = holdNextHead(h);
+        const refreshing = h.diagnostics.refresh(stale);
+        await held.entered;
+        // Another repository became current while the Refresh waited on HEAD.
+        h.generations.bumpLifecycle();
+        held.resolve();
+        await refreshing;
+        expect(
+            h.collection.entries.size,
+            "a Refresh from a stale repository context must leave the shown entries alone",
+        ).toBe(1);
+        expect(h.diagnostics.viewFor(root, HASH)).toBeDefined();
+    });
+
+    it("a failed Checks-tab Refresh does not re-read annotations from the old detail", async () => {
+        const h = harness();
+        await h.diagnostics.show(target(h));
+        setE2eControlChannelActive(true);
+        const loops = new CommitCiDetailLoops();
+        try {
+            await answerCommitCiDetailRequest(
+                {
+                    repoKey: () => root,
+                    generations: h.generations,
+                    getDetail: async () => ({ ...detail(), refreshError: "network down" }),
+                    annotations: h.diagnostics,
+                },
+                {
+                    type: "requestCommitCiDetail",
+                    requestId: 5,
+                    repoKey: root,
+                    hash: HASH,
+                    force: true,
+                },
+                vi.fn(),
+                loops,
+            );
+            expect(
+                h.annotations,
+                "a Refresh that failed must not read annotations for the cached jobs",
+            ).toHaveBeenCalledTimes(1);
+            expect(h.collection.entries.size).toBe(1);
+        } finally {
+            loops.dispose();
+            setE2eControlChannelActive(false);
+        }
+    });
+
+    it("an annotations page that is not a list is a failed read, and an empty list is not", async () => {
+        const viewWith = async (body: unknown) => {
+            const provider = new GitHubProvider(undefined, undefined, async () => ({
+                statusCode: 200,
+                headers: {},
+                body,
+            }));
+            const h = harness((id, isCurrent) => provider.getAnnotations(REF, id, isCurrent));
+            await h.diagnostics.show(target(h));
+            return h.diagnostics.viewFor(root, HASH);
+        };
+        expect(
+            (await viewWith({}))?.unavailable,
+            "a page body that is not a list must make the read unavailable",
+        ).toBeDefined();
+        const empty = await viewWith([]);
+        expect(empty?.unavailable).toBeUndefined();
+        expect(empty?.coverage).toBe("full");
+    });
+
+    it("an annotation path keeps its exact spelling, so a trailing space names another file", async () => {
+        const provider = new GitHubProvider(undefined, undefined, async () => ({
+            statusCode: 200,
+            headers: {},
+            body: [{ ...annotationJson(), path: "src/app.ts " }],
+        }));
+        const h = harness((id, isCurrent) => provider.getAnnotations(REF, id, isCurrent));
+        await h.diagnostics.show(target(h));
+        const view = h.diagnostics.viewFor(root, HASH);
+        expect(view?.items, "a path GitHub sent with a trailing space must not be trimmed").toEqual(
+            [],
+        );
+        expect(view?.rejected).toBe(1);
     });
 });

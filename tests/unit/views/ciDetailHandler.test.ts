@@ -198,6 +198,47 @@ describe("answerCommitCiDetailRequest", () => {
         expect(listeners.size, "a stopped request stops listening").toBe(0);
     });
 
+    it("re-posts annotations published right after the first reply", async () => {
+        const view: CiAnnotationsView = { items: [], rejected: 1, coverage: "full" };
+        let published: CiAnnotationsView | undefined;
+        const listeners = new Set<() => void>();
+        const annotations: CiAnnotationsAccess = {
+            viewFor: (repoKey, hash) =>
+                repoKey === "/repo" && hash === HASH ? published : undefined,
+            onDidChange: (listener) => {
+                listeners.add(listener);
+                return { dispose: () => listeners.delete(listener) };
+            },
+            open: vi.fn(),
+            refresh: vi.fn(),
+        };
+        // The publication lands in the microtask right after the first reply is posted.
+        const post = vi.fn(() => {
+            if (post.mock.calls.length !== 1) return;
+            queueMicrotask(() => {
+                published = view;
+                for (const listener of listeners) listener();
+            });
+        });
+        const loops = new CommitCiDetailLoops();
+        await answerCommitCiDetailRequest(
+            {
+                repoKey: () => "/repo",
+                generations: new CiGenerations(),
+                getDetail: async () => detail("/repo"),
+                annotations,
+            },
+            { type: "requestCommitCiDetail", requestId: 1, repoKey: "/repo", hash: HASH },
+            post,
+            loops,
+        );
+        expect(
+            post.mock.calls.at(-1)?.[0].detail.annotations,
+            "a publication right after the first reply must be re-posted",
+        ).toEqual(view);
+        loops.dispose();
+    });
+
     it("a failed forced Refresh of a running overflow scan is not re-read automatically", async () => {
         vi.useFakeTimers();
         try {

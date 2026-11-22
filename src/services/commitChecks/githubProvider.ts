@@ -843,7 +843,13 @@ export class GitHubProvider implements CommitChecksProvider {
                 },
                 `${repoApiUrl(gitHubRef)}/check-runs/${encodeURIComponent(checkRunId)}/annotations?per_page=${CI_PAGE_SIZE}`,
                 linkHeaderNext,
-                (body) => (Array.isArray(body) ? body.map(toAnnotation) : []),
+                (body) => {
+                    // A page that is not a list is a failed read, never "no annotations".
+                    if (!Array.isArray(body)) {
+                        throw new Error(vscode.l10n.t("Malformed annotations response."));
+                    }
+                    return body.map(toAnnotation);
+                },
                 CI_MAX_PAGES,
                 (url) => this.allowNext(gitHubRef, url, sameCheckRun(url)),
             );
@@ -1248,7 +1254,8 @@ function toAnnotation(raw: unknown): CiAnnotation {
     const value = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
     const line = (field: unknown) => (typeof field === "number" ? field : undefined);
     return {
-        path: readString(value.path),
+        // Untrimmed: "src/a.ts " and "src/a.ts" are different files; placement validates it.
+        path: typeof value.path === "string" ? value.path : "",
         startLine: line(value.start_line),
         endLine: line(value.end_line),
         level: readString(value.annotation_level),

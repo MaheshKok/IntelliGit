@@ -72,7 +72,8 @@ async function rereadAnnotations(
     post: (detail: CommitCiDetail) => void,
 ): Promise<void> {
     const detail = shown();
-    if (!annotations || !detail) return;
+    // A failed Refresh shows the cached detail, whose jobs may be stale: keep what is placed.
+    if (!annotations || !detail || detail.refreshError !== undefined) return;
     await annotations.refresh({ ...target, detail });
     const latest = shown();
     if (latest) post(latest);
@@ -197,6 +198,14 @@ export async function answerCommitCiDetailRequest(
             (onScanUpdate) => source.getDetail(hash, { force: false }, ctx, onScanUpdate),
             postEmpty,
         );
+    // Listening before the first read: a publication between the first reply and the end of
+    // this request is re-posted, not lost.
+    if (source.annotations && !stopped.aborted) {
+        const changed = source.annotations.onDidChange(() => {
+            if (!stopped.aborted && detail) show(detail);
+        });
+        stopped.addEventListener("abort", () => changed.dispose(), { once: true });
+    }
     await read((onScanUpdate) =>
         force === true && source.actions
             ? source.actions.refresh(hash, ctx, onScanUpdate)
@@ -213,12 +222,6 @@ export async function answerCommitCiDetailRequest(
             post: show,
             refetch: () => reread(false),
         });
-    }
-    if (source.annotations && !stopped.aborted) {
-        const changed = source.annotations.onDidChange(() => {
-            if (!stopped.aborted && detail) show(detail);
-        });
-        stopped.addEventListener("abort", () => changed.dispose(), { once: true });
     }
     // The scan pages reach only the newest requester of a commit's detail, so its progress is
     // also re-read and re-posted under the same request id until the scan ends: another view
