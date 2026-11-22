@@ -1215,4 +1215,114 @@ describe("interruptions before each outside effect", () => {
             setE2eControlChannelActive(false);
         }
     });
+
+    // The next HEAD read waits until the test resolves it; `entered` says it was asked for.
+    function holdNextHead(h: Harness) {
+        const deps = (h.diagnostics as unknown as { deps: CiDiagnosticsDeps }).deps;
+        const entered = deferred<void>();
+        const head = deferred<string>();
+        deps.headHash = () => {
+            entered.resolve();
+            return head.promise;
+        };
+        return { entered: entered.promise, resolve: () => head.resolve(HASH) };
+    }
+
+    // Resolves the held HEAD read, then queues a clear right behind it in the same drain.
+    function resolveThenClear(h: Harness, held: ReturnType<typeof holdNextHead>): void {
+        held.resolve();
+        void Promise.resolve().then(() => h.diagnostics.clear());
+    }
+
+    const after = (calls: readonly number[], mark: number) => calls.filter((n) => n > mark);
+
+    it("a clear queued right after the final HEAD check stops the publish", async () => {
+        let h!: Harness;
+        let held!: ReturnType<typeof holdNextHead>;
+        h = harness(async () => {
+            held = holdNextHead(h);
+            return { annotations: [annotation()], coverage: "full" };
+        });
+        const shown = h.diagnostics.show(target(h));
+        await vi.waitFor(() => expect(held).toBeDefined());
+        await held.entered;
+        resolveThenClear(h, held);
+        await shown;
+        const cleared = h.collection.clear.mock.invocationCallOrder.at(-1) ?? 0;
+        expect(
+            after(h.collection.set.mock.invocationCallOrder, cleared),
+            "a clear in the drain after the final HEAD check must stop the Problems publish",
+        ).toEqual([]);
+        expect(h.diagnostics.viewFor(root, HASH)).toBeUndefined();
+    });
+
+    it("a clear queued right after a failed read's HEAD check stops its publish", async () => {
+        let h!: Harness;
+        let held!: ReturnType<typeof holdNextHead>;
+        h = harness(async () => {
+            held = holdNextHead(h);
+            throw new Error("temporary provider failure");
+        });
+        const shown = h.diagnostics.show(target(h));
+        await vi.waitFor(() => expect(held).toBeDefined());
+        await held.entered;
+        resolveThenClear(h, held);
+        await shown;
+        expect(
+            h.diagnostics.viewFor(root, HASH),
+            "a clear in the drain after a failed read's HEAD check must stop its publish",
+        ).toBeUndefined();
+    });
+
+    it("a clear queued right after a click's HEAD check stops the open", async () => {
+        const h = harness();
+        await h.diagnostics.show(target(h));
+        const held = holdNextHead(h);
+        const opening = h.diagnostics.open(root, HASH, "src/app.ts", 2);
+        await held.entered;
+        resolveThenClear(h, held);
+        await opening;
+        const cleared = h.collection.clear.mock.invocationCallOrder.at(-1) ?? 0;
+        expect(
+            after(mocks.showTextDocument.mock.invocationCallOrder, cleared),
+            "a clear in the drain after a click's HEAD check must stop the open",
+        ).toEqual([]);
+    });
+
+    it("Checks-tab Refresh of a commit that turned green clears the old entries", async () => {
+        const h = harness();
+        await h.diagnostics.show(target(h));
+        expect(h.collection.entries.size).toBe(1);
+        setE2eControlChannelActive(true);
+        const loops = new CommitCiDetailLoops();
+        const post = vi.fn();
+        try {
+            await answerCommitCiDetailRequest(
+                {
+                    repoKey: () => root,
+                    generations: h.generations,
+                    getDetail: async () => detail([job({ state: "success", annotationCount: 0 })]),
+                    annotations: h.diagnostics,
+                },
+                {
+                    type: "requestCommitCiDetail",
+                    requestId: 4,
+                    repoKey: root,
+                    hash: HASH,
+                    force: true,
+                },
+                post,
+                loops,
+            );
+            expect(
+                h.collection.entries.size,
+                "Checks-tab Refresh of a green commit must clear the old Problems entries",
+            ).toBe(0);
+            expect(h.diagnostics.viewFor(root, HASH)).toBeUndefined();
+            expect(post.mock.calls.at(-1)?.[0].detail.annotations).toBeUndefined();
+        } finally {
+            loops.dispose();
+            setE2eControlChannelActive(false);
+        }
+    });
 });

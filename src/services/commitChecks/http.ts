@@ -85,7 +85,8 @@ export interface FetchResponse {
  * Network boundary for callers that need response headers; same rejection rules as `FetchJson`.
  * With `conditional`, the request names the stored `ETag` and a 304 resolves to the stored body.
  * `beforeSend` runs right before the request goes on the wire, after any request gate admitted
- * it; when it rejects, nothing is sent.
+ * it; when it rejects, nothing is sent. It resolves one microtask before the send, so at most
+ * one request can still leave when the caller's state changes in that window.
  */
 export type FetchJsonWithMeta = (
     url: string,

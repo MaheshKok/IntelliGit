@@ -62,7 +62,10 @@ export interface CiAnnotationsAccess {
     onDidChange(listener: () => void): { dispose(): void };
     /** Opens a placed annotation's file at its line; anything not placed opens nothing. */
     open(repoKey: string, hash: string, filePath: string, line: number): Promise<void>;
-    /** The Checks tab's Refresh: reads HEAD's annotations again, even after a failed read. */
+    /**
+     * The Checks tab's Refresh: reads HEAD's annotations again, even after a failed read, and
+     * clears them when the fresh detail has no annotated failed job.
+     */
     refresh(target: CiDiagnosticsTarget): Promise<void>;
 }
 
@@ -94,12 +97,12 @@ export class CiDiagnostics implements CiAnnotationsAccess {
     private sequence = 0;
     // The commit the newest show ran for, so a later poll of the same HEAD sends nothing again.
     private target?: string;
-    // `current` is the publishing show's own check, rerun when a click opens a file.
+    // `live` is the publishing show's own check, rerun on HEAD when a click opens a file.
     private published?: {
         repoKey: string;
         hash: string;
         view: CiAnnotationsView;
-        current: () => Promise<boolean>;
+        live: (head: string | undefined) => boolean;
     };
     private readonly listeners = new Set<() => void>();
 
@@ -123,14 +126,15 @@ export class CiDiagnostics implements CiAnnotationsAccess {
         this.target = key;
         // The one check before every outside effect (a request, a page, a publish, an open):
         // the switch (ships hidden until Phase 18), the settings, the sign-in and lifecycle
-        // generations, the newest show, and HEAD only. HEAD is read first, so nothing it awaits
-        // can change the rest before the caller acts.
-        const current = async (): Promise<boolean> =>
-            (await this.deps.headHash()) === hash &&
+        // generations, the newest show, and HEAD. `live` is synchronous, so a publish or open
+        // written as `live(await headHash())` acts in the same microtask its check passed in.
+        const live = (head: string | undefined): boolean =>
+            head === hash &&
             sequence === this.sequence &&
             this.deps.switchOn() &&
             this.deps.enabled(detail.provider) &&
             this.deps.generations.isCurrent(ctx, this.deps.repoKey() ?? "");
+        const current = async (): Promise<boolean> => live(await this.deps.headHash());
         const read: { job: CiJob; result: CiAnnotations }[] = [];
         try {
             for (const job of jobs) {
@@ -143,10 +147,10 @@ export class CiDiagnostics implements CiAnnotationsAccess {
             }
         } catch (error) {
             // The same final check as a success: the failure belongs to this HEAD only while it is HEAD.
-            if (!(await current())) return;
+            if (!live(await this.deps.headHash())) return;
             this.deps.collection.clear();
             const forbidden = error instanceof HttpError && error.statusCode === 403;
-            this.publish(repoKey, hash, current, {
+            this.publish(repoKey, hash, live, {
                 items: [],
                 rejected: 0,
                 coverage: "full",
@@ -156,9 +160,9 @@ export class CiDiagnostics implements CiAnnotationsAccess {
         }
         const all = await placeAll(repoKey, read);
         // Ships hidden until Phase 18: nothing reaches the Problems panel while the switch is off.
-        if (!(await current())) return;
+        if (!live(await this.deps.headHash())) return;
         // A file swapped for a symlink since placement no longer resolves to itself. Synchronous,
-        // so nothing can change between this check and the publish below.
+        // so nothing can change between these checks and the publish below.
         const placed = all.placed.filter((item) => resolvesToItself(item.real));
         const rejected = all.rejected + all.placed.length - placed.length;
         this.deps.collection.clear();
@@ -178,7 +182,7 @@ export class CiDiagnostics implements CiAnnotationsAccess {
         for (const [real, diagnostics] of byFile) {
             this.deps.collection.set(vscode.Uri.file(real), diagnostics);
         }
-        this.publish(repoKey, hash, current, {
+        this.publish(repoKey, hash, live, {
             items: placed.map((item) => ({
                 path: item.relPath,
                 line: item.startLine + 1,
@@ -193,6 +197,11 @@ export class CiDiagnostics implements CiAnnotationsAccess {
 
     async refresh(target: CiDiagnosticsTarget): Promise<void> {
         if ((await this.deps.headHash()) !== target.hash) return;
+        // A commit that turned green (or lost its annotations) keeps no old entries.
+        if (annotatedJobs(target.detail).length === 0) {
+            this.clear();
+            return;
+        }
         // Forget that this commit was shown, so `show` reads it again instead of returning.
         if (this.target === `${target.repoKey}\0${target.hash}`) this.target = undefined;
         await this.show(target);
@@ -239,9 +248,9 @@ export class CiDiagnostics implements CiAnnotationsAccess {
         const real = await realInside(repoKey, filePath);
         // A clear, a newer show, a sign-out, the switch or a HEAD move during the awaits retires
         // the click.
-        if (!real || !(await published.current())) return;
+        if (!real || !published.live(await this.deps.headHash())) return;
         // No await from here to the open: a file swapped for a symlink during the awaits above
-        // no longer resolves to itself (K28).
+        // no longer resolves to itself (K28), and nothing can retire the click after `live`.
         if (!resolvesToItself(real)) return;
         await vscode.window.showTextDocument(vscode.Uri.file(real), {
             selection: new vscode.Range(line - 1, 0, line - 1, 0),
@@ -251,10 +260,10 @@ export class CiDiagnostics implements CiAnnotationsAccess {
     private publish(
         repoKey: string,
         hash: string,
-        current: () => Promise<boolean>,
+        live: (head: string | undefined) => boolean,
         view: CiAnnotationsView,
     ): void {
-        this.published = { repoKey, hash, view, current };
+        this.published = { repoKey, hash, view, live };
         this.fire();
     }
 
