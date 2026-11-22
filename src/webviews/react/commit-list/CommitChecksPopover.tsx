@@ -383,7 +383,8 @@ export function StateIcon({ state }: { state?: CommitCheckState }): React.ReactE
     return <FiCheckCircle size={16} aria-hidden="true" style={style} />;
 }
 
-function colorForState(state?: CommitCheckState): string {
+/** The theme colour of a check state, shared by the icons here and the Git Log's CI column bar. */
+export function colorForState(state?: CommitCheckState): string {
     switch (state) {
         case "success":
             return "var(--vscode-charts-green, #62c370)";

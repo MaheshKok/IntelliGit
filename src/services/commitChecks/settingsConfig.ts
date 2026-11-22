@@ -31,6 +31,16 @@ export interface CommitChecksSettings {
     readonly providers: Readonly<Record<ProviderId, boolean>>;
     readonly ciCdPattern?: RegExp;
     readonly ciCdFilterInvalid?: boolean;
+    /** The Git Log's CI column (`intelligit.commitChecks.showCiColumn`); absent is off. */
+    readonly showCiColumn?: boolean;
+}
+
+/**
+ * Reads `intelligit.commitChecks.showCiColumn` from the `intelligit` configuration section.
+ * Only an explicit `true` turns the column on.
+ */
+export function readShowCiColumn(config: { get<T>(key: string, defaultValue: T): T }): boolean {
+    return config.get<unknown>("commitChecks.showCiColumn", false) === true;
 }
 
 /**

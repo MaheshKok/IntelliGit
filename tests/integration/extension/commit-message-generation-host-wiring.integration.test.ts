@@ -269,6 +269,7 @@ vi.mock("../../../src/services/commitChecks/settingsConfig", () => ({
         ciCdPattern: undefined,
         ciCdFilterInvalid: false,
     })),
+    readShowCiColumn: vi.fn(() => false),
 }));
 vi.mock("../../../src/activation/shelfSettings", () => ({
     readShelfSettings: vi.fn(() => ({ removeOnUnshelve: true, cleanupAfterDays: 30 })),

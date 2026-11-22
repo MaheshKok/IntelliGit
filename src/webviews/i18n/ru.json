@@ -129,6 +129,8 @@
     "commit.list.header.commit": "Коммит",
     "commit.list.header.author": "Автор",
     "commit.list.header.date": "Дата",
+    "commit.list.header.ci": "CI",
+    "commit.list.ci.label": "Проверки CI: {summary}",
     "commit.menu.copyRevision": "Копировать номер ревизии",
     "commit.menu.createPatch": "Создать патч…",
     "commit.menu.cherryPick": "Cherry-pick",

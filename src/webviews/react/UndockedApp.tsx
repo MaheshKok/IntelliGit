@@ -82,6 +82,7 @@ interface GraphState {
     unpushedHashes: Set<string>;
     commitChecks: Map<string, CommitChecksValue>;
     commitChecksEnabled: boolean;
+    showCiColumn: boolean;
 }
 
 const initialGraphState: GraphState = {
@@ -98,6 +99,7 @@ const initialGraphState: GraphState = {
     unpushedHashes: new Set(),
     commitChecks: new Map(),
     commitChecksEnabled: true,
+    showCiColumn: false,
 };
 
 function graphReducer(state: GraphState, action: GraphAction): GraphState {
@@ -122,6 +124,7 @@ function graphReducer(state: GraphState, action: GraphAction): GraphState {
                 branchFolderIconsByName: action.folderIconsByName,
                 iconFonts: action.iconFonts ?? state.iconFonts,
                 commitChecksEnabled: action.commitChecksEnabled ?? true,
+                showCiColumn: action.showCiColumn === true,
             };
         case "setSelectedBranch":
             return { ...state, selectedBranch: action.branch };
@@ -238,6 +241,7 @@ function App(): React.ReactElement {
         unpushedHashes,
         commitChecks,
         commitChecksEnabled,
+        showCiColumn,
     } = graphState;
     const loadingMore = useRef(false);
     const currentBranch = useMemo(
@@ -596,6 +600,7 @@ function App(): React.ReactElement {
                 currentBranchHeadHash={currentBranchHeadHash}
                 commitChecks={commitChecks}
                 commitChecksEnabled={commitChecksEnabled}
+                showCiColumn={showCiColumn}
                 isViewVisible={viewVisible}
                 selectedDetail={selectedDetail}
                 commitDetailLoading={commitDetailLoading}

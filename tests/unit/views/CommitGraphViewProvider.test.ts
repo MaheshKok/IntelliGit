@@ -78,6 +78,7 @@ import {
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 import { CredentialStore } from "../../../src/services/commitChecks/credentialStore";
+import { normalizeCommitChecksSettings } from "../../../src/services/commitChecks/settingsConfig";
 import { CommitGraphViewProvider } from "../../../src/views/CommitGraphViewProvider";
 import type { CommitDetail } from "../../../src/types";
 import { FIXTURE_REFS, seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
@@ -990,5 +991,60 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
             replies,
             "current context must receive its valid history despite retired ready",
         ).toHaveLength(1);
+    });
+});
+
+describe("CommitGraphViewProvider CI column flag", () => {
+    /** The CI column flag of every `setBranches` message the card graph posts on its first `ready`. */
+    async function postedColumnFlags(showCiColumn: boolean): Promise<unknown[]> {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            {
+                ...buildProviderOptions("card"),
+                settings: { ...normalizeCommitChecksSettings({}), showCiColumn },
+            },
+        );
+        try {
+            const { webviewView, posted, receiveMessage } =
+                createInspectableFakeCommitGraphWebviewView();
+            provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+            await receiveMessage({ type: "ready" });
+            await flushMicrotasks();
+            const branches = posted.filter(
+                (message): message is Record<string, unknown> =>
+                    isRecord(message) && message.type === "setBranches",
+            );
+            expect(branches.length, "ready posts the branches message").toBeGreaterThan(0);
+            return branches.map((message) => message.showCiColumn);
+        } finally {
+            provider.dispose();
+        }
+    }
+
+    it("the Git Log host posts the CI column as off while the Checks tab switch is off", async () => {
+        const wasOn = isE2eControlChannelActive();
+        try {
+            setE2eControlChannelActive(false);
+            expect(
+                (await postedColumnFlags(true)).every((flag) => flag !== true),
+                "the setting is on but the switch is off: the column stays off",
+            ).toBe(true);
+            setE2eControlChannelActive(true);
+            expect(
+                await postedColumnFlags(true),
+                "the control: with the switch on the setting reaches the webview",
+            ).toContain(true);
+            expect(
+                (await postedColumnFlags(false)).every((flag) => flag !== true),
+                "the setting is off: the column stays off",
+            ).toBe(true);
+        } finally {
+            setE2eControlChannelActive(wasOn);
+        }
     });
 });

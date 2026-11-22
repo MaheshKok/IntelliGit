@@ -126,6 +126,8 @@
     "commit.list.header.commit": "커밋",
     "commit.list.header.author": "작가",
     "commit.list.header.date": "날짜",
+    "commit.list.header.ci": "CI",
+    "commit.list.ci.label": "CI 검사: {summary}",
     "commit.menu.copyRevision": "리비전 번호 복사",
     "commit.menu.createPatch": "패치를 생성하세요…",
     "commit.menu.cherryPick": "체리픽",

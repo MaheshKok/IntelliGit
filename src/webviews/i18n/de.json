@@ -127,6 +127,8 @@
     "commit.list.header.commit": "Commit",
     "commit.list.header.author": "Autor",
     "commit.list.header.date": "Datum",
+    "commit.list.header.ci": "CI",
+    "commit.list.ci.label": "CI-Prüfungen: {summary}",
     "commit.menu.copyRevision": "Revisionsnummer kopieren",
     "commit.menu.createPatch": "Patch erstellen…",
     "commit.menu.cherryPick": "Cherry-pick",

@@ -126,6 +126,8 @@
     "commit.list.header.commit": "提交",
     "commit.list.header.author": "作者",
     "commit.list.header.date": "日期",
+    "commit.list.header.ci": "CI",
+    "commit.list.ci.label": "CI 檢查：{summary}",
     "commit.menu.copyRevision": "複製修訂號",
     "commit.menu.createPatch": "建立補丁…",
     "commit.menu.cherryPick": "Cherry-pick",

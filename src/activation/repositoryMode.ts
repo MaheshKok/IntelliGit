@@ -35,7 +35,11 @@ import {
 } from "../services/repositoryDiscovery";
 import { CredentialStore } from "../services/commitChecks/credentialStore";
 import { normalizeHostMap } from "../services/commitChecks/hostConfig";
-import { normalizeCommitChecksSettings } from "../services/commitChecks/settingsConfig";
+import {
+    normalizeCommitChecksSettings,
+    readShowCiColumn,
+    type CommitChecksSettings,
+} from "../services/commitChecks/settingsConfig";
 import { CommitChecksRequestGateRegistry } from "../services/commitChecks/requestGate";
 import { CommitChecksService } from "../services/commitChecks/service";
 import { CommitChecksPersistentCache } from "../services/commitChecks/persistentCache";
@@ -248,9 +252,12 @@ export async function activateRepositoryMode(
     // Feature/provider toggles and CI/CD name filter. Read once at activation (reload to
     // change), like the host map. A malformed user regex falls back to the built-in filter
     // and surfaces a one-time warning so the silent fallback is visible.
-    const commitCheckSettings = normalizeCommitChecksSettings(
-        vscode.workspace.getConfiguration("intelligit").get("commitChecks"),
-    );
+    const commitCheckSettings: CommitChecksSettings = Object.freeze({
+        ...normalizeCommitChecksSettings(
+            vscode.workspace.getConfiguration("intelligit").get("commitChecks"),
+        ),
+        showCiColumn: readShowCiColumn(vscode.workspace.getConfiguration("intelligit")),
+    });
     if (commitCheckSettings.ciCdFilterInvalid) {
         void vscode.window.showWarningMessage(
             vscode.l10n.t(
@@ -457,6 +464,8 @@ export async function activateRepositoryMode(
         shelfSettings.removeOnUnshelve,
         commitMessageGenerationCoordinator,
         context.globalStorageUri?.fsPath,
+        undefined,
+        commitCheckSettings,
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
     const worktreeService = new WorktreeService(executor, () => repoRoot);

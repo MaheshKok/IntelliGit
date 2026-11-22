@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.19] - 2026-11-22
+
+### Added
+
+- Groundwork for the coming Checks tab: IntelliGit can now draw a small bar of each commit's passed, failed and running checks in the Git Log. Nothing changes in the extension yet.
+
 ## [0.43.18] - 2026-11-22
 
 ### Added

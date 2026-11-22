@@ -32,6 +32,7 @@ export type CommitGraphPanelAction =
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
           commitChecksEnabled?: boolean;
+          showCiColumn?: boolean;
       }
     | { type: "setSelectedBranch"; branch: string | null }
     | {

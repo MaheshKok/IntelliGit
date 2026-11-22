@@ -125,6 +125,7 @@ describe("E2E coverage manifest", () => {
         );
         expect(specs).toContain("tests/e2e/ciHeadStatus.spec.ts");
         expect(specs).toContain("tests/e2e/ciDiagnostics.spec.ts");
+        expect(specs).toContain("tests/e2e/ciColumn.spec.ts");
         expect(specs).toContain("tests/e2e/worktreeDeleteRefresh.spec.ts");
         expect(specs.filter((spec) => !existsSync(path.join(REPO_ROOT, spec)))).toEqual([]);
     });

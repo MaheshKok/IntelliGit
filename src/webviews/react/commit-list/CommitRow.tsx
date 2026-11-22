@@ -21,6 +21,7 @@ import { ROW_HEIGHT } from "../graph";
 import { getSettings } from "../shared/settings";
 import { t } from "../shared/i18n";
 import { CommitChecksButton, type CommitChecksValue } from "./CommitChecksPopover";
+import { CiColumnCell } from "./CiColumnCell";
 
 interface Props {
     commit: Commit;
@@ -37,6 +38,8 @@ interface Props {
     showDate?: boolean;
     authorWidth?: number;
     dateWidth?: number;
+    /** Shows the CI column cell in place of the check badge. */
+    showCiColumn?: boolean;
     checks?: CommitChecksValue;
     /** Requests this commit's checks; `force` bypasses the host/provider cache. */
     onRequestChecks?: (hash: string, force?: boolean) => void;
@@ -419,6 +422,7 @@ function CommitRowInner({
     showDate = true,
     authorWidth = AUTHOR_COL_WIDTH,
     dateWidth = DATE_COL_WIDTH,
+    showCiColumn = false,
     checks,
     onRequestChecks,
     onOpenCheckUrl,
@@ -548,11 +552,15 @@ function CommitRowInner({
         >
             <CommitMessageCell message={commit.message} refs={commit.refs} />
 
+            {showCiColumn ? (
+                <CiColumnCell hash={commit.hash} checks={checks} onOpenInChecks={openInChecks} />
+            ) : null}
+
             {showAuthor && <span style={authorStyle}>{commit.author}</span>}
 
             {showDate && <span style={dateStyle}>{formatDateTime(commit.date)}</span>}
 
-            {onRequestChecks && onOpenCheckUrl ? (
+            {!showCiColumn && onRequestChecks && onOpenCheckUrl ? (
                 <CommitChecksButton
                     hash={commit.hash}
                     checks={checks}
@@ -583,6 +591,7 @@ function areEqual(prev: Props, next: Props): boolean {
         prev.showDate === next.showDate &&
         prev.authorWidth === next.authorWidth &&
         prev.dateWidth === next.dateWidth &&
+        prev.showCiColumn === next.showCiColumn &&
         prev.checks === next.checks &&
         prev.onRequestChecks === next.onRequestChecks &&
         prev.onOpenCheckUrl === next.onOpenCheckUrl &&

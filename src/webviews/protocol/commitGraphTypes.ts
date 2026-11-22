@@ -366,6 +366,11 @@ export type CommitGraphInbound =
            * `false` makes the webview withhold the badge callbacks so no button renders.
            */
           commitChecksEnabled?: boolean;
+          /**
+           * Whether the Git Log shows its CI column (`commitChecks.showCiColumn`). Absent means
+           * off; hosts post it only while the Checks tab switch is on.
+           */
+          showCiColumn?: boolean;
       }
     | {
           /** State update echoing the branch filter that the host accepted. */

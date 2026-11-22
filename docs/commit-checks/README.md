@@ -245,6 +245,22 @@ empty and the tab shows **Annotations unavailable with this token**.
 `intelligit.commitChecks.problemsDiagnostics` turns the Problems panel entries off. It is on by
 default.
 
+## CI column in the Git Log
+
+> Planned: the CI column stays off until the Checks tab ships. This section describes how it
+> will behave.
+
+With `intelligit.commitChecks.showCiColumn` on (it is off by default), the Git Log adds a **CI**
+column between the commit message and Author. Each row shows a small bar split into passed
+(green), failed (red) and running (yellow) checks, and the passed count out of the total, such
+as `2/3`; a commit with no checks shows a dash. Hovering shows the same summary as the checks
+badge, and clicking selects the commit and opens its Checks tab. While the column is on, the
+row does not also show the checks badge.
+
+When the pane is too narrow to fit the column beside Author and Date, the column steps aside
+and the row shows the badge instead, so Author and Date never lose space to it. The setting is
+read when IntelliGit starts; reload the window after changing it.
+
 ## Authentication per provider
 
 | Provider | Credential | How to provide it | Scope / permission |

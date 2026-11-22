@@ -126,6 +126,7 @@ export function useCommitGraphMessages(params: {
                         folderIconsByName: data.folderIconsByName,
                         iconFonts: data.iconFonts,
                         commitChecksEnabled: data.commitChecksEnabled,
+                        showCiColumn: data.showCiColumn,
                     });
                     break;
                 case "setSelectedBranch":

@@ -14,11 +14,37 @@ export const DEFAULT_META_COLUMN_WIDTHS: MetaColumnWidths = {
     date: DATE_COL_WIDTH,
 };
 export const CHECKS_COL_WIDTH = 28;
+/** The optional CI column (Figma frame 1:2): 99 px, an 8 px inset, a 44 × 8 px bar, a 6 px gap. */
+export const CI_COL_WIDTH = 99;
+export const CI_CELL_INSET = 8;
+export const CI_BAR_WIDTH = 44;
+export const CI_BAR_HEIGHT = 8;
+export const CI_BAR_GAP = 6;
 /** Gap between the fixed metadata columns in rows and their header. */
 export const METADATA_COLUMN_MARGIN = 4;
 /** Minimum width reserved for the message cell, including refs, before metadata. */
 export const MESSAGE_MIN_WIDTH = 180;
 export const ROW_SIDE_PADDING = 8;
+
+/**
+ * Whether a requested CI column shows in place of the check badge: only when it fits beside the
+ * metadata columns that `visibleMetaColumns` shows without it. The CI column gives way first, so
+ * turning it on never hides Author or Date.
+ */
+export function ciColumnFits(
+    requested: boolean,
+    availableWidth: number,
+    widths: MetaColumnWidths,
+    shown: { author: boolean; date: boolean },
+): boolean {
+    const meta =
+        (shown.author ? widths.author + METADATA_COLUMN_MARGIN : 0) +
+        (shown.date ? widths.date + METADATA_COLUMN_MARGIN : 0);
+    return (
+        requested &&
+        availableWidth >= MESSAGE_MIN_WIDTH + CI_COL_WIDTH + METADATA_COLUMN_MARGIN + meta
+    );
+}
 
 /**
  * Chooses the metadata columns that fit beside the minimum message-and-ref cell.
