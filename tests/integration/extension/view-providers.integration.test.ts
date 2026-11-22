@@ -2178,6 +2178,53 @@ describe("view providers integration", () => {
         expect(captured.commitPanel!.runtimes.has(repoB)).toBe(true);
     });
 
+    it("switching the active repository clears the CI annotations at once", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const { CiDiagnostics } = await import("../../../src/services/commitChecks/ciDiagnostics");
+        const clear = vi.spyOn(CiDiagnostics.prototype, "clear");
+        const repoA = "/workspace";
+        const repoB = "/workspace/packages/app";
+        try {
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    secrets: {},
+                } as never,
+                [
+                    { root: repoA, label: "workspace" },
+                    { root: repoB, label: "app" },
+                ],
+                {
+                    commitGraph: { setProvider: () => undefined },
+                    sidebarGraph: { setProvider: () => undefined },
+                    commitPanel: { setProvider: () => undefined },
+                } as never,
+            );
+            clear.mockClear();
+            const fireActiveEditor = async (uri: unknown): Promise<void> => {
+                activeTextEditorListeners.forEach((listener) => listener({ document: { uri } }));
+                for (let index = 0; index < 5; index += 1) {
+                    await flushMicrotasks();
+                }
+            };
+
+            await fireActiveEditor(vscodeMock.Uri.file(`${repoA}/src/file.ts`));
+            expect(
+                clear,
+                "staying in the same repository keeps the annotations",
+            ).not.toHaveBeenCalled();
+            await fireActiveEditor(vscodeMock.Uri.file(`${repoB}/src/file.ts`));
+            expect(
+                clear,
+                "a repository switch must clear the old repository's Problems entries",
+            ).toHaveBeenCalled();
+        } finally {
+            clear.mockRestore();
+        }
+    });
+
     it("clears the multi-repository context for single-repository activation", async () => {
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
 

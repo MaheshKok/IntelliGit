@@ -43,6 +43,8 @@ import {
     answerOpenCiRangeDiff,
     CiRangeDiffGrant,
 } from "./ciChangedSinceGreenHandler";
+import { answerOpenCiAnnotation } from "./ciAnnotationHandler";
+import type { CiAnnotationsAccess } from "../services/commitChecks/ciDiagnostics";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
 import { postWebviewMessage } from "./webviewDelivery";
@@ -168,6 +170,8 @@ interface UndockedViewProviderOptions {
     ciLogStore?: CiLogMemoryStore;
     /** The window's action fences and write-token help; absent = no CI write actions. */
     ciActions?: CiActionOptions;
+    /** HEAD's CI annotations; absent = the Checks tab lists none. */
+    ciAnnotations?: CiAnnotationsAccess;
     commitChecksProviders?: readonly CommitChecksProvider[];
     /** Shared activation-owned coordinator; undocked providers never construct their own. */
     commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator;
@@ -266,6 +270,7 @@ export class UndockedViewProvider {
     private readonly ciGenerations?: CiGenerations;
     private readonly ciLogStore?: CiLogMemoryStore;
     private readonly ciActions?: CiActionOptions;
+    private readonly ciAnnotations?: CiAnnotationsAccess;
     private commitChecksGeneration = 0;
     private commitCheckDemandSeq = 0;
     private readonly ciDetailLoops = new CommitCiDetailLoops();
@@ -415,6 +420,7 @@ export class UndockedViewProvider {
         this.ciGenerations = options.ciGenerations;
         this.ciLogStore = options.ciLogStore;
         this.ciActions = options.ciActions;
+        this.ciAnnotations = options.ciAnnotations;
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
             options.commitChecksProviders ?? [
@@ -473,6 +479,7 @@ export class UndockedViewProvider {
                 },
             }),
             ...(ciActions && { actions: ciActionAccess(this.commitChecks, ciActions) }),
+            ...(this.ciAnnotations && { annotations: this.ciAnnotations }),
         };
     }
     /**
@@ -851,7 +858,8 @@ export class UndockedViewProvider {
                 msg.type === "runCiAction" ||
                 msg.type === "requestCiHistory" ||
                 msg.type === "requestChangedSinceGreen" ||
-                msg.type === "openCiRangeDiff";
+                msg.type === "openCiRangeDiff" ||
+                msg.type === "openCiAnnotation";
             if (ciMessage && this.panel !== panel) return;
             // A window reload sends ready without reopening the panel: it ends the old scan loop
             // and orphans a history reply asked before it. A closed panel's late ready does neither.
@@ -1390,6 +1398,9 @@ export class UndockedViewProvider {
             }
             case "openCiRangeDiff":
                 await answerOpenCiRangeDiff(this.ciDetailSource(), { ...msg }, this.rangeDiffGrant);
+                break;
+            case "openCiAnnotation":
+                await answerOpenCiAnnotation(this.ciDetailSource(), { ...msg });
                 break;
             case "cancelCommitCiDetail":
                 this.ciDetailLoops.cancel(msg.requestId);

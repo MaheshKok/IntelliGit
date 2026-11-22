@@ -27,6 +27,7 @@ import {
     httpGetJson,
     httpGetJsonWithMeta,
     httpRequestJson,
+    RequestNotSentError,
     type DownloadCiLog,
     type DownloadedText,
     type FetchJson,
@@ -67,6 +68,8 @@ import { logicalCheckId } from "../../shared/ci/identity";
 import type { EtagStore } from "./etagStore";
 import type {
     CiActionRequest,
+    CiAnnotation,
+    CiAnnotations,
     CiDetailFetch,
     CiFailedScanCursor,
     CiFailedScanPage,
@@ -210,6 +213,7 @@ export class GitHubProvider implements CommitChecksProvider {
         requiredChecks: true,
         usualDuration: true,
         attemptHistory: true,
+        annotations: true,
         writeScopeHelp: "commit.checks.tab.writeScopeHelpGithub",
     });
     /** GitHub Actions prefixes each error annotation line of a log with this marker. */
@@ -806,6 +810,56 @@ export class GitHubProvider implements CommitChecksProvider {
     }
 
     /**
+     * Reads one check run's annotations, 100 a page up to the page bound. A next link may also
+     * name the check run under `/repositories/{id}/`: check-run ids are unique across GitHub, so
+     * the same id is the same check run. `isCurrent` is read before every page request and again
+     * once a request gate admits it: a caller that went stale (a sign-out, a HEAD move) sends
+     * nothing more.
+     */
+    async getAnnotations(
+        ref: ProviderRepoRef,
+        checkRunId: string,
+        isCurrent: () => boolean | Promise<boolean>,
+    ): Promise<CiAnnotations> {
+        const session = await openSession("");
+        if (!isSession(session)) throw new HttpError(401, session.error ?? session.summary, {});
+        const gitHubRef = ref as GitHubRepoRef;
+        const sameCheckRun = (url: string): string | undefined => {
+            const match = /^\/repositories\/(\d+)\/check-runs\/(\d+)\/annotations$/.exec(
+                safePathname(url),
+            );
+            return match?.[2] === checkRunId ? match[1] : undefined;
+        };
+        const beforeSend = async (): Promise<void> => {
+            if (!(await isCurrent())) {
+                throw new RequestNotSentError("The annotations read was retired.", true);
+            }
+        };
+        try {
+            const page = await paginate(
+                async (url) => {
+                    await beforeSend();
+                    return this.fetchWithMeta(url, githubHeaders(session), undefined, beforeSend);
+                },
+                `${repoApiUrl(gitHubRef)}/check-runs/${encodeURIComponent(checkRunId)}/annotations?per_page=${CI_PAGE_SIZE}`,
+                linkHeaderNext,
+                (body) => {
+                    // A page that is not a list is a failed read, never "no annotations".
+                    if (!Array.isArray(body)) {
+                        throw new Error(vscode.l10n.t("Malformed annotations response."));
+                    }
+                    return body.map(toAnnotation);
+                },
+                CI_MAX_PAGES,
+                (url) => this.allowNext(gitHubRef, url, sameCheckRun(url)),
+            );
+            return { annotations: page.items, coverage: page.coverage };
+        } catch (err) {
+            throw redactError(err, session.accessToken);
+        }
+    }
+
+    /**
      * Continuation guard (K33): a next link must stay on the API origin under this
      * repository's path, `/repos/{owner}/{repo}/` or, as GitHub's own `Link` headers name it,
      * `/repositories/{id}/` for the id the API reported for this repository.
@@ -842,10 +896,10 @@ export class GitHubProvider implements CommitChecksProvider {
     private async unlistedSummaries(
         ref: GitHubRepoRef,
         jobs: readonly CiJob[],
-        listed: { checkRunIds: ReadonlySet<string>; summaries: ReadonlyMap<string, string> },
+        listed: { checkRunIds: ReadonlySet<string>; summaries: ReadonlyMap<string, CheckRunNotes> },
         session: vscode.AuthenticationSession,
         conditional: EtagStore | undefined,
-    ): Promise<{ summaries: ReadonlyMap<string, string>; complete: boolean }> {
+    ): Promise<{ summaries: ReadonlyMap<string, CheckRunNotes>; complete: boolean }> {
         const known = new Map(listed.summaries);
         let complete = true;
         for (const job of jobs) {
@@ -888,7 +942,8 @@ export class GitHubProvider implements CommitChecksProvider {
     /**
      * The snapshot, plus the id of every check run read, before the CI/CD filter drops any:
      * the detail checks each job's check run against them. `summaries` holds each check run's
-     * output title and summary by check-run id, the failure text of the job it belongs to.
+     * output title and summary and its annotation count by check-run id, the failure text and
+     * count of the job it belongs to.
      */
     private async fetchSnapshot(
         ref: GitHubRepoRef,
@@ -901,7 +956,7 @@ export class GitHubProvider implements CommitChecksProvider {
         /** Whether the commit has as many check suites as GitHub lists check runs from. */
         atSuiteLimit: boolean;
         checkRunIds: ReadonlySet<string>;
-        summaries: ReadonlyMap<string, string>;
+        summaries: ReadonlyMap<string, CheckRunNotes>;
     }> {
         const headers = githubHeaders(session);
         const base = `${repoApiUrl(ref)}/commits/${encodeURIComponent(hash)}`;
@@ -1158,23 +1213,54 @@ function toJob(job: GitHubWorkflowJob, scope: string): CiJob {
 }
 
 /**
- * A failed job with its check run's failure text. Matched by the check-run id from the job's
- * `check_run_url`: the Actions job id names another object and may equal an unrelated check run's.
+ * A failed job with its check run's failure text and annotation count. Matched by the check-run
+ * id from the job's `check_run_url`: the Actions job id names another object and may equal an
+ * unrelated check run's.
  */
-function withFailureSummary(job: CiJob, summaries: ReadonlyMap<string, string>): CiJob {
+function withFailureSummary(job: CiJob, summaries: ReadonlyMap<string, CheckRunNotes>): CiJob {
     if (job.state !== "failure" || job.checkRunId === undefined) return job;
-    const failureSummary = summaries.get(job.checkRunId);
-    return failureSummary === undefined ? job : { ...job, failureSummary };
+    const notes = summaries.get(job.checkRunId);
+    return notes === undefined ? job : { ...job, ...notes };
 }
 
-/** A check run's output title and summary, cleaned and cut; undefined when it has neither. */
-function checkRunSummary(run: GitHubCheckRun): string | undefined {
+/** What a failed job takes from its check run's output. */
+interface CheckRunNotes {
+    failureSummary?: string;
+    annotationCount?: number;
+}
+
+/**
+ * A check run's output title and summary, cleaned and cut, and its annotation count; undefined
+ * when it has none of them.
+ */
+function checkRunSummary(run: GitHubCheckRun): CheckRunNotes | undefined {
     const output = (run.output && typeof run.output === "object" ? run.output : {}) as {
         title?: unknown;
         summary?: unknown;
+        annotations_count?: unknown;
     };
     const parts = [readString(output.title), readString(output.summary)].filter(Boolean);
-    return cleanFailureSummary(parts.join("\n"));
+    const failureSummary = cleanFailureSummary(parts.join("\n"));
+    const annotationCount = optionalNumber(output.annotations_count);
+    if (failureSummary === undefined && annotationCount === undefined) return undefined;
+    return {
+        ...(failureSummary !== undefined && { failureSummary }),
+        ...(annotationCount !== undefined && { annotationCount }),
+    };
+}
+
+/** One GitHub check-run annotation, fields as sent; validated where it is placed. */
+function toAnnotation(raw: unknown): CiAnnotation {
+    const value = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    const line = (field: unknown) => (typeof field === "number" ? field : undefined);
+    return {
+        // Untrimmed: "src/a.ts " and "src/a.ts" are different files; placement validates it.
+        path: typeof value.path === "string" ? value.path : "",
+        startLine: line(value.start_line),
+        endLine: line(value.end_line),
+        level: readString(value.annotation_level),
+        message: readString(value.message),
+    };
 }
 
 function toStep(step: GitHubWorkflowStep): CiStep {

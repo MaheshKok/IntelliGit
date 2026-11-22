@@ -992,6 +992,7 @@
     "The provider's next-page link was refused.": "Odrzucono link dostawcy do następnej strony.",
     "Malformed Link header.": "Nieprawidłowy nagłówek Link.",
     "Malformed x-next-page header.": "Nieprawidłowy nagłówek x-next-page.",
+    "Malformed annotations response.": "Nieprawidłowa odpowiedź z adnotacjami.",
     "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "Ten potok nie ma czasu aktualizacji, więc nie można wykluczyć ponowienia podczas skanowania.",
     "[IntelliGit: this CI log link is not valid.]": "[IntelliGit: ten link do dziennika CI jest nieprawidłowy.]",
     "[IntelliGit: this CI log is no longer loaded. Open it again from the Checks tab.]": "[IntelliGit: ten dziennik CI nie jest już wczytany. Otwórz go ponownie na karcie Sprawdzenia.]",

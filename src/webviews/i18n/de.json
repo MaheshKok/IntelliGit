@@ -579,5 +579,14 @@
     "commit.checks.tab.changedSinceGreenNone": "Kein erfolgreicher Lauf dieses Jobs im geladenen Verlauf",
     "commit.checks.tab.changedSinceGreenAmbiguous": "Dieser Job lässt sich in älteren Commits nicht zuordnen",
     "commit.checks.tab.changedSinceGreenFailed": "Vergleich nicht möglich: {error}",
-    "commit.checks.tab.changedSinceGreenLoading": "Letzter erfolgreicher Lauf wird gesucht…"
+    "commit.checks.tab.changedSinceGreenLoading": "Letzter erfolgreicher Lauf wird gesucht…",
+    "commit.checks.tab.annotations": "Anmerkungen",
+    "commit.checks.tab.annotationsRejected": {
+        "one": "{count} Anmerkung konnte nicht platziert werden",
+        "other": "{count} Anmerkungen konnten nicht platziert werden"
+    },
+    "commit.checks.tab.annotationsTruncated": "Die ersten 1 000 Anmerkungen werden angezeigt",
+    "commit.checks.tab.annotationsRejectedNext": "Die ersten {count} Anmerkungen werden angezeigt – der Link des Anbieters zur nächsten Seite wurde abgelehnt",
+    "commit.checks.tab.annotationsForbidden": "Anmerkungen mit diesem Token nicht verfügbar",
+    "commit.checks.tab.annotationsUnavailable": "Anmerkungen nicht verfügbar: {reason}"
 }

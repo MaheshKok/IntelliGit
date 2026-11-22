@@ -6,6 +6,10 @@ import * as vscode from "vscode";
 import { isE2eControlChannelActive } from "../e2e/activationState";
 import type { CiActionFenceStore } from "../services/commitChecks/ciActionFence";
 import type { CiActionOutcome } from "../services/commitChecks/ciActions";
+import type {
+    CiAnnotationsAccess,
+    CiDiagnosticsTarget,
+} from "../services/commitChecks/ciDiagnostics";
 import type { CiGenerations, CiOperationContext } from "../services/commitChecks/ciGenerations";
 import type { CiLogMemoryStore } from "../services/commitChecks/ciLogMemoryStore";
 import type { CiLogTarget } from "../services/commitChecks/coordinator";
@@ -53,6 +57,26 @@ export interface CommitCiDetailSource {
     ) => Promise<ChangedSinceGreen | undefined>;
     /** Opens a file's diff between two revisions; absent = the host opens none. */
     openRangeDiff?: (fromRev: string, toRev: string, file: CiRangeDiffFile) => Promise<void>;
+    /** HEAD's CI annotations; absent = replies carry none and the host opens none. */
+    annotations?: CiAnnotationsAccess;
+}
+
+/**
+ * Refresh also reads HEAD's annotations again, so a failed read does not stay shown; the
+ * detail shown once that read ends is posted again with the new view.
+ */
+async function rereadAnnotations(
+    annotations: CiAnnotationsAccess | undefined,
+    target: Omit<CiDiagnosticsTarget, "detail">,
+    shown: () => CommitCiDetail | undefined,
+    post: (detail: CommitCiDetail) => void,
+): Promise<void> {
+    const detail = shown();
+    // A failed Refresh shows the cached detail, whose jobs may be stale: keep what is placed.
+    if (!annotations || !detail || detail.refreshError !== undefined) return;
+    await annotations.refresh({ ...target, detail });
+    const latest = shown();
+    if (latest) post(latest);
 }
 
 /** A host's way to run CI write actions for the repository it shows. */
@@ -155,7 +179,10 @@ export async function answerCommitCiDetailRequest(
         detail =
             next &&
             withoutSnapshot(fences ? withFence(next, fences.fenceFor(repoKey, hash)) : next);
-        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: detail ?? null });
+        // The annotations ride on the posted copy only, never on a cached detail.
+        const view = detail && source.annotations?.viewFor(repoKey, hash);
+        const posted = detail && view ? { ...detail, annotations: view } : detail;
+        post({ type: "commitCiDetail", requestId, repoKey, hash, detail: posted ?? null });
     };
     const read = async (
         fetch: (
@@ -171,12 +198,24 @@ export async function answerCommitCiDetailRequest(
             (onScanUpdate) => source.getDetail(hash, { force: false }, ctx, onScanUpdate),
             postEmpty,
         );
+    // Listening before the first read: a publication between the first reply and the end of
+    // this request is re-posted, not lost.
+    if (source.annotations && !stopped.aborted) {
+        const changed = source.annotations.onDidChange(() => {
+            if (!stopped.aborted && detail) show(detail);
+        });
+        stopped.addEventListener("abort", () => changed.dispose(), { once: true });
+    }
     await read((onScanUpdate) =>
         force === true && source.actions
             ? source.actions.refresh(hash, ctx, onScanUpdate)
             : source.getDetail(hash, { force: force === true }, ctx, onScanUpdate),
     );
     if (!isCurrent()) return;
+    if (force === true) {
+        await rereadAnnotations(source.annotations, { repoKey, hash, ctx }, () => detail, show);
+        if (!isCurrent()) return;
+    }
     if (source.actions) {
         repostOnFenceChange(source.actions.fences, stopped, repoKey, hash, {
             shown: () => detail,

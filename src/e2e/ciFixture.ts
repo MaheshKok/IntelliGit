@@ -5,6 +5,7 @@
 
 import type * as vscode from "vscode";
 import { NO_CI_CAPABILITIES, type ProviderCiCapabilities } from "../shared/ci/capabilities";
+import type { CiAnnotation } from "../services/commitChecks/types";
 import { isCommitCiDetailData } from "../shared/ci/persistedShape";
 import type { CommitCiDetailData } from "../types";
 import { isE2eControlChannelActive } from "./activationState";
@@ -16,6 +17,8 @@ export const E2E_CI_FIXTURE_KEY = "intelligit.e2e.ciFixture";
 export interface E2eCiFixture {
     detail: CommitCiDetailData;
     capabilities: ProviderCiCapabilities;
+    /** Check-run id to its annotations, fields as GitHub's normalized ones. */
+    annotations?: Record<string, CiAnnotation[]>;
 }
 
 /**
@@ -33,11 +36,22 @@ export function readE2eCiFixture(
     if (!isE2eControlChannelActive()) return undefined;
     const seeded = memento.get<unknown>(E2E_CI_FIXTURE_KEY);
     if (seeded === undefined || seeded === null) return undefined;
-    const { detail, details, capabilities } = seeded as {
+    const { detail, details, capabilities, annotations } = seeded as {
         detail?: unknown;
         details?: unknown;
         capabilities?: unknown;
+        annotations?: unknown;
     };
+    if (
+        annotations !== undefined &&
+        (typeof annotations !== "object" ||
+            annotations === null ||
+            !Object.values(annotations).every(Array.isArray))
+    ) {
+        throw new Error(
+            `The seeded ${E2E_CI_FIXTURE_KEY} annotations are not check runs mapped to lists.`,
+        );
+    }
     // `details` (commit hash to detail) seeds one commit apart from the shared `detail`.
     if (details !== undefined && (typeof details !== "object" || details === null)) {
         throw new Error(
@@ -64,6 +78,9 @@ export function readE2eCiFixture(
     return {
         detail: stamped as CommitCiDetailData,
         capabilities: seededFlags as unknown as ProviderCiCapabilities,
+        ...(annotations !== undefined && {
+            annotations: annotations as Record<string, CiAnnotation[]>,
+        }),
     };
 }
 

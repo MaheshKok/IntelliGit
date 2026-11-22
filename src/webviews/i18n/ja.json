@@ -569,5 +569,13 @@
     "commit.checks.tab.changedSinceGreenNone": "読み込まれた履歴にこのジョブの成功した実行はありません",
     "commit.checks.tab.changedSinceGreenAmbiguous": "古いコミットでこのジョブを特定できません",
     "commit.checks.tab.changedSinceGreenFailed": "比較できませんでした: {error}",
-    "commit.checks.tab.changedSinceGreenLoading": "最後に成功した実行を検索しています…"
+    "commit.checks.tab.changedSinceGreenLoading": "最後に成功した実行を検索しています…",
+    "commit.checks.tab.annotations": "アノテーション",
+    "commit.checks.tab.annotationsRejected": {
+        "other": "{count} 件のアノテーションを配置できませんでした"
+    },
+    "commit.checks.tab.annotationsTruncated": "最初の 1 000 件のアノテーションを表示しています",
+    "commit.checks.tab.annotationsRejectedNext": "最初の {count} 件のアノテーションを表示しています — プロバイダーの次ページのリンクは拒否されました",
+    "commit.checks.tab.annotationsForbidden": "このトークンではアノテーションを利用できません",
+    "commit.checks.tab.annotationsUnavailable": "アノテーションを利用できません: {reason}"
 }

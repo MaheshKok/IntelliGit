@@ -22,6 +22,7 @@ import {
     answerOpenCiRangeDiff,
     CiRangeDiffGrant,
 } from "./ciChangedSinceGreenHandler";
+import { answerOpenCiAnnotation } from "./ciAnnotationHandler";
 import type { LoadedCommit } from "../services/commitChecks/changedSinceGreen";
 
 /** What the Changed Files view needs to serve its Checks tab. */
@@ -167,6 +168,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                 case "requestCiHistory":
                 case "requestChangedSinceGreen":
                 case "openCiRangeDiff":
+                case "openCiAnnotation":
                     try {
                         await this.handleChecksMessage(msg, webviewView);
                     } catch (err) {
@@ -258,7 +260,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     | "runCiAction"
                     | "requestCiHistory"
                     | "requestChangedSinceGreen"
-                    | "openCiRangeDiff";
+                    | "openCiRangeDiff"
+                    | "openCiAnnotation";
             }
         >,
         view: vscode.WebviewView,
@@ -283,6 +286,10 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
             case "openCiRangeDiff":
                 if (!this.ciSource || this.view !== view) return;
                 await answerOpenCiRangeDiff(this.ciSource, { ...msg }, this.rangeDiffGrant);
+                return;
+            case "openCiAnnotation":
+                if (!this.ciSource || this.view !== view) return;
+                await answerOpenCiAnnotation(this.ciSource, { ...msg });
                 return;
             case "requestCiHistory":
                 if (!this.ciSource || this.view !== view) return;

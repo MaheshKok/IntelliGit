@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -12,6 +12,8 @@ const vscodeMock = vi.hoisted(() => ({
     ),
     showErrorMessage: vi.fn(async (..._args: unknown[]) => undefined),
     answerCiLogMessage: vi.fn(),
+    collection: { set: vi.fn(), clear: vi.fn(), dispose: vi.fn() },
+    createDiagnosticCollection: vi.fn(),
 }));
 
 vi.mock("vscode", () => ({
@@ -39,6 +41,25 @@ vi.mock("vscode", () => ({
     },
     StatusBarAlignment: { Left: 1 },
     l10n: { t: (message: string) => message },
+    languages: { createDiagnosticCollection: vscodeMock.createDiagnosticCollection },
+    DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2 },
+    Diagnostic: class {
+        source?: string;
+        constructor(
+            public range: unknown,
+            public message: string,
+            public severity: number,
+        ) {}
+    },
+    Range: class {
+        constructor(
+            public startLine: number,
+            public startCharacter: number,
+            public endLine: number,
+            public endCharacter: number,
+        ) {}
+    },
+    Uri: { file: (fsPath: string) => ({ fsPath }) },
 }));
 
 vi.mock("../../../src/e2e/activationState", () => ({ isE2eControlChannelActive: () => true }));
@@ -46,7 +67,11 @@ vi.mock("../../../src/views/ciLogHandler", () => ({
     answerCiLogMessage: vscodeMock.answerCiLogMessage,
 }));
 
-import { headCooldownEnd, registerHeadChecks } from "../../../src/activation/headChecks";
+import {
+    createCiDiagnostics,
+    headCooldownEnd,
+    registerHeadChecks,
+} from "../../../src/activation/headChecks";
 import { CiActionFenceStore } from "../../../src/services/commitChecks/ciActionFence";
 import { CiGenerations } from "../../../src/services/commitChecks/ciGenerations";
 import { HttpError } from "../../../src/services/commitChecks/http";
@@ -90,6 +115,96 @@ describe("headCooldownEnd", () => {
         const none = { requestBucket: vi.fn(async () => undefined) };
         await expect(headCooldownEnd(none, gates, HASH)).resolves.toBe(0);
         expect(none.requestBucket).toHaveBeenCalledWith(HASH);
+    });
+});
+
+describe("createCiDiagnostics", () => {
+    it("creates the Problems collection on the first publish, not at activation", async () => {
+        const root = await mkdtemp(path.join(os.tmpdir(), "intelligit-ci-diagnostics-"));
+        try {
+            await mkdir(path.join(root, "src"));
+            await writeFile(path.join(root, "src", "app.ts"), "const a = 1;\n");
+            vscodeMock.createDiagnosticCollection.mockReturnValue(vscodeMock.collection);
+            const subscriptions: unknown[] = [];
+            const generations = new CiGenerations();
+            const diagnostics = createCiDiagnostics({
+                context: { subscriptions } as never,
+                executor: { run: async () => `${HASH}\n` } as never,
+                repoRoot: () => root,
+                generations,
+                annotations: async () => ({
+                    annotations: [
+                        {
+                            path: "src/app.ts",
+                            startLine: 1,
+                            endLine: 1,
+                            level: "failure",
+                            message: "boom",
+                        },
+                    ],
+                    coverage: "full",
+                }),
+            });
+
+            diagnostics.clear();
+            expect(vscodeMock.createDiagnosticCollection).not.toHaveBeenCalled();
+
+            const job = {
+                id: "job-0",
+                logicalId: "ci/job-0",
+                name: "job-0",
+                checkName: "job-0",
+                state: "failure" as const,
+                steps: [],
+                checkRunId: "11",
+                annotationCount: 1,
+            };
+            await diagnostics.show({
+                repoKey: root,
+                hash: HASH,
+                ctx: generations.capture(root),
+                detail: {
+                    hash: HASH,
+                    provider: "github",
+                    complete: true,
+                    outcome: "failure",
+                    runs: [
+                        {
+                            id: "1",
+                            name: "CI",
+                            state: "failure",
+                            jobs: [job],
+                            jobsCoverage: "full",
+                        },
+                    ],
+                    runsCoverage: "full",
+                    otherChecks: [],
+                    otherChecksCoverage: "full",
+                    capabilities: {
+                        ...NO_CI_CAPABILITIES,
+                        runs: true,
+                        jobs: true,
+                        annotations: true,
+                    },
+                    repoKey: root,
+                },
+            });
+
+            expect(vscodeMock.createDiagnosticCollection).toHaveBeenCalledExactlyOnceWith(
+                "intelligit-ci",
+            );
+            expect(subscriptions).toEqual([vscodeMock.collection]);
+            expect(vscodeMock.collection.set).toHaveBeenCalledTimes(1);
+            // `show` clears the collection too, so only a new call proves the explicit clear.
+            const clears = vscodeMock.collection.clear.mock.calls.length;
+            diagnostics.clear();
+            expect(
+                vscodeMock.collection.clear,
+                "clear() must empty the created collection",
+            ).toHaveBeenCalledTimes(clears + 1);
+        } finally {
+            await removeScratchDirectories(root);
+        }
     });
 });
 

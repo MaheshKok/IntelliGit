@@ -158,12 +158,14 @@ export function gatedFetchWithMeta(
     providerId: ProviderId,
     create: typeof createConditionalRequest = createConditionalRequest,
 ): FetchJsonWithMeta {
-    return recoverBodylessNotModified((url, headers, conditional, revalidate) =>
-        registry.run(providerId, url, (generation) =>
-            create((response) => {
+    return recoverBodylessNotModified((url, headers, conditional, revalidate, beforeSend) =>
+        registry.run(providerId, url, async (generation) => {
+            // Admitted: only now does the caller's check run, after any wait in the queue.
+            await beforeSend?.();
+            return create((response) => {
                 registry.observeResponse(providerId, response, generation);
-            })(url, headers, conditional, revalidate),
-        ),
+            })(url, headers, conditional, revalidate);
+        }),
     );
 }
 

@@ -336,6 +336,7 @@
     "The provider's next-page link was refused.": "The provider's next-page link was refused.",
     "Malformed Link header.": "Malformed Link header.",
     "Malformed x-next-page header.": "Malformed x-next-page header.",
+    "Malformed annotations response.": "Malformed annotations response.",
     "This pipeline has no update time, so a retry during the scan cannot be ruled out.": "This pipeline has no update time, so a retry during the scan cannot be ruled out.",
     "Clone by URL, or sign in to browse your repositories": "Clone by URL, or sign in to browse your repositories",
     "Squash Commits is available only for unpushed commits.": "Squash Commits is available only for unpushed commits.",

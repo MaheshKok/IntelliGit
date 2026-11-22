@@ -202,6 +202,15 @@
     "commit.checks.tab.scanPaused": "Loading more failed jobs — paused for rate limit",
     "commit.checks.tab.scanStopped": "Could not load more failed jobs",
     "commit.checks.tab.refreshFailed": "Refresh failed: {error}",
+    "commit.checks.tab.annotations": "Annotations",
+    "commit.checks.tab.annotationsRejected": {
+        "one": "{count} annotation could not be placed",
+        "other": "{count} annotations could not be placed"
+    },
+    "commit.checks.tab.annotationsTruncated": "Showing the first 1 000 annotations",
+    "commit.checks.tab.annotationsRejectedNext": "Showing the first {count} annotations — the provider's next-page link was refused",
+    "commit.checks.tab.annotationsForbidden": "Annotations unavailable with this token",
+    "commit.checks.tab.annotationsUnavailable": "Annotations unavailable: {reason}",
     "commit.checks.tab.selectJob": "Select a job to see its details",
     "commit.checks.tab.state": "State",
     "commit.checks.tab.duration": "Duration",

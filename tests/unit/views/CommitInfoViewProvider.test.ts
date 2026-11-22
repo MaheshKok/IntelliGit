@@ -813,6 +813,38 @@ describe("CommitInfoViewProvider Checks tab history after a webview reload", () 
         ).toHaveLength(1);
     });
 
+    it("opens a clicked CI annotation through the placed list, and nothing while the Checks tab switch is off", async () => {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        const view = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await view.receiveMessage({ type: "ready" });
+        const open = vi.fn(async () => undefined);
+        provider.setCiSource({
+            enabled: true,
+            repoKey: () => "/repo",
+            getDetail: vi.fn(),
+            annotations: {
+                viewFor: () => undefined,
+                onDidChange: () => ({ dispose: () => undefined }),
+                open,
+            },
+        });
+        const click = {
+            type: "openCiAnnotation",
+            requestId: 4,
+            repoKey: "/repo",
+            hash: "a".repeat(40),
+            path: "src/a.ts",
+            line: 2,
+        };
+        setE2eControlChannelActive(false);
+        await view.receiveMessage(click);
+        expect(open, "the switch is off: nothing opens").not.toHaveBeenCalled();
+        setE2eControlChannelActive(true);
+        await view.receiveMessage(click);
+        expect(open).toHaveBeenCalledWith("/repo", "a".repeat(40), "src/a.ts", 2);
+    });
+
     it("opens only a file its latest changed-since-green answer listed, until the webview is retired", async () => {
         const provider = new CommitInfoViewProvider(createFakeExtensionUri());
         const view = createInspectableFakeWebviewView();

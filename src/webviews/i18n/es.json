@@ -589,5 +589,15 @@
     "commit.checks.tab.changedSinceGreenNone": "No hay ninguna ejecución correcta de este trabajo en el historial cargado",
     "commit.checks.tab.changedSinceGreenAmbiguous": "No se puede identificar este trabajo en commits anteriores",
     "commit.checks.tab.changedSinceGreenFailed": "No se pudo comparar: {error}",
-    "commit.checks.tab.changedSinceGreenLoading": "Buscando la última ejecución correcta…"
+    "commit.checks.tab.changedSinceGreenLoading": "Buscando la última ejecución correcta…",
+    "commit.checks.tab.annotations": "Anotaciones",
+    "commit.checks.tab.annotationsRejected": {
+        "many": "{count} anotaciones no se pudieron ubicar",
+        "one": "{count} anotación no se pudo ubicar",
+        "other": "{count} anotaciones no se pudieron ubicar"
+    },
+    "commit.checks.tab.annotationsTruncated": "Se muestran las primeras 1 000 anotaciones",
+    "commit.checks.tab.annotationsRejectedNext": "Se muestran las primeras {count} anotaciones: se rechazó el enlace a la página siguiente del proveedor",
+    "commit.checks.tab.annotationsForbidden": "Anotaciones no disponibles con este token",
+    "commit.checks.tab.annotationsUnavailable": "Anotaciones no disponibles: {reason}"
 }

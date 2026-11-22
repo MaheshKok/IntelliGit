@@ -398,6 +398,44 @@ describe("GitHub failure summary", () => {
         ).toBe("overflow failure\nexpected 3 to be 4");
     });
 
+    it("a failed job carries its check run's annotation count, from the listing or its own check run", async () => {
+        const listed = fakeApi("s", {
+            [`${REPO}/commits/${HASH}/check-runs`]: {
+                total_count: 2,
+                check_runs: [
+                    { id: 555, output: { title: "t", summary: "s", annotations_count: 3 } },
+                    { id: 556, output: { title: "Lint", annotations_count: 7 } },
+                ],
+            },
+        });
+        const selected = fakeApi("unused", {
+            ...PAST_SUITE_LIMIT,
+            [`${REPO}/check-runs/557`]: { id: 557, output: { annotations_count: 2 } },
+        });
+
+        const jobsOf = async (api: typeof listed) =>
+            (
+                await new GitHubProvider(
+                    async (url) => (await api(url)).body,
+                    undefined,
+                    api,
+                ).getDetail(ref, HASH)
+            ).runs.flatMap((run) => run.jobs);
+
+        const fromListing = await jobsOf(listed);
+        expect(fromListing.find((job) => job.id === "900")?.annotationCount).toBe(3);
+        expect(
+            fromListing.find((job) => job.id === "901")?.annotationCount,
+            "a passed job gets no count",
+        ).toBeUndefined();
+        const fromCheckRun = await jobsOf(selected);
+        expect(fromCheckRun.find((job) => job.id === "900")?.annotationCount).toBe(2);
+        expect(
+            fromCheckRun.find((job) => job.id === "900")?.failureSummary,
+            "a check run with a count and no text gets no summary",
+        ).toBeUndefined();
+    });
+
     it("the summary is cut to 2 000 characters and stripped of control characters", async () => {
         const api = fakeApi(`\u001b[31mred\u001b[0m ${"x".repeat(5000)}`);
         const provider = new GitHubProvider(async (url) => (await api(url)).body, undefined, api);

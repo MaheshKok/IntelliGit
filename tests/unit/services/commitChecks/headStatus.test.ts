@@ -856,17 +856,22 @@ describe("HeadCiStatus", () => {
         expect(none.show.mock.calls[0].slice(1)).toEqual(["Open Checks"]);
     });
 
-    it("reads both settings, defaulting to on and treating a non-boolean as on", () => {
+    it("reads the three settings, defaulting to on and treating a non-boolean as on", () => {
         const values: Record<string, unknown> = {
             "commitChecks.statusBar": false,
             "commitChecks.notifyOnSettle": "no",
+            "commitChecks.problemsDiagnostics": false,
         };
         const config = {
             get: <T>(key: string, fallback: T): T => (key in values ? values[key] : fallback) as T,
         };
-        expect(readHeadStatusSettings(config)).toEqual({ statusBar: false, notifyOnSettle: true });
+        expect(readHeadStatusSettings(config)).toEqual({
+            statusBar: false,
+            notifyOnSettle: true,
+            problemsDiagnostics: false,
+        });
         expect(readHeadStatusSettings({ get: <T>(_key: string, fallback: T) => fallback })).toEqual(
-            { statusBar: true, notifyOnSettle: true },
+            { statusBar: true, notifyOnSettle: true, problemsDiagnostics: true },
         );
     });
 

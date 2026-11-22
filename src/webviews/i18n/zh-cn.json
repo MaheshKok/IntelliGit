@@ -569,5 +569,13 @@
     "commit.checks.tab.changedSinceGreenNone": "已加载的历史中没有此作业的通过运行",
     "commit.checks.tab.changedSinceGreenAmbiguous": "无法在较早的提交中匹配此作业",
     "commit.checks.tab.changedSinceGreenFailed": "无法比较：{error}",
-    "commit.checks.tab.changedSinceGreenLoading": "正在查找上次通过的运行…"
+    "commit.checks.tab.changedSinceGreenLoading": "正在查找上次通过的运行…",
+    "commit.checks.tab.annotations": "注释",
+    "commit.checks.tab.annotationsRejected": {
+        "other": "有 {count} 条注释无法放置"
+    },
+    "commit.checks.tab.annotationsTruncated": "显示前 1 000 条注释",
+    "commit.checks.tab.annotationsRejectedNext": "显示前 {count} 条注释 — 提供方的下一页链接被拒绝",
+    "commit.checks.tab.annotationsForbidden": "此令牌无法使用注释",
+    "commit.checks.tab.annotationsUnavailable": "注释不可用：{reason}"
 }

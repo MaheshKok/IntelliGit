@@ -643,6 +643,7 @@ const WEBVIEW_ENTRIES = [
     { kind: "webview", id: "requestCiHistory", mutating: false },
     { kind: "webview", id: "requestChangedSinceGreen", mutating: false },
     { kind: "webview", id: "openCiRangeDiff", mutating: false },
+    { kind: "webview", id: "openCiAnnotation", mutating: false },
     {
         kind: "webview",
         id: "runCiAction",

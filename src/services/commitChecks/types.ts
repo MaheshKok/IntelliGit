@@ -8,6 +8,7 @@ import type {
     CiAction,
     CiActionEvidence,
     CiAttemptHistory,
+    CiCoverage,
     CiJob,
     CiRun,
     CommitChecksSnapshot,
@@ -172,6 +173,36 @@ export interface CommitChecksProvider {
      * 401 or 403 means the credential cannot read the log.
      */
     getJobLog?(ref: ProviderRepoRef, job: CiLogJob, signal: AbortSignal): Promise<DownloadedText>;
+    /**
+     * Reads one check run's file and line annotations, at most 1 000 (O1). Rejects on failure;
+     * an `HttpError` 403 means the credential cannot read them. Sends no request once
+     * `isCurrent` turns false, read before every page and again once a request gate admits it.
+     */
+    getAnnotations?(
+        ref: ProviderRepoRef,
+        checkRunId: string,
+        isCurrent: () => boolean | Promise<boolean>,
+    ): Promise<CiAnnotations>;
+}
+
+/**
+ * One file and line annotation as the provider reported it. Every field is untrusted: the
+ * Problems panel validates the path and the lines before placing it.
+ */
+export interface CiAnnotation {
+    readonly path: string;
+    /** 1-based, as the provider sent it; not checked to be an integer. */
+    readonly startLine?: number;
+    readonly endLine?: number;
+    /** GitHub's `failure`, `warning` or `notice`. */
+    readonly level: string;
+    readonly message: string;
+}
+
+/** A check run's annotations; `coverage` says whether the page bound cut the list. */
+export interface CiAnnotations {
+    readonly annotations: readonly CiAnnotation[];
+    readonly coverage: CiCoverage;
 }
 
 /** A write action on one run, or on one job of it (`rerunJob`); ids as the detail names them. */
