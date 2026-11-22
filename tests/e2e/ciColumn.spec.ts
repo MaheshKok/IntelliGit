@@ -111,6 +111,12 @@ test("column on in light and dark themes at narrow and wide pane widths keeps Au
             value: CI_FIXTURE,
         });
         expect(seeded.ok, `CI fixture seed failed: ${seeded.ok ? "" : seeded.error}`).toBe(true);
+        // Chat opens in the secondary side bar at launch and, with Explorer, squeezes the panel
+        // until Author no longer fits; close both so the wide pass really is wide.
+        for (const name of [/^Toggle Primary Side Bar/, /^Toggle Secondary Side Bar/]) {
+            const toggle = page.getByRole("button", { name });
+            if ((await toggle.getAttribute("aria-pressed")) === "true") await toggle.click();
+        }
         const workbench = new Workbench(page);
         await workbench.runCommand("IntelliGit: Show Git Log");
         const graph = await new IntelliGitView(page).revealPanel();
