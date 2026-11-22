@@ -11,7 +11,9 @@ import type {
 } from "./commitPanelMessages";
 import type { CommitGraphInbound } from "./commitGraphTypes";
 import type {
+    CancelCiBisectMessage,
     CancelCommitCiDetailMessage,
+    StartCiBisectMessage,
     OpenCiLogMessage,
     OpenCommitChecksSettingsMessage,
     PreviewCiLogMessage,
@@ -228,6 +230,8 @@ type GraphOutbound =
     | RequestChangedSinceGreenMessage
     | OpenCiRangeDiffMessage
     | OpenCiAnnotationMessage
+    | StartCiBisectMessage
+    | CancelCiBisectMessage
     | OpenCommitChecksSettingsMessage
     | {
           /** Command requesting the controller to return IntelliGit to docked views. */

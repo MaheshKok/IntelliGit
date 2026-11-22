@@ -1,7 +1,7 @@
 // Checks tab messages shared by every webview that renders the commit details pane
 // (the Git Log panel, the standalone Changed Files view and the undocked window).
 
-import type { CiHistory } from "../../shared/ci/history";
+import type { CiBisectJob, CiHistory } from "../../shared/ci/history";
 import type { CiAction, CiChangedFile, CommitCiDetail } from "../../types";
 
 /** Host's reply to {@link RequestCommitCiDetailMessage}. */
@@ -103,6 +103,30 @@ export interface ChangedSinceGreenMessage {
     unknownReason?: "ambiguous";
     error?: string;
     files: CiChangedFile[];
+}
+
+/** Host's progress on a {@link StartCiBisectMessage}: commits read so far. */
+export interface CiBisectProgressMessage {
+    type: "ciBisectProgress";
+    requestId: number;
+    done: number;
+    total: number;
+}
+
+/**
+ * Host's answer to a {@link StartCiBisectMessage}: each job's state per commit, oldest first,
+ * where it broke (on a first-parent chain only) and whether it is flaky. A cancelled bisect gets
+ * none. `limitedTo` is set when selected commits the Git Log no longer had loaded were dropped.
+ */
+export interface CiBisectResultMessage {
+    type: "ciBisectResult";
+    requestId: number;
+    repoKey: string;
+    linear: boolean;
+    /** The commit of each job's square, oldest first, the order of each job's `states`. */
+    commits: string[];
+    jobs: CiBisectJob[];
+    limitedTo?: number;
 }
 
 /** One loaded Git Log commit with its parents, first parent first. */
@@ -219,6 +243,20 @@ type CommitCiOutbound =
           path: string;
           /** 1-based, as the Annotations section lists it. */
           line: number;
+      }
+    | {
+          /** Git Log row menu asks its host to find where CI broke over the selected commits. */
+          type: "startCiBisect";
+          /** Monotonic per webview; only the newest bisect's replies render. */
+          requestId: number;
+          repoKey: string;
+          /** The selected loaded commits, newest first; the host keeps the ones it has loaded. */
+          commits: CiLoadedCommit[];
+      }
+    | {
+          /** The Bisect section's Cancel: the host sends no more of that bisect's requests. */
+          type: "cancelCiBisect";
+          requestId: number;
       };
 
 /** Checks tab asks its host for a commit's CI detail. */
@@ -255,3 +293,7 @@ export type RequestChangedSinceGreenMessage = Extract<
 export type OpenCiRangeDiffMessage = Extract<CommitCiOutbound, { type: "openCiRangeDiff" }>;
 /** Checks tab asks to open a CI annotation's file at its line. */
 export type OpenCiAnnotationMessage = Extract<CommitCiOutbound, { type: "openCiAnnotation" }>;
+/** Git Log asks to find where CI broke over a range of commits. */
+export type StartCiBisectMessage = Extract<CommitCiOutbound, { type: "startCiBisect" }>;
+/** The Bisect section cancels its bisect. */
+export type CancelCiBisectMessage = Extract<CommitCiOutbound, { type: "cancelCiBisect" }>;

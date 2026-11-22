@@ -7,7 +7,8 @@ import type { Commit, CommitChecksSnapshot } from "../../types";
 import { computeGraph, LANE_WIDTH, ROW_HEIGHT } from "./graph";
 import { ContextMenu } from "./shared/components/ContextMenu";
 import { ClearIcon, SearchIcon } from "./shared/components/Icons";
-import { getCommitMenuItems } from "./commit-list/commitMenu";
+import { FIND_CI_BREAK_ACTION, getCommitMenuItems } from "./commit-list/commitMenu";
+import type { CiLoadedCommit } from "../protocol/commitCiMessages";
 import { CiColumnHeader } from "./commit-list/CiColumnCell";
 import { CommitListRows } from "./commit-list/CommitListRows";
 import type { CommitSelectionModifiers } from "./commit-list/CommitRow";
@@ -84,6 +85,8 @@ interface Props {
     onSignInForCommitChecks?: (host: string) => void;
     /** Shows the commit's Checks tab in the details pane (the row is selected first). */
     onOpenCommitInChecks?: (hash: string) => void;
+    /** Starts "Find where CI broke" over the selected rows; the row menu offers it only when set. */
+    onFindCiBreak?: (commits: CiLoadedCommit[]) => void;
     showSearch?: boolean;
     showAuthorDate?: boolean;
     /**
@@ -136,6 +139,11 @@ function nearestSelectedHash(
         }
     }
     return nearest?.hash ?? null;
+}
+
+/** "Find where CI broke" needs a host that runs it and a range of rows. */
+function offersFindCiBreak(onFindCiBreak: unknown, selectedCommits: readonly Commit[]): boolean {
+    return onFindCiBreak !== undefined && selectedCommits.length > 1;
 }
 
 /**
@@ -192,6 +200,7 @@ export function CommitList({
     onOpenCommitCheckUrl,
     onSignInForCommitChecks,
     onOpenCommitInChecks,
+    onFindCiBreak,
     showSearch = true,
     showAuthorDate = true,
     showCiColumn,
@@ -391,6 +400,15 @@ export function CommitList({
     const handleContextMenuAction = useCallback(
         (action: string) => {
             if (!contextMenu) return;
+            if (action === FIND_CI_BREAK_ACTION) {
+                onFindCiBreak?.(
+                    contextMenuSelectedCommits.map((commit) => ({
+                        hash: commit.hash,
+                        parents: commit.parentHashes,
+                    })),
+                );
+                return;
+            }
             if (!isCommitAction(action)) return;
             onCommitAction(
                 action,
@@ -399,7 +417,7 @@ export function CommitList({
                     : contextMenu.commit.hash,
             );
         },
-        [contextMenu, onCommitAction, squashTargetHash],
+        [contextMenu, contextMenuSelectedCommits, onCommitAction, onFindCiBreak, squashTargetHash],
     );
 
     const handleScroll = useCallback(
@@ -788,6 +806,7 @@ export function CommitList({
                         isUnpushedCommit(contextMenu.commit.hash),
                         canCherryPickFromSelectedScope,
                         canSquashSelectedCommits,
+                        offersFindCiBreak(onFindCiBreak, contextMenuSelectedCommits),
                     )}
                     onSelect={handleContextMenuAction}
                     onClose={closeContextMenu}

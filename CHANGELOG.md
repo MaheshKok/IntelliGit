@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.20] - 2026-11-22
+
+### Added
+
+- Groundwork for the coming Checks tab: IntelliGit can now check a range of commits in the Git Log and find, for each CI job, the commit where it started failing. Nothing changes in the extension yet.
+
 ## [0.43.19] - 2026-11-22
 
 ### Added

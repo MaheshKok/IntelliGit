@@ -590,5 +590,23 @@
     "commit.checks.tab.annotationsTruncated": "Die ersten 1 000 Anmerkungen werden angezeigt",
     "commit.checks.tab.annotationsRejectedNext": "Die ersten {count} Anmerkungen werden angezeigt – der Link des Anbieters zur nächsten Seite wurde abgelehnt",
     "commit.checks.tab.annotationsForbidden": "Anmerkungen mit diesem Token nicht verfügbar",
-    "commit.checks.tab.annotationsUnavailable": "Anmerkungen nicht verfügbar: {reason}"
+    "commit.checks.tab.annotationsUnavailable": "Anmerkungen nicht verfügbar: {reason}",
+    "commit.checks.bisect.title": "Finden, wo CI fehlschlug",
+    "commit.checks.bisect.help": "Bereich rechtsklicken → {action}. Ein Quadrat pro Commit, neuestes links; das erste Rot nach einem Grün ist der Bruch.",
+    "commit.checks.bisect.progress": "{done} / {total} Commits",
+    "commit.checks.bisect.cancel": "Abbrechen",
+    "commit.checks.bisect.close": "Schließen",
+    "commit.checks.bisect.brokeAtThis": "fehlgeschlagen bei {hash} · dieser Commit",
+    "commit.checks.bisect.brokeAtAgo": {
+        "one": "fehlgeschlagen bei {hash} · vor {count} Commit",
+        "other": "fehlgeschlagen bei {hash} · vor {count} Commits"
+    },
+    "commit.checks.bisect.notLinear": "keine gerade Linie – kein Bruchpunkt",
+    "commit.checks.bisect.noBreak": "kein Bruchpunkt in diesem Bereich",
+    "commit.checks.bisect.flakyNote": "instabil: {n} rot von {m}, keine rote Serie → wahrscheinlich nicht deins",
+    "commit.checks.bisect.limited": "Auf die {count} geladenen Commits beschränkt",
+    "commit.checks.bisect.none": "Keine CI-Jobs für diese Commits gefunden",
+    "commit.checks.bisect.square": "{hash}: {state}",
+    "commit.checks.bisect.notRead": "nicht gelesen",
+    "commit.menu.findCiBreak": "Finden, wo CI fehlschlug"
 }

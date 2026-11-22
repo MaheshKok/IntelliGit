@@ -261,6 +261,27 @@ When the pane is too narrow to fit the column beside Author and Date, the column
 and the row shows the badge instead, so Author and Date never lose space to it. The setting is
 read when IntelliGit starts; reload the window after changing it.
 
+## Find where CI broke
+
+> Planned: the row menu entry and the bisect view stay off until the Checks tab ships. This
+> section describes how they will behave.
+
+Select a range of rows in the Git Log, right-click and choose **Find where CI broke**. The
+Checks tab shows the progress ("12 / 40 commits") with **Cancel**, then one row per CI job: a
+small square per commit (newest on the left; green passed, red failed, yellow running or a
+lone red in a flaky job) and where the job broke, such as "broke at 9e8d7c6 · 4 commits ago".
+The break point is the oldest red of the newest run of reds that follows a green.
+
+- Commits already in the cache cost no request; the rest go through the same request limits
+  as the checks badges, at most four at a time. **Cancel** stops every request not yet sent,
+  including ones already waiting for a free slot.
+- A selection that is not one first-parent line (it reaches into a merged side branch) shows
+  the squares with "not a straight line — no break point".
+- Only commits the Git Log has loaded are checked; a larger selection shows "Limited to the
+  40 loaded commits".
+- A job that went red for a single commit between greens carries the flaky tag described
+  under [Flaky jobs](#flaky-jobs).
+
 ## Authentication per provider
 
 | Provider | Credential | How to provide it | Scope / permission |

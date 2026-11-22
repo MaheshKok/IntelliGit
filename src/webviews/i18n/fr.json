@@ -601,5 +601,24 @@
     "commit.checks.tab.annotationsTruncated": "Affichage des 1 000 premières annotations",
     "commit.checks.tab.annotationsRejectedNext": "Affichage des {count} premières annotations — le lien de page suivante du fournisseur a été refusé",
     "commit.checks.tab.annotationsForbidden": "Annotations indisponibles avec ce jeton",
-    "commit.checks.tab.annotationsUnavailable": "Annotations indisponibles : {reason}"
+    "commit.checks.tab.annotationsUnavailable": "Annotations indisponibles : {reason}",
+    "commit.checks.bisect.title": "Trouver où la CI a cassé",
+    "commit.checks.bisect.help": "Clic droit sur une plage → {action}. Un carré par commit, le plus récent à gauche ; le premier rouge après un vert est la cassure.",
+    "commit.checks.bisect.progress": "{done} / {total} commits",
+    "commit.checks.bisect.cancel": "Annuler",
+    "commit.checks.bisect.close": "Fermer",
+    "commit.checks.bisect.brokeAtThis": "cassé à {hash} · ce commit",
+    "commit.checks.bisect.brokeAtAgo": {
+        "many": "cassé à {hash} · il y a {count} commits",
+        "one": "cassé à {hash} · il y a {count} commit",
+        "other": "cassé à {hash} · il y a {count} commits"
+    },
+    "commit.checks.bisect.notLinear": "pas une ligne droite — aucun point de cassure",
+    "commit.checks.bisect.noBreak": "aucun point de cassure dans cette plage",
+    "commit.checks.bisect.flakyNote": "instable : {n} rouge(s) sur {m}, pas de série de rouges → probablement pas de votre fait",
+    "commit.checks.bisect.limited": "Limité aux {count} commits chargés",
+    "commit.checks.bisect.none": "Aucun job CI trouvé pour ces commits",
+    "commit.checks.bisect.square": "{hash}: {state}",
+    "commit.checks.bisect.notRead": "non lu",
+    "commit.menu.findCiBreak": "Trouver où la CI a cassé"
 }

@@ -579,5 +579,22 @@
     "commit.checks.tab.annotationsTruncated": "显示前 1 000 条注释",
     "commit.checks.tab.annotationsRejectedNext": "显示前 {count} 条注释 — 提供方的下一页链接被拒绝",
     "commit.checks.tab.annotationsForbidden": "此令牌无法使用注释",
-    "commit.checks.tab.annotationsUnavailable": "注释不可用：{reason}"
+    "commit.checks.tab.annotationsUnavailable": "注释不可用：{reason}",
+    "commit.checks.bisect.title": "查找 CI 出错的位置",
+    "commit.checks.bisect.help": "右键单击一个范围 → {action}。每个提交一个方块，最新的在左；绿色之后的第一个红色就是出错处。",
+    "commit.checks.bisect.progress": "{done} / {total} 个提交",
+    "commit.checks.bisect.cancel": "取消",
+    "commit.checks.bisect.close": "关闭",
+    "commit.checks.bisect.brokeAtThis": "在 {hash} 出错 · 此提交",
+    "commit.checks.bisect.brokeAtAgo": {
+        "other": "在 {hash} 出错 · {count} 个提交之前"
+    },
+    "commit.checks.bisect.notLinear": "不是一条直线 — 没有出错点",
+    "commit.checks.bisect.noBreak": "此范围内没有出错点",
+    "commit.checks.bisect.flakyNote": "不稳定：{m} 个中有 {n} 个红色，没有连续红色 → 可能不是你的问题",
+    "commit.checks.bisect.limited": "仅限已加载的 {count} 个提交",
+    "commit.checks.bisect.none": "未找到这些提交的 CI 作业",
+    "commit.checks.bisect.square": "{hash}: {state}",
+    "commit.checks.bisect.notRead": "未读取",
+    "commit.menu.findCiBreak": "查找 CI 出错的位置"
 }

@@ -30,6 +30,7 @@ import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/type
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
 import { openChecksTab } from "./commit-info/checks/checksTabState";
+import { findCiBreakHandler } from "./commit-info/checks/ciBisect";
 import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 import { JETBRAINS_UI } from "./shared/tokens";
 import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
@@ -608,6 +609,7 @@ export function CommitGraphPanel({
                             commitChecksEnabled ? handleSignInForCommitChecks : undefined
                         }
                         onOpenCommitInChecks={commitChecksEnabled ? openChecksTab : undefined}
+                        onFindCiBreak={findCiBreakHandler(commitChecksEnabled, ciRepoKey)}
                         showCiColumn={showCiColumn}
                         isViewVisible={viewVisible}
                     />

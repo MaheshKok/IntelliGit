@@ -16,10 +16,14 @@ import type {
     RebaseSubmissionEntry,
 } from "../../git/interactiveRebase/types";
 import type {
+    CancelCiBisectMessage,
     CancelCommitCiDetailMessage,
     CiActionResultMessage,
+    CiBisectProgressMessage,
+    CiBisectResultMessage,
     ChangedSinceGreenMessage,
     CiHistoryMessage,
+    StartCiBisectMessage,
     CiLogPreviewMessage,
     CiLogResultMessage,
     CommitCiDetailInvalidatedMessage,
@@ -268,6 +272,8 @@ export type CommitGraphOutbound =
     | RequestChangedSinceGreenMessage
     | OpenCiRangeDiffMessage
     | OpenCiAnnotationMessage
+    | StartCiBisectMessage
+    | CancelCiBisectMessage
     | OpenCommitChecksSettingsMessage
     | OpenCommitInChecksMessage;
 
@@ -443,4 +449,6 @@ export type CommitGraphInbound =
     | CiActionResultMessage
     | CiHistoryMessage
     | ChangedSinceGreenMessage
+    | CiBisectProgressMessage
+    | CiBisectResultMessage
     | OpenChecksTabMessage;

@@ -203,6 +203,34 @@ export function flaky(
 }
 
 /**
+ * §9 "broke at", for a first-parent chain only (`line` newest first): the oldest commit of the
+ * newest unbroken run of reds, when the commit right before that run is green. `null` when there
+ * is no red, or no green right before the run (a commit with no result breaks the run).
+ */
+export function brokeAt(
+    line: readonly { hash: string; state: CiState | CommitCheckState | null }[],
+): string | null {
+    const red = (index: number): boolean => {
+        const state = line[index]?.state;
+        return state !== undefined && state !== null && isRed(state);
+    };
+    let oldest = line.findIndex((_, index) => red(index));
+    if (oldest === -1) return null;
+    while (red(oldest + 1)) oldest += 1;
+    return line[oldest + 1]?.state === "success" ? line[oldest].hash : null;
+}
+
+/** One job of a bisect (§4 `ciBisectResult`): its state per commit, oldest first. */
+export interface CiBisectJob {
+    checkName: string;
+    /** `null` = the commit has no result for the job, or its checks could not be read. */
+    states: (CiState | null)[];
+    /** Set only on a first-parent chain (`brokeAt` above). */
+    brokeAt: string | null;
+    flaky: CiFlaky | null;
+}
+
+/**
  * The check's line for `flaky`: the selected commit with its own attempts, then each loaded
  * ancestor's matched state. An ancestor read in part counts only an identity match. An ancestor
  * not read, or whose match cannot be proven, is `unread`: it breaks an isolated red.

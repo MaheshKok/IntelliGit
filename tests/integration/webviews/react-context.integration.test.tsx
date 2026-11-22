@@ -575,6 +575,7 @@ describe("CommitList integration", () => {
         const commits = options.commits ?? selectableCommits;
         const onSelectCommit = vi.fn();
         const onCommitAction = vi.fn();
+        const onFindCiBreak = vi.fn();
 
         function StatefulCommitList(): React.ReactElement {
             const [selectedHash, setSelectedHash] = React.useState(
@@ -601,14 +602,85 @@ describe("CommitList integration", () => {
                     onFilterText={vi.fn()}
                     onLoadMore={vi.fn()}
                     onCommitAction={onCommitAction}
+                    onFindCiBreak={onFindCiBreak}
                     showSearch={false}
                     showAuthorDate={false}
                 />
             );
         }
 
-        return { ...mount(<StatefulCommitList />), onSelectCommit, onCommitAction };
+        return { ...mount(<StatefulCommitList />), onSelectCommit, onCommitAction, onFindCiBreak };
     }
+
+    function openRangeMenu(container: HTMLElement): void {
+        act(() => {
+            commitRow(container, "feat: oldest selected").dispatchEvent(
+                new MouseEvent("click", { bubbles: true, shiftKey: true }),
+            );
+        });
+        act(() => {
+            commitRow(container, "feat: middle").dispatchEvent(
+                new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 140,
+                    clientY: 42,
+                }),
+            );
+        });
+    }
+
+    function menuLabels(): string[] {
+        return Array.from(document.querySelectorAll<HTMLElement>(".intelligit-context-item")).map(
+            (item) => item.textContent ?? "",
+        );
+    }
+
+    it("the row menu shows no Find where CI broke while the Checks tab switch is off", () => {
+        delete window.intelligitE2E;
+        const off = renderSelectableCommits();
+        openRangeMenu(off.container);
+        expect(menuLabels().some((label) => label.includes("Squash Commits"))).toBe(true);
+        expect(menuLabels().some((label) => label.includes("Find where CI broke"))).toBe(false);
+        unmount(off.root, off.container);
+
+        // Control: the same selection with the switch on offers the entry and sends the range.
+        window.intelligitE2E = true;
+        try {
+            const on = renderSelectableCommits();
+            openRangeMenu(on.container);
+            act(() => {
+                commitMenuItem("Find where CI broke").dispatchEvent(
+                    new MouseEvent("click", { bubbles: true }),
+                );
+            });
+            expect(on.onFindCiBreak).toHaveBeenCalledWith([
+                { hash: "aaa1111", parents: ["bbb2222"] },
+                { hash: "bbb2222", parents: ["ccc3333"] },
+                { hash: "ccc3333", parents: ["ddd4444"] },
+            ]);
+            expect(on.onCommitAction).not.toHaveBeenCalled();
+            unmount(on.root, on.container);
+        } finally {
+            delete window.intelligitE2E;
+        }
+    });
+
+    it("the row menu offers Find where CI broke only for a range of rows", () => {
+        window.intelligitE2E = true;
+        try {
+            const single = renderSelectableCommits();
+            act(() => {
+                commitRow(single.container, "feat: middle").dispatchEvent(
+                    new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+                );
+            });
+            expect(menuLabels().some((label) => label.includes("Find where CI broke"))).toBe(false);
+            unmount(single.root, single.container);
+        } finally {
+            delete window.intelligitE2E;
+        }
+    });
 
     it("supports additive, anchored-range, plain, and keyboard commit selection", () => {
         const { root, container, onSelectCommit } = renderSelectableCommits();

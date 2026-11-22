@@ -69,6 +69,7 @@ import { answerOpenCiAnnotation } from "./ciAnnotationHandler";
 import type { CiAnnotationsAccess } from "../services/commitChecks/ciDiagnostics";
 import { answerCiActionMessage, ciActionAccess, type CiActionOptions } from "./ciActionHandler";
 import { answerCiHistoryRequest } from "./ciHistoryHandler";
+import { answerCancelCiBisect, answerStartCiBisect } from "./ciBisectHandler";
 import {
     answerChangedSinceGreenRequest,
     answerOpenCiRangeDiff,
@@ -120,6 +121,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     private readonly commitChecks: CommitChecksCoordinator;
     private commitCheckDemandSeq = 0;
     private readonly ciDetailLoops = new CommitCiDetailLoops();
+    private readonly ciBisectRuns = new CommitCiDetailLoops();
     private readonly rangeDiffGrant = new CiRangeDiffGrant();
     /** Each loaded commit's parents, so the standalone Changed Files view can walk them too. */
     private loadedCommitHashes = new Map<string, readonly string[]>();
@@ -354,6 +356,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                 actions: ciActionAccess(this.commitChecks, ciActions),
             }),
             ...(this.options.ciAnnotations && { annotations: this.options.ciAnnotations }),
+            bisect: { source: this.commitChecks, loaded: () => this.loadedCommits() },
         };
     }
 
@@ -393,6 +396,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         this.iconTheme.dispose();
         // The replaced view's re-post loop would keep fetching for a webview that is gone.
         this.ciDetailLoops.dispose();
+        this.ciBisectRuns.dispose();
         this.view = webviewView;
         this.checksReady = false;
         this.lastPostedPayload = undefined;
@@ -412,6 +416,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             if (this.view === webviewView) {
                 this.commitCheckDemandSeq += 1;
                 this.ciDetailLoops.dispose();
+                this.ciBisectRuns.dispose();
                 this.rangeDiffGrant.clear();
                 this.view = undefined;
                 this.checksReady = false;
@@ -456,6 +461,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         if (this.view === webviewView) {
                             this.webviewGeneration += 1;
                             this.ciDetailLoops.dispose();
+                            this.ciBisectRuns.dispose();
                             this.rangeDiffGrant.clear();
                         }
                         this.postToWebview({
@@ -623,6 +629,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                     case "cancelCommitCiDetail":
                         if (this.view === webviewView) this.ciDetailLoops.cancel(msg.requestId);
                         break;
+                    case "startCiBisect":
+                    case "cancelCiBisect":
+                        await this.handleCiBisectMessage(webviewView, msg);
+                        break;
                     case "openCommitChecksSettings":
                         await openCommitChecksSettings();
                         break;
@@ -648,6 +658,37 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                 this.postToWebview({ type: "error", message });
             }
         });
+    }
+
+    /**
+     * "Find where CI broke": runs a bisect for the webview that asked and posts its progress and
+     * result there, unless it reloaded since, or stops the running one.
+     *
+     * @param webviewView - The view the message came from.
+     * @param msg - The row menu's start or the bisect view's cancel.
+     */
+    private async handleCiBisectMessage(
+        webviewView: vscode.WebviewView,
+        msg: Extract<CommitGraphOutbound, { type: "startCiBisect" | "cancelCiBisect" }>,
+    ): Promise<void> {
+        const repoKey = this.options.ciRepoKey;
+        if (this.view !== webviewView) return;
+        if (msg.type === "cancelCiBisect") {
+            answerCancelCiBisect({ ...msg }, this.ciBisectRuns);
+            return;
+        }
+        if (!repoKey) return;
+        const generation = this.webviewGeneration;
+        await answerStartCiBisect(
+            this.ciDetailSource(repoKey),
+            { ...msg },
+            (reply) => {
+                if (this.view === webviewView && generation === this.webviewGeneration) {
+                    this.postToWebview(reply);
+                }
+            },
+            this.ciBisectRuns,
+        );
     }
 
     /**
@@ -1350,6 +1391,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     dispose(): void {
         this.commitCheckDemandSeq += 1;
         this.ciDetailLoops.dispose();
+        this.ciBisectRuns.dispose();
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
         this._onCommitSelected.dispose();

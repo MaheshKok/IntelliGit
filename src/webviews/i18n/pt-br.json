@@ -601,5 +601,24 @@
     "commit.checks.tab.annotationsTruncated": "Mostrando as primeiras 1 000 anotações",
     "commit.checks.tab.annotationsRejectedNext": "Mostrando as primeiras {count} anotações — o link da próxima página do provedor foi recusado",
     "commit.checks.tab.annotationsForbidden": "Anotações indisponíveis com este token",
-    "commit.checks.tab.annotationsUnavailable": "Anotações indisponíveis: {reason}"
+    "commit.checks.tab.annotationsUnavailable": "Anotações indisponíveis: {reason}",
+    "commit.checks.bisect.title": "Encontrar onde a CI quebrou",
+    "commit.checks.bisect.help": "Clique com o botão direito em um intervalo → {action}. Um quadrado por commit, o mais recente à esquerda; o primeiro vermelho após um verde é a quebra.",
+    "commit.checks.bisect.progress": "{done} / {total} commits",
+    "commit.checks.bisect.cancel": "Cancelar",
+    "commit.checks.bisect.close": "Fechar",
+    "commit.checks.bisect.brokeAtThis": "quebrou em {hash} · este commit",
+    "commit.checks.bisect.brokeAtAgo": {
+        "many": "quebrou em {hash} · há {count} commits",
+        "one": "quebrou em {hash} · há {count} commit",
+        "other": "quebrou em {hash} · há {count} commits"
+    },
+    "commit.checks.bisect.notLinear": "não é uma linha reta — sem ponto de quebra",
+    "commit.checks.bisect.noBreak": "sem ponto de quebra neste intervalo",
+    "commit.checks.bisect.flakyNote": "instável: {n} vermelho(s) em {m}, sem sequência de vermelhos → provavelmente não é seu",
+    "commit.checks.bisect.limited": "Limitado aos {count} commits carregados",
+    "commit.checks.bisect.none": "Nenhum job de CI encontrado para estes commits",
+    "commit.checks.bisect.square": "{hash}: {state}",
+    "commit.checks.bisect.notRead": "não lido",
+    "commit.menu.findCiBreak": "Encontrar onde a CI quebrou"
 }

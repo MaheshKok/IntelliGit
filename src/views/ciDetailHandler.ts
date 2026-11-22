@@ -26,6 +26,13 @@ import type { CiHistory } from "../shared/ci/history";
 import { PENDING_CHECK_RETRY_DELAYS_MS } from "../shared/ci/pollSchedule";
 import type { CiRangeDiffFile, CommitCiDetail } from "../types";
 import type { CommitCiDetailMessage } from "../webviews/protocol/commitCiMessages";
+import type { CiBisectSource } from "../services/commitChecks/ciBisect";
+
+/** What a host bisects with: its coordinator and the commits its Git Log has loaded. */
+interface CiBisectAccess {
+    source: CiBisectSource;
+    loaded(): readonly LoadedCommit[];
+}
 
 /** What a host offers to answer a Checks tab request. */
 export interface CommitCiDetailSource {
@@ -59,6 +66,8 @@ export interface CommitCiDetailSource {
     openRangeDiff?: (fromRev: string, toRev: string, file: CiRangeDiffFile) => Promise<void>;
     /** HEAD's CI annotations; absent = replies carry none and the host opens none. */
     annotations?: CiAnnotationsAccess;
+    /** "Find where CI broke"; absent = the host starts no bisect. */
+    bisect?: CiBisectAccess;
 }
 
 /**
