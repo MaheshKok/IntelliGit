@@ -4,7 +4,7 @@ import type { CiState } from "../../../../types";
 import type { CiBisectResultMessage } from "../../../protocol/commitCiMessages";
 import { t } from "../../shared/i18n";
 import { JETBRAINS_UI } from "../../shared/tokens";
-import { closeCiBisect, useCiBisect, type CiBisectView } from "./ciBisect";
+import { closeCiBisect, retryCiBisect, useCiBisect, type CiBisectView } from "./ciBisect";
 import { stateLabel } from "./ciFormat";
 import { checksStyles } from "./checksStyles";
 
@@ -68,13 +68,19 @@ function Sparkline({
 }): React.ReactElement {
     // `states` run oldest to newest; the sparkline shows the newest on the left.
     const indexes = job.states.map((_, index) => index).reverse();
-    // Frame 4:2's 72 px holds its six squares; a longer range widens it rather than overflow.
-    const width = Math.max(
-        SPARKLINE_WIDTH,
-        SPARK_LEAD + indexes.length * (SQUARE + SQUARE_GAP) - SQUARE_GAP,
+    // Frame 4:2 fixes the width at 72 px, which holds six 9 px squares. A longer range keeps every
+    // square and narrows them instead; past the point where the 2 px gaps alone would not fit,
+    // the gaps go first so no square shrinks below a pixel.
+    const count = indexes.length;
+    const gap = Math.max(
+        0,
+        Math.min(
+            SQUARE_GAP,
+            Math.floor((SPARKLINE_WIDTH - SPARK_LEAD - count) / Math.max(1, count - 1)),
+        ),
     );
     return (
-        <span style={{ ...sparklineStyle, width }}>
+        <span style={{ ...sparklineStyle, gap }}>
             {indexes.map((index) => {
                 const state = job.states[index] ?? null;
                 const hash = commits[index] ?? "";
@@ -155,7 +161,23 @@ export function BisectView({ view }: { view: CiBisectView }): React.ReactElement
             <HelpLine />
             {result ? (
                 <>
-                    {result.jobs.length === 0 ? (
+                    {result.failedReads ? (
+                        <div role="alert" style={noteStyle}>
+                            <span style={{ color: TONE_COLOR.red }}>
+                                {t("commit.checks.bisect.failed", {
+                                    count: String(result.failedReads),
+                                })}
+                            </span>
+                            <button
+                                type="button"
+                                data-testid="ci-bisect-retry"
+                                style={checksStyles.linkButton}
+                                onClick={retryCiBisect}
+                            >
+                                {t("commit.checks.bisect.retry")}
+                            </button>
+                        </div>
+                    ) : result.jobs.length === 0 ? (
                         <div role="status" style={noteStyle}>
                             {t("commit.checks.bisect.none")}
                         </div>
@@ -257,17 +279,19 @@ const nameStyle: React.CSSProperties = {
 
 const sparklineStyle: React.CSSProperties = {
     display: "inline-flex",
-    gap: SQUARE_GAP,
+    width: SPARKLINE_WIDTH,
     paddingLeft: SPARK_LEAD,
     boxSizing: "border-box",
     flexShrink: 0,
 };
 
 const squareStyle: React.CSSProperties = {
-    width: SQUARE,
+    flexBasis: SQUARE,
+    flexGrow: 0,
+    flexShrink: 1,
+    minWidth: 0,
     height: SQUARE,
     boxSizing: "border-box",
-    flexShrink: 0,
 };
 
 const resultStyle: React.CSSProperties = {
@@ -289,6 +313,8 @@ const flakyTagStyle: React.CSSProperties = {
 
 const noteStyle: React.CSSProperties = {
     ...checksStyles.note,
+    // Frame 4:2's note line is 16 px high: no vertical padding on top of it.
+    padding: "0 12px",
     minHeight: NOTE_HEIGHT,
     lineHeight: `${NOTE_HEIGHT}px`,
 };

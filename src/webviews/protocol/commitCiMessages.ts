@@ -116,7 +116,8 @@ export interface CiBisectProgressMessage {
 /**
  * Host's answer to a {@link StartCiBisectMessage}: each job's state per commit, oldest first,
  * where it broke (on a first-parent chain only) and whether it is flaky. A cancelled bisect gets
- * none. `limitedTo` is set when selected commits the Git Log no longer had loaded were dropped.
+ * none. `limitedTo` is set when selected commits the Git Log no longer had loaded were dropped;
+ * `failedReads` when the checks of some commits could not be read (how many).
  */
 export interface CiBisectResultMessage {
     type: "ciBisectResult";
@@ -126,6 +127,7 @@ export interface CiBisectResultMessage {
     /** The commit of each job's square, oldest first, the order of each job's `states`. */
     commits: string[];
     jobs: CiBisectJob[];
+    failedReads?: number;
     limitedTo?: number;
 }
 

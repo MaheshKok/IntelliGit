@@ -11,7 +11,9 @@ import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
 import {
     brokeAt,
     flaky,
-    matchCheck,
+    indexChecks,
+    matchIndexed,
+    type CheckIndex,
     type CiBisectJob,
     type CiFlakyCommit,
     type CiHistoryCheck,
@@ -46,6 +48,8 @@ export interface CiBisectResult {
     /** The commit of each job's square, oldest to newest, the order of `states`. */
     commits: string[];
     jobs: CiBisectJob[];
+    /** Set when some commits' checks could not be read: how many, so the view shows an error. */
+    failedReads?: number;
     /** Set when selected commits the Git Log no longer has loaded were dropped: the count read. */
     limitedTo?: number;
 }
@@ -91,33 +95,86 @@ function toCiState(state: CommitCheckState): CiState {
     }
 }
 
+/** Join steps between two returns to the event loop, so a cancel message can run meanwhile. */
+const STEPS_PER_SLICE = 20_000;
+
 /**
- * Every job seen in the commits, once each. Two items of two commits are one job when the §9
- * join, run on each commit's own items, matches them (by logical id, else by a name unique in
- * both); an identified and an unlabelled version of one uniquely named check are one job. A
- * partial read joins too, so a job keeps one row; `jobOf` decides what such a read proves.
+ * Counts join work; once a slice is used up it lets the event loop run, and always says whether
+ * the bisect is still live, so a cancel stops the join rather than waiting for its end.
  */
-function jobsOf(reads: readonly CommitRead[]): CiHistoryCheck[] {
+function slicer(live: () => boolean): (steps: number) => Promise<boolean> {
+    let used = 0;
+    return async (steps) => {
+        used += steps;
+        if (used >= STEPS_PER_SLICE) {
+            used = 0;
+            await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        return live();
+    };
+}
+
+/**
+ * Every job seen in the commits, once each; `undefined` once `tick` says the bisect stopped. Two
+ * items of two commits are one job when the §9 join, run on each commit's own items, matches
+ * them (by logical id, else by a name unique in both); an identified and an unlabelled version
+ * of one uniquely named check are one job. Two known logical ids never share a job, so an
+ * unlabelled commit between two workflows' same-named jobs joins the first and proves neither.
+ * A partial read joins too, so a job keeps one row; `jobOf` decides what such a read proves.
+ */
+async function jobsOf(
+    reads: readonly CommitRead[],
+    tick: (steps: number) => Promise<boolean>,
+): Promise<CiHistoryCheck[] | undefined> {
+    const indexes = reads.map((read) => read.items && indexChecks(read.items));
     const nodes = reads.flatMap((read, at) => (read.items ?? []).map((item) => ({ item, at })));
-    const start = reads.map((_, at) => nodes.findIndex((node) => node.at === at));
+    const start: number[] = [];
+    const nodeOf = reads.map(() => new Map<CommitCheckItem, number>());
+    nodes.forEach(({ item, at }, index) => {
+        start[at] ??= index;
+        if (!nodeOf[at].has(item)) nodeOf[at].set(item, index);
+    });
     const root = nodes.map((_, index) => index);
+    // The one logical id a group of nodes holds, by the group's root.
+    const known = nodes.map(({ item }) => item.logicalId);
     const find = (index: number): number => {
         while (root[index] !== index) index = root[index] = root[root[index]];
         return index;
     };
-    nodes.forEach(({ item, at }, index) => {
-        reads.forEach((other, otherAt) => {
-            if (otherAt <= at || !other.items) return;
-            const found = matchCheck(item, reads[at].items ?? [], other.items);
-            if (typeof found === "object") {
-                root[find(index)] = find(start[otherAt] + other.items.indexOf(found));
+    const union = (a: number, b: number): void => {
+        const [rootA, rootB] = [find(a), find(b)];
+        if (rootA === rootB) return;
+        if (
+            known[rootA] !== undefined &&
+            known[rootB] !== undefined &&
+            known[rootA] !== known[rootB]
+        ) {
+            return;
+        }
+        root[rootA] = rootB;
+        known[rootB] ??= known[rootA];
+    };
+    for (let at = 0; at < reads.length; at += 1) {
+        const items = reads[at].items ?? [];
+        const own = indexes[at];
+        for (let offset = 0; own && offset < items.length; offset += 1) {
+            for (let otherAt = at + 1; otherAt < reads.length; otherAt += 1) {
+                const other = indexes[otherAt];
+                if (!other) continue;
+                const found = matchIndexed(items[offset], own, other);
+                if (typeof found === "object") {
+                    union(start[at] + offset, nodeOf[otherAt].get(found) as number);
+                }
             }
-        });
-    });
+        }
+        if (!(await tick(items.length * (reads.length - at)))) return undefined;
+    }
     const groups = new Map<number, CommitCheckItem[]>();
     nodes.forEach(({ item }, index) => {
         const key = find(index);
-        groups.set(key, [...(groups.get(key) ?? []), item]);
+        const group = groups.get(key);
+        if (group) group.push(item);
+        else groups.set(key, [item]);
     });
     return [...groups.values()].map((items): CiHistoryCheck => {
         const named = items.find((item) => item.logicalId !== undefined) ?? items[0];
@@ -130,28 +187,38 @@ function jobsOf(reads: readonly CommitRead[]): CiHistoryCheck[] {
 }
 
 /**
- * The logical id of the one job of the attempt histories that bears `name`: a GitHub snapshot
- * check carries no logical id, its re-runs are keyed by workflow and job name. `undefined` when
- * no job or more than one has the name.
+ * The attempt histories' logical ids by job name: a GitHub snapshot check carries no logical id,
+ * its re-runs are keyed by workflow and job name.
  */
-function attemptLogicalId(name: string, reads: readonly CommitRead[]): string | undefined {
-    const ids = new Set(
-        reads
-            .flatMap((read) => read.attempts.map((history) => history.logicalId))
-            .filter((id) => id.startsWith("job\0") && id.slice(id.lastIndexOf("\0") + 1) === name),
-    );
-    return ids.size === 1 ? [...ids][0] : undefined;
+function attemptIdsByName(reads: readonly CommitRead[]): Map<string, Set<string>> {
+    const byName = new Map<string, Set<string>>();
+    for (const read of reads) {
+        for (const { logicalId: id } of read.attempts) {
+            if (!id.startsWith("job\0")) continue;
+            const name = id.slice(id.lastIndexOf("\0") + 1);
+            const ids = byName.get(name) ?? new Set<string>();
+            ids.add(id);
+            byName.set(name, ids);
+        }
+    }
+    return byName;
 }
 
-function jobOf(
-    job: CiHistoryCheck,
-    jobs: readonly CiHistoryCheck[],
-    reads: readonly CommitRead[],
-    linear: boolean,
-    attemptsCounted: boolean,
-): CiBisectJob {
-    const line = reads.map((read): CiFlakyCommit & { hash: string } => {
-        const found = read.items ? matchCheck(job, jobs, read.items) : "ambiguous";
+/** What `jobOf` needs of the whole read, built once. */
+interface JobContext {
+    reads: readonly CommitRead[];
+    jobs: CheckIndex<CiHistoryCheck>;
+    readIndexes: readonly (CheckIndex<CommitCheckItem> | null)[];
+    attemptIds: ReadonlyMap<string, ReadonlySet<string>>;
+    linear: boolean;
+    attemptsCounted: boolean;
+}
+
+function jobOf(job: CiHistoryCheck, context: JobContext): CiBisectJob {
+    const { reads, linear, attemptsCounted } = context;
+    const line = reads.map((read, at): CiFlakyCommit & { hash: string } => {
+        const index = context.readIndexes[at];
+        const found = index ? matchIndexed(job, context.jobs, index) : "ambiguous";
         // A list read in part proves only an identity match (as `flakyLineOf` has it).
         const usable =
             typeof found === "object" &&
@@ -164,12 +231,14 @@ function jobOf(
             ...((found === "ambiguous" || (read.partial && !usable)) && { unread: true as const }),
         };
     });
+    const named = context.attemptIds.get(job.name);
     return {
         checkName: job.name,
         states: line.map((commit) => commit.state as CiState | null).reverse(),
         brokeAt: linear ? brokeAt(line) : null,
         flaky: flaky(
-            job.logicalId ?? attemptLogicalId(job.name, reads) ?? job.name,
+            // The one history job bearing the name; none or several name no job.
+            job.logicalId ?? (named?.size === 1 ? [...named][0] : undefined) ?? job.name,
             line,
             attemptsCounted,
         ),
@@ -233,11 +302,28 @@ export async function runCiBisect(
     );
     if (!live()) return undefined;
     const known = reads.filter((read): read is CommitRead => read !== undefined);
-    const jobs = jobsOf(known);
+    const tick = slicer(live);
+    const rows = await jobsOf(known, tick);
+    if (!rows) return undefined;
+    const context: JobContext = {
+        reads: known,
+        jobs: indexChecks(rows),
+        readIndexes: known.map((read) => read.items && indexChecks(read.items)),
+        attemptIds: attemptIdsByName(known),
+        linear: chain !== null,
+        attemptsCounted,
+    };
+    const jobs: CiBisectJob[] = [];
+    for (const row of rows) {
+        if (!(await tick(known.length))) return undefined;
+        jobs.push(jobOf(row, context));
+    }
+    const failedReads = known.filter((read) => read.items === null).length;
     return {
         linear: chain !== null,
         commits: known.map((read) => read.hash).reverse(),
-        jobs: jobs.map((job) => jobOf(job, jobs, known, chain !== null, attemptsCounted)),
+        jobs,
+        ...(failedReads > 0 && { failedReads }),
         ...(commits.length < selected.length && { limitedTo: commits.length }),
     };
 }

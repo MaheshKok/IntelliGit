@@ -19,6 +19,8 @@ export type CiBisectView =
 
 let lastRequestId = 0;
 let view: CiBisectView | null = null;
+/** The range of the newest run, kept so Retry can ask for it again. */
+let lastRange: { repoKey: string; commits: readonly CiLoadedCommit[] } | null = null;
 let listening = false;
 const listeners = new Set<() => void>();
 
@@ -56,6 +58,7 @@ export function startCiBisect(repoKey: string, commits: readonly CiLoadedCommit[
         listening = true;
     }
     const requestId = ++lastRequestId;
+    lastRange = { repoKey, commits };
     publish({ status: "running", requestId, repoKey, done: 0, total: commits.length });
     getVsCodeApi<StartCiBisectMessage>().postMessage({
         type: "startCiBisect",
@@ -79,6 +82,11 @@ export function findCiBreakHandler(
 ): ((commits: CiLoadedCommit[]) => void) | undefined {
     if (!enabled || !repoKey) return undefined;
     return (commits) => startCiBisect(repoKey, commits);
+}
+
+/** Runs the newest bisect's range again, after some commits' checks could not be read. */
+export function retryCiBisect(): void {
+    if (lastRange) startCiBisect(lastRange.repoKey, lastRange.commits);
 }
 
 /** Closes the bisect view, telling the host to stop it first when it is still running. */

@@ -630,6 +630,8 @@
     "commit.checks.bisect.flakyNote": "niestabilny: czerwone {n} z {m}, brak serii czerwonych → prawdopodobnie nie twoja wina",
     "commit.checks.bisect.limited": "Ograniczono do wczytanych commitów: {count}",
     "commit.checks.bisect.none": "Nie znaleziono zadań CI dla tych commitów",
+    "commit.checks.bisect.failed": "Nie można odczytać kontroli CI niektórych commitów. Nieodczytane commity: {count}",
+    "commit.checks.bisect.retry": "Ponów",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.notRead": "nie odczytano",
     "commit.menu.findCiBreak": "Znajdź, gdzie CI przestało działać"

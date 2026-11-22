@@ -594,6 +594,8 @@
     "commit.checks.bisect.flakyNote": "不穩定：{m} 個中有 {n} 個紅色，沒有連續紅色 → 可能不是你的問題",
     "commit.checks.bisect.limited": "僅限已載入的 {count} 個提交",
     "commit.checks.bisect.none": "找不到這些提交的 CI 作業",
+    "commit.checks.bisect.failed": "無法讀取部分提交的 CI 檢查。未讀取的提交數：{count}",
+    "commit.checks.bisect.retry": "重試",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.notRead": "未讀取",
     "commit.menu.findCiBreak": "尋找 CI 出錯的位置"

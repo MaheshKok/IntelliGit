@@ -91,18 +91,51 @@ export function matchCheck(
     current: readonly CiHistoryCheck[],
     parent: readonly CommitCheckItem[],
 ): CommitCheckItem | "none" | "ambiguous" {
+    return matchIndexed(check, indexChecks(current), indexChecks(parent));
+}
+
+/** One commit's checks grouped by logical id and by name, so a join looks each up at once. */
+export interface CheckIndex<T extends { name: string; logicalId?: string }> {
+    byId: Map<string, T[]>;
+    byName: Map<string, T[]>;
+}
+
+/** Groups `items` for {@link matchIndexed}; a caller joining many checks builds it once. */
+export function indexChecks<T extends { name: string; logicalId?: string }>(
+    items: readonly T[],
+): CheckIndex<T> {
+    const byId = new Map<string, T[]>();
+    const byName = new Map<string, T[]>();
+    const push = <K>(map: Map<K, T[]>, key: K, item: T): void => {
+        const list = map.get(key);
+        if (list) list.push(item);
+        else map.set(key, [item]);
+    };
+    for (const item of items) {
+        if (item.logicalId !== undefined) push(byId, item.logicalId, item);
+        push(byName, item.name, item);
+    }
+    return { byId, byName };
+}
+
+/** `matchCheck` over checks already grouped by {@link indexChecks}. */
+export function matchIndexed(
+    check: CiHistoryCheck,
+    current: CheckIndex<CiHistoryCheck>,
+    parent: CheckIndex<CommitCheckItem>,
+): CommitCheckItem | "none" | "ambiguous" {
     if (check.logicalId !== undefined) {
-        const byId = parent.filter((item) => item.logicalId === check.logicalId);
+        const byId = parent.byId.get(check.logicalId) ?? [];
         if (byId.length > 0) {
-            const sameIdNow = current.filter((other) => other.logicalId === check.logicalId);
-            return byId.length === 1 && sameIdNow.length === 1 ? byId[0] : "ambiguous";
+            const sameIdNow = current.byId.get(check.logicalId)?.length ?? 0;
+            return byId.length === 1 && sameIdNow === 1 ? byId[0] : "ambiguous";
         }
     }
     // The name fallback's scope is the whole commit: every same-named parent item counts, an
     // identified one of another workflow included. Only then is the one left a match, and
     // another logical id on both sides is another check, even under the same name.
-    const byName = parent.filter((item) => item.name === check.name);
-    const sameNameNow = current.filter((other) => other.name === check.name).length;
+    const byName = parent.byName.get(check.name) ?? [];
+    const sameNameNow = current.byName.get(check.name)?.length ?? 0;
     const [only] = byName;
     if (byName.length === 0) return "none";
     if (byName.length === 1 && only.logicalId !== undefined && check.logicalId !== undefined) {

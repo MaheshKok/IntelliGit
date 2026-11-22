@@ -1509,3 +1509,13 @@ Five findings, each reproduced as a test that was red before the fix, then green
 - identity/name join: red "one logical check across both commits: expected [ …(2) ] to have a length of 1 but got 2"; fix: `jobsOf` joins items across commits with `matchCheck` (union by pairs).
 - sparkline width: ciBisectView.integration.test.tsx red "frame 4:2 sparkline width: expected '' to be '72px'"; fix: width = max(72, lead + squares), border-box.
 Proof: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; `bun run test` 10 failed (the 10 known environmental), 8730 passed, 1 skipped. No mutation batch run in this round; the red-before-fix runs are the evidence.
+
+## Phase 16: fix round 2 (builder), 5 of 6 findings fixed, finding 6 halted for the owner
+- Red before the fix, green after (tests/unit/services/commitChecks/ciBisect.test.ts, tests/integration/webviews/ciBisectView.integration.test.tsx):
+  - join: "different known logical ids must retain separate rows: expected [ { checkName: 'unit', ...(3) } ] to have a length of 2 but got 1".
+  - shared attempt read: "a cancelled owner must not erase the live joiner history: expected null to deeply equal [ { runId: '1', ...(3) } ]".
+  - read failures: "one unread commit of three: expected undefined to be 1"; view: "a failed read is not an empty one: expected 'Right-click a range → Find where CI b…' not to contain 'No CI jobs found'".
+  - cost: "name reads for 20 commits of 200 checks: expected 31200200 to be less than 1000000"; cancel during the join: "a cancel during the join returns nothing: expected { linear: true, …(2) } to be undefined". A throwaway run of 40 commits x 1000 checks took about 0.1 s of test time after the fix (reviewer: 6.67 s before).
+  - sparkline: "locked frame 4:2 width: expected '94px' to be '72px'"; long range "expected '446px' to be '72px'"; note "frame 4:2 note line: expected '4px' to be '0px'". The builder test that asserted 94 px was replaced.
+- Finding 6 ("yours", "also red on main") not fixed: no source for "yours" in the plan or code; options A/B/C in PLAN.handoff.md. Halted with that question.
+- Proof: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; `bun run test` 8 failed (commit-list-column-resize, Node 26 localStorage, the known set), 8745 passed, 1 skipped. No mutation batch this round.

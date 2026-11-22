@@ -618,6 +618,8 @@
     "commit.checks.bisect.flakyNote": "instável: {n} vermelho(s) em {m}, sem sequência de vermelhos → provavelmente não é seu",
     "commit.checks.bisect.limited": "Limitado aos {count} commits carregados",
     "commit.checks.bisect.none": "Nenhum job de CI encontrado para estes commits",
+    "commit.checks.bisect.failed": "Não foi possível ler as verificações de CI de alguns commits. Commits não lidos: {count}",
+    "commit.checks.bisect.retry": "Tentar novamente",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.notRead": "não lido",
     "commit.menu.findCiBreak": "Encontrar onde a CI quebrou"

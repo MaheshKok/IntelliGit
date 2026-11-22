@@ -282,7 +282,7 @@ describe("CI bisect view", () => {
             unmount(root, container);
         });
 
-        it("grows past 72px only when more squares than the frame's six need the room", () => {
+        it("keeps 72px for a longer range and still draws every commit's square", () => {
             const { root, container } = mount(<Harness />);
             act(() => startCiBisect(REPO, RANGE));
             const states = Array.from({ length: 8 }, () => "success" as const);
@@ -293,8 +293,120 @@ describe("CI bisect view", () => {
                     { commits: states.map((_, index) => String(index).repeat(40)) },
                 ),
             );
-            // 8 px lead + 8 squares of 9 px + 7 gaps of 2 px.
-            expect(sparklineOf(container).style.width).toBe("94px");
+            expect(sparklineOf(container).style.width, "locked frame 4:2 width").toBe("72px");
+            expect(container.querySelectorAll('[data-testid="ci-bisect-square"]')).toHaveLength(8);
+            unmount(root, container);
+        });
+
+        it("keeps the six squares of the frame at 9px with a 2px gap", () => {
+            const { root, container } = mount(<Harness />);
+            act(() => startCiBisect(REPO, RANGE));
+            const states = Array.from({ length: 6 }, () => "success" as const);
+            reply(
+                result(
+                    lastStartRequestId(),
+                    [{ checkName: "unit", states, brokeAt: null, flaky: null }],
+                    { commits: states.map((_, index) => String(index).repeat(40)) },
+                ),
+            );
+            expect(sparklineOf(container).style.gap).toBe("2px");
+            const square = container.querySelector<HTMLElement>(
+                '[data-testid="ci-bisect-square"]',
+            )!;
+            expect(square.style.flexBasis).toBe("9px");
+            unmount(root, container);
+        });
+
+        it("squeezes the gap before the squares shrink below a pixel in a long range", () => {
+            const { root, container } = mount(<Harness />);
+            act(() => startCiBisect(REPO, RANGE));
+            const states = Array.from({ length: 40 }, () => "success" as const);
+            reply(
+                result(
+                    lastStartRequestId(),
+                    [{ checkName: "unit", states, brokeAt: null, flaky: null }],
+                    { commits: states.map((_, index) => String(index).padStart(40, "0")) },
+                ),
+            );
+            expect(sparklineOf(container).style.width).toBe("72px");
+            expect(sparklineOf(container).style.gap).toBe("0px");
+            unmount(root, container);
+        });
+    });
+
+    it("keeps the note line at the frame's 16px, with no extra vertical padding", () => {
+        const { root, container } = mount(<Harness />);
+        act(() => startCiBisect(REPO, RANGE));
+        reply(result(lastStartRequestId(), []));
+        const note = container.querySelector<HTMLElement>(
+            '[data-testid="ci-bisect-close"]',
+        )!.parentElement!;
+        expect(note.style.paddingTop, "frame 4:2 note line").toBe("0px");
+        expect(note.style.paddingBottom).toBe("0px");
+        unmount(root, container);
+    });
+
+    describe("failed provider reads", () => {
+        it("shows an error with a retry, not 'no CI jobs', when every read failed", () => {
+            const { root, container } = mount(<Harness />);
+            act(() => startCiBisect(REPO, RANGE));
+            reply(result(lastStartRequestId(), [], { failedReads: 3 }));
+            expect(text(container), "a failed read is not an empty one").not.toContain(
+                "No CI jobs found",
+            );
+            expect(container.querySelector('[role="alert"]')?.textContent).toContain("3");
+            expect(container.querySelector('[data-testid="ci-bisect-retry"]')).not.toBeNull();
+            unmount(root, container);
+        });
+
+        it("retry asks the host again for the same range", () => {
+            const { root, container } = mount(<Harness />);
+            act(() => startCiBisect(REPO, RANGE));
+            const first = lastStartRequestId();
+            reply(result(first, [], { failedReads: 3 }));
+            mockVscodeApi.postMessage.mockClear();
+            act(() => {
+                container
+                    .querySelector<HTMLButtonElement>('[data-testid="ci-bisect-retry"]')!
+                    .click();
+            });
+            expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+                type: "startCiBisect",
+                requestId: first + 1,
+                repoKey: REPO,
+                commits: RANGE,
+            });
+            unmount(root, container);
+        });
+
+        it("still shows the jobs it read, with the error and retry above the close link", () => {
+            const { root, container } = mount(<Harness />);
+            act(() => startCiBisect(REPO, RANGE));
+            reply(
+                result(
+                    lastStartRequestId(),
+                    [
+                        {
+                            checkName: "unit",
+                            states: ["success", "success", "success"],
+                            brokeAt: null,
+                            flaky: null,
+                        },
+                    ],
+                    { failedReads: 1 },
+                ),
+            );
+            expect(container.querySelectorAll('[data-testid="ci-bisect-job"]')).toHaveLength(1);
+            expect(container.querySelector('[role="alert"]')).not.toBeNull();
+            unmount(root, container);
+        });
+
+        it("a successful empty read still says no CI jobs", () => {
+            const { root, container } = mount(<Harness />);
+            act(() => startCiBisect(REPO, RANGE));
+            reply(result(lastStartRequestId(), []));
+            expect(text(container)).toContain("No CI jobs found");
+            expect(container.querySelector('[role="alert"]')).toBeNull();
             unmount(root, container);
         });
     });

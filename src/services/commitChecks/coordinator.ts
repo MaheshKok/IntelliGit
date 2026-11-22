@@ -152,7 +152,12 @@ export class CommitChecksCoordinator {
     private readonly now: () => number;
     private readonly attemptReads = new Map<
         string,
-        { at: number; read: Promise<CiAttemptHistory[]> }
+        {
+            at: number;
+            read: Promise<CiAttemptHistory[]>;
+            /** The send guard of every caller that started or joined the read. */
+            guards: Set<() => boolean>;
+        }
     >();
     private resolvedProvider = false;
     private providerMatch: ProviderMatch | null = null;
@@ -336,7 +341,7 @@ export class CommitChecksCoordinator {
         if (!this.enabled) return [];
         const seeded = this.fixture?.(hash);
         if (seeded) return seeded.detail.attemptHistory ?? [];
-        return withSendGuard(sendGuard, () => this.readAttemptHistory(hash));
+        return withSendGuard(sendGuard, () => this.readAttemptHistory(hash, sendGuard));
     }
 
     /**
@@ -344,27 +349,41 @@ export class CommitChecksCoordinator {
      * badge requests share one read. Empty when the provider lists no re-runs; `null` (unread,
      * never an empty history) when the read failed or the account changed meanwhile. A failure
      * is not remembered, so the next request (Refresh) reads it again.
+     *
+     * @param hash - Full Git commit hash.
+     * @param sendGuard - The caller's guard. The shared read is sent while any caller that joined
+     *   it is live, so one caller's cancel never fails a read another live caller awaits.
      */
-    private async readAttemptHistory(hash: string): Promise<CiAttemptHistory[] | null> {
+    private async readAttemptHistory(
+        hash: string,
+        sendGuard: () => boolean = () => true,
+    ): Promise<CiAttemptHistory[] | null> {
         const providerGeneration = this.providerGeneration;
         try {
             const match = await this.resolveEnabledMatch();
             if (!match?.provider.capabilities.attemptHistory) return [];
             const { provider, ref } = match;
-            if (!provider.getAttemptHistory) return [];
+            const getAttemptHistory = provider.getAttemptHistory?.bind(provider);
+            if (!getAttemptHistory) return [];
             const key = this.snapshotKey(match, await this.readAccount(match), hash);
             const now = this.now();
             const kept = this.attemptReads.get(key);
-            let read = kept && now - kept.at < ATTEMPT_HISTORY_TTL_MS ? kept.read : undefined;
-            if (!read) {
-                const fresh = provider.getAttemptHistory(ref, hash);
-                this.attemptReads.set(key, { at: now, read: fresh });
+            let entry = kept && now - kept.at < ATTEMPT_HISTORY_TTL_MS ? kept : undefined;
+            if (entry) {
+                entry.guards.add(sendGuard);
+            } else {
+                const guards = new Set([sendGuard]);
+                const fresh = withSendGuard(
+                    () => [...guards].some((guard) => guard()),
+                    () => getAttemptHistory(ref, hash),
+                );
+                entry = { at: now, read: fresh, guards };
+                this.attemptReads.set(key, entry);
                 fresh.catch(() => {
                     if (this.attemptReads.get(key)?.read === fresh) this.attemptReads.delete(key);
                 });
-                read = fresh;
             }
-            const answer = await read;
+            const answer = await entry.read;
             return providerGeneration === this.providerGeneration ? answer : null;
         } catch {
             return null;

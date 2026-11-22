@@ -200,6 +200,8 @@
     "commit.checks.bisect.flakyNote": "flaky: {n} red in {m}, no run of red → likely not yours",
     "commit.checks.bisect.limited": "Limited to the {count} loaded commits",
     "commit.checks.bisect.none": "No CI jobs found for these commits",
+    "commit.checks.bisect.failed": "Could not read the CI checks of some commits. Commits not read: {count}",
+    "commit.checks.bisect.retry": "Retry",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.notRead": "not read",
     "commit.checks.tab.changedSinceGreen": "Changed since last green ({hash})",

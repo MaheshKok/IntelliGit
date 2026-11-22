@@ -340,6 +340,51 @@ describe("runCiBisect", () => {
         });
         expect(attemptReads).toEqual([]);
     });
+
+    it("a live caller joining a cancelled attempt read still gets the re-run history", async () => {
+        const [a] = [h("a")];
+        const history = [
+            {
+                runId: "1",
+                logicalId: "job\0W\0unit",
+                coverage: "full",
+                attempts: [
+                    { executionId: "1", attempt: 1, state: "failure" },
+                    { executionId: "2", attempt: 2, state: "success" },
+                ],
+            },
+        ] as CiAttemptHistory[];
+        const { coordinator, occupy } = harness({}, { attempts: { [a]: history } });
+        const other = occupy();
+        await flush();
+        let live = true;
+        const first = coordinator.attemptHistory(a, () => live);
+        await flush();
+        live = false;
+        const second = coordinator.attemptHistory(a, () => true);
+        await flush();
+        other.release();
+        await other.done;
+        await first;
+        expect(await second, "a cancelled owner must not erase the live joiner history").toEqual(
+            history,
+        );
+    });
+
+    it("a cancelled caller alone still sends nothing once the gate admits its read", async () => {
+        const [a] = [h("a")];
+        const { coordinator, occupy, attemptReads } = harness({}, { attempts: { [a]: [] } });
+        const other = occupy();
+        await flush();
+        let live = true;
+        const only = coordinator.attemptHistory(a, () => live);
+        await flush();
+        live = false;
+        other.release();
+        await other.done;
+        expect(await only).toBeNull();
+        expect(attemptReads).toEqual([]);
+    });
 });
 
 describe("runCiBisect job identity and coverage", () => {
@@ -480,6 +525,118 @@ describe("runCiBisect job identity and coverage", () => {
         ]);
         const result = await runCiBisect(source, chain(a), chain(a), ...quiet());
         expect(result?.jobs[0].flaky).toBeNull();
+    });
+
+    it("does not merge two known workflow identities through an unlabelled middle commit", async () => {
+        const [a, b, c] = ["a", "b", "c"].map(h);
+        const commits = chain(a, b, c);
+        const source = stub({
+            [a]: [check("unit", "failure", "job\0W1\0unit")],
+            [b]: [check("unit", "success")],
+            [c]: [check("unit", "success", "job\0W2\0unit")],
+        });
+        const result = await runCiBisect(source, commits, commits, ...quiet());
+        expect(result?.jobs, "different known logical ids must retain separate rows").toHaveLength(
+            2,
+        );
+        // The unlabelled middle fits both names, so neither identity proves it.
+        expect(result?.jobs.map((job) => job.states)).toEqual([
+            [null, null, "failure"],
+            ["success", null, null],
+        ]);
+    });
+
+    it("reports the commits whose checks could not be read", async () => {
+        const [a, b, c] = ["a", "b", "c"].map(h);
+        const commits = chain(a, b, c);
+        const source: CiBisectSource = {
+            ...stub({}),
+            getChecks: async (hash) =>
+                hash === b
+                    ? { hash, state: "unavailable", summary: "", items: [], error: "timed out" }
+                    : { hash, state: "success", summary: "", items: [check("unit", "success")] },
+        };
+        const some = await runCiBisect(source, commits, commits, ...quiet());
+        expect(some?.failedReads, "one unread commit of three").toBe(1);
+        const none = await runCiBisect(stub({}), commits, commits, ...quiet());
+        expect(none?.failedReads, "a successful empty read is not a failure").toBeUndefined();
+        const every: CiBisectSource = {
+            ...stub({}),
+            getChecks: async (hash) => ({
+                hash,
+                state: "unavailable",
+                summary: "",
+                items: [],
+                error: "timed out",
+            }),
+        };
+        const all = await runCiBisect(every, commits, commits, ...quiet());
+        expect(all?.jobs).toEqual([]);
+        expect(all?.failedReads, "every read failed").toBe(3);
+    });
+
+    describe("cost of the join", () => {
+        const hashes = Array.from({ length: 20 }, (_, index) => h(String.fromCharCode(97 + index)));
+        interface Counter {
+            reads: number;
+            limit: number;
+            hit: () => void;
+        }
+
+        /** An item whose name counts every read of it: the join's work, measured without a clock. */
+        function counted(name: string, counter: Counter): CommitCheckItem {
+            const item = check(name, "success");
+            Object.defineProperty(item, "name", {
+                enumerable: true,
+                get: () => {
+                    counter.reads += 1;
+                    if (counter.reads === counter.limit) counter.hit();
+                    return name;
+                },
+            });
+            return item;
+        }
+
+        const sourceOf = (counter: Counter): CiBisectSource => ({
+            ...stub({}),
+            getChecks: async (hash) => ({
+                hash,
+                state: "success",
+                summary: "",
+                items: Array.from({ length: 200 }, (_, index) => counted(`job-${index}`, counter)),
+            }),
+        });
+
+        it("reads each item a bounded number of times, not once per pair of commits", async () => {
+            const counter: Counter = { reads: 0, limit: -1, hit: () => {} };
+            const commits = chain(...hashes);
+            const result = await runCiBisect(sourceOf(counter), commits, commits, ...quiet());
+            expect(result?.jobs).toHaveLength(200);
+            expect(counter.reads, "name reads for 20 commits of 200 checks").toBeLessThan(
+                1_000_000,
+            );
+        });
+
+        it("stops joining once cancelled instead of running to the end", async () => {
+            const commits = chain(...hashes);
+            const full: Counter = { reads: 0, limit: -1, hit: () => {} };
+            await runCiBisect(sourceOf(full), commits, commits, ...quiet());
+            const controller = new AbortController();
+            const cut: Counter = {
+                reads: 0,
+                limit: Math.floor(full.reads / 4),
+                hit: () => controller.abort(),
+            };
+            const result = await runCiBisect(
+                sourceOf(cut),
+                commits,
+                commits,
+                controller.signal,
+                () => {},
+            );
+            expect(result, "a cancel during the join returns nothing").toBeUndefined();
+            expect(cut.reads, "the join stopped early").toBeLessThan(full.reads / 2);
+        });
     });
 });
 
