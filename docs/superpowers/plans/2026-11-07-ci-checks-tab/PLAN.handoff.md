@@ -22,6 +22,7 @@
 - Build ae49a11e (0.43.19): optional CI column in the Git Log, hidden behind the Checks tab switch. Details and proof in PLAN.review-log.md "Phase 15: built, review pending".
 - 12 mutations on copy mut-15-build-1, each red naming its planned test. Full chain exit 0 except `bun run test` (10 of 8687 red, the known set, see Open risks). verify.py gates --stage round GREEN.
 - Fix round 1 (review pending again): the 99 px lock is now asserted with literal 99/8/44/8/6 px in commitCiColumn.integration.test.tsx and tests/e2e/ciColumn.spec.ts:140 (literal 99). Mutations on copy mut-15-fix-1: CI_COL_WIDTH 99 to 100, CI_CELL_INSET 8 to 9, CI_BAR_WIDTH 44 to 45, CI_BAR_HEIGHT 8 to 9, CI_BAR_GAP 6 to 7 each go red naming the new test; unmutated copy green. Full chain exit 0 except `bun run test` (10 of 8688 red, the same known set).
+- Fix round 2 (review pending again; tests and the e2e spec only, no production change): integration cases for bar colours, timed_out/action_required/cancelled/skipped/neutral counting (pinned as today: every item is in the denominator, only success/failure/pending have segments; the owner has not ruled on skipped/cancelled and section 12 is silent), and `showCiColumn` without `onRequestCommitChecks`; e2e reads the computed colour of the success and failure segments per theme (not run locally). Five mutations on copy mut-15-fix-21 each red naming its test; unmutated 17 of 17 green.
 - Gate G redone on a fresh GitNexus index of this worktree (fb8518a, analyzed 2026-11-22): colorForState impact LOW (10 callers, 2 direct, 0 flows), CiColumnCell LOW (1), ciColumnFits LOW (7), CiColumnHeader LOW (7); activateRepositoryMode impact UNKNOWN (no resolved callers), confirmed by text search: extension.ts:57-63, noRepositoryMode.ts:112 and the host-wiring and view-providers integration tests; the signature is unchanged, one settings field is added. detect-changes compare a2fa6a15: 44 files, 161 symbols, risk high, 9 flows, all ActivateRepositoryMode ones, driven by `showCiColumn` in activateRepositoryMode; scope all: low (docs only).
 
 ## Decisions and why
@@ -34,6 +35,7 @@
 ## Open risks
 - E2E `tests/e2e/ciColumn.spec.ts` not run locally (CI runs `test:e2e`); its width assertions read the rendered graph margin and the style constants.
 - GitNexus detect-changes still reports risk HIGH, driven by `activateRepositoryMode`'s execution flows (one added settings field); the index is now fresh (fb8518a). With it colorForState impact is LOW. The run log is under the TMPDIR phase-run folder (gitnexus15-fix1.log).
+- Owner question for the CI cell: should skipped, cancelled and neutral checks count in the `passed/total` denominator? Today they do (8 passed and 2 skipped read `8/10`, a fifth of the bar empty); a new test pins that.
 - Gate U ran regex-only (no element rules such as contrast or tiny text).
 - `bun run test` known reds: 8 commit-list-column-resize (Node 26 has no localStorage; all 8 pass with NODE_OPTIONS=--localstorage-file), tsconfigCoverage and screenshotComparatorMeta (pass in a copy with linked node_modules).
 

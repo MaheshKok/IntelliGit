@@ -138,6 +138,26 @@ test("column on in light and dark themes at narrow and wide pane widths keeps Au
             await expect(badge, "one checks control per row").toHaveCount(0);
             const cell = await box(ciCell, "CI cell");
             expect(Math.round(cell.width), "CI column width (Figma frame 1:2)").toBe(99);
+            // The bar's colours resolve from the theme, so read them where the theme is applied.
+            const paint = (state: string) =>
+                graph
+                    .getByTestId(`commit-ci-bar-${state}`)
+                    .first()
+                    .evaluate((segment) => getComputedStyle(segment).backgroundColor);
+            const passedPaint = await paint("success");
+            const failedPaint = await paint("failure");
+            for (const [state, color] of [
+                ["success", passedPaint],
+                ["failure", failedPaint],
+            ]) {
+                expect(color, `${theme.kind} ${state} segment is painted`).not.toMatch(
+                    /^(transparent|rgba\(0, 0, 0, 0\))$/,
+                );
+            }
+            expect(
+                failedPaint,
+                `${theme.kind}: a failed check is not painted like a passed one`,
+            ).not.toBe(passedPaint);
             expect(
                 Math.abs((await box(ciHeader, "CI header")).x - cell.x),
                 "header over cells",

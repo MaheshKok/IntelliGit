@@ -88,6 +88,7 @@ async function renderList(options: {
     onOpenCommitInChecks?: (hash: string) => void;
     onSelectCommit?: (hash: string) => void;
     withPane?: boolean;
+    omitChecksRequester?: boolean;
 }): Promise<HTMLElement> {
     const list = (
         <CommitList
@@ -102,7 +103,7 @@ async function renderList(options: {
             onLoadMore={vi.fn()}
             onCommitAction={vi.fn()}
             commitChecks={new Map([[HASH, options.checks ?? mixed]])}
-            onRequestCommitChecks={vi.fn()}
+            {...(options.omitChecksRequester ? {} : { onRequestCommitChecks: vi.fn() })}
             onOpenCommitCheckUrl={vi.fn()}
             onOpenCommitInChecks={options.onOpenCommitInChecks ?? vi.fn()}
             {...(options.showCiColumn === undefined ? {} : { showCiColumn: options.showCiColumn })}
@@ -197,6 +198,48 @@ describe("Git Log CI column", () => {
         expect(header.style.paddingLeft, "header inset matches the cell").toBe("8px");
     });
 
+    // Ten checks, written out so each segment width and the count are literal. Today's rule, which
+    // PLAN.md section 12 does not state and the owner has not ruled on: every item counts in the
+    // denominator, and skipped, cancelled and neutral checks belong to no segment.
+    it("counts timed-out and action-required checks as failed and leaves skipped, cancelled and neutral in the total only", async () => {
+        const item = (state: CommitChecksSnapshot["items"][number]["state"], name: string) => ({
+            name,
+            description: state,
+            state,
+            source: "check-run" as const,
+        });
+        const container = await renderList({
+            showCiColumn: true,
+            checks: {
+                hash: HASH,
+                state: "failure",
+                summary: "mixed outcomes",
+                items: [
+                    item("success", "a"),
+                    item("success", "b"),
+                    item("timed_out", "c"),
+                    item("action_required", "d"),
+                    item("cancelled", "e"),
+                    item("cancelled", "f"),
+                    item("skipped", "g"),
+                    item("skipped", "h"),
+                    item("neutral", "i"),
+                    item("neutral", "j"),
+                ],
+            },
+        });
+
+        const cell = ciCell(container)!;
+        expect(cell.textContent, "passed over all ten items").toBe("2/10");
+        const segment = (state: string): string | undefined =>
+            cell.querySelector<HTMLElement>(`[data-testid="commit-ci-bar-${state}"]`)?.style.width;
+        expect(segment("success"), "two of ten passed").toBe("20%");
+        expect(segment("failure"), "timed_out and action_required both count as failed").toBe(
+            "20%",
+        );
+        expect(segment("pending"), "no pending segment without pending checks").toBeUndefined();
+    });
+
     it("a commit without checks shows a dash in place of the count", async () => {
         const container = await renderList({
             showCiColumn: true,
@@ -205,6 +248,36 @@ describe("Git Log CI column", () => {
 
         expect(ciCell(container)!.textContent).toBe("—");
         expect(ciCell(container)!.querySelector('[data-testid^="commit-ci-bar-"]')).toBeNull();
+    });
+
+    it("segment colours: passed and failed checks are painted differently", async () => {
+        const container = await renderList({ showCiColumn: true });
+
+        const paint = (state: string): string | undefined =>
+            ciCell(container)!.querySelector<HTMLElement>(`[data-testid="commit-ci-bar-${state}"]`)
+                ?.style.background;
+        expect(paint("success"), "the success segment has a colour").toBeTruthy();
+        expect(paint("failure"), "the failure segment has a colour").toBeTruthy();
+        expect(paint("pending"), "the pending segment has a colour").toBeTruthy();
+        expect(paint("failure"), "a failed check is not painted like a passed one").not.toBe(
+            paint("success"),
+        );
+        expect(paint("pending")).not.toBe(paint("success"));
+    });
+
+    it("without a checks requester the column flag does nothing", async () => {
+        const without = await renderList({ showCiColumn: true, omitChecksRequester: true });
+
+        expect(ciCell(without), "no CI cell without a requester").toBeNull();
+        expect(
+            without.querySelector('[data-testid="commit-ci-header"]'),
+            "no CI header without a requester",
+        ).toBeNull();
+        const headers = headerTexts(without);
+
+        document.body.replaceChildren();
+        const flagAbsent = await renderList({ omitChecksRequester: true });
+        expect(headers, "the same header as with the flag absent").toEqual(headerTexts(flagAbsent));
     });
 
     it("old badge hidden when column on", async () => {
