@@ -18,7 +18,7 @@
 - Phase 14: owner accepted by hand 2026-11-22 at ca1834d5 (answer "C: targeted fix"); the review log's last Phase 14 line stays HALT (squash-merged as #450, f3cf1afa).
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 15: review pending, started at ca1834d5017001650a2a730e17bee052eb6627a5 (real base a2fa6a15158555a8eadacf8adf6402a9a5518be2: ca1834d5 is not an ancestor after the squash merge)
+## Phase 15: review pending, started at a2fa6a15158555a8eadacf8adf6402a9a5518be2 (owner answer "A: fix base, re-run", 2026-11-22: the first wave carried the Phase 14 branch head, which the squash merge left out of this branch's history)
 - Build ae49a11e (0.43.19): optional CI column in the Git Log, hidden behind the Checks tab switch. Details and proof in PLAN.review-log.md "Phase 15: built, review pending".
 - 12 mutations on copy mut-15-build-1, each red naming its planned test. Full chain exit 0 except `bun run test` (10 of 8687 red, the known set, see Open risks). verify.py gates --stage round GREEN.
 - Fix round 1 (review pending again): the 99 px lock is now asserted with literal 99/8/44/8/6 px in commitCiColumn.integration.test.tsx and tests/e2e/ciColumn.spec.ts:140 (literal 99). Mutations on copy mut-15-fix-1: CI_COL_WIDTH 99 to 100, CI_CELL_INSET 8 to 9, CI_BAR_WIDTH 44 to 45, CI_BAR_HEIGHT 8 to 9, CI_BAR_GAP 6 to 7 each go red naming the new test; unmutated copy green. Full chain exit 0 except `bun run test` (10 of 8688 red, the same known set).
