@@ -14,47 +14,38 @@
 - Phase 10: accepted 8ff6422d, manual, owner answer "A" 2026-11-14 (squash-merged as #435, bc063074).
 - Phase 11: accepted b9d710d6, verification incomplete (squash-merged as #439, 928c1aae).
 - Phase 12: accepted by the owner by hand 2026-11-18 at c874d0b3 ("A: accept, file issue"; gaps in #443; squash-merged as #444, 29efe7ec).
-- Phase 13: owner accepted Phase 13 by hand 2026-11-21 at 3b31283b (answer "For phase 13 A"; its stop rule sends a second halt to a hand accept and an issue); open gaps in #447; the review log's last Phase 13 line stays HALT (squash-merged as #448, 49893e1f).
-- Phase 14: owner accepted Phase 14 by hand 2026-11-22 at ca1834d5 (answer "C: targeted fix", 2026-11-21: a targeted fix, one R1 Fable review, then a hand accept; finding 5, the missed GitNexus-before-edit ordering, waived); no gaps issue; the review log's last Phase 14 line stays HALT (squash-merged as #450, f3cf1afa).
+- Phase 13: owner accepted by hand 2026-11-21 at 3b31283b (answer "For phase 13 A"); open gaps in #447; the review log's last Phase 13 line stays HALT (squash-merged as #448, 49893e1f).
+- Phase 14: owner accepted by hand 2026-11-22 at ca1834d5 (answer "C: targeted fix"); the review log's last Phase 14 line stays HALT (squash-merged as #450, f3cf1afa).
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 14: review pending, started at d66a616891a674b603e0cf846901e30463e78112
-- Build acf6e21c (0.43.18, hidden behind the Checks tab switch). Fix round 1 (13fa2d0d) cleared Codex round 1's findings 1-4. Fix round 2 (29d53c89) moved the failure branch's HEAD await before its final checks.
-- Takeover (the commit after 29d53c89) cleared review round 2's four findings, each with a test red before and green after, 7 mutations on a copy each red naming its test: (1) Problems URIs are the validated real path, not the provider's alias, and a synchronous `realpathSync.native` check just before publishing drops a file swapped for a symlink since placement (counted as rejected); (2) `open()` rereads HEAD after its realpath and reruns the publishing show's own `live()` (sequence, enabled, auth and lifecycle generations) plus the switch before opening; (3) `getAnnotations` takes the caller's `isCurrent` (now required on the provider interface) and checks it before every page request, including the first after the session await; the coordinator passes it; (4) `show()` rereads HEAD before each later job's request. A fresh review is next.
-- Fix round 1: `open()` re-contains the file (realpath inside the repository) at click time and opens the real path; the failure branch of `show()` rechecks switch, liveness and HEAD like the success path; `CiAnnotationsView.truncated` became `coverage: CiCoverage` (worst of the jobs, a refused link outranks a page bound) and the tab prints a new `annotationsRejectedNext` line (12 locales + CSV); real provider tests drive ten pages, an eleventh never fetched, and a cross-host next link (one request, no token elsewhere). 8 mutations on a copy, each red naming its test.
-- Built: `src/services/commitChecks/ciDiagnostics.ts` (HEAD-only fetch for failed jobs with annotationCount > 0, path and line validation with realpath containment, 0-based lines, source `CI: <job>`, publish only while current and HEAD unchanged, clear on HEAD change, settings, sign-out, clear(), repository close and monitor dispose); GitHub `getAnnotations` (per_page=100, bounded) and `annotationCount`; capability `annotations`; contract version 9; `openCiAnnotation` handler on 3 hosts; Checks tab "Annotations" section; l10n in 11 locales; README section under a Planned note; `tests/e2e/ciDiagnostics.spec.ts` in `test:e2e`.
-- Switch checks (owner answer "A: hide them"): request, publish and handler each check `isE2eControlChannelActive()`, each with a switch-off test that went red when its check was removed.
-- Takeover proof: every step of the phase chain exit 0 except `bun run test` (10 of 8654 red, the same set as below; tsconfigCoverage and screenshotComparatorMeta pass in a copy with linked node_modules).
-- Build proof: every step of the phase chain exit 0 except `bun run test` (10 of 8635 red: 8 known commit-list-column-resize Node 26 reds, plus tsconfigCoverage and screenshotComparatorMeta, which read `<repo>/node_modules` by path and pass in a copy with linked node_modules). verify.py gates --stage round GREEN. 16 mutations on copies, each red naming its test.
+## Phase 15: review pending, started at ca1834d5017001650a2a730e17bee052eb6627a5 (real base a2fa6a15158555a8eadacf8adf6402a9a5518be2: ca1834d5 is not an ancestor after the squash merge)
+- Build ae49a11e (0.43.19): optional CI column in the Git Log, hidden behind the Checks tab switch. Details and proof in PLAN.review-log.md "Phase 15: built, review pending".
+- 12 mutations on copy mut-15-build-1, each red naming its planned test. Full chain exit 0 except `bun run test` (10 of 8687 red, the known set, see Open risks). verify.py gates --stage round GREEN.
 
 ## Decisions and why
-- The Problems collection is created on the first publish, not at activation: every integration test's vscode mock lacks `languages`, and nothing should appear in Problems while the switch is off.
-- few/many plural forms added by hand to es, fr, pt-br, pt-pt, ru, pl for `commit.checks.tab.annotationsRejected`: the CSV carries only en's one/other, and the l10n test requires every Intl.PluralRules category.
-- `handleChangedSinceGreenMessage` renamed `handleCiFileMessage` and shared with `openCiAnnotation`, keeping the provider's complexity under the lint limit.
-- `CheckAnnotations` takes the loaded detail and renders nothing without annotations, so ChecksTab stays under complexity 25.
-- The setting is read with its default and not contributed (Phase 18 contributes it, per the plan).
-- Takeover: the final containment check is synchronous so no await sits between it and the publish; the native resolver matches `fs.promises.realpath`'s spelling on Windows. The HEAD recheck runs only before the second and later jobs, because the first is already checked just before the loop. The redundant "same published object" check in `open()` was dropped: any clear or newer show already turns `live()` false.
+- Layout: the CI column shows only when it fits beside the Author/Date the badge layout already shows (`ciColumnFits`); otherwise the row keeps today's badge layout. Author/Date widths are computed as before, so the column never takes their space (the review gate's "deficit onto a sibling" concern).
+- The host posts `showCiColumn: true` only when the switch and the setting are both on; the key is absent otherwise, so recorded visual fixtures stay byte-identical.
+- The setting is read once at activation (reload to change), like the other commit-checks settings, with default false and no package.json contribution (Phase 18).
+- CommitPanelViewProvider.sendGraphBranches posts setBranches without the flag, so the column cannot show in the commit panel's embedded graph; no switch check exists there to test. The compact Git Log (NativeCommitGraph) is wired like the card view.
+- CommitList's lint complexity limit (25) moved the request flag into `ciColumnFits` and the header into `CiColumnHeader`.
 
 ## Open risks
-- E2E not run locally (CI runs `ciDiagnostics.spec.ts`).
-- R1 (Fable) review due: untrusted provider paths reach the file system check.
-- A file swapped between the realpath check and the read, between the click's realpath and the open, or after publishing is a filesystem race no check can close; the publish step itself is now rechecked synchronously.
-- With several failed jobs the tab's coverage line names the worst job's count, not a total.
-- The sign-out and repository-close clears in repositoryMode have no activation-level test; covered only through the `CiDiagnostics.clear()` and monitor tests.
-- The annotations subscription in the detail handler lives until its `stopped` signal aborts.
-- GitNexus detect-changes/impact not run (no GitNexus tool in the builder session, worktree not indexed): OWNER must run it on an indexed checkout or waive it. Hand trace instead: the changed symbols' only users are `CiDiagnostics.show/open` (called by `ciAnnotationHandler` and `HeadCiStatus`) and `CheckAnnotations`; `bun run typecheck` is green.
+- E2E `tests/e2e/ciColumn.spec.ts` not run locally (CI runs `test:e2e`); its width assertions read the rendered graph margin and the style constants.
+- GitNexus detect-changes reports risk HIGH, driven by `activateRepositoryMode`'s execution flows (one added settings field); the index is stale (last indexed a2fa6a1). colorForState impact HIGH for an export-only change.
+- Gate U ran regex-only (no element rules such as contrast or tiny text).
+- `bun run test` known reds: 8 commit-list-column-resize (Node 26 has no localStorage; all 8 pass with NODE_OPTIONS=--localstorage-file), tsconfigCoverage and screenshotComparatorMeta (pass in a copy with linked node_modules).
 
-## Next phase: per the phase-run dry run (Phase 15 depends on 4 and is ready; Phases 16-18 per their Depends on lines)
-- Phase 15 (owner "A: hide them" 2026-11-20, and "1 A" for the halted attempt from 3965f37a): start fresh from this branch's HEAD, reusing nothing from that attempt; the CI column, its header, the badge swap and the cell's click stay off while the Checks tab switch is off (each Git Log host posts the column flag false from `isE2eControlChannelActive()`, each with a switch-off test); the setting is read with default false and contributed in Phase 18; Patch bump with a groundwork CHANGELOG line; docs under a "Planned" note.
+## Next phase: per the phase-run dry run (Phases 16-18 per their Depends on lines)
 
 ## Found outside scope
 - Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
-- tests/integration/git/updateWithLocalChanges.integration.test.ts fails on Node 24.3.0; commit-list-column-resize fails on Node 26.
+- tests/integration/git/updateWithLocalChanges.integration.test.ts fails on Node 24.3.0; commit-list-column-resize fails on Node 26 unless `--localstorage-file` is given (a vitest setup could pass it).
 - GitHub carryScans treats two missing `runAttempt` values as the same run.
 - `bun run package` can pack ignored `output/` leftovers; noRepositoryMode.ts registers a placeholder `refreshBadges`.
 - Mutation copies must link the main checkout's node_modules; a copy has no .git or dist.
 - GitLab snapshot could follow `x-next-page` pages if getChecks moved to `fetchWithMeta`.
-- The main checkout's GitNexus index is stale and has no run.cjs inside worktrees; the main checkout's runner works with `--repo <worktree>`.
-- A full `bun run test` on this machine takes about 8 minutes and shows load-dependent flakes in changeWorkflowHost and fixtures tests.
+- The main checkout's GitNexus index is stale; its runner works with `--repo <worktree>` from a script under the TMPDIR phase-run folder.
+- A full `bun run test` on this machine takes 5 to 8 minutes and shows load-dependent flakes in changeWorkflowHost and fixtures tests.
 - Any Bash command that mentions the path segment "IntelliGit" next to a script, or ".gitnexus", is refused by the worktree git guard as "too complex"; put scripts under the TMPDIR phase-run folder.
-- This worktree has no node_modules folder: tsconfigCoverage and screenshotComparatorMeta read `<repo>/node_modules` by path and fail here only; this worktree is also not in the GitNexus index.
+- This worktree has no node_modules folder: tsconfigCoverage and screenshotComparatorMeta read `<repo>/node_modules` by path and fail here only.
+- The commit panel's embedded graph (CommitPanelViewProvider) never posts `commitChecksEnabled` or the CI column flag; whether it should show checks at all is an owner question for Phase 18.
