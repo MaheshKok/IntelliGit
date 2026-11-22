@@ -534,13 +534,8 @@ describe.each([
             value: vi.fn(() => mockVscodeApi),
         });
         if (load) {
-            const { createRoot } = await import("react-dom/client");
             const Component = await load();
-            act(() => {
-                createRoot(root).render(
-                    <Component vscode={mockVscodeApi as never} sendReady={false} />,
-                );
-            });
+            mount(<Component vscode={mockVscodeApi as never} sendReady={false} />);
         } else {
             // UndockedApp renders itself into #root on import.
             await import("../../../src/webviews/react/UndockedApp");
@@ -602,5 +597,14 @@ describe.each([
         sendBranches({});
         await flush();
         expect(lastProps!.showCiColumn).toBe(false);
+    });
+
+    // Runs after the mounting tests above: a root they left behind would still answer messages and
+    // write `lastProps`, so a later test could pass on a stale root. UndockedApp renders its own
+    // root on import and gives no handle to unmount it.
+    it.skipIf(!load)("a root from an earlier test no longer answers setBranches", async () => {
+        sendBranches({ showCiColumn: true });
+        await flush();
+        expect(lastProps, "no earlier root rendered CommitList").toBeNull();
     });
 });
