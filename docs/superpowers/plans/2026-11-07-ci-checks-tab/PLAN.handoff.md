@@ -21,12 +21,12 @@
 
 ## Phase 16: review pending, started at 20240fdf09433916025c8db6578fee50a719934b
 - Build 181a5862 (0.43.20), fix round 1 4c5c4abb, fix round 2 (this commit, see git log): "Find where CI broke" over a range of 2+ Git Log rows, shown hidden.
-- BLOCKED: review finding 6 (the result text's "yours" and "also red on main") is not fixed; it needs an owner answer, see below.
+- Review finding 6 (the result text's "yours" and "also red on main") answered by the owner 2026-11-22: "C: drop both + issue". The result text keeps only "broke at <short sha>" with no "yours", "also red on main" or "→ likely not yours"; both phrases are tracked in #453 (PLAN.md Phase 16, after the Frame `4:2` FACT).
 - Fix round 2 (5 of 6 findings, each test red before the fix): (1) the job join never merges two known logical ids, so an unlabelled middle commit no longer collapses two workflows' same-named jobs; (2) a live caller joining another caller's attempt-history read keeps it when the owner cancels (the shared read's send guard is "any joined caller is live"); (3) `failedReads` in the §4 result: the view shows an error with Retry, not "No CI jobs found"; (4) the join is indexed (`indexChecks` / `matchIndexed` in shared/ci/history.ts, `matchCheck` delegates) and yields to the event loop every 20k steps while checking for a cancel: 40 commits x 1000 checks ran in about 0.1 s of test time (was 6.67 s); (5) the sparkline is 72 px for any range: squares shrink from 9 px (gap first goes 2 -> 0 px past 8+ commits), the note line has no extra vertical padding.
 - Gates: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0. `bun run test`: 8 failed (commit-list-column-resize, Node 26 has no localStorage), 8745 passed, 1 skipped.
 
 ## Decisions and why
-- Finding 6 NOT done: "yours" has no source in the plan or code. Options for the owner: (A) yours = the breaking commit's author email equals `git config user.email` (needs the author in `LoadedCommit`, the webview message and a git config read; "also red on main" from the default branch tip's checks); (B) yours = the breaking commit is the newest selected row (cheap, but "yours" then means nothing about authorship); (C) drop both qualifiers from the frame (a plan change). Pass on guessing: each gives different payload and host code.
+- Finding 6: "yours" had no source in the plan or code. Options were (A) the breaking commit's author email equals `git config user.email`, plus main's tip checks; (B) the newest selected row; (C) drop both qualifiers. Owner answer 2026-11-22: "C: drop both + issue" (#453). No author field, git config read or main-tip read in Phase 16.
 - Request gate send guard (AsyncLocalStorage) is checked inside the gate after the slot wait; the shared attempt read joins guards (round 2).
 - Concurrency 4, matching the gate's per-bucket slots.
 - Sparkline: fixed 72 px; squares flex from 9 px and shrink, gap 2 px squeezed to 0 only when 1 px squares would not fit (passed on growing the sparkline, which broke frame 4:2).
@@ -39,7 +39,7 @@
 - E2E tests/e2e/ciBisect.spec.ts not run locally (CI runs test:e2e).
 - GitNexus detect-changes was not re-run this round.
 - An attempt-history read that fails (null) still counts as "no re-runs" for the flaky tag; only snapshot read failures are in `failedReads`.
-- Owner questions carried: finding 6 above; Phase 15's skipped/cancelled/neutral denominator; whether the commit panel's embedded graph shows checks (Phase 18).
+- Owner questions carried: Phase 15's skipped/cancelled/neutral denominator; whether the commit panel's embedded graph shows checks (Phase 18).
 
 ## Next phase: per the phase-run dry run (Phases 17-18 per their Depends on lines)
 
