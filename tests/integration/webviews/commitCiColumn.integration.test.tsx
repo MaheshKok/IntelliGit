@@ -256,13 +256,15 @@ describe("Git Log CI column", () => {
         const paint = (state: string): string | undefined =>
             ciCell(container)!.querySelector<HTMLElement>(`[data-testid="commit-ci-bar-${state}"]`)
                 ?.style.background;
-        expect(paint("success"), "the success segment has a colour").toBeTruthy();
-        expect(paint("failure"), "the failure segment has a colour").toBeTruthy();
-        expect(paint("pending"), "the pending segment has a colour").toBeTruthy();
-        expect(paint("failure"), "a failed check is not painted like a passed one").not.toBe(
-            paint("success"),
+        expect(paint("success"), "success contract colour").toBe(
+            "var(--vscode-charts-green, #62c370)",
         );
-        expect(paint("pending")).not.toBe(paint("success"));
+        expect(paint("failure"), "failure contract colour").toBe(
+            "var(--vscode-errorForeground, #f14c4c)",
+        );
+        expect(paint("pending"), "pending contract colour").toBe(
+            "var(--vscode-charts-yellow, #e5c07b)",
+        );
     });
 
     it("without a checks requester the column flag does nothing", async () => {
@@ -306,6 +308,51 @@ describe("Git Log CI column", () => {
             "Author and Date keep their place, and the old badge column returns",
         ).toEqual(["Commit", "Author", "Date", ""]);
         expect(badge(narrow), "the old badge is back while the column is dropped").not.toBeNull();
+    });
+
+    it("one mounted list follows a wide, narrow, wide resize without a remount", async () => {
+        // The shared setup's ResizeObserver never fires; capture the list's own callback to drive it.
+        const original = globalThis.ResizeObserver;
+        const callbacks: ResizeObserverCallback[] = [];
+        class CapturingResizeObserver {
+            constructor(callback: ResizeObserverCallback) {
+                callbacks.push(callback);
+            }
+            observe = vi.fn();
+            unobserve = vi.fn();
+            disconnect = vi.fn();
+        }
+        Object.defineProperty(globalThis, "ResizeObserver", {
+            value: CapturingResizeObserver,
+            configurable: true,
+        });
+        try {
+            setViewportWidth(CI_FITS_WIDTH);
+            const container = await renderList({ showCiColumn: true });
+            const resizeTo = async (width: number): Promise<void> => {
+                setViewportWidth(width);
+                act(() => callbacks.forEach((callback) => callback([], {} as ResizeObserver)));
+                await flush();
+            };
+            expect(callbacks.length, "the list registered its resize observer").toBeGreaterThan(0);
+            expect(ciCell(container), "wide: the column shows").not.toBeNull();
+            expect(headerTexts(container)).toEqual(["Commit", "CI", "Author", "Date"]);
+
+            await resizeTo(CI_FITS_WIDTH - 1);
+            expect(ciCell(container), "narrow: the same row drops its CI cell").toBeNull();
+            expect(headerTexts(container)).toEqual(["Commit", "Author", "Date", ""]);
+            expect(badge(container), "narrow: the old badge returns").not.toBeNull();
+
+            await resizeTo(CI_FITS_WIDTH);
+            expect(ciCell(container), "wide again: the cell comes back").not.toBeNull();
+            expect(headerTexts(container)).toEqual(["Commit", "CI", "Author", "Date"]);
+            expect(badge(container), "wide again: no second checks control").toBeNull();
+        } finally {
+            Object.defineProperty(globalThis, "ResizeObserver", {
+                value: original,
+                configurable: true,
+            });
+        }
     });
 
     it("click opens Checks tab", async () => {

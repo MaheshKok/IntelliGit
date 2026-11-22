@@ -52,6 +52,11 @@ import {
     createFakeExtensionUri,
     createFakeUriFromPath,
 } from "../../visual/recorder/commitInfoVscodeDouble";
+import {
+    isE2eControlChannelActive,
+    setE2eControlChannelActive,
+} from "../../../src/e2e/activationState";
+import { normalizeCommitChecksSettings } from "../../../src/services/commitChecks/settingsConfig";
 import { GitExecutor } from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { GitOps } from "../../../src/git/operations";
@@ -1556,4 +1561,68 @@ describe("CommitPanelViewProvider shelf listing after a host-side rewrite", () =
             provider.dispose();
         }
     }, 30_000);
+});
+
+describe("CommitPanelViewProvider embedded graph CI column flag", () => {
+    afterEach(async () => {
+        await scratch.removeAll();
+    });
+
+    /** The CI column flag of every `setBranches` message the embedded graph posts on `ready`. */
+    async function postedColumnFlags(showCiColumn: boolean): Promise<unknown[]> {
+        const parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-commit-panel-ci-column-"));
+        scratch.register(parentDir);
+        const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+        const constructorOptions = buildCommitPanelConstructorOptions();
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = createTestCommitPanelViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            createFakeUriFromPath(workspace.root),
+            createEmptyWorkspaceMemento(),
+            undefined,
+            constructorOptions.shelfServiceForRepository,
+            constructorOptions.shelfRemoveOnUnshelve,
+            constructorOptions.commitMessageGenerationCoordinator,
+            constructorOptions.interactiveRebaseStorageRoot,
+            undefined,
+            { ...normalizeCommitChecksSettings({}), showCiColumn },
+        );
+        try {
+            const { webviewView, posted, receiveMessage } =
+                createInspectableCommitPanelWebviewView();
+            provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+            await receiveMessage({ type: "ready" });
+            await flushMicrotasks();
+            const branches = messagesOfType(posted, "setBranches");
+            expect(branches.length, "ready posts the branches message").toBeGreaterThan(0);
+            return branches.map((message) => message.showCiColumn);
+        } finally {
+            provider.dispose();
+        }
+    }
+
+    it("posts the CI column as off while the Checks tab switch is off, and on only with switch and setting both on", async () => {
+        const wasOn = isE2eControlChannelActive();
+        try {
+            setE2eControlChannelActive(false);
+            expect(
+                (await postedColumnFlags(true)).every((flag) => flag !== true),
+                "the setting is on but the switch is off: the column stays off",
+            ).toBe(true);
+            setE2eControlChannelActive(true);
+            expect(
+                await postedColumnFlags(true),
+                "the control: with the switch on the setting reaches the webview",
+            ).toContain(true);
+            expect(
+                (await postedColumnFlags(false)).every((flag) => flag !== true),
+                "the setting is off: the column stays off",
+            ).toBe(true);
+        } finally {
+            setE2eControlChannelActive(wasOn);
+        }
+    }, 60_000);
 });

@@ -12,6 +12,8 @@ import {
 import * as vscode from "vscode";
 import * as path from "node:path";
 import { GitOps } from "../git/operations";
+import { isE2eControlChannelActive } from "../e2e/activationState";
+import type { CommitChecksSettings } from "../services/commitChecks/settingsConfig";
 import {
     CommitMessageGenerationCoordinator,
     type CommitMessageGenerationHost,
@@ -333,6 +335,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             NativeCommitInputBridge,
             "attach" | "detach" | "setFromPanel" | "setVisible" | "dispose"
         >,
+        private readonly commitChecksSettings?: CommitChecksSettings,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.nativeCommitInputBridge = (
@@ -1623,6 +1626,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             currentBranchBehind: runtime.currentBranchBehindCache,
             currentBranchName: runtime.currentBranchNameCache,
             currentBranchUpstream: runtime.currentBranchUpstreamCache,
+            // The CI column ships hidden: off while the Checks tab switch is off (Phase 18 removes this).
+            ...(isE2eControlChannelActive() &&
+                this.commitChecksSettings?.showCiColumn === true && { showCiColumn: true }),
         });
     }
     /**
