@@ -16,9 +16,10 @@
 - Phase 12: accepted by the owner by hand 2026-11-18 at c874d0b3 ("A: accept, file issue"; gaps in #443; squash-merged as #444, 29efe7ec).
 - Phase 13: owner accepted by hand 2026-11-21 at 3b31283b (answer "For phase 13 A"); open gaps in #447; the review log's last Phase 13 line stays HALT (squash-merged as #448, 49893e1f).
 - Phase 14: owner accepted by hand 2026-11-22 at ca1834d5 (answer "C: targeted fix"); the review log's last Phase 14 line stays HALT (squash-merged as #450, f3cf1afa).
+- Phase 15: accepted dd67fe22, verification incomplete.
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 15: review pending, started at a2fa6a15158555a8eadacf8adf6402a9a5518be2 (owner answer "A: fix base, re-run", 2026-11-22: the first wave carried the Phase 14 branch head, which the squash merge left out of this branch's history)
+## Phase 15: accepted dd67fe22, verification incomplete, started at a2fa6a15158555a8eadacf8adf6402a9a5518be2 (owner answer "A: fix base, re-run", 2026-11-22: the first wave carried the Phase 14 branch head, which the squash merge left out of this branch's history)
 - Build ae49a11e (0.43.19): optional CI column in the Git Log, hidden behind the Checks tab switch. Details and proof in PLAN.review-log.md "Phase 15: built, review pending".
 - 12 mutations on copy mut-15-build-1, each red naming its planned test. Full chain exit 0 except `bun run test` (10 of 8687 red, the known set, see Open risks). verify.py gates --stage round GREEN.
 - Takeover (review pending again; test-only, no production change; after the review of 44dd15cb): a new integration test renders the real CommitList with `showAuthorDate={false}` (as NativeCommitGraph does), the CI column on and a checks requester, and asserts the CI cell renders and the old badge does not. Coupling mutation (`showAuthorDate &&` added at CommitList.tsx:471) on copy mut-15-takeover-1: red `CI cell renders independently of Author/Date: expected null not to be null`, the other 24 green. Full chain exit 0 except `bun run test` (10 of 8700 red, the known set).
