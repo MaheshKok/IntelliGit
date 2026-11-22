@@ -54,9 +54,8 @@ export async function answerStartCiBisect(
         selected,
         bisect.loaded(),
         signal,
-        (done, total) => {
-            if (current()) post({ type: "ciBisectProgress", requestId, done, total });
-        },
+        (done, total) => post({ type: "ciBisectProgress", requestId, done, total }),
+        current,
     );
     if (!result || signal.aborted || !current()) return;
     post({ type: "ciBisectResult", requestId, repoKey, ...result });

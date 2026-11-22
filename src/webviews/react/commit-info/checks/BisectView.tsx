@@ -14,6 +14,7 @@ const ROW_HEIGHT = 25;
 const FIRST_ROW_HEIGHT = 31;
 const NAME_WIDTH = 160;
 const COLUMN_GAP = 6;
+const SPARKLINE_WIDTH = 72;
 const SPARK_LEAD = 8;
 const SQUARE = 9;
 const SQUARE_GAP = 2;
@@ -67,8 +68,13 @@ function Sparkline({
 }): React.ReactElement {
     // `states` run oldest to newest; the sparkline shows the newest on the left.
     const indexes = job.states.map((_, index) => index).reverse();
+    // Frame 4:2's 72 px holds its six squares; a longer range widens it rather than overflow.
+    const width = Math.max(
+        SPARKLINE_WIDTH,
+        SPARK_LEAD + indexes.length * (SQUARE + SQUARE_GAP) - SQUARE_GAP,
+    );
     return (
-        <span style={sparklineStyle}>
+        <span style={{ ...sparklineStyle, width }}>
             {indexes.map((index) => {
                 const state = job.states[index] ?? null;
                 const hash = commits[index] ?? "";
@@ -253,6 +259,7 @@ const sparklineStyle: React.CSSProperties = {
     display: "inline-flex",
     gap: SQUARE_GAP,
     paddingLeft: SPARK_LEAD,
+    boxSizing: "border-box",
     flexShrink: 0,
 };
 

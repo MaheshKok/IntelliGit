@@ -6,8 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("vscode", () => ({ l10n: { t: (message: string) => message } }));
 
-import { runCiBisect } from "../../../../src/services/commitChecks/ciBisect";
+import { runCiBisect, type CiBisectSource } from "../../../../src/services/commitChecks/ciBisect";
 import { CommitChecksCoordinator } from "../../../../src/services/commitChecks/coordinator";
+import { normalizeGithubChecks } from "../../../../src/services/commitChecks/githubProvider";
 import { CommitChecksRequestGateRegistry } from "../../../../src/services/commitChecks/requestGate";
 import { brokeAt } from "../../../../src/shared/ci/history";
 import type {
@@ -338,6 +339,147 @@ describe("runCiBisect", () => {
             flaky: { n: 1, m: 3, attemptsCounted: false },
         });
         expect(attemptReads).toEqual([]);
+    });
+});
+
+describe("runCiBisect job identity and coverage", () => {
+    const quiet = (): [AbortSignal, () => void] => [new AbortController().signal, () => {}];
+
+    /** A source with fixed snapshots, no gate: only what the join and the coverage rules see. */
+    function stub(
+        items: Items,
+        extra: Partial<CommitChecksSnapshot> & { partialOn?: string } = {},
+        attempts: CiAttemptHistory[] = [],
+    ): CiBisectSource {
+        const { partialOn, ...rest } = extra;
+        return {
+            capabilities: async () => ({ attemptHistory: attempts.length > 0 }) as never,
+            getChecks: async (hash) => ({
+                hash,
+                state: "success",
+                summary: "",
+                items: items[hash] ?? [],
+                ...rest,
+                ...(hash === partialOn ? { partial: true } : {}),
+            }),
+            attemptHistory: async () => attempts,
+        };
+    }
+
+    it("unique name fallback joins identified and unlabelled snapshots into one job", async () => {
+        const [a, b] = ["a", "b"].map(h);
+        const commits = chain(a, b);
+        const source = stub({
+            [a]: [check("unit-tests", "failure", "job\0CI\0unit-tests")],
+            [b]: [check("unit-tests", "success")],
+        });
+        const result = await runCiBisect(source, commits, commits, ...quiet());
+        expect(result?.jobs, "one logical check across both commits").toHaveLength(1);
+        expect(result?.jobs[0].states).toEqual(["success", "failure"]);
+        expect(result?.jobs[0].brokeAt).toBe(a);
+    });
+
+    it("two same-named identified jobs stay two jobs, and a flat check of that name proves neither", async () => {
+        const [a, b] = ["a", "b"].map(h);
+        const commits = chain(a, b);
+        const source = stub({
+            [a]: [
+                check("unit", "failure", "job\0W1\0unit"),
+                check("unit", "failure", "job\0W2\0unit"),
+            ],
+            [b]: [check("unit", "success")],
+        });
+        const result = await runCiBisect(source, commits, commits, ...quiet());
+        expect(result?.jobs).toHaveLength(3);
+        expect(result?.jobs.map((job) => job.brokeAt)).toEqual([null, null, null]);
+    });
+
+    it("a partial snapshot cannot prove a unique-name green baseline", async () => {
+        const [a, b] = ["a", "b"].map(h);
+        const commits = chain(a, b);
+        const source = stub(
+            { [a]: [check("unit", "failure")], [b]: [check("unit", "success")] },
+            { partialOn: b },
+        );
+        const result = await runCiBisect(source, commits, commits, ...quiet());
+        expect(result?.jobs).toHaveLength(1);
+        expect(
+            result?.jobs[0].brokeAt,
+            "an incomplete population cannot prove the preceding green",
+        ).toBeNull();
+        expect(result?.jobs[0].states).toEqual([null, "failure"]);
+    });
+
+    it("a partial snapshot still proves a match by logical id", async () => {
+        const [a, b] = ["a", "b"].map(h);
+        const commits = chain(a, b);
+        const source = stub(
+            {
+                [a]: [check("unit", "failure", "job\0W\0unit")],
+                [b]: [check("unit", "success", "job\0W\0unit")],
+            },
+            { partialOn: b },
+        );
+        const result = await runCiBisect(source, commits, commits, ...quiet());
+        expect(result?.jobs[0].brokeAt).toBe(a);
+    });
+
+    it("a GitHub re-run from failed to passed is counted in bisect", async () => {
+        const [a] = [h("a")];
+        const snapshot = normalizeGithubChecks(
+            a,
+            {
+                check_runs: [
+                    { id: 10, name: "unit-tests", status: "completed", conclusion: "success" },
+                ],
+            },
+            [],
+        );
+        expect(
+            snapshot.items[0].logicalId,
+            "a GitHub snapshot check has no logical id",
+        ).toBeUndefined();
+        const attempts = [
+            {
+                runId: "77",
+                logicalId: "job\0CI\0unit-tests",
+                coverage: "full",
+                attempts: [
+                    { executionId: "9", attempt: 1, state: "failure" },
+                    { executionId: "10", attempt: 2, state: "success" },
+                ],
+            },
+        ] as CiAttemptHistory[];
+        const source: CiBisectSource = {
+            ...stub({}, {}, attempts),
+            getChecks: async () => snapshot,
+        };
+        const result = await runCiBisect(source, chain(a), chain(a), ...quiet());
+        expect(result?.jobs[0].flaky, "the provider proved a failed then passed attempt").toEqual({
+            n: 1,
+            m: 1,
+            attemptsCounted: true,
+        });
+    });
+
+    it("a name shared by two workflows' jobs is not resolved to either's re-runs", async () => {
+        const [a] = [h("a")];
+        const history = (workflow: string): CiAttemptHistory =>
+            ({
+                runId: workflow,
+                logicalId: `job\0${workflow}\0unit-tests`,
+                coverage: "full",
+                attempts: [
+                    { executionId: `${workflow}1`, attempt: 1, state: "failure" },
+                    { executionId: `${workflow}2`, attempt: 2, state: "success" },
+                ],
+            }) as CiAttemptHistory;
+        const source = stub({ [a]: [check("unit-tests", "success")] }, {}, [
+            history("W1"),
+            history("W2"),
+        ]);
+        const result = await runCiBisect(source, chain(a), chain(a), ...quiet());
+        expect(result?.jobs[0].flaky).toBeNull();
     });
 });
 

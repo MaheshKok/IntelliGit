@@ -22,10 +22,13 @@
 ## Phase 16: review pending, started at 20240fdf09433916025c8db6578fee50a719934b
 - Build 181a5862 (0.43.20) on HEAD bb7e3af4 (docs-only on 20240fdf): "Find where CI broke" over a range of 2+ Git Log rows, shown hidden. Details, mutation table and proof in PLAN.review-log.md "Phase 16: built, review pending".
 - 10 mutations on copy mut-16-build-1, each red naming its test. verify.py gates --stage round GREEN. Chain exit 0 except `bun run test` (10 known environmental reds after the localization plural fix; see Open risks).
+- Fix round 1 (5 review findings, each with a test red before the fix): the bisect stops queueing and sending once the repository, sign-in or settings changed (`isCurrent` into `runCiBisect`); a partial snapshot proves only an identity match; one job inventory by the §9 join across commits; a GitHub check resolves to the one attempt-history job bearing its name; the sparkline is 72 px wide (wider only past six squares). Tests: tests/unit/views/ciBisectHandler.test.ts, ciBisect.test.ts, ciBisectView.integration.test.tsx.
 
 ## Decisions and why
 - Request gate send guard (AsyncLocalStorage) is checked inside the gate after the slot wait, so a cancelled bisect never sends a queued request; a refused send throws a module-local error and frees the slot.
 - Concurrency 4, matching the gate's per-bucket slots.
+- Sparkline: width = max(72, lead + squares) so frame 4:2's 72 px holds at its six squares and a longer range widens instead of overflowing into the result text (passed on a fixed 72 px that clips or spills).
+- Job inventory joins items pairwise across commits with `matchCheck` on each commit's own items; partial reads join (one row per job) but prove only an identity match in `jobOf`.
 - The chain is derived from the loaded parents (first parent), intersected with the selection; a selection that is not a straight line reports "not a straight line" instead of guessing.
 - The bisect run object reuses CommitCiDetailLoops (one cancel token per host, cancelled on dispose).
 - `limitedTo` and `commits` (oldest to newest, the order of `states`) were added to the §4 result payload so the view can show the cap note and label squares.
@@ -39,7 +42,8 @@
 - GitNexus detect-changes --scope all: risk CRITICAL (34 files, 73 symbols, 23 flows), driven by requestGate and coordinator being central plus line-shift-only symbols; impact for the new symbols LOW, UNKNOWN for ambiguous names (fetchChecks, run, CommitList, CommitInfoPane).
 - A cancelled attempt-history read can hand a caller that joined it null once.
 - Gate U ran regex-only.
-- `bun run test` known reds: 8 commit-list-column-resize (Node 26 localStorage), tsconfigCoverage and screenshotComparatorMeta (no node_modules folder in the worktree).
+- `bun run test` known reds, unchanged after fix round 1 (10 failed, 8730 passed, 1 skipped): 8 commit-list-column-resize (Node 26 localStorage), tsconfigCoverage and screenshotComparatorMeta. Every other chain step exits 0.
+- Fix round 1 changed behaviour: the bisect on a very long range does N^2 pairwise joins of the commits' items (cap of the loaded commits); not measured.
 - Owner questions carried: Phase 15's skipped/cancelled/neutral denominator; whether the commit panel's embedded graph shows checks (Phase 18).
 
 ## Next phase: per the phase-run dry run (Phases 17-18 per their Depends on lines)

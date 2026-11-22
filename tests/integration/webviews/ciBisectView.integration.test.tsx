@@ -259,4 +259,43 @@ describe("CI bisect view", () => {
             window.removeEventListener(OPEN_CHECKS_TAB_EVENT, opened);
         }
     });
+
+    describe("sparkline width", () => {
+        const sparklineOf = (container: HTMLElement): HTMLElement =>
+            container.querySelector<HTMLElement>('[data-testid="ci-bisect-square"]')!
+                .parentElement!;
+
+        it("keeps the sparkline at the frozen 72px width (Figma frame 4:2)", () => {
+            const { root, container } = mount(<Harness />);
+            act(() => startCiBisect(REPO, RANGE));
+            reply(
+                result(lastStartRequestId(), [
+                    {
+                        checkName: "unit",
+                        states: ["success", "failure", "failure"],
+                        brokeAt: B,
+                        flaky: null,
+                    },
+                ]),
+            );
+            expect(sparklineOf(container).style.width, "frame 4:2 sparkline width").toBe("72px");
+            unmount(root, container);
+        });
+
+        it("grows past 72px only when more squares than the frame's six need the room", () => {
+            const { root, container } = mount(<Harness />);
+            act(() => startCiBisect(REPO, RANGE));
+            const states = Array.from({ length: 8 }, () => "success" as const);
+            reply(
+                result(
+                    lastStartRequestId(),
+                    [{ checkName: "unit", states, brokeAt: null, flaky: null }],
+                    { commits: states.map((_, index) => String(index).repeat(40)) },
+                ),
+            );
+            // 8 px lead + 8 squares of 9 px + 7 gaps of 2 px.
+            expect(sparklineOf(container).style.width).toBe("94px");
+            unmount(root, container);
+        });
+    });
 });
