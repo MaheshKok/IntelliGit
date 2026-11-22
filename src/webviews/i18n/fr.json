@@ -615,7 +615,7 @@
     },
     "commit.checks.bisect.notLinear": "pas une ligne droite — aucun point de cassure",
     "commit.checks.bisect.noBreak": "aucun point de cassure dans cette plage",
-    "commit.checks.bisect.flakyNote": "instable : {n} rouge(s) sur {m}, pas de série de rouges → probablement pas de votre fait",
+    "commit.checks.bisect.flakyNote": "instable : {n} rouge(s) sur {m}, pas de série de rouges",
     "commit.checks.bisect.limited": "Limité aux {count} commits chargés",
     "commit.checks.bisect.none": "Aucun job CI trouvé pour ces commits",
     "commit.checks.bisect.failed": "Impossible de lire les vérifications CI de certains commits. Commits non lus : {count}",

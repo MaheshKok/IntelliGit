@@ -22,6 +22,34 @@ const flush = async (): Promise<void> => {
 
 afterEach(() => setE2eControlChannelActive(false));
 
+describe("answerStartCiBisect retry", () => {
+    it.each([
+        [true, 2],
+        [undefined, 0],
+    ])("retry %s asks the source to refresh %s failed reads", async (retry, forced) => {
+        setE2eControlChannelActive(true);
+        const refreshed: string[] = [];
+        const source: CiBisectSource = {
+            capabilities: async () => undefined,
+            attemptHistory: async () => [],
+            getChecks: async (hash, options) => {
+                if (options.force) refreshed.push(hash);
+                return { hash, state: "unavailable", summary: "", items: [] };
+            },
+        };
+        await answerStartCiBisect(
+            {
+                repoKey: () => "/repo",
+                bisect: { source, loaded: () => commits },
+            } as never,
+            { requestId: 1, repoKey: "/repo", commits: commits.slice(0, 2), retry },
+            () => {},
+            new CommitCiDetailLoops(),
+        );
+        expect(refreshed).toHaveLength(forced);
+    });
+});
+
 describe("answerStartCiBisect invalidation", () => {
     it.each(["repository", "auth", "lifecycle"])(
         "%s change stops later requests as well as replies",

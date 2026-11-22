@@ -20,11 +20,13 @@
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
 ## Phase 16: review pending, started at 20240fdf09433916025c8db6578fee50a719934b
-- Build 181a5862 (0.43.20), fix round 1 4c5c4abb, fix round 2 (this commit, see git log): "Find where CI broke" over a range of 2+ Git Log rows, shown hidden.
+- Build 181a5862 (0.43.20), fix round 1 4c5c4abb, fix round 2 98670525, fix round 3 (the commit after ff902cc1, see git log): "Find where CI broke" over a range of 2+ Git Log rows, shown hidden.
 - Review finding 6 (the result text's "yours" and "also red on main") answered by the owner 2026-11-22: "C: drop both + issue". The result text keeps only "broke at <short sha>" with no "yours", "also red on main" or "→ likely not yours"; both phrases are tracked in #453 (PLAN.md Phase 16, after the Frame `4:2` FACT).
 - Fix round 2 (5 of 6 findings, each test red before the fix): (1) the job join never merges two known logical ids, so an unlabelled middle commit no longer collapses two workflows' same-named jobs; (2) a live caller joining another caller's attempt-history read keeps it when the owner cancels (the shared read's send guard is "any joined caller is live"); (3) `failedReads` in the §4 result: the view shows an error with Retry, not "No CI jobs found"; (4) the join is indexed (`indexChecks` / `matchIndexed` in shared/ci/history.ts, `matchCheck` delegates) and yields to the event loop every 20k steps while checking for a cancel: 40 commits x 1000 checks ran in about 0.1 s of test time (was 6.67 s); (5) the sparkline is 72 px for any range: squares shrink from 9 px (gap first goes 2 -> 0 px past 8+ commits), the note line has no extra vertical padding.
 - Gates: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0. `bun run test`: 8 failed (commit-list-column-resize, Node 26 has no localStorage), 8745 passed, 1 skipped.
-- Resumed 2026-11-22 after the owner's answer: no rebuild. Finding 6 (C) needs no code change: no "yours", "also red on main" or "likely not yours" string exists under src/. Gates rerun on HEAD 7c12cbcc: the same result as above; the 8 resize failures pass with `NODE_OPTIONS=--localstorage-file=<tmp>` (8 passed), and Phase 16 did not touch that test file.
+- Correction: the earlier claim "no 'likely not yours' string exists under src/" was false. It only searched src/webviews/react; the text sat in src/webviews/i18n (en.json and 11 catalogs) and the translation CSV.
+- Fix round 3 (4 findings, each test red before the fix): (1) Retry sends `retry: true` in `startCiBisect`; `runCiBisect(..., refresh)` asks again, with `force`, only a commit whose read came back unavailable (cache-first otherwise); (2) a failed attempt-history read is no longer `[]`: the commit counts in `failedReads` (view: error + Retry) and the flaky tag is "(estimated)"; (3) "→ likely not yours" removed from all 12 catalogs and the CSV (tests/integration/webviews/ciBisectCatalogs.test.ts); (4) a source-level test holds eight reads open and needs exactly four in flight (mutation 4 -> 5 is red on its assertion).
+- Gates on this round: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; `bun run test` with a fresh `NODE_OPTIONS=--localstorage-file`: 547 files, 8774 passed, 1 skipped. Without the flag the 8 commit-list-column-resize tests fail (Node 26 has no localStorage). Reusing one flag file across runs poisons commitCiColumn.integration.test.tsx (2 fail); use a new file per run.
 
 ## Decisions and why
 - Finding 6: "yours" had no source in the plan or code. Options were (A) the breaking commit's author email equals `git config user.email`, plus main's tip checks; (B) the newest selected row; (C) drop both qualifiers. Owner answer 2026-11-22: "C: drop both + issue" (#453). No author field, git config read or main-tip read in Phase 16.
@@ -39,7 +41,8 @@
 ## Open risks
 - E2E tests/e2e/ciBisect.spec.ts not run locally (CI runs test:e2e).
 - GitNexus detect-changes was not re-run this round.
-- An attempt-history read that fails (null) still counts as "no re-runs" for the flaky tag; only snapshot read failures are in `failedReads`.
+- The failed-reads message still reads "Could not read the CI checks of some commits" for a failed re-run read too (no new string, to keep 12 catalogs unchanged).
+- Retry forces a read only for commits cached as unavailable; on a live outage that read is asked twice (cached error, then forced), bounded by the request gate.
 - Owner questions carried: Phase 15's skipped/cancelled/neutral denominator; whether the commit panel's embedded graph shows checks (Phase 18).
 
 ## Next phase: per the phase-run dry run (Phases 17-18 per their Depends on lines)

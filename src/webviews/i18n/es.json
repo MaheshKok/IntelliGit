@@ -615,7 +615,7 @@
     },
     "commit.checks.bisect.notLinear": "no es una línea recta: sin punto de ruptura",
     "commit.checks.bisect.noBreak": "sin punto de ruptura en este rango",
-    "commit.checks.bisect.flakyNote": "inestable: {n} en rojo de {m}, sin racha de rojos → probablemente no es tuyo",
+    "commit.checks.bisect.flakyNote": "inestable: {n} en rojo de {m}, sin racha de rojos",
     "commit.checks.bisect.limited": "Limitado a los {count} commits cargados",
     "commit.checks.bisect.none": "No se encontraron trabajos de CI para estos commits",
     "commit.checks.bisect.failed": "No se pudieron leer las comprobaciones de CI de algunos commits. Commits sin leer: {count}",

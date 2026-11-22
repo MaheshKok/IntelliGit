@@ -174,8 +174,10 @@ describe("CI bisect view", () => {
         ]);
         expect(rows[0]!.textContent).toContain(`broke at ${B.slice(0, 7)} · 1 commit ago`);
         expect(rows[1]!.textContent).toContain(`broke at ${A.slice(0, 7)} · this commit`);
-        expect(rows[2]!.textContent).toContain(
-            "flaky: 1 red in 3, no run of red → likely not yours",
+        // The owner dropped the blame phrase (#453): the flaky line says what was seen, not whose.
+        expect(rows[2]!.textContent).toContain("flaky: 1 red in 3, no run of red");
+        expect(rows[2]!.textContent, "no judgement of whose fault it is").not.toContain(
+            "likely not yours",
         );
         expect(rows[2]!.querySelector('[data-testid="ci-bisect-flaky"]')?.textContent).toBe(
             "flaky 1/3",
@@ -370,11 +372,15 @@ describe("CI bisect view", () => {
                     .querySelector<HTMLButtonElement>('[data-testid="ci-bisect-retry"]')!
                     .click();
             });
-            expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            expect(
+                mockVscodeApi.postMessage,
+                "Retry asks to refresh failed reads",
+            ).toHaveBeenCalledWith({
                 type: "startCiBisect",
                 requestId: first + 1,
                 repoKey: REPO,
                 commits: RANGE,
+                retry: true,
             });
             unmount(root, container);
         });

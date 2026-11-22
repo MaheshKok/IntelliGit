@@ -56,6 +56,7 @@ export async function answerStartCiBisect(
         signal,
         (done, total) => post({ type: "ciBisectProgress", requestId, done, total }),
         current,
+        msg.retry === true,
     );
     if (!result || signal.aborted || !current()) return;
     post({ type: "ciBisectResult", requestId, repoKey, ...result });

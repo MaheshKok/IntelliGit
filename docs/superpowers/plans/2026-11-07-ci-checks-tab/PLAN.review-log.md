@@ -1524,3 +1524,10 @@ PHASE 16: HALT Review finding 6 asks the bisect result to say "yours" and "also 
 ## Phase 16: built, review pending (resumed after the owner's answer to finding 6)
 - Owner 2026-11-22, "C: drop both + issue" (#453): no code change needed; no "yours" / "also red on main" / "likely not yours" string exists under src/ (ctx_search over src/webviews/react). No rebuild.
 - Proof on HEAD 7c12cbcc: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; `bun run test` 8 failed (tests/webview/unit/commit-list-column-resize.test.tsx, `localStorage` undefined on Node v26.5.0), 8745 passed, 1 skipped. That file run alone with `NODE_OPTIONS=--localstorage-file=<tmp>`: 8 passed. Phase 16 did not change that test file (git diff --stat 20240fdf HEAD).
+WORKTREE 0 16: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/repro-PLAN-6 repro/PLAN-6
+
+## Phase 16: fix round 3 (builder, 2026-11-22)
+- Findings: Retry read cached unavailable snapshots; a failed attempt-history read became []; "→ likely not yours" still in 12 catalogs, the CSV and a test; BISECT_CONCURRENCY 4 -> 5 survived (M06).
+- Red before the fix: "Retry reads the recovered provider: expected 2 to be undefined"; "three commits whose re-runs could not be read: expected undefined to be 3"; "Retry asks to refresh failed reads" (the posted message lacked `retry: true`); handler "expected [] to have a length of 2"; "no judgement of whose fault it is: expected ... not to contain 'likely not yours'" and 14 catalog/CSV assertions "keeps no arrow verdict"; the barrier test passes at 4 and, mutated to 5 on a copy (mut-16-fix-1), is red: "four reads start and wait; a fifth would be over the bound: expected 5 to be 4".
+- Fix: `retry` flag (webview -> host -> `runCiBisect` `refresh`), `attemptsFailed` per read feeding `failedReads` and an estimated flaky tag, the phrase dropped from all catalogs and the CSV.
+- Gates: all 10 exit 0 with `NODE_OPTIONS=--localstorage-file=<fresh file>` for `bun run test` (547 files, 8774 passed, 1 skipped); not run: E2E (tests/e2e/ciBisect.spec.ts).

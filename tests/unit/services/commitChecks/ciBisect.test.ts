@@ -35,7 +35,12 @@ function check(name: string, state: CommitCheckItem["state"], logicalId?: string
 /** A real coordinator over a provider whose every request goes through a real request gate. */
 function harness(
     items: Items,
-    options: { hold?: boolean; attempts?: Record<string, CiAttemptHistory[]> } = {},
+    options: {
+        hold?: boolean;
+        attempts?: Record<string, CiAttemptHistory[]>;
+        /** While a flag is set the provider's requests of that kind fail; clear it to recover. */
+        outage?: { checks?: boolean; attempts?: boolean };
+    } = {},
 ) {
     const registry = new CommitChecksRequestGateRegistry("cooling down", () => 1_000);
     const sent: string[] = [];
@@ -54,6 +59,7 @@ function harness(
                 return await registry.run("github", `${API}/commits/${hash}`, async () => {
                     sent.push(hash);
                     await hold();
+                    if (options.outage?.checks) throw new Error("provider outage");
                     const list = items[hash] ?? [];
                     return { hash, state: "success", summary: "", items: list };
                 });
@@ -64,6 +70,7 @@ function harness(
         async getAttemptHistory(_ref: unknown, hash: string): Promise<CiAttemptHistory[]> {
             return registry.run("github", `${API}/runs/${hash}`, async () => {
                 attemptReads.push(hash);
+                if (options.outage?.attempts) throw new Error("provider outage");
                 return options.attempts?.[hash] ?? [];
             });
         },
@@ -279,6 +286,130 @@ describe("runCiBisect", () => {
             [2, 3],
             [3, 3],
         ]);
+    });
+
+    it("never has more reads in flight than its own bound (4), however many commits", async () => {
+        // Eight commits, each read held open: a bisect bounded at 4 starts exactly four. The
+        // gate admits four requests a bucket, so only this source-level count sees the bound.
+        const hashes = ["a", "b", "c", "d", "e", "f", "g", "i"].map(h);
+        const commits = chain(...hashes);
+        let inFlight = 0;
+        let peak = 0;
+        const releases: Array<() => void> = [];
+        const source: CiBisectSource = {
+            capabilities: async () => undefined,
+            attemptHistory: async () => [],
+            getChecks: async (hash) => {
+                inFlight += 1;
+                peak = Math.max(peak, inFlight);
+                await new Promise<void>((resolve) => releases.push(resolve));
+                inFlight -= 1;
+                return { hash, state: "success", summary: "", items: [] };
+            },
+        };
+        const running = runCiBisect(
+            source,
+            commits,
+            commits,
+            new AbortController().signal,
+            () => {},
+        );
+        await flush();
+        expect(inFlight, "four reads start and wait; a fifth would be over the bound").toBe(4);
+        while (releases.length > 0) {
+            releases.shift()?.();
+            await flush();
+        }
+        await running;
+        expect(peak, "no moment had more than four reads in flight").toBe(4);
+    });
+
+    it("Retry after a provider outage reads the recovered provider, not the cached errors", async () => {
+        const [a, b] = [h("a"), h("b")];
+        const commits = chain(a, b);
+        const outage = { checks: true };
+        const { coordinator, sent } = harness(
+            {
+                [a]: [check("unit", "failure", "w/unit")],
+                [b]: [check("unit", "success", "w/unit")],
+            },
+            { outage },
+        );
+        const signal = new AbortController().signal;
+        const first = await runCiBisect(coordinator, commits, commits, signal, () => {});
+        expect(first?.failedReads, "both reads failed during the outage").toBe(2);
+        outage.checks = false;
+        const ordinary = await runCiBisect(coordinator, commits, commits, signal, () => {});
+        expect(ordinary?.failedReads, "an ordinary start is cache first: the errors stay").toBe(2);
+        const sentBefore = sent.length;
+        const retried = await runCiBisect(
+            coordinator,
+            commits,
+            commits,
+            signal,
+            () => {},
+            undefined,
+            true,
+        );
+        expect(retried?.failedReads, "Retry reads the recovered provider").toBeUndefined();
+        expect(retried?.jobs[0].brokeAt).toBe(a);
+        expect(sent.length - sentBefore, "only the two failed commits were asked again").toBe(2);
+    });
+
+    it("Retry keeps cached good reads: only the failed commit is asked again", async () => {
+        const [a, b] = [h("a"), h("b")];
+        const commits = chain(a, b);
+        const { coordinator, sent } = harness({
+            [a]: [check("unit", "failure", "w/unit")],
+            [b]: [check("unit", "success", "w/unit")],
+        });
+        await coordinator.getChecks(a);
+        sent.length = 0;
+        await runCiBisect(
+            coordinator,
+            commits,
+            commits,
+            new AbortController().signal,
+            () => {},
+            undefined,
+            true,
+        );
+        expect(sent, "the cached good read is not asked again on Retry").toEqual([b]);
+    });
+
+    it("a failed attempt-history read stays observable, is not a clean 'no re-runs' and Retry reads it again", async () => {
+        const [a, b, c] = ["a", "b", "c"].map(h);
+        const commits = chain(a, b, c);
+        const outage = { attempts: true };
+        const { coordinator, attemptReads } = harness(
+            {
+                [a]: [check("unit", "success", "w/unit")],
+                [b]: [check("unit", "failure", "w/unit")],
+                [c]: [check("unit", "success", "w/unit")],
+            },
+            { attempts: {}, outage },
+        );
+        const signal = new AbortController().signal;
+        const failed = await runCiBisect(coordinator, commits, commits, signal, () => {});
+        expect(failed?.failedReads, "three commits whose re-runs could not be read").toBe(3);
+        expect(
+            failed?.jobs[0].flaky?.attemptsCounted,
+            "re-runs were not counted, so the tag is an estimate",
+        ).toBe(false);
+        outage.attempts = false;
+        const before = attemptReads.length;
+        const retried = await runCiBisect(
+            coordinator,
+            commits,
+            commits,
+            signal,
+            () => {},
+            undefined,
+            true,
+        );
+        expect(attemptReads.length - before, "Retry read each commit's re-runs again").toBe(3);
+        expect(retried?.failedReads).toBeUndefined();
+        expect(retried?.jobs[0].flaky?.attemptsCounted).toBe(true);
     });
 
     it("disposal cancels: an aborted run sends nothing and reports nothing", async () => {

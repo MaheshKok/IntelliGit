@@ -591,7 +591,7 @@
     },
     "commit.checks.bisect.notLinear": "一直線ではありません — 壊れた箇所なし",
     "commit.checks.bisect.noBreak": "この範囲に壊れた箇所はありません",
-    "commit.checks.bisect.flakyNote": "不安定: {m} 件中 {n} 件が赤、赤の連続なし → おそらくあなたの原因ではありません",
+    "commit.checks.bisect.flakyNote": "不安定: {m} 件中 {n} 件が赤、赤の連続なし",
     "commit.checks.bisect.limited": "読み込まれた {count} 件のコミットに制限されています",
     "commit.checks.bisect.none": "これらのコミットの CI ジョブが見つかりません",
     "commit.checks.bisect.failed": "一部のコミットの CI チェックを読み取れませんでした。未読のコミット: {count}",

@@ -51,8 +51,13 @@ function onMessage(event: MessageEvent<unknown>): void {
  *
  * @param repoKey - Repository of the Git Log.
  * @param commits - The selected rows, newest first, with their parents.
+ * @param retry - Asks the host to read again the commits whose checks it cached as an error.
  */
-export function startCiBisect(repoKey: string, commits: readonly CiLoadedCommit[]): void {
+export function startCiBisect(
+    repoKey: string,
+    commits: readonly CiLoadedCommit[],
+    retry = false,
+): void {
     if (!listening) {
         window.addEventListener("message", onMessage);
         listening = true;
@@ -65,6 +70,7 @@ export function startCiBisect(repoKey: string, commits: readonly CiLoadedCommit[
         requestId,
         repoKey,
         commits: [...commits],
+        ...(retry && { retry: true as const }),
     });
     openChecksTab();
 }
@@ -86,7 +92,7 @@ export function findCiBreakHandler(
 
 /** Runs the newest bisect's range again, after some commits' checks could not be read. */
 export function retryCiBisect(): void {
-    if (lastRange) startCiBisect(lastRange.repoKey, lastRange.commits);
+    if (lastRange) startCiBisect(lastRange.repoKey, lastRange.commits, true);
 }
 
 /** Closes the bisect view, telling the host to stop it first when it is still running. */

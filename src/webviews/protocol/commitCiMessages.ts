@@ -254,6 +254,8 @@ type CommitCiOutbound =
           repoKey: string;
           /** The selected loaded commits, newest first; the host keeps the ones it has loaded. */
           commits: CiLoadedCommit[];
+          /** Set by Retry: commits whose checks were cached as an error are read again. */
+          retry?: true;
       }
     | {
           /** The Bisect section's Cancel: the host sends no more of that bisect's requests. */

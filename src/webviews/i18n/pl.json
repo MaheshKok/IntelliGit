@@ -627,7 +627,7 @@
     },
     "commit.checks.bisect.notLinear": "to nie jest prosta linia — brak punktu awarii",
     "commit.checks.bisect.noBreak": "brak punktu awarii w tym zakresie",
-    "commit.checks.bisect.flakyNote": "niestabilny: czerwone {n} z {m}, brak serii czerwonych → prawdopodobnie nie twoja wina",
+    "commit.checks.bisect.flakyNote": "niestabilny: czerwone {n} z {m}, brak serii czerwonych",
     "commit.checks.bisect.limited": "Ograniczono do wczytanych commitów: {count}",
     "commit.checks.bisect.none": "Nie znaleziono zadań CI dla tych commitów",
     "commit.checks.bisect.failed": "Nie można odczytać kontroli CI niektórych commitów. Nieodczytane commity: {count}",

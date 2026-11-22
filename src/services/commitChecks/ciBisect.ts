@@ -35,7 +35,7 @@ const BISECT_CONCURRENCY = 4;
 export interface CiBisectSource {
     getChecks(
         hash: string,
-        options: { isCurrent: () => boolean; sendGuard: () => boolean },
+        options: { isCurrent: () => boolean; sendGuard: () => boolean; force?: boolean },
     ): Promise<CommitChecksSnapshot>;
     capabilities(hash: string): Promise<ProviderCiCapabilities | undefined>;
     attemptHistory(hash: string, sendGuard: () => boolean): Promise<CiAttemptHistory[] | null>;
@@ -48,7 +48,10 @@ export interface CiBisectResult {
     /** The commit of each job's square, oldest to newest, the order of `states`. */
     commits: string[];
     jobs: CiBisectJob[];
-    /** Set when some commits' checks could not be read: how many, so the view shows an error. */
+    /**
+     * Set when some commits' checks or re-run histories could not be read: how many commits, so
+     * the view shows an error with Retry.
+     */
     failedReads?: number;
     /** Set when selected commits the Git Log no longer has loaded were dropped: the count read. */
     limitedTo?: number;
@@ -61,6 +64,8 @@ interface CommitRead {
     /** Only some of the commit's items were read: it cannot prove a name unique. */
     partial: boolean;
     attempts: readonly CiAttemptHistory[];
+    /** The commit's re-run history could not be read: `attempts` is empty but not complete. */
+    attemptsFailed: boolean;
 }
 
 /**
@@ -255,6 +260,8 @@ function jobOf(job: CiHistoryCheck, context: JobContext): CiBisectJob {
  * @param onProgress - Called after each commit while not cancelled.
  * @param isCurrent - False once the repository, sign-in or CI settings changed; it stops the run
  *   as a cancel does, so no further request is queued or sent.
+ * @param refresh - Retry: a commit whose cached checks are an error is asked again; every other
+ *   read stays cache first, as for an ordinary start.
  * @returns `undefined` once cancelled or no longer current.
  */
 export async function runCiBisect(
@@ -264,6 +271,7 @@ export async function runCiBisect(
     signal: AbortSignal,
     onProgress: (done: number, total: number) => void,
     isCurrent: () => boolean = () => true,
+    refresh = false,
 ): Promise<CiBisectResult | undefined> {
     const parentsOf = new Map(loaded.map((commit) => [commit.hash, commit.parents]));
     const seen = new Set<string>();
@@ -286,7 +294,11 @@ export async function runCiBisect(
         BISECT_CONCURRENCY,
         async ({ hash }): Promise<CommitRead | undefined> => {
             if (!live()) return undefined;
-            const snapshot = await source.getChecks(hash, { isCurrent: live, sendGuard: live });
+            const options = { isCurrent: live, sendGuard: live };
+            let snapshot = await source.getChecks(hash, options);
+            if (refresh && snapshot.state === "unavailable" && live()) {
+                snapshot = await source.getChecks(hash, { ...options, force: true });
+            }
             const attempts =
                 attemptsCounted && live() ? await source.attemptHistory(hash, live) : [];
             if (!live()) return undefined;
@@ -297,6 +309,7 @@ export async function runCiBisect(
                 items: snapshot.state === "unavailable" ? null : snapshot.items,
                 partial: snapshot.partial === true,
                 attempts: attempts ?? [],
+                attemptsFailed: attempts === null,
             };
         },
     );
@@ -311,14 +324,15 @@ export async function runCiBisect(
         readIndexes: known.map((read) => read.items && indexChecks(read.items)),
         attemptIds: attemptIdsByName(known),
         linear: chain !== null,
-        attemptsCounted,
+        // A re-run history that could not be read leaves the flaky tag an estimate.
+        attemptsCounted: attemptsCounted && known.every((read) => !read.attemptsFailed),
     };
     const jobs: CiBisectJob[] = [];
     for (const row of rows) {
         if (!(await tick(known.length))) return undefined;
         jobs.push(jobOf(row, context));
     }
-    const failedReads = known.filter((read) => read.items === null).length;
+    const failedReads = known.filter((read) => read.items === null || read.attemptsFailed).length;
     return {
         linear: chain !== null,
         commits: known.map((read) => read.hash).reverse(),
