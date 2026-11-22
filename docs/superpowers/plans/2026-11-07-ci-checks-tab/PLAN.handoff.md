@@ -44,6 +44,7 @@
 - GitNexus detect-changes/impact not run (no GitNexus tool in the builder session, worktree not indexed): OWNER must run it on an indexed checkout or waive it. Hand trace instead: the changed symbols' only users are `CiDiagnostics.show/open` (called by `ciAnnotationHandler` and `HeadCiStatus`) and `CheckAnnotations`; `bun run typecheck` is green.
 
 ## Next phase: per the phase-run dry run (Phase 15 depends on 4 and is ready; Phases 16-18 per their Depends on lines)
+- Phase 15 (owner "A: hide them" 2026-11-20, and "1 A" for the halted attempt from 3965f37a): start fresh from this branch's HEAD, reusing nothing from that attempt; the CI column, its header, the badge swap and the cell's click stay off while the Checks tab switch is off (each Git Log host posts the column flag false from `isE2eControlChannelActive()`, each with a switch-off test); the setting is read with default false and contributed in Phase 18; Patch bump with a groundwork CHANGELOG line; docs under a "Planned" note.
 
 ## Found outside scope
 - Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
