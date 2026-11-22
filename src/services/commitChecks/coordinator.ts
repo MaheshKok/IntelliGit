@@ -770,7 +770,7 @@ export class CommitChecksCoordinator {
     async annotations(
         hash: string,
         checkRunId: string,
-        isCurrent: () => boolean,
+        isCurrent: () => boolean | Promise<boolean>,
     ): Promise<CiAnnotations> {
         const none: CiAnnotations = { annotations: [], coverage: "full" };
         if (!this.enabled) return none;
@@ -783,7 +783,7 @@ export class CommitChecksCoordinator {
         if (!match?.provider.getAnnotations || !match.provider.capabilities?.annotations) {
             return none;
         }
-        if (!isCurrent()) throw new StaleCallerError();
+        if (!(await isCurrent())) throw new StaleCallerError();
         return match.provider.getAnnotations(match.ref, checkRunId, isCurrent);
     }
 

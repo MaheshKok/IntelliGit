@@ -27,6 +27,7 @@ import {
     httpGetJson,
     httpGetJsonWithMeta,
     httpRequestJson,
+    RequestNotSentError,
     type DownloadCiLog,
     type DownloadedText,
     type FetchJson,
@@ -811,13 +812,14 @@ export class GitHubProvider implements CommitChecksProvider {
     /**
      * Reads one check run's annotations, 100 a page up to the page bound. A next link may also
      * name the check run under `/repositories/{id}/`: check-run ids are unique across GitHub, so
-     * the same id is the same check run. `isCurrent` is read after the session await and before
-     * every page request: a caller that went stale (a sign-out, a HEAD move) sends nothing more.
+     * the same id is the same check run. `isCurrent` is read before every page request and again
+     * once a request gate admits it: a caller that went stale (a sign-out, a HEAD move) sends
+     * nothing more.
      */
     async getAnnotations(
         ref: ProviderRepoRef,
         checkRunId: string,
-        isCurrent: () => boolean,
+        isCurrent: () => boolean | Promise<boolean>,
     ): Promise<CiAnnotations> {
         const session = await openSession("");
         if (!isSession(session)) throw new HttpError(401, session.error ?? session.summary, {});
@@ -828,11 +830,16 @@ export class GitHubProvider implements CommitChecksProvider {
             );
             return match?.[2] === checkRunId ? match[1] : undefined;
         };
+        const beforeSend = async (): Promise<void> => {
+            if (!(await isCurrent())) {
+                throw new RequestNotSentError("The annotations read was retired.", true);
+            }
+        };
         try {
             const page = await paginate(
                 async (url) => {
-                    if (!isCurrent()) throw new Error("The annotations read was retired.");
-                    return this.fetchWithMeta(url, githubHeaders(session));
+                    await beforeSend();
+                    return this.fetchWithMeta(url, githubHeaders(session), undefined, beforeSend);
                 },
                 `${repoApiUrl(gitHubRef)}/check-runs/${encodeURIComponent(checkRunId)}/annotations?per_page=${CI_PAGE_SIZE}`,
                 linkHeaderNext,

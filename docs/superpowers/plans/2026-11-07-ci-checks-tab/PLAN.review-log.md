@@ -1437,3 +1437,4 @@ Phase 14 fix round 2 (builder): Codex round 2 finding 1 ([REQUIRED] failure bran
 - Cleared review round 2's four REQUIRED findings test-first in ciDiagnostics.ts, githubProvider.ts, types.ts and coordinator.ts: Problems URIs use the validated real path plus a synchronous final containment check; open() rechecks HEAD, switch and the show's liveness after its awaits; getAnnotations checks the caller's isCurrent before every page (coordinator passes it); show() rechecks HEAD before each later job.
 - 8 tests red before the fix, green after; 7 mutations on a copy, each red naming its own test.
 - Chain: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; test 10 of 8654 red, the known set (8 commit-list-column-resize, tsconfigCoverage, screenshotComparatorMeta; the last two pass in a copy with linked node_modules).
+PHASE 14: HALT review still failing after takeover

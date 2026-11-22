@@ -70,6 +70,15 @@ import {
     type HeadCiStatusDeps,
 } from "../../../../src/services/commitChecks/headStatus";
 import type { CiJob, CommitCiDetail, CommitCiDetailData } from "../../../../src/types";
+import {
+    CommitChecksRequestGateRegistry,
+    gatedFetchWithMeta,
+} from "../../../../src/services/commitChecks/requestGate";
+import { setE2eControlChannelActive } from "../../../../src/e2e/activationState";
+import {
+    answerCommitCiDetailRequest,
+    CommitCiDetailLoops,
+} from "../../../../src/views/ciDetailHandler";
 
 const HASH = "a".repeat(40);
 const NEXT_HASH = "b".repeat(40);
@@ -186,7 +195,10 @@ interface Harness {
 }
 
 function harness(
-    fetch: (checkRunId: string, isCurrent: () => boolean) => Promise<CiAnnotations> = async () => ({
+    fetch: (
+        checkRunId: string,
+        isCurrent: () => boolean | Promise<boolean>,
+    ) => Promise<CiAnnotations> = async () => ({
         annotations: [annotation()],
         coverage: "full",
     }),
@@ -196,8 +208,9 @@ function harness(
     let enabled = true;
     const collection = fakeCollection();
     const generations = new CiGenerations();
-    const annotations = vi.fn((_hash: string, checkRunId: string, isCurrent: () => boolean) =>
-        fetch(checkRunId, isCurrent),
+    const annotations = vi.fn(
+        (_hash: string, checkRunId: string, isCurrent: () => boolean | Promise<boolean>) =>
+            fetch(checkRunId, isCurrent),
     );
     const deps: CiDiagnosticsDeps = {
         switchOn: () => switchOn(),
@@ -1058,3 +1071,148 @@ function monitorDeps(h: Harness, head: () => string): HeadCiStatusDeps {
         diagnostics: h.diagnostics,
     };
 }
+
+describe("interruptions before each outside effect", () => {
+    it("a click rejects a canonical file swapped during its final HEAD await", async () => {
+        const h = harness();
+        await h.diagnostics.show(target(h));
+        const deps = (h.diagnostics as unknown as { deps: CiDiagnosticsDeps }).deps;
+        const entered = deferred<void>();
+        const head = deferred<string>();
+        deps.headHash = () => {
+            entered.resolve();
+            return head.promise;
+        };
+        const opening = h.diagnostics.open(root, HASH, "src/app.ts", 2);
+        await entered.promise;
+        await unlink(appFile());
+        await symlink(path.join(outside, "secret.ts"), appFile());
+        head.resolve(HASH);
+        await opening;
+        expect(
+            mocks.showTextDocument,
+            "a canonical file swapped during HEAD validation must not open outside the repository",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("HEAD movement during the session await fences the first page", async () => {
+        const session = deferred<unknown>();
+        mocks.getSession.mockReturnValue(session.promise);
+        const sent: string[] = [];
+        const provider = new GitHubProvider(undefined, undefined, async (url) => {
+            sent.push(url);
+            return { statusCode: 200, headers: {}, body: [annotationJson()] };
+        });
+        const h = harness((id, live) => provider.getAnnotations(REF, id, live));
+        const shown = h.diagnostics.show(target(h));
+        await vi.waitFor(() => expect(mocks.getSession).toHaveBeenCalled());
+        h.setHead(NEXT_HASH);
+        session.resolve({
+            id: "session",
+            accessToken: "old-token",
+            account: { id: "account", label: "User" },
+            scopes: ["repo"],
+        });
+        await shown;
+        expect(sent, "HEAD movement during session validation must fence the first page").toEqual(
+            [],
+        );
+        expect(h.collection.given()).toEqual([]);
+    });
+
+    it("HEAD movement on page one fences page two", async () => {
+        let h!: Harness;
+        const sent: string[] = [];
+        const provider = new GitHubProvider(undefined, undefined, async (url) => {
+            sent.push(url);
+            if (sent.length === 1) h.setHead(NEXT_HASH);
+            return {
+                statusCode: 200,
+                headers: sent.length === 1 ? { link: `<${url}&page=2>; rel="next"` } : {},
+                body: [annotationJson()],
+            };
+        });
+        h = harness((id, live) => provider.getAnnotations(REF, id, live));
+        await h.diagnostics.show(target(h));
+        expect(sent, "a moved HEAD must fence page two as well as the next job").toHaveLength(1);
+        expect(h.collection.given()).toEqual([]);
+    });
+
+    it("sign-out while an annotations request waits for a slot sends nothing", async () => {
+        const gate = new CommitChecksRequestGateRegistry("cooldown");
+        const release = deferred<void>();
+        let busy = 0;
+        const occupied = Array.from({ length: 4 }, () =>
+            gate.run("github", "https://api.github.com/busy", async () => {
+                busy += 1;
+                await release.promise;
+            }),
+        );
+        await vi.waitFor(() => expect(busy).toBe(4));
+        const sent: string[] = [];
+        const gated = gatedFetchWithMeta(gate, "github", (() => async (url: string) => {
+            sent.push(url);
+            return { statusCode: 200, headers: {}, body: [annotationJson()] };
+        }) as Parameters<typeof gatedFetchWithMeta>[2]);
+        const queued = deferred<void>();
+        const fetch: FetchJsonWithMeta = (...args) => {
+            const pending = gated(...args);
+            queued.resolve();
+            return pending;
+        };
+        const provider = new GitHubProvider(undefined, undefined, fetch);
+        const h = harness((id, live) => provider.getAnnotations(REF, id, live));
+        const showing = h.diagnostics.show(target(h));
+        await queued.promise;
+        gate.reset();
+        h.generations.bumpAuth();
+        h.diagnostics.clear();
+        release.resolve();
+        await Promise.all([...occupied, showing]);
+        expect(sent, "a queued annotations request must recheck sign-out after admission").toEqual(
+            [],
+        );
+    });
+
+    it("Checks-tab Refresh retries an unavailable annotations read", async () => {
+        let fail = true;
+        const h = harness(async () => {
+            if (fail) throw new Error("temporary provider failure");
+            return { annotations: [annotation()], coverage: "full" };
+        });
+        await h.diagnostics.show(target(h));
+        expect(h.diagnostics.viewFor(root, HASH)?.unavailable).toBeDefined();
+        fail = false;
+        setE2eControlChannelActive(true);
+        const loops = new CommitCiDetailLoops();
+        const post = vi.fn();
+        try {
+            await answerCommitCiDetailRequest(
+                {
+                    repoKey: () => root,
+                    generations: h.generations,
+                    getDetail: async () => detail(),
+                    annotations: h.diagnostics,
+                },
+                {
+                    type: "requestCommitCiDetail",
+                    requestId: 3,
+                    repoKey: root,
+                    hash: HASH,
+                    force: true,
+                },
+                post,
+                loops,
+            );
+            expect(post).toHaveBeenCalled();
+            expect(
+                h.annotations,
+                "Checks-tab Refresh must retry the failed annotations read",
+            ).toHaveBeenCalledTimes(2);
+            expect(post.mock.calls.at(-1)?.[0].detail.annotations.unavailable).toBeUndefined();
+        } finally {
+            loops.dispose();
+            setE2eControlChannelActive(false);
+        }
+    });
+});

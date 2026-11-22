@@ -6,7 +6,10 @@ import * as vscode from "vscode";
 import { isE2eControlChannelActive } from "../e2e/activationState";
 import type { CiActionFenceStore } from "../services/commitChecks/ciActionFence";
 import type { CiActionOutcome } from "../services/commitChecks/ciActions";
-import type { CiAnnotationsAccess } from "../services/commitChecks/ciDiagnostics";
+import type {
+    CiAnnotationsAccess,
+    CiDiagnosticsTarget,
+} from "../services/commitChecks/ciDiagnostics";
 import type { CiGenerations, CiOperationContext } from "../services/commitChecks/ciGenerations";
 import type { CiLogMemoryStore } from "../services/commitChecks/ciLogMemoryStore";
 import type { CiLogTarget } from "../services/commitChecks/coordinator";
@@ -56,6 +59,23 @@ export interface CommitCiDetailSource {
     openRangeDiff?: (fromRev: string, toRev: string, file: CiRangeDiffFile) => Promise<void>;
     /** HEAD's CI annotations; absent = replies carry none and the host opens none. */
     annotations?: CiAnnotationsAccess;
+}
+
+/**
+ * Refresh also reads HEAD's annotations again, so a failed read does not stay shown; the
+ * detail shown once that read ends is posted again with the new view.
+ */
+async function rereadAnnotations(
+    annotations: CiAnnotationsAccess | undefined,
+    target: Omit<CiDiagnosticsTarget, "detail">,
+    shown: () => CommitCiDetail | undefined,
+    post: (detail: CommitCiDetail) => void,
+): Promise<void> {
+    const detail = shown();
+    if (!annotations || !detail) return;
+    await annotations.refresh({ ...target, detail });
+    const latest = shown();
+    if (latest) post(latest);
 }
 
 /** A host's way to run CI write actions for the repository it shows. */
@@ -183,6 +203,10 @@ export async function answerCommitCiDetailRequest(
             : source.getDetail(hash, { force: force === true }, ctx, onScanUpdate),
     );
     if (!isCurrent()) return;
+    if (force === true) {
+        await rereadAnnotations(source.annotations, { repoKey, hash, ctx }, () => detail, show);
+        if (!isCurrent()) return;
+    }
     if (source.actions) {
         repostOnFenceChange(source.actions.fences, stopped, repoKey, hash, {
             shown: () => detail,

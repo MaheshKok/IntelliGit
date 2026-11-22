@@ -84,11 +84,14 @@ export interface FetchResponse {
 /**
  * Network boundary for callers that need response headers; same rejection rules as `FetchJson`.
  * With `conditional`, the request names the stored `ETag` and a 304 resolves to the stored body.
+ * `beforeSend` runs right before the request goes on the wire, after any request gate admitted
+ * it; when it rejects, nothing is sent.
  */
 export type FetchJsonWithMeta = (
     url: string,
     headers: Record<string, string>,
     conditional?: EtagStore,
+    beforeSend?: () => Promise<void>,
 ) => Promise<FetchResponse>;
 
 /** Headers that carry the next page; a 304 may omit them, so they are stored with the body. */
@@ -136,6 +139,7 @@ type ConditionalRequest = (
     headers: Record<string, string>,
     conditional?: EtagStore,
     revalidate?: boolean,
+    beforeSend?: () => Promise<void>,
 ) => Promise<FetchResponse>;
 
 /** A 304 to a request no stored body stands for; it is asked again without `If-None-Match`. */
@@ -146,12 +150,12 @@ class BodylessNotModifiedError extends Error {}
  * as a request of its own, so a gate admits and counts it like any other.
  */
 export function recoverBodylessNotModified(request: ConditionalRequest): FetchJsonWithMeta {
-    return async (url, headers, conditional) => {
+    return async (url, headers, conditional, beforeSend) => {
         try {
-            return await request(url, headers, conditional, true);
+            return await request(url, headers, conditional, true, beforeSend);
         } catch (error) {
             if (!(error instanceof BodylessNotModifiedError)) throw error;
-            return request(url, headers, conditional, false);
+            return request(url, headers, conditional, false, beforeSend);
         }
     };
 }
@@ -160,7 +164,9 @@ export function recoverBodylessNotModified(request: ConditionalRequest): FetchJs
 export function createConditionalRequest(
     onResponse?: (metadata: HttpResponseMetadata) => void,
 ): ConditionalRequest {
-    return async (url, headers, conditional, revalidate = true) => {
+    return async (url, headers, conditional, revalidate = true, beforeSend) => {
+        // Awaited only when given: an extra await would delay every other request by a tick.
+        if (beforeSend) await beforeSend();
         // The entry also records which request headers (the token among them) read its body, so
         // a body is only ever reused for the same credentials, whichever window changed them.
         const unconditional = withoutIfNoneMatch(headers);

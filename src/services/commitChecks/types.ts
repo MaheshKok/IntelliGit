@@ -176,12 +176,12 @@ export interface CommitChecksProvider {
     /**
      * Reads one check run's file and line annotations, at most 1 000 (O1). Rejects on failure;
      * an `HttpError` 403 means the credential cannot read them. Sends no request once
-     * `isCurrent` turns false, read after the session await and before every page.
+     * `isCurrent` turns false, read before every page and again once a request gate admits it.
      */
     getAnnotations?(
         ref: ProviderRepoRef,
         checkRunId: string,
-        isCurrent: () => boolean,
+        isCurrent: () => boolean | Promise<boolean>,
     ): Promise<CiAnnotations>;
 }
 

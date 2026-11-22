@@ -36,8 +36,15 @@ export interface CiDiagnosticsDeps {
         set(uri: vscode.Uri, diagnostics: vscode.Diagnostic[]): void;
         clear(): void;
     };
-    /** One check run's annotations; rejects on failure. */
-    annotations(hash: string, checkRunId: string, isCurrent: () => boolean): Promise<CiAnnotations>;
+    /**
+     * One check run's annotations; rejects on failure. `isCurrent` is the show's own check of
+     * the switch, sign-in, settings and HEAD, for the reader to rerun before each request.
+     */
+    annotations(
+        hash: string,
+        checkRunId: string,
+        isCurrent: () => boolean | Promise<boolean>,
+    ): Promise<CiAnnotations>;
 }
 
 /** A settled HEAD's detail, with the repository and context the fetch ran in. */
@@ -55,6 +62,8 @@ export interface CiAnnotationsAccess {
     onDidChange(listener: () => void): { dispose(): void };
     /** Opens a placed annotation's file at its line; anything not placed opens nothing. */
     open(repoKey: string, hash: string, filePath: string, line: number): Promise<void>;
+    /** The Checks tab's Refresh: reads HEAD's annotations again, even after a failed read. */
+    refresh(target: CiDiagnosticsTarget): Promise<void>;
 }
 
 // Read at call time, not import time: importing this module needs no Diagnostic API.
@@ -85,12 +94,12 @@ export class CiDiagnostics implements CiAnnotationsAccess {
     private sequence = 0;
     // The commit the newest show ran for, so a later poll of the same HEAD sends nothing again.
     private target?: string;
-    // `live` is the publishing show's own liveness check, rerun when a click opens a file.
+    // `current` is the publishing show's own check, rerun when a click opens a file.
     private published?: {
         repoKey: string;
         hash: string;
         view: CiAnnotationsView;
-        live: () => boolean;
+        current: () => Promise<boolean>;
     };
     private readonly listeners = new Set<() => void>();
 
@@ -112,32 +121,32 @@ export class CiDiagnostics implements CiAnnotationsAccess {
         if (this.target === key) return;
         const sequence = ++this.sequence;
         this.target = key;
-        const live = (): boolean =>
+        // The one check before every outside effect (a request, a page, a publish, an open):
+        // the switch (ships hidden until Phase 18), the settings, the sign-in and lifecycle
+        // generations, the newest show, and HEAD only. HEAD is read first, so nothing it awaits
+        // can change the rest before the caller acts.
+        const current = async (): Promise<boolean> =>
+            (await this.deps.headHash()) === hash &&
             sequence === this.sequence &&
+            this.deps.switchOn() &&
             this.deps.enabled(detail.provider) &&
             this.deps.generations.isCurrent(ctx, this.deps.repoKey() ?? "");
-        // HEAD only: a commit that is not HEAD gets no request.
-        if ((await this.deps.headHash()) !== hash || !live()) return;
         const read: { job: CiJob; result: CiAnnotations }[] = [];
         try {
-            for (const [index, job] of jobs.entries()) {
-                // HEAD may have moved during the previous job's request, before its clear arrives.
+            for (const job of jobs) {
                 // react-doctor-disable-next-line react-doctor/async-await-in-loop
-                if (index > 0 && (await this.deps.headHash()) !== hash) return;
-                // Ships hidden until Phase 18: no annotations request while the switch is off.
-                if (!this.deps.switchOn() || !live()) return;
+                if (!(await current())) return;
                 // Serial: each request takes a slot of the provider's request gate.
                 // react-doctor-disable-next-line react-doctor/async-await-in-loop
-                const result = await this.deps.annotations(hash, job.checkRunId as string, live);
+                const result = await this.deps.annotations(hash, job.checkRunId as string, current);
                 read.push({ job, result });
             }
         } catch (error) {
             // The same final check as a success: the failure belongs to this HEAD only while it is HEAD.
-            const head = await this.deps.headHash();
-            if (!this.deps.switchOn() || !live() || head !== hash) return;
+            if (!(await current())) return;
             this.deps.collection.clear();
             const forbidden = error instanceof HttpError && error.statusCode === 403;
-            this.publish(repoKey, hash, live, {
+            this.publish(repoKey, hash, current, {
                 items: [],
                 rejected: 0,
                 coverage: "full",
@@ -146,9 +155,8 @@ export class CiDiagnostics implements CiAnnotationsAccess {
             return;
         }
         const all = await placeAll(repoKey, read);
-        const head = await this.deps.headHash();
         // Ships hidden until Phase 18: nothing reaches the Problems panel while the switch is off.
-        if (!this.deps.switchOn() || !live() || head !== hash) return;
+        if (!(await current())) return;
         // A file swapped for a symlink since placement no longer resolves to itself. Synchronous,
         // so nothing can change between this check and the publish below.
         const placed = all.placed.filter((item) => resolvesToItself(item.real));
@@ -170,7 +178,7 @@ export class CiDiagnostics implements CiAnnotationsAccess {
         for (const [real, diagnostics] of byFile) {
             this.deps.collection.set(vscode.Uri.file(real), diagnostics);
         }
-        this.publish(repoKey, hash, live, {
+        this.publish(repoKey, hash, current, {
             items: placed.map((item) => ({
                 path: item.relPath,
                 line: item.startLine + 1,
@@ -181,6 +189,13 @@ export class CiDiagnostics implements CiAnnotationsAccess {
             rejected,
             coverage: worstCoverage(read.map(({ result }) => result.coverage)),
         });
+    }
+
+    async refresh(target: CiDiagnosticsTarget): Promise<void> {
+        if ((await this.deps.headHash()) !== target.hash) return;
+        // Forget that this commit was shown, so `show` reads it again instead of returning.
+        if (this.target === `${target.repoKey}\0${target.hash}`) this.target = undefined;
+        await this.show(target);
     }
 
     /** Empties the collection and drops any show still running (HEAD move, sign-out, settings). */
@@ -222,10 +237,12 @@ export class CiDiagnostics implements CiAnnotationsAccess {
         if (!listed) return;
         // The file may have changed since it was placed: contain it again and open what that finds.
         const real = await realInside(repoKey, filePath);
-        const head = await this.deps.headHash();
-        // A clear, a newer show, a sign-out, the switch or a HEAD move during the awaits above
-        // retires the click: `live` is false once the sequence or a generation moved.
-        if (!real || head !== hash || !this.deps.switchOn() || !published.live()) return;
+        // A clear, a newer show, a sign-out, the switch or a HEAD move during the awaits retires
+        // the click.
+        if (!real || !(await published.current())) return;
+        // No await from here to the open: a file swapped for a symlink during the awaits above
+        // no longer resolves to itself (K28).
+        if (!resolvesToItself(real)) return;
         await vscode.window.showTextDocument(vscode.Uri.file(real), {
             selection: new vscode.Range(line - 1, 0, line - 1, 0),
         });
@@ -234,10 +251,10 @@ export class CiDiagnostics implements CiAnnotationsAccess {
     private publish(
         repoKey: string,
         hash: string,
-        live: () => boolean,
+        current: () => Promise<boolean>,
         view: CiAnnotationsView,
     ): void {
-        this.published = { repoKey, hash, view, live };
+        this.published = { repoKey, hash, view, current };
         this.fire();
     }
 
