@@ -184,11 +184,94 @@ export function parseFileHistoryEntries(
  * Unknown or score-suffixed status letters fall back to modified so the UI keeps the
  * file visible instead of dropping a row whose Git code was not anticipated.
  */
-export function mapCommitFileStatus(code: string): CommitFile["status"] {
+function mapCommitFileStatus(code: string): CommitFile["status"] {
     if (VALID_COMMIT_FILE_STATUSES.has(code as CommitFile["status"])) {
         return code as CommitFile["status"];
     }
     return "M";
+}
+
+/** One file record from `git diff-tree --name-status -z`. */
+export interface CommitNameStatusRecord {
+    /** Post-change path shown to the user. */
+    path: string;
+    /** Pre-change path for a rename or copy. */
+    oldPath?: string;
+    status: CommitFile["status"];
+}
+
+/**
+ * Parses NUL-delimited `git diff-tree --name-status -z` output into file records.
+ *
+ * Status and paths are separate NUL fields, so tabs and newlines inside a path stay
+ * literal. Rename and copy rows carry the source before the destination; every other
+ * status carries one path. Truncated records are ignored rather than guessed at.
+ */
+export function parseCommitNameStatus(output: string): CommitNameStatusRecord[] {
+    const records: CommitNameStatusRecord[] = [];
+    const fields = output.split(COMMIT_FIELD_SEP);
+    for (let index = 0; index < fields.length;) {
+        const code = fields[index++];
+        if (!code) continue;
+        const firstPath = fields[index++];
+        if (firstPath === undefined) break;
+        const status = mapCommitFileStatus(code.charAt(0));
+        if (status !== "R" && status !== "C") {
+            records.push({ path: firstPath, status });
+            continue;
+        }
+        const path = fields[index++];
+        if (path) records.push({ path, oldPath: firstPath, status });
+    }
+    return records;
+}
+
+/** One file record from `git diff-tree --numstat -z`. */
+export interface CommitNumstatRecord {
+    /** Post-change path; rename and copy stats attach to the destination. */
+    path: string;
+    additions: number;
+    deletions: number;
+}
+
+/**
+ * Parses NUL-delimited `git diff-tree --numstat -z` output into line counts by path.
+ *
+ * A normal record is `<added>\t<deleted>\t<path>`. Rename and copy records leave the
+ * path field empty and follow it with the source and destination as separate NUL
+ * fields, so only the destination is returned. Binary counts (`-`) read as zero.
+ */
+export function parseCommitNumstat(output: string): CommitNumstatRecord[] {
+    const records: CommitNumstatRecord[] = [];
+    const fields = output.split(COMMIT_FIELD_SEP);
+    for (let index = 0; index < fields.length; index++) {
+        const record = fields[index];
+        // These are string delimiter lookups, not repeated array scans.
+        // react-doctor-disable-next-line react-doctor/js-set-map-lookups
+        const firstTab = record.indexOf("\t");
+        // react-doctor-disable-next-line react-doctor/js-set-map-lookups
+        const secondTab = record.indexOf("\t", firstTab + 1);
+        if (firstTab < 0 || secondTab < 0) continue;
+        let path = record.slice(secondTab + 1);
+        if (!path) {
+            index += 2;
+            path = fields[index] ?? "";
+        }
+        if (!path) continue;
+        records.push({
+            path,
+            additions: parseNumstatCount(record.slice(0, firstTab)),
+            deletions: parseNumstatCount(record.slice(firstTab + 1, secondTab)),
+        });
+    }
+    return records;
+}
+
+/** Reads a numstat count, treating Git's binary marker and malformed text as zero. */
+function parseNumstatCount(value: string): number {
+    if (value === "-") return 0;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
 }
 
 /**

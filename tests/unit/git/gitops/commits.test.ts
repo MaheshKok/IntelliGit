@@ -247,8 +247,8 @@ describe("GitOps", () => {
                 "HEAD -> main",
             ].join(FIELD_SEP);
 
-            const nameStatusOutput = "M\tsrc/foo.ts\nA\tsrc/bar.ts\n";
-            const numstatOutput = "10\t2\tsrc/foo.ts\n5\t0\tsrc/bar.ts\n";
+            const nameStatusOutput = "M\0src/foo.ts\0A\0src/bar.ts\0";
+            const numstatOutput = "10\t2\tsrc/foo.ts\0" + "5\t0\tsrc/bar.ts\0";
 
             const executor = {
                 run: vi.fn(async (args: string[]) => {
@@ -261,6 +261,27 @@ describe("GitOps", () => {
 
             const ops = new GitOps(executor);
             const detail = await ops.getCommitDetail("abc123full");
+
+            expect(executor.run).toHaveBeenCalledWith([
+                "diff-tree",
+                "--no-commit-id",
+                "-r",
+                "-m",
+                "--name-status",
+                "-M",
+                "-z",
+                "abc123full",
+            ]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "diff-tree",
+                "--no-commit-id",
+                "-r",
+                "-m",
+                "--numstat",
+                "-M",
+                "-z",
+                "abc123full",
+            ]);
 
             expect(detail.hash).toBe("abc123full");
             expect(detail.message).toBe("Fix bug");
@@ -287,8 +308,8 @@ describe("GitOps", () => {
                 "parent1",
                 "",
             ].join(FIELD_SEP);
-            const nameStatusOutput = "R100\tsrc/old-name.ts\tsrc/new-name.ts\n";
-            const numstatOutput = "1\t0\tsrc/{old-name.ts => new-name.ts}\n";
+            const nameStatusOutput = "R100\0src/old-name.ts\0src/new-name.ts\0";
+            const numstatOutput = "1\t0\t\0src/old-name.ts\0src/new-name.ts\0";
 
             const executor = {
                 run: vi.fn(async (args: string[]) => {
@@ -305,6 +326,7 @@ describe("GitOps", () => {
             expect(detail.files).toEqual([
                 {
                     path: "src/new-name.ts",
+                    oldPath: "src/old-name.ts",
                     status: "R",
                     additions: 1,
                     deletions: 0,

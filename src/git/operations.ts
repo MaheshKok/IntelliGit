@@ -73,11 +73,12 @@ import {
     COMMIT_DETAIL_FORMAT,
     COMMIT_LOG_FORMAT,
     isUnmergedConflictCode,
-    mapCommitFileStatus,
     mapConflictSideState,
     parseAmendBranchCommitSummaries,
     parseCommitDetail,
     parseCommitLog,
+    parseCommitNameStatus,
+    parseCommitNumstat,
     parseFileHistoryEntries,
     parseStashEntries,
 } from "./parsers";
@@ -774,12 +775,23 @@ export class GitOps {
             hash,
         ]);
         const filesByPath = new Map<string, CommitFile>();
-        const upsertFile = (path: string, status: CommitFile["status"]): CommitFile => {
+        const upsertFile = (
+            path: string,
+            status: CommitFile["status"],
+            oldPath?: string,
+        ): CommitFile => {
             const existing = filesByPath.get(path);
             if (existing) {
                 // Prefer more specific status if we already inserted a fallback.
-                if (existing.status === "M" && status !== "M") {
-                    const updated = { ...existing, status };
+                const nextStatus =
+                    existing.status === "M" && status !== "M" ? status : existing.status;
+                const nextOldPath = oldPath ?? existing.oldPath;
+                if (nextStatus !== existing.status || nextOldPath !== existing.oldPath) {
+                    const updated = {
+                        ...existing,
+                        status: nextStatus,
+                        ...(nextOldPath === undefined ? {} : { oldPath: nextOldPath }),
+                    };
                     filesByPath.set(path, updated);
                     return updated;
                 }
@@ -790,28 +802,26 @@ export class GitOps {
                 status,
                 additions: 0,
                 deletions: 0,
+                ...(oldPath === undefined ? {} : { oldPath }),
             };
             filesByPath.set(path, created);
             return created;
         };
+        // Rename detection is off for plumbing commands such as `diff-tree`, so a pure
+        // rename would otherwise arrive as an unrelated addition and deletion. `-z` keeps
+        // path bytes literal and makes the source/destination pair unambiguous.
         const nameStatus = await this.executor.run([
             "diff-tree",
             "--no-commit-id",
             "-r",
             "-m",
             "--name-status",
+            "-M",
+            "-z",
             hash,
         ]);
-        for (const line of nameStatus.trim().split("\n")) {
-            if (!line.trim()) continue;
-            const cols = line.split("\t");
-            if (cols.length >= 2) {
-                const rawCode = cols[0].charAt(0);
-                const status: CommitFile["status"] = mapCommitFileStatus(rawCode);
-                const isRenameOrCopy = status === "R" || status === "C";
-                const path = isRenameOrCopy && cols.length >= 3 ? cols[2] : cols[cols.length - 1];
-                upsertFile(path, status);
-            }
+        for (const record of parseCommitNameStatus(nameStatus)) {
+            upsertFile(record.path, record.status, record.oldPath);
         }
         try {
             const numstat = await this.executor.run([
@@ -820,23 +830,17 @@ export class GitOps {
                 "-r",
                 "-m",
                 "--numstat",
+                "-M",
+                "-z",
                 hash,
             ]);
-            for (const line of numstat.trim().split("\n")) {
-                if (!line.trim()) continue;
-                const cols = line.split("\t");
-                if (cols.length < 3) continue;
-                const add = cols[0];
-                const del = cols[1];
-                const filePath = normalizeGitNumstatPath(cols[cols.length - 1]);
-                const file = upsertFile(filePath, "M");
-                const parsedAdd = add === "-" ? 0 : parseInt(add);
-                const parsedDel = del === "-" ? 0 : parseInt(del);
-                const newAdd = Math.max(file.additions, Number.isNaN(parsedAdd) ? 0 : parsedAdd);
-                const newDel = Math.max(file.deletions, Number.isNaN(parsedDel) ? 0 : parsedDel);
+            for (const record of parseCommitNumstat(numstat)) {
+                const file = upsertFile(record.path, "M");
+                const newAdd = Math.max(file.additions, record.additions);
+                const newDel = Math.max(file.deletions, record.deletions);
                 if (newAdd !== file.additions || newDel !== file.deletions) {
                     const updated = { ...file, additions: newAdd, deletions: newDel };
-                    filesByPath.set(filePath, updated);
+                    filesByPath.set(record.path, updated);
                 }
             }
         } catch (err) {

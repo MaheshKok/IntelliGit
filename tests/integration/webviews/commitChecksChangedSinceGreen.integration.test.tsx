@@ -431,7 +431,7 @@ describe("Checks tab changed since last green", () => {
             container.querySelectorAll<HTMLElement>('[data-testid="ci-changed-file"]'),
         );
         expect(rows.map((row) => row.getAttribute("title"))).toEqual([
-            "src/new name.ts",
+            "src/old.ts → src/new name.ts",
             "gone.ts",
         ]);
         act(() => rows[0]!.click());
