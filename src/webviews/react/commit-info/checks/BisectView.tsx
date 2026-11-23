@@ -68,19 +68,10 @@ function Sparkline({
 }): React.ReactElement {
     // `states` run oldest to newest; the sparkline shows the newest on the left.
     const indexes = job.states.map((_, index) => index).reverse();
-    // Frame 4:2 fixes the width at 72 px, which holds six 9 px squares. A longer range keeps every
-    // square and narrows them instead; past the point where the 2 px gaps alone would not fit,
-    // the gaps go first so no square shrinks below a pixel.
-    const count = indexes.length;
-    const gap = Math.max(
-        0,
-        Math.min(
-            SQUARE_GAP,
-            Math.floor((SPARKLINE_WIDTH - SPARK_LEAD - count) / Math.max(1, count - 1)),
-        ),
-    );
+    // Frame 4:2 fixes the strip at 72 px with 9 px squares and a 2 px gap, which holds six. A longer
+    // range keeps those sizes: the strip scrolls, newest on the left, so every square stays reachable.
     return (
-        <span style={{ ...sparklineStyle, gap }}>
+        <span style={sparklineStyle}>
             {indexes.map((index) => {
                 const state = job.states[index] ?? null;
                 const hash = commits[index] ?? "";
@@ -280,16 +271,18 @@ const nameStyle: React.CSSProperties = {
 const sparklineStyle: React.CSSProperties = {
     display: "inline-flex",
     width: SPARKLINE_WIDTH,
+    gap: SQUARE_GAP,
     paddingLeft: SPARK_LEAD,
     boxSizing: "border-box",
     flexShrink: 0,
+    overflowX: "auto",
+    scrollbarWidth: "thin",
 };
 
 const squareStyle: React.CSSProperties = {
     flexBasis: SQUARE,
     flexGrow: 0,
-    flexShrink: 1,
-    minWidth: 0,
+    flexShrink: 0,
     height: SQUARE,
     boxSizing: "border-box",
 };

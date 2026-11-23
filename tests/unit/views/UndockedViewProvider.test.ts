@@ -1039,8 +1039,22 @@ describe("UndockedViewProvider Checks tab loops", () => {
             posted.filter((message) =>
                 String((message as { type?: string }).type).startsWith("ciBisect"),
             );
-        return { panel, getChecks, capabilities, reads, start, bisectPosts };
+        return { panel, posted, getChecks, capabilities, reads, start, bisectPosts };
     }
+
+    it("a malformed start posts nothing back while the Checks tab switch is off", async () => {
+        await withLoopHarness(async ({ provider }) => {
+            const { panel, posted } = bisectHarness(provider);
+            setE2eControlChannelActive(false);
+            const before = posted.length;
+            await panel.receiveMessage({ type: "startCiBisect", requestId: 1, repoKey: "/repo-a" });
+            await panel.receiveMessage({ type: "startCiBisect", requestId: "x", commits: "nope" });
+            expect(
+                posted.slice(before),
+                "a disabled bisect must post nothing, errors included",
+            ).toEqual([]);
+        });
+    });
 
     it("starts no bisect and sends no request while the Checks tab switch is off", async () => {
         await withLoopHarness(async ({ provider }) => {

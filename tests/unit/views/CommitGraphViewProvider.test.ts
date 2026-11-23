@@ -995,8 +995,20 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
             posted.filter(
                 (message) => isRecord(message) && String(message.type).startsWith("ciBisect"),
             );
-        return { receiveMessage, getChecks, capabilities, reads, start, bisectPosts };
+        return { receiveMessage, posted, getChecks, capabilities, reads, start, bisectPosts };
     }
+
+    it("a malformed start posts nothing back while the Checks tab switch is off", async () => {
+        const { receiveMessage, posted } = await bisectHarness();
+        setE2eControlChannelActive(false);
+        const before = posted.length;
+        await receiveMessage({ type: "startCiBisect", requestId: 1, repoKey: "/repo" });
+        await receiveMessage({ type: "startCiBisect", requestId: "x", commits: "nope" });
+        expect(
+            posted.slice(before),
+            "a disabled bisect must post nothing, errors included",
+        ).toEqual([]);
+    });
 
     it("starts no bisect and sends no request while the Checks tab switch is off", async () => {
         const { receiveMessage, getChecks, capabilities, start, bisectPosts } =

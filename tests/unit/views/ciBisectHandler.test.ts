@@ -50,6 +50,38 @@ describe("answerStartCiBisect retry", () => {
     });
 });
 
+describe("answerStartCiBisect while the Checks tab switch is off", () => {
+    it.each([
+        ["no fields", {}],
+        ["a malformed request id", { requestId: "1", repoKey: "/repo", commits: [] }],
+        ["a malformed repository", { requestId: 1, repoKey: 7, commits: [] }],
+        ["malformed commits", { requestId: 1, repoKey: "/repo", commits: "nope" }],
+    ])("a start with %s is ignored, not rejected", async (_name, msg) => {
+        setE2eControlChannelActive(false);
+        await expect(
+            answerStartCiBisect(
+                { repoKey: () => "/repo" } as never,
+                msg,
+                () => {},
+                new CommitCiDetailLoops(),
+            ),
+            "a disabled bisect must neither throw (the host would post an error) nor post",
+        ).resolves.toBeUndefined();
+    });
+
+    it("still rejects a malformed start once the switch is on", async () => {
+        setE2eControlChannelActive(true);
+        await expect(
+            answerStartCiBisect(
+                { repoKey: () => "/repo" } as never,
+                { requestId: "1" },
+                () => {},
+                new CommitCiDetailLoops(),
+            ),
+        ).rejects.toThrow("Invalid CI bisect request id.");
+    });
+});
+
 describe("answerStartCiBisect invalidation", () => {
     it.each(["repository", "auth", "lifecycle"])(
         "%s change stops later requests as well as replies",

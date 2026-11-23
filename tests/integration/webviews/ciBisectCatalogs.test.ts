@@ -34,6 +34,25 @@ describe("the bisect's flaky note", () => {
         expect(en[KEY]).toBe("flaky: {n} red in {m}, no run of red");
     });
 
+    // The Russian catalog said the same thing in words: "не ваша вина" (not your fault).
+    it("has no translated blame verdict in Russian", () => {
+        const ru = JSON.parse(readFileSync(join(CATALOGS, "ru.json"), "utf8")) as Record<
+            string,
+            string
+        >;
+        expect(ru[KEY]).toBe("нестабильный: красных {n} из {m}, нет серии красных");
+    });
+
+    it("has no translated blame verdict in the CSV's Russian column", () => {
+        const csv = readFileSync(
+            join(ROOT, "docs/localization/localization_translation_review.csv"),
+            "utf8",
+        );
+        const row = csv.split("\n").find((line) => line.includes(KEY)) ?? "";
+        expect(row).not.toContain("не ваша вина");
+        expect(row).toContain('"нестабильный: красных {n} из {m}, нет серии красных"');
+    });
+
     it("has no verdict in the translation review CSV", () => {
         const csv = readFileSync(
             join(ROOT, "docs/localization/localization_translation_review.csv"),

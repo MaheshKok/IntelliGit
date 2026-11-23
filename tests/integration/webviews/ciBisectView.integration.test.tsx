@@ -319,7 +319,7 @@ describe("CI bisect view", () => {
             unmount(root, container);
         });
 
-        it("squeezes the gap before the squares shrink below a pixel in a long range", () => {
+        it("keeps the frame's 9px squares and 2px gap in a 72px strip that scrolls for a long range", () => {
             const { root, container } = mount(<Harness />);
             act(() => startCiBisect(REPO, RANGE));
             const states = Array.from({ length: 40 }, () => "success" as const);
@@ -330,8 +330,18 @@ describe("CI bisect view", () => {
                     { commits: states.map((_, index) => String(index).padStart(40, "0")) },
                 ),
             );
-            expect(sparklineOf(container).style.width).toBe("72px");
-            expect(sparklineOf(container).style.gap).toBe("0px");
+            const strip = sparklineOf(container);
+            expect(strip.style.width).toBe("72px");
+            expect(strip.style.gap, "frame 4:2 requires a 2px square gap").toBe("2px");
+            expect(strip.style.overflowX, "the older squares scroll into view").toBe("auto");
+            const squares = container.querySelectorAll<HTMLElement>(
+                '[data-testid="ci-bisect-square"]',
+            );
+            expect(squares).toHaveLength(40);
+            for (const square of squares) {
+                expect(square.style.flexBasis, "frame 4:2 square size").toBe("9px");
+                expect(square.style.flexShrink, "a square never shrinks").toBe("0");
+            }
             unmount(root, container);
         });
     });

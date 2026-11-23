@@ -28,13 +28,14 @@ export async function answerStartCiBisect(
     post: (reply: CiBisectProgressMessage | CiBisectResultMessage) => void,
     runs: CommitCiDetailLoops,
 ): Promise<void> {
+    // First, so a disabled bisect posts nothing back, not even an error for a malformed message.
+    if (!isE2eControlChannelActive()) return;
     const { requestId, repoKey, commits } = msg;
     if (typeof requestId !== "number" || !Number.isSafeInteger(requestId)) {
         throw new Error("Invalid CI bisect request id.");
     }
     if (typeof repoKey !== "string") throw new Error("Invalid CI bisect repository.");
     const selected = readLoadedCommits(commits);
-    if (!isE2eControlChannelActive()) return;
     const bisect = source.bisect;
     if (!bisect || repoKey !== source.repoKey()) return;
     const ctx: CiOperationContext = source.generations?.capture(repoKey) ?? {
