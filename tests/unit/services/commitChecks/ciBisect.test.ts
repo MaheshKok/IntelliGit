@@ -274,6 +274,35 @@ describe("runCiBisect", () => {
         expect(result?.commits).toEqual([a, x, m]);
     });
 
+    it("walks the host's parents, not the parents the webview sent", async () => {
+        // The host knows m merges x into a; a stale or forged message claims m <- x <- a.
+        const [m, a, x] = ["c", "a", "e"].map(h);
+        const loaded = [
+            { hash: m, parents: [a, x] },
+            { hash: x, parents: [h("0")] },
+            { hash: a, parents: [h("0")] },
+        ];
+        const selected = [
+            { hash: m, parents: [x] },
+            { hash: x, parents: [a] },
+            { hash: a, parents: [h("0")] },
+        ];
+        const { coordinator } = harness({
+            [m]: [check("unit", "failure", "w/unit")],
+            [x]: [check("unit", "failure", "w/unit")],
+            [a]: [check("unit", "success", "w/unit")],
+        });
+        const result = await runCiBisect(
+            coordinator,
+            selected,
+            loaded,
+            new AbortController().signal,
+            () => {},
+        );
+        expect(result?.linear, "the host's parents put x off m's first-parent walk").toBe(false);
+        expect(result?.jobs[0].brokeAt, "no break point off a straight line").toBeNull();
+    });
+
     it("progress posted per commit", async () => {
         const commits = chain(h("a"), h("b"), h("c"));
         const { coordinator } = harness({});
@@ -322,6 +351,77 @@ describe("runCiBisect", () => {
         }
         await running;
         expect(peak, "no moment had more than four reads in flight").toBe(4);
+    });
+
+    it("a cancelled bisect asks the source for no commit queued behind the first four", async () => {
+        // Counts reads asked of the source, not requests sent: a read refused later by the gate's
+        // send guard would still walk the cache and queue, so only this count sees the check.
+        const hashes = ["a", "b", "c", "d", "e", "f", "g", "i"].map(h);
+        const commits = chain(...hashes);
+        const asked: string[] = [];
+        const releases: Array<() => void> = [];
+        const source: CiBisectSource = {
+            capabilities: async () => undefined,
+            attemptHistory: async () => [],
+            getChecks: async (hash) => {
+                asked.push(hash);
+                if (asked.length <= 4) await new Promise<void>((resolve) => releases.push(resolve));
+                return { hash, state: "success", summary: "", items: [] };
+            },
+        };
+        const controller = new AbortController();
+        const running = runCiBisect(source, commits, commits, controller.signal, () => {});
+        await flush();
+        expect(asked.length, "four reads start").toBe(4);
+        controller.abort();
+        for (const release of releases.splice(0)) release();
+        expect(await running).toBeUndefined();
+        await flush();
+        expect(asked.length, "no commit is asked of the source after the cancel").toBe(4);
+    });
+
+    describe("an unread neighbour breaks an isolated red", () => {
+        // Newest first: a green, b red, c not readable as this job, d green. Without c, b would be
+        // an isolated red between greens; c may hold a red, so b is not counted as flaky.
+        const [a, b, c, d] = ["a", "b", "c", "d"].map(h);
+        const commits = chain(a, b, c, d);
+        const run = (cRead: Omit<CommitChecksSnapshot, "hash" | "summary">) => {
+            const items: Items = {
+                [a]: [check("unit", "success")],
+                [b]: [check("unit", "failure")],
+                [d]: [check("unit", "success")],
+            };
+            const source: CiBisectSource = {
+                capabilities: async () => undefined,
+                attemptHistory: async () => [],
+                getChecks: async (hash) =>
+                    hash === c
+                        ? { hash, summary: "", ...cRead }
+                        : { hash, state: "success", summary: "", items: items[hash] ?? [] },
+            };
+            return runCiBisect(source, commits, commits, new AbortController().signal, () => {});
+        };
+
+        it("a commit whose checks could not be read", async () => {
+            const result = await run({ state: "unavailable", items: [], error: "outage" });
+            expect(result?.jobs.map((job) => job.checkName)).toEqual(["unit"]);
+            expect(result?.jobs[0].states).toEqual(["success", null, "failure", "success"]);
+            expect(result?.jobs[0].flaky, "b's red has an unread neighbour").toBeNull();
+        });
+
+        it("a partial read that matches the job by name only", async () => {
+            const result = await run({
+                state: "failure",
+                items: [check("unit", "success")],
+                partial: true,
+            });
+            expect(result?.jobs.map((job) => job.checkName)).toEqual(["unit"]);
+            expect(result?.jobs[0].states).toEqual(["success", null, "failure", "success"]);
+            expect(
+                result?.jobs[0].flaky,
+                "a name match in a partial read proves nothing",
+            ).toBeNull();
+        });
     });
 
     it("Retry after a provider outage reads the recovered provider, not the cached errors", async () => {

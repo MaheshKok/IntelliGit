@@ -126,6 +126,36 @@ describe("CI bisect view", () => {
         );
         expect(text(container)).toContain("Limited to the 2 loaded commits");
         expect(container.querySelector('[data-testid="ci-bisect-cancel"]')).toBeNull();
+        // A flaky job's run of reds is not isolated: those reds stay red, only a lone one is amber.
+        expect(
+            Array.from(row!.querySelectorAll<HTMLElement>('[data-testid="ci-bisect-square"]')).map(
+                (square) => square.dataset.tone,
+            ),
+            "a flaky job's run of reds stays red",
+        ).toEqual(["red", "red", "green"]);
+
+        unmount(root, container);
+    });
+
+    it("an isolated red of a job that is not flaky stays red", () => {
+        const { root, container } = mount(<Harness />);
+        act(() => startCiBisect(REPO, RANGE));
+        reply(
+            result(lastStartRequestId(), [
+                {
+                    checkName: "unit",
+                    states: ["success", "failure", "success"],
+                    brokeAt: null,
+                    flaky: null,
+                },
+            ]),
+        );
+        expect(
+            Array.from(
+                container.querySelectorAll<HTMLElement>('[data-testid="ci-bisect-square"]'),
+            ).map((square) => square.dataset.tone),
+            "amber needs the job to be flaky too",
+        ).toEqual(["green", "red", "green"]);
 
         unmount(root, container);
     });
