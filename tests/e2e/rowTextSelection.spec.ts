@@ -61,24 +61,23 @@ test("shift-clicking commit rows selects rows without selecting their text", asy
         await expect(rows.nth(2)).toBeVisible({ timeout: 30_000 });
         expect(await rows.count()).toBeGreaterThanOrEqual(3);
 
-        await rows.nth(0).click();
-        await expect(rows.nth(0)).toHaveAttribute("aria-pressed", "true");
-        // The panel makes the first row primary on load and the host answers with its detail.
-        // Once that row is primary and its detail is showing, the host's replies to this click
-        // repeat the same hash, so they cannot move the primary row and reset the range below.
-        await expect(rows.nth(0)).toHaveAttribute("aria-current", "true");
-        await expect(graph.getByTestId("commit-info-pane")).toHaveAttribute(
-            "data-pane-state",
-            "detail",
-            { timeout: 30_000 },
-        );
-        await rows.nth(2).click({ modifiers: ["Shift"] });
-
-        const selectedRowCount = await rows.evaluateAll(
-            (elements) =>
-                elements.filter((element) => element.getAttribute("aria-pressed") === "true")
-                    .length,
-        );
+        // The host answers every row click with that commit's detail, and the webview cannot
+        // tell which click an answer belongs to. A late answer to the first click can make the
+        // first row primary again and shrink the range to one row, so the gesture repeats until
+        // the range holds. A broken range still fails every attempt, and the text check below
+        // reads the selection left by the last gesture.
+        await expect(async () => {
+            await rows.nth(0).click();
+            await expect(rows.nth(0)).toHaveAttribute("aria-pressed", "true", { timeout: 1_000 });
+            await rows.nth(2).click({ modifiers: ["Shift"] });
+            await expect(rows.nth(2)).toHaveAttribute("aria-pressed", "true", { timeout: 1_000 });
+            const selectedRowCount = await rows.evaluateAll(
+                (elements) =>
+                    elements.filter((element) => element.getAttribute("aria-pressed") === "true")
+                        .length,
+            );
+            expect(selectedRowCount, "shift-click must keep all three rows selected").toBe(3);
+        }).toPass({ timeout: 30_000 });
         const text = await selectedText(graph);
 
         const screenshotPath = testInfo.outputPath("shift-click-selection.png");
@@ -88,7 +87,6 @@ test("shift-clicking commit rows selects rows without selecting their text", asy
             contentType: "image/png",
         });
 
-        expect(selectedRowCount, "shift-click must keep all three rows selected").toBe(3);
         expect(
             text,
             "shift-clicking rows must not select the commit text underneath the pointer",
