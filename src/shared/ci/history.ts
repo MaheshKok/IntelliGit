@@ -210,28 +210,42 @@ function failedThenPassed(logicalId: string, attempts: readonly CiAttemptHistory
 }
 
 /**
+ * Per commit of `line` (newest first), whether its red is isolated: the nearest newer and older
+ * commits with a result are both green, with no unread commit between. An unread commit may hold
+ * a red, so it stays as a neighbour; only a commit that read "no result" drops out.
+ */
+export function isolatedReds(line: readonly CiFlakyCommit[]): boolean[] {
+    const known = line.flatMap((commit, at) =>
+        commit.unread || isComplete(commit.state) ? [{ commit, at }] : [],
+    );
+    const isolated = line.map(() => false);
+    known.forEach(({ commit, at }, index) => {
+        isolated[at] =
+            isComplete(commit.state) &&
+            isRed(commit.state as string) &&
+            known[index - 1]?.commit.state === "success" &&
+            known[index + 1]?.commit.state === "success";
+    });
+    return isolated;
+}
+
+/**
  * Counts the commits of `line` (newest first, first parents only) where the check flaked:
- * an isolated red (the nearest newer and older commits with a result are both green, with no
- * unread commit between) or an attempt history of the check that failed and then passed.
- * `null` when none did.
+ * an isolated red (see {@link isolatedReds}) or an attempt history of the check that failed and
+ * then passed. `null` when none did.
  */
 export function flaky(
     logicalId: string,
     line: readonly CiFlakyCommit[],
     attemptsCounted: boolean,
 ): CiFlaky | null {
-    // An unread commit may hold a red, so it stays as a neighbour; only a commit that read
-    // "no result" drops out.
-    const known = line.filter((commit) => commit.unread || isComplete(commit.state));
-    const n = known.filter((commit, index) => {
-        if (!isComplete(commit.state)) return false;
-        const isolated =
-            isRed(commit.state as string) &&
-            known[index - 1]?.state === "success" &&
-            known[index + 1]?.state === "success";
-        return isolated || failedThenPassed(logicalId, commit.attempts);
-    }).length;
-    const m = known.filter((commit) => isComplete(commit.state)).length;
+    const isolated = isolatedReds(line);
+    const n = line.filter(
+        (commit, at) =>
+            isComplete(commit.state) &&
+            (isolated[at] || failedThenPassed(logicalId, commit.attempts)),
+    ).length;
+    const m = line.filter((commit) => isComplete(commit.state)).length;
     return n === 0 ? null : { n, m, attemptsCounted };
 }
 
@@ -258,6 +272,11 @@ export interface CiBisectJob {
     checkName: string;
     /** `null` = the commit has no result for the job, or its checks could not be read. */
     states: (CiState | null)[];
+    /**
+     * Per commit of `states`: the flaky tag counted its red as isolated, so the sparkline draws
+     * it with the tag's own decision.
+     */
+    isolated: boolean[];
     /** Set only on a first-parent chain (`brokeAt` above). */
     brokeAt: string | null;
     flaky: CiFlaky | null;

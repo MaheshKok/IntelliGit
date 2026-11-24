@@ -12,6 +12,7 @@ import {
     brokeAt,
     flaky,
     indexChecks,
+    isolatedReds,
     matchIndexed,
     type CheckIndex,
     type CiBisectJob,
@@ -129,6 +130,28 @@ interface JobRow extends CiHistoryCheck {
 }
 
 /**
+ * A commit's items (or the bisect's jobs) indexed apart by kind: a flat commit status and a
+ * workflow check run never join, even under one name, so a green status cannot stand in for the
+ * earlier state of a red job.
+ */
+interface KindIndex<T extends { name: string; logicalId?: string }> {
+    status: CheckIndex<T>;
+    other: CheckIndex<T>;
+}
+
+function indexByKind<T extends { name: string; logicalId?: string }>(
+    items: readonly T[],
+    isStatus: (item: T) => boolean,
+): KindIndex<T> {
+    return {
+        status: indexChecks(items.filter(isStatus)),
+        other: indexChecks(items.filter((item) => !isStatus(item))),
+    };
+}
+
+const isStatusItem = (item: CommitCheckItem): boolean => item.source === "status";
+
+/**
  * Every job seen in the commits, once each; `undefined` once `tick` says the bisect stopped. Two
  * items of two commits are one job when the §9 join, run on each commit's own items, matches
  * them (by logical id, else by a name unique in both); an identified and an unlabelled version
@@ -140,7 +163,7 @@ async function jobsOf(
     reads: readonly CommitRead[],
     tick: (steps: number) => Promise<boolean>,
 ): Promise<JobRow[] | undefined> {
-    const indexes = reads.map((read) => read.items && indexChecks(read.items));
+    const indexes = reads.map((read) => read.items && indexByKind(read.items, isStatusItem));
     const nodes = reads.flatMap((read, at) => (read.items ?? []).map((item) => ({ item, at })));
     const start: number[] = [];
     const nodeOf = reads.map(() => new Map<CommitCheckItem, number>());
@@ -172,10 +195,11 @@ async function jobsOf(
         const items = reads[at].items ?? [];
         const own = indexes[at];
         for (let offset = 0; own && offset < items.length; offset += 1) {
+            const kind = isStatusItem(items[offset]) ? "status" : "other";
             for (let otherAt = at + 1; otherAt < reads.length; otherAt += 1) {
                 const other = indexes[otherAt];
                 if (!other) continue;
-                const found = matchIndexed(items[offset], own, other);
+                const found = matchIndexed(items[offset], own[kind], other[kind]);
                 if (typeof found === "object") {
                     union(start[at] + offset, nodeOf[otherAt].get(found) as number);
                 }
@@ -222,8 +246,8 @@ function attemptIdsByName(reads: readonly CommitRead[]): Map<string, Set<string>
 /** What `jobOf` needs of the whole read, built once. */
 interface JobContext {
     reads: readonly CommitRead[];
-    jobs: CheckIndex<CiHistoryCheck>;
-    readIndexes: readonly (CheckIndex<CommitCheckItem> | null)[];
+    jobs: KindIndex<CiHistoryCheck>;
+    readIndexes: readonly (KindIndex<CommitCheckItem> | null)[];
     attemptIds: ReadonlyMap<string, ReadonlySet<string>>;
     linear: boolean;
     attemptsCounted: boolean;
@@ -233,7 +257,8 @@ function jobOf(job: JobRow, context: JobContext): CiBisectJob {
     const { reads, linear, attemptsCounted } = context;
     const line = reads.map((read, at): CiFlakyCommit & { hash: string } => {
         const index = context.readIndexes[at];
-        const found = index ? matchIndexed(job, context.jobs, index) : "ambiguous";
+        const kind = job.status ? "status" : "other";
+        const found = index ? matchIndexed(job, context.jobs[kind], index[kind]) : "ambiguous";
         // A list read in part proves only an identity match (as `flakyLineOf` has it).
         const usable =
             typeof found === "object" &&
@@ -251,6 +276,7 @@ function jobOf(job: JobRow, context: JobContext): CiBisectJob {
     return {
         checkName: job.name,
         states: line.map((commit) => commit.state as CiState | null).reverse(),
+        isolated: isolatedReds(line).reverse(),
         brokeAt: linear ? brokeAt(line) : null,
         flaky: flaky(
             // The one history job bearing the name; none or several name no job.
@@ -332,8 +358,8 @@ export async function runCiBisect(
     if (!rows) return undefined;
     const context: JobContext = {
         reads: known,
-        jobs: indexChecks(rows),
-        readIndexes: known.map((read) => read.items && indexChecks(read.items)),
+        jobs: indexByKind(rows, (row) => row.status),
+        readIndexes: known.map((read) => read.items && indexByKind(read.items, isStatusItem)),
         attemptIds: attemptIdsByName(known),
         linear: chain !== null,
         // A re-run history that could not be read leaves the flaky tag an estimate.

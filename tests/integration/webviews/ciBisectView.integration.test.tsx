@@ -57,9 +57,12 @@ function reply(message: object): void {
     });
 }
 
+/** A job as the host sends it; `isolated` defaults to no red the flaky tag counted as isolated. */
+type JobFixture = Omit<CiBisectJob, "isolated"> & { isolated?: boolean[] };
+
 function result(
     requestId: number,
-    jobs: CiBisectJob[],
+    jobs: JobFixture[],
     extra: Partial<CiBisectResultMessage> = {},
 ): CiBisectResultMessage {
     return {
@@ -68,7 +71,10 @@ function result(
         repoKey: REPO,
         linear: true,
         commits: [C, B, A],
-        jobs,
+        jobs: jobs.map((job) => ({
+            ...job,
+            isolated: job.isolated ?? job.states.map(() => false),
+        })),
         ...extra,
     };
 }
@@ -181,6 +187,7 @@ describe("CI bisect view", () => {
                 {
                     checkName: "e2e",
                     states: ["success", "failure", "success"],
+                    isolated: [false, true, false],
                     brokeAt: null,
                     flaky: { n: 1, m: 3, attemptsCounted: true },
                 },

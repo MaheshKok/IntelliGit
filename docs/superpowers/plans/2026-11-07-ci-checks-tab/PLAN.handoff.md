@@ -19,6 +19,7 @@
 - Owner answer 2026-11-24 "A: 8.5 MiB" built in the commit after 0d3faee7, review pending: scripts/verifyVsixPackage.js MAX_UNCOMPRESSED_BYTES 8.25 -> 8.5 MiB, comment states the measured 0.43.20 payload (8,651,928 bytes). No CHANGELOG line (not user-facing, per the plan).
   - `bun run package` before the edit exit 1, after exit 0 (8651928 unpacked); verifyVsixPackage tests 20 passed.
 - Fix round 1 (5 review findings, each with a test red before the fix): provider dispose() now disposes ciBisectRuns; progress and stopped replies carry `repoKey` and the view matches it; a flat commit status no longer takes a same-named job's re-run history (JobRow.status); Retry reads each commit once (coordinator option `refreshUnavailable` peeks the cache, forces only a cached error); sparkline amber uses the nearest pass/failure/unread neighbour, skipping skipped/cancelled/running. New tests: ciBisectCommitInfoIndependent, ciBisectPhase16Independent, ciBisectRepositoryIndependent.
+- Fix round 2 (3 findings + a comment byte count, red before the fix): the join and the per-commit lookup index flat statuses and workflow jobs apart (KindIndex in service ciBisect.ts); the result carries `isolated[]` per commit (`isolatedReds` in shared/ci/history.ts, the one rule `flaky` also uses) and the sparkline draws amber from it; useCiBisect cancels and retires the bisect when its pane moves to another repository; verifyVsixPackage.js comment says 8,652,459 bytes.
 
 ## Decisions and why (this build)
 - Budget raise: no new unit test pins 8.5 MiB (it would only mirror the constant); the outside check is `bun run package`, red before and green after.
@@ -26,7 +27,7 @@
 - A repository change posts no stopped reply: its text ("sign-in or CI settings changed") would be false, and that repository's view is gone.
 - Compact layout relays to the Changed Files view's Checks tab (like Open in Checks), because the compact webview has no Checks tab of its own; the bisect's cap there is the sidebar graph's loaded page.
 - Fix round 1, Retry: one `getChecks` call per commit with `refreshUnavailable` (not a second `force` call), because the bisect cannot tell a cached error from a fresh one; passed on counting `sendGuard` calls (a gate-less provider never calls it).
-- Fix round 1, sparkline: the view sees `null` as unread (breaks isolation), so a "no result" gap that `flaky` drops can still show red where the tag counts it; exact only if the result carried the isolation flags.
+- Fix round 2: `isolated` is a required field of `CiBisectJob` (host decides, view only draws), so unread vs confirmed absence is the host's call. Repository retire lives in the hook (a pane whose repoKey changes), not in CommitInfoApp, so a Checks tab that is unmounted during a switch is not covered.
 
 ## Decisions and why (earlier rounds)
 - Finding 6: owner 2026-11-22 "C: drop both + issue" (#453): result text is only "broke at <short sha>".

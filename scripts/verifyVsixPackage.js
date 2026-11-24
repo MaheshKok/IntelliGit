@@ -9,7 +9,7 @@ const { listFiles: vsceListFiles, PackageManager } = require("@vscode/vsce");
 
 const DEFAULT_CWD = path.resolve(__dirname, "..");
 const MAX_COMPRESSED_BYTES = 2.5 * 1024 * 1024;
-// The complete 0.43.20 payload, including all static locales, measures 8.25 MiB (8,651,928 bytes).
+// The complete 0.43.20 payload, including all static locales, measures 8.25 MiB (8,652,459 bytes).
 const MAX_UNCOMPRESSED_BYTES = 8.5 * 1024 * 1024;
 const MAX_ENTRY_UNCOMPRESSED_BYTES = 2 * 1024 * 1024;
 const REQUIRED_PAYLOAD = new Set([

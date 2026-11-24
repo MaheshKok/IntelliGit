@@ -1,6 +1,5 @@
 import React from "react";
 import type { CiBisectJob } from "../../../../shared/ci/history";
-import type { CiState } from "../../../../types";
 import type { CiBisectResultMessage } from "../../../protocol/commitCiMessages";
 import { t } from "../../shared/i18n";
 import { JETBRAINS_UI } from "../../shared/tokens";
@@ -31,31 +30,13 @@ const TONE_COLOR: Record<Tone, string> = {
     none: "transparent",
 };
 
-/**
- * The nearest state on one side that `flaky` counts as a neighbour: a pass, a failure or an unread
- * commit (`null`). A skipped, cancelled, running or no-result commit lies between and is passed over.
- */
-function neighbourOf(
-    states: readonly (CiState | null)[],
-    index: number,
-    step: 1 | -1,
-): CiState | null | undefined {
-    for (let at = index + step; at >= 0 && at < states.length; at += step) {
-        const state = states[at];
-        if (state === null || state === "success" || state === "failure") return state;
-    }
-    return undefined;
-}
-
-/** A square's colour; in a flaky job a red with a green on both sides (`flaky`'s rule) is amber. */
-function toneOf(states: readonly (CiState | null)[], index: number, flaky: boolean): Tone {
-    const state = states[index];
+/** A square's colour; a red the host's flaky rule counted as isolated is amber. */
+function toneOf(job: CiBisectJob, index: number): Tone {
+    const state = job.states[index];
     if (state === "success") return "green";
     if (state === "queued" || state === "running") return "amber";
     if (state !== "failure") return "none";
-    const isolated =
-        neighbourOf(states, index, -1) === "success" && neighbourOf(states, index, 1) === "success";
-    return flaky && isolated ? "amber" : "red";
+    return job.isolated[index] ? "amber" : "red";
 }
 
 function resultText(job: CiBisectJob, result: CiBisectResultMessage): string {
@@ -92,7 +73,7 @@ function Sparkline({
             {indexes.map((index) => {
                 const state = job.states[index] ?? null;
                 const hash = commits[index] ?? "";
-                const tone = toneOf(job.states, index, job.flaky !== null);
+                const tone = toneOf(job, index);
                 const label = t("commit.checks.bisect.square", {
                     hash: hash.slice(0, 7),
                     state: state ? stateLabel(state) : t("commit.checks.bisect.notRead"),

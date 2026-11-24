@@ -129,3 +129,100 @@ describe("runCiBisect Retry", () => {
         expect(retried?.failedReads).toBeUndefined();
     });
 });
+
+describe("runCiBisect round 2", () => {
+    const chain = ["a", "b", "c", "d"].map((part, index, all) => ({
+        hash: h(part),
+        parents: index === all.length - 1 ? [] : [h(all[index + 1])],
+    }));
+    const checkItem = (
+        source: CommitCheckItem["source"],
+        state: CommitCheckItem["state"],
+    ): CommitCheckItem => ({ name: "build", description: "", source, state });
+    const run = (byHash: Map<string, CommitCheckItem[] | "unavailable">, commits = chain) =>
+        runCiBisect(
+            {
+                capabilities: async () => undefined,
+                attemptHistory: async () => [],
+                getChecks: async (hash) => {
+                    const items = byHash.get(hash) ?? [];
+                    return items === "unavailable"
+                        ? { hash, state: "unavailable", summary: "", items: [], error: "offline" }
+                        : { hash, state: "success", summary: "", items };
+                },
+            },
+            commits,
+            commits,
+            new AbortController().signal,
+            () => {},
+        );
+
+    it("a GitHub check run and a flat status never share a break point", async () => {
+        const [newer, older] = chain;
+        const result = await run(
+            new Map([
+                [newer.hash, [checkItem("check-run", "failure")]],
+                [older.hash, [checkItem("status", "success")]],
+            ]),
+            [newer, older],
+        );
+        expect(
+            result?.jobs.map((job) => job.brokeAt),
+            "a green flat status must not prove a workflow job's break point",
+        ).not.toContain(newer.hash);
+        expect(result?.jobs).toHaveLength(2);
+    });
+
+    it("a red flat status and a green check run of one name stay two jobs", async () => {
+        const [newer, older] = chain;
+        const result = await run(
+            new Map([
+                [newer.hash, [checkItem("status", "failure")]],
+                [older.hash, [checkItem("check-run", "success")]],
+            ]),
+            [newer, older],
+        );
+        expect(result?.jobs.map((job) => job.brokeAt)).toEqual([null, null]);
+        expect(result?.jobs).toHaveLength(2);
+    });
+
+    it("control: two flat statuses of one name still find the break point", async () => {
+        const [newer, older] = chain;
+        const result = await run(
+            new Map([
+                [newer.hash, [checkItem("status", "failure")]],
+                [older.hash, [checkItem("status", "success")]],
+            ]),
+            [newer, older],
+        );
+        expect(result?.jobs.map((job) => job.brokeAt)).toEqual([newer.hash]);
+    });
+
+    it("marks a red isolated across a fully read commit where the job did not run", async () => {
+        const result = await run(
+            new Map([
+                [chain[0].hash, [checkItem("check-run", "success")]],
+                [chain[2].hash, [checkItem("check-run", "failure")]],
+                [chain[3].hash, [checkItem("check-run", "success")]],
+            ]),
+        );
+        expect(result?.jobs[0]).toMatchObject({
+            states: ["success", "failure", null, "success"],
+            isolated: [false, true, false, false],
+            flaky: { n: 1, m: 3, attemptsCounted: false },
+        });
+    });
+
+    it("control: an unread commit between a red and a green keeps the red not isolated", async () => {
+        const result = await run(
+            new Map<string, CommitCheckItem[] | "unavailable">([
+                [chain[0].hash, [checkItem("check-run", "success")]],
+                [chain[1].hash, "unavailable"],
+                [chain[2].hash, [checkItem("check-run", "failure")]],
+                [chain[3].hash, [checkItem("check-run", "success")]],
+            ]),
+        );
+        expect(result?.jobs[0].isolated).toEqual([false, false, false, false]);
+        expect(result?.jobs[0].flaky).toBeNull();
+    });
+});

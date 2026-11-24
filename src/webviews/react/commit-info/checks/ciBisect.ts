@@ -1,7 +1,7 @@
 // The webview's one "Find where CI broke" run: started from the Git Log's row menu, shown by the
 // Checks tab of the same repository. Only the newest run's replies count.
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import type {
     CancelCiBisectMessage,
     CiBisectProgressMessage,
@@ -128,5 +128,12 @@ function subscribe(listener: () => void): () => void {
  */
 export function useCiBisect(repoKey: string): CiBisectView | null {
     const current = useSyncExternalStore(subscribe, () => view);
+    // A pane that moves to another repository retires the bisect it showed: the host drops that
+    // run on the switch, so coming back must not show progress for a run that never finishes.
+    const shown = useRef(repoKey);
+    useEffect(() => {
+        if (shown.current !== repoKey && view?.repoKey === shown.current) closeCiBisect();
+        shown.current = repoKey;
+    }, [repoKey]);
     return current?.repoKey === repoKey ? current : null;
 }

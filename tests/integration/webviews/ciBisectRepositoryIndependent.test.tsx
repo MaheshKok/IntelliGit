@@ -107,6 +107,7 @@ describe("CI bisect replies", () => {
                     checkName: "unit",
                     // Oldest first: green, red, skipped, green.
                     states: ["success", "failure", "skipped", "success"],
+                    isolated: [false, true, false, false],
                     brokeAt: null,
                     flaky: { n: 1, m: 3, attemptsCounted: true },
                 },
@@ -118,6 +119,95 @@ describe("CI bisect replies", () => {
         // Newest on the left.
         expect(tones[2]?.[0]).toBe("failure");
         expect(tones[2]?.[1], "nearest complete greens make this flaky red amber").toBe("amber");
+        unmount(root, container);
+    });
+
+    it("colors an isolated red amber across a fully read commit where the job did not run", () => {
+        const { root, container } = mount(<Harness />);
+        const D = "d".repeat(40);
+        act(() => startCiBisect(REPO, [...RANGE, { hash: D, parents: [] }]));
+        reply({
+            type: "ciBisectResult",
+            requestId: lastStartRequestId(),
+            repoKey: REPO,
+            linear: true,
+            commits: [D, C, B, A],
+            jobs: [
+                {
+                    checkName: "build",
+                    states: ["success", "failure", null, "success"],
+                    isolated: [false, true, false, false],
+                    brokeAt: C,
+                    flaky: { n: 1, m: 3, attemptsCounted: false },
+                },
+            ],
+        });
+        const red = container.querySelector<HTMLElement>('[data-state="failure"]');
+        expect(
+            red?.dataset.tone,
+            "the job's one isolated red must use its flaky tag's decision",
+        ).toBe("amber");
+        unmount(root, container);
+    });
+
+    it("control: a red the host did not count as isolated stays red beside a no-result commit", () => {
+        const { root, container } = mount(<Harness />);
+        const D = "d".repeat(40);
+        act(() => startCiBisect(REPO, [...RANGE, { hash: D, parents: [] }]));
+        reply({
+            type: "ciBisectResult",
+            requestId: lastStartRequestId(),
+            repoKey: REPO,
+            linear: true,
+            commits: [D, C, B, A],
+            jobs: [
+                {
+                    checkName: "build",
+                    states: ["success", "failure", null, "success"],
+                    isolated: [false, false, false, false],
+                    brokeAt: C,
+                    flaky: null,
+                },
+            ],
+        });
+        const red = container.querySelector<HTMLElement>('[data-state="failure"]');
+        expect(red?.dataset.tone).toBe("red");
+        unmount(root, container);
+    });
+});
+
+describe("CI bisect across a repository switch", () => {
+    function RepoPane({ repoKey }: { repoKey: string }): React.ReactElement | null {
+        const view = useCiBisect(repoKey);
+        return view ? <BisectView view={view} /> : null;
+    }
+
+    it("returning to a repository does not restore a run the host abandoned", () => {
+        const { root, container } = mount(<RepoPane repoKey={REPO} />);
+        act(() => startCiBisect(REPO, RANGE));
+        const requestId = lastStartRequestId();
+        expect(container.textContent).toContain("0 / 3 commits");
+        act(() => root.render(<RepoPane repoKey="/other" />));
+        act(() => root.render(<RepoPane repoKey={REPO} />));
+        expect(
+            container.textContent,
+            "returning to a repo cannot restore a run the host abandoned",
+        ).not.toContain("0 / 3 commits");
+        expect(
+            mockVscodeApi.postMessage,
+            "the host's run is cancelled, even though the user came back before its read ended",
+        ).toHaveBeenCalledWith({ type: "cancelCiBisect", requestId });
+        unmount(root, container);
+    });
+
+    it("control: a pane that stays on its repository keeps its run", () => {
+        const { root, container } = mount(<RepoPane repoKey={REPO} />);
+        act(() => startCiBisect(REPO, RANGE));
+        act(() => root.render(<RepoPane repoKey={REPO} />));
+        expect(container.textContent).toContain("0 / 3 commits");
+        expect(mockVscodeApi.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "cancelCiBisect" }),
+        );
         unmount(root, container);
     });
 });
