@@ -63,9 +63,15 @@ test("shift-clicking commit rows selects rows without selecting their text", asy
 
         await rows.nth(0).click();
         await expect(rows.nth(0)).toHaveAttribute("aria-pressed", "true");
-        // The host echoes the primary hash after the first click. Let that echo land before
-        // the range gesture, otherwise the test races the echo instead of the range logic.
-        await page.waitForTimeout(250);
+        // The panel makes the first row primary on load and the host answers with its detail.
+        // Once that row is primary and its detail is showing, the host's replies to this click
+        // repeat the same hash, so they cannot move the primary row and reset the range below.
+        await expect(rows.nth(0)).toHaveAttribute("aria-current", "true");
+        await expect(graph.getByTestId("commit-info-pane")).toHaveAttribute(
+            "data-pane-state",
+            "detail",
+            { timeout: 30_000 },
+        );
         await rows.nth(2).click({ modifiers: ["Shift"] });
 
         const selectedRowCount = await rows.evaluateAll(
