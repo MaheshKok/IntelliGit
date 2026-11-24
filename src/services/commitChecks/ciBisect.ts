@@ -35,7 +35,11 @@ const BISECT_CONCURRENCY = 4;
 export interface CiBisectSource {
     getChecks(
         hash: string,
-        options: { isCurrent: () => boolean; sendGuard: () => boolean; force?: boolean },
+        options: {
+            isCurrent: () => boolean;
+            sendGuard: () => boolean;
+            refreshUnavailable?: true;
+        },
     ): Promise<CommitChecksSnapshot>;
     capabilities(hash: string): Promise<ProviderCiCapabilities | undefined>;
     attemptHistory(hash: string, sendGuard: () => boolean): Promise<CiAttemptHistory[] | null>;
@@ -119,6 +123,11 @@ function slicer(live: () => boolean): (steps: number) => Promise<boolean> {
     };
 }
 
+/** One job of the bisect for the join; `status` = every item of it is a flat commit status. */
+interface JobRow extends CiHistoryCheck {
+    status: boolean;
+}
+
 /**
  * Every job seen in the commits, once each; `undefined` once `tick` says the bisect stopped. Two
  * items of two commits are one job when the §9 join, run on each commit's own items, matches
@@ -130,7 +139,7 @@ function slicer(live: () => boolean): (steps: number) => Promise<boolean> {
 async function jobsOf(
     reads: readonly CommitRead[],
     tick: (steps: number) => Promise<boolean>,
-): Promise<CiHistoryCheck[] | undefined> {
+): Promise<JobRow[] | undefined> {
     const indexes = reads.map((read) => read.items && indexChecks(read.items));
     const nodes = reads.flatMap((read, at) => (read.items ?? []).map((item) => ({ item, at })));
     const start: number[] = [];
@@ -181,12 +190,13 @@ async function jobsOf(
         if (group) group.push(item);
         else groups.set(key, [item]);
     });
-    return [...groups.values()].map((items): CiHistoryCheck => {
+    return [...groups.values()].map((items): JobRow => {
         const named = items.find((item) => item.logicalId !== undefined) ?? items[0];
         return {
             ...(named.logicalId === undefined ? {} : { logicalId: named.logicalId }),
             name: named.name,
             state: "unknown",
+            status: items.every((item) => item.source === "status"),
         };
     });
 }
@@ -219,7 +229,7 @@ interface JobContext {
     attemptsCounted: boolean;
 }
 
-function jobOf(job: CiHistoryCheck, context: JobContext): CiBisectJob {
+function jobOf(job: JobRow, context: JobContext): CiBisectJob {
     const { reads, linear, attemptsCounted } = context;
     const line = reads.map((read, at): CiFlakyCommit & { hash: string } => {
         const index = context.readIndexes[at];
@@ -236,7 +246,8 @@ function jobOf(job: CiHistoryCheck, context: JobContext): CiBisectJob {
             ...((found === "ambiguous" || (read.partial && !usable)) && { unread: true as const }),
         };
     });
-    const named = context.attemptIds.get(job.name);
+    // A flat commit status has no re-runs: a same-named workflow job's history is not its own.
+    const named = job.status ? undefined : context.attemptIds.get(job.name);
     return {
         checkName: job.name,
         states: line.map((commit) => commit.state as CiState | null).reverse(),
@@ -294,11 +305,12 @@ export async function runCiBisect(
         BISECT_CONCURRENCY,
         async ({ hash }): Promise<CommitRead | undefined> => {
             if (!live()) return undefined;
-            const options = { isCurrent: live, sendGuard: live };
-            let snapshot = await source.getChecks(hash, options);
-            if (refresh && snapshot.state === "unavailable" && live()) {
-                snapshot = await source.getChecks(hash, { ...options, force: true });
-            }
+            // One read per commit: a retry asks again only a commit the cache holds as an error.
+            const snapshot = await source.getChecks(hash, {
+                isCurrent: live,
+                sendGuard: live,
+                ...(refresh && { refreshUnavailable: true as const }),
+            });
             const attempts =
                 attemptsCounted && live() ? await source.attemptHistory(hash, live) : [];
             if (!live()) return undefined;

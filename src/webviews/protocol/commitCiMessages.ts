@@ -109,6 +109,8 @@ export interface ChangedSinceGreenMessage {
 export interface CiBisectProgressMessage {
     type: "ciBisectProgress";
     requestId: number;
+    /** The repository the bisect runs in, so a reply of another repository's run is told apart. */
+    repoKey: string;
     done: number;
     total: number;
     /** The final reply of a bisect stopped because sign-in or CI settings changed; no result follows. */

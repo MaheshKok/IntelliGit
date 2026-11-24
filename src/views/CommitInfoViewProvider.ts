@@ -545,6 +545,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
      */
     dispose(): void {
         this.ciDetailLoops.dispose();
+        this.ciBisectRuns.dispose();
         this.iconTheme.dispose();
         this._onOpenCommitFileDiff.dispose();
     }

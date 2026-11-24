@@ -16,17 +16,17 @@
 - Owner answer 2026-11-24 "B + compact now" (PLAN.md Phase 16) built in the commit after 6dab987a, review pending:
   - (1) Stopped reply: when the generation fence stops a bisect (sign-in or CI settings changed), ciBisectHandler.ts posts one last `ciBisectProgress` with `stopped: true` (new optional field, section 4). The view (BisectView.tsx, ciBisect.ts) leaves "k / N commits", shows `commit.checks.bisect.stopped` and offers Run again (retryCiBisect) and Close (no cancel sent). New keys in all 12 catalogs plus the CSV. No reply while the switch is off (existing early return), none for a cancelled bisect, none on a repository change. No `commitCiDetailInvalidated` listener; the settings handler in repositoryMode.ts is untouched.
   - (2) Compact Git Log: NativeCommitGraph passes onFindCiBreak (the menu entry stays behind `isChecksTabEnabled()` in commitMenu.tsx) and posts `findCiBreakInChecks`. The sidebar host relays it only while `isE2eControlChannelActive()`; repositoryMode.ts wires it to `commitInfo.startCiBisect`. CommitInfoViewProvider holds it until ready, posts `startCiBisectInChecks`, and runs the shared answerStartCiBisect/answerCancelCiBisect with its own CommitCiDetailLoops (stopped on reload and dispose). CommitInfoApp starts the bisect in its Checks tab. The witness compactGitLogCiBisect.integration.test.tsx (100b688b) lands and passes.
-  - Mutations: 12 of 12 red by test name (copies mut-16-build-<n>, script PLAN/mut16.py).
-- Gates for that build (1711495d): verify.py round exit 0; lint:strict, build, build:prod, verify:manifest, Gate L exit 0; `bun run test`: 550 files, 8807 passed, 1 skipped. `bun run package` exit 1: VSIX 8651928 bytes > budget 8650752, 1176 over (halted).
 - Owner answer 2026-11-24 "A: 8.5 MiB" built in the commit after 0d3faee7, review pending: scripts/verifyVsixPackage.js MAX_UNCOMPRESSED_BYTES 8.25 -> 8.5 MiB, comment states the measured 0.43.20 payload (8,651,928 bytes). No CHANGELOG line (not user-facing, per the plan).
-  - `bun run package` before the edit exit 1 (8651928 > 8650752), after exit 0 (88 entries, 2344514 compressed, 8651928 uncompressed). tests/unit/publishing/verifyVsixPackage.test.ts 20 passed. verify.py round exit 0.
+  - `bun run package` before the edit exit 1, after exit 0 (8651928 unpacked); verifyVsixPackage tests 20 passed.
+- Fix round 1 (5 review findings, each with a test red before the fix): provider dispose() now disposes ciBisectRuns; progress and stopped replies carry `repoKey` and the view matches it; a flat commit status no longer takes a same-named job's re-run history (JobRow.status); Retry reads each commit once (coordinator option `refreshUnavailable` peeks the cache, forces only a cached error); sparkline amber uses the nearest pass/failure/unread neighbour, skipping skipped/cancelled/running. New tests: ciBisectCommitInfoIndependent, ciBisectPhase16Independent, ciBisectRepositoryIndependent.
 
 ## Decisions and why (this build)
 - Budget raise: no new unit test pins 8.5 MiB (it would only mirror the constant); the outside check is `bun run package`, red before and green after.
 - Stopped reply = a progress message with `stopped: true`, not a new message type: one field, and done/total stay valid for the view.
 - A repository change posts no stopped reply: its text ("sign-in or CI settings changed") would be false, and that repository's view is gone.
 - Compact layout relays to the Changed Files view's Checks tab (like Open in Checks), because the compact webview has no Checks tab of its own; the bisect's cap there is the sidebar graph's loaded page.
-- The sidebar relay is a small helper (relayFindCiBreak) so the message switch stays under sonarjs cognitive complexity 25.
+- Fix round 1, Retry: one `getChecks` call per commit with `refreshUnavailable` (not a second `force` call), because the bisect cannot tell a cached error from a fresh one; passed on counting `sendGuard` calls (a gate-less provider never calls it).
+- Fix round 1, sparkline: the view sees `null` as unread (breaks isolation), so a "no result" gap that `flaky` drops can still show red where the tag counts it; exact only if the result carried the isolation flags.
 
 ## Decisions and why (earlier rounds)
 - Finding 6: owner 2026-11-22 "C: drop both + issue" (#453): result text is only "broke at <short sha>".
@@ -36,14 +36,12 @@
 - The chain is derived from the host's loaded parents (first parent) intersected with the selection; a non-straight selection reports "not a straight line".
 - `limitedTo`, `commits` and `failedReads` are in the section 4 result payload.
 - Ships hidden (owner 2026-11-20, "A: hide them"): menu entry behind `isChecksTabEnabled()`, both host handlers behind `isE2eControlChannelActive()`; Phase 18 turns them on.
-- Takeover mutation copies were made with rsync, not `git ls-files | tar`: the worktree guard refuses git inside a pipe.
 
 ## Open risks
 - E2E tests/e2e/ciBisect.spec.ts not run locally (CI runs test:e2e); no E2E drives the compact relay or the stopped reply yet.
 - A bisect stopped by a repository switch tells no view (by design above); the new repository's view never showed it.
-- GitNexus impact and detect-changes not run (no tool exposed to builder sessions).
 - A long range shows a thin horizontal scrollbar under the sparkline (strip a few px taller).
-- The failed-reads message reads the same for a failed re-run read; Retry may ask an unavailable commit twice on a live outage (bounded by the gate).
+- The failed-reads message reads the same for a failed re-run read as for a failed checks read.
 - Owner questions carried: Phase 15's skipped/cancelled/neutral denominator; whether the commit panel's embedded graph shows checks (Phase 18).
 
 ## Next phase: per the phase-run dry run (Phases 17-18 per their Depends on lines)

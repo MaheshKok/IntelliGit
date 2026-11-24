@@ -98,7 +98,7 @@ describe("CI bisect view", () => {
             commits: RANGE,
         });
 
-        reply({ type: "ciBisectProgress", requestId, done: 1, total: 3 });
+        reply({ type: "ciBisectProgress", requestId, repoKey: REPO, done: 1, total: 3 });
         expect(text(container)).toContain("1 / 3 commits");
         expect(container.querySelector('[data-testid="ci-bisect-cancel"]')).not.toBeNull();
 
@@ -230,7 +230,7 @@ describe("CI bisect view", () => {
         const second = lastStartRequestId();
         expect(second).not.toBe(first);
 
-        reply({ type: "ciBisectProgress", requestId: first, done: 2, total: 3 });
+        reply({ type: "ciBisectProgress", requestId: first, repoKey: REPO, done: 2, total: 3 });
         expect(text(container)).not.toContain("2 / 3 commits");
         reply(result(second, [], { repoKey: "/other" }));
         expect(container.querySelector('[data-testid="ci-bisect-cancel"]')).not.toBeNull();
@@ -466,10 +466,17 @@ describe("CI bisect view", () => {
             const { root, container } = mount(<Harness />);
             act(() => startCiBisect(REPO, RANGE));
             const first = lastStartRequestId();
-            reply({ type: "ciBisectProgress", requestId: first, done: 1, total: 3 });
+            reply({ type: "ciBisectProgress", requestId: first, repoKey: REPO, done: 1, total: 3 });
             expect(cancel(container), "control: running shows Cancel").not.toBeNull();
 
-            reply({ type: "ciBisectProgress", requestId: first, done: 1, total: 3, stopped: true });
+            reply({
+                type: "ciBisectProgress",
+                requestId: first,
+                repoKey: REPO,
+                done: 1,
+                total: 3,
+                stopped: true,
+            });
             expect(cancel(container), "no Cancel once stopped").toBeNull();
             expect(text(container), "the progress line is gone").not.toContain("1 / 3 commits");
             expect(container.querySelector('[role="alert"]')?.textContent).toContain(
@@ -503,6 +510,7 @@ describe("CI bisect view", () => {
             reply({
                 type: "ciBisectProgress",
                 requestId: lastStartRequestId(),
+                repoKey: REPO,
                 done: 0,
                 total: 3,
                 stopped: true,
@@ -523,7 +531,14 @@ describe("CI bisect view", () => {
             act(() => startCiBisect(REPO, RANGE));
             const first = lastStartRequestId();
             act(() => startCiBisect(REPO, RANGE));
-            reply({ type: "ciBisectProgress", requestId: first, done: 0, total: 3, stopped: true });
+            reply({
+                type: "ciBisectProgress",
+                requestId: first,
+                repoKey: REPO,
+                done: 0,
+                total: 3,
+                stopped: true,
+            });
             expect(cancel(container)).not.toBeNull();
             expect(container.querySelector('[role="alert"]')).toBeNull();
             unmount(root, container);

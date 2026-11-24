@@ -31,13 +31,30 @@ const TONE_COLOR: Record<Tone, string> = {
     none: "transparent",
 };
 
-/** A square's colour; in a flaky job a red with green on both sides is amber. */
+/**
+ * The nearest state on one side that `flaky` counts as a neighbour: a pass, a failure or an unread
+ * commit (`null`). A skipped, cancelled, running or no-result commit lies between and is passed over.
+ */
+function neighbourOf(
+    states: readonly (CiState | null)[],
+    index: number,
+    step: 1 | -1,
+): CiState | null | undefined {
+    for (let at = index + step; at >= 0 && at < states.length; at += step) {
+        const state = states[at];
+        if (state === null || state === "success" || state === "failure") return state;
+    }
+    return undefined;
+}
+
+/** A square's colour; in a flaky job a red with a green on both sides (`flaky`'s rule) is amber. */
 function toneOf(states: readonly (CiState | null)[], index: number, flaky: boolean): Tone {
     const state = states[index];
     if (state === "success") return "green";
     if (state === "queued" || state === "running") return "amber";
     if (state !== "failure") return "none";
-    const isolated = states[index - 1] === "success" && states[index + 1] === "success";
+    const isolated =
+        neighbourOf(states, index, -1) === "success" && neighbourOf(states, index, 1) === "success";
     return flaky && isolated ? "amber" : "red";
 }
 

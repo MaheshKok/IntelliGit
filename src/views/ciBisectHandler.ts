@@ -59,7 +59,7 @@ export async function answerStartCiBisect(
         (done, total) => {
             progress.done = done;
             progress.total = total;
-            post({ type: "ciBisectProgress", requestId, done, total });
+            post({ type: "ciBisectProgress", requestId, repoKey, done, total });
         },
         current,
         msg.retry === true,
@@ -69,7 +69,7 @@ export async function answerStartCiBisect(
         // Sign-in or CI settings changed (the generation fence): one final reply, so the view
         // leaves "k / N commits". A repository change has no view of that repository left to tell.
         if (repoKey === source.repoKey()) {
-            post({ type: "ciBisectProgress", requestId, ...progress, stopped: true });
+            post({ type: "ciBisectProgress", requestId, repoKey, ...progress, stopped: true });
         }
         return;
     }

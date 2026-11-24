@@ -33,7 +33,7 @@ describe("answerStartCiBisect retry", () => {
             capabilities: async () => undefined,
             attemptHistory: async () => [],
             getChecks: async (hash, options) => {
-                if (options.force) refreshed.push(hash);
+                if (options.refreshUnavailable) refreshed.push(hash);
                 return { hash, state: "unavailable", summary: "", items: [] };
             },
         };
@@ -146,7 +146,14 @@ describe("answerStartCiBisect invalidation", () => {
                 else generations.bumpLifecycle();
             });
             expect(posts, "sign-in or CI settings changed under the bisect").toEqual([
-                { type: "ciBisectProgress", requestId: 1, done: 0, total: 6, stopped: true },
+                {
+                    type: "ciBisectProgress",
+                    requestId: 1,
+                    repoKey: "/repo",
+                    done: 0,
+                    total: 6,
+                    stopped: true,
+                },
             ]);
         },
     );

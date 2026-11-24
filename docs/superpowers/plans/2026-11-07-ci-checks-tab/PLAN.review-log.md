@@ -1547,3 +1547,8 @@ PHASE 16: HALT The build itself is finished and committed (1711495d), but the re
 ### Phase 16: built, review pending (owner answer "A: 8.5 MiB", 2026-11-24)
 - scripts/verifyVsixPackage.js: MAX_UNCOMPRESSED_BYTES 8.25 -> 8.5 MiB; comment names the measured 0.43.20 payload (8,651,928 bytes).
 - `bun run package`: exit 1 before the edit (8651928 > 8650752), exit 0 after. verifyVsixPackage.test.ts 20 passed. verify.py gates --stage round: GREEN.
+
+## Phase 16: fix round 1 (5 review findings)
+- Each finding got a test red before the fix (reds quoted in the report), green after: provider dispose now stops the sidebar bisect; progress/stopped replies echo and match `repoKey`; a flat status no longer inherits a same-named job's re-run (flaky tag); Retry makes one read per commit (`refreshUnavailable`, cache peeked in the coordinator); sparkline amber follows the nearest pass/failure/unread neighbour.
+- Existing tests updated for the new field/option: ciBisectView.integration (repoKey on progress), ciBisectHandler (repoKey, refreshUnavailable).
+- Related suites: tests/unit/views, tests/unit/services/commitChecks, tests/integration/webviews: 115 files, 2416 passed, 1 skipped. verify.py round: GREEN.

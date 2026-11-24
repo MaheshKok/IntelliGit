@@ -38,10 +38,11 @@ function publish(next: CiBisectView | null): void {
 function onMessage(event: MessageEvent<unknown>): void {
     const data = event.data as Partial<CiBisectProgressMessage | CiBisectResultMessage> | null;
     if (view?.status !== "running" || data?.requestId !== view.requestId) return;
+    if (data.repoKey !== view.repoKey) return;
     if (data.type === "ciBisectProgress") {
         const { done, total, stopped } = data as CiBisectProgressMessage;
         publish({ ...view, done, total, status: stopped ? "stopped" : "running" });
-    } else if (data.type === "ciBisectResult" && data.repoKey === view.repoKey) {
+    } else if (data.type === "ciBisectResult") {
         publish({
             status: "done",
             requestId: view.requestId,

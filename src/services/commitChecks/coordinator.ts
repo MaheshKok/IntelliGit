@@ -86,6 +86,8 @@ class StaleCallerError extends Error {}
 type LiveFetchOptions = CommitChecksFetchOptions & {
     isCurrent?: () => boolean;
     sendGuard?: () => boolean;
+    /** Cache first, but a commit cached as an error is asked again: one read either way. */
+    refreshUnavailable?: true;
 };
 
 /**
@@ -255,7 +257,11 @@ export class CommitChecksCoordinator {
                 ...(signInHost === undefined ? {} : { signInHost }),
             };
         }
-        return this.fetchFresh(hash, options);
+        // Peeked before the fetch, so an uncached commit that fails is asked once, not twice.
+        const retry =
+            options.refreshUnavailable === true &&
+            (await this.cachedSnapshot(hash))?.state === "unavailable";
+        return this.fetchFresh(hash, retry ? { ...options, force: true } : options);
     }
 
     /**
