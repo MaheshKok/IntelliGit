@@ -22,10 +22,10 @@
 ## Phase 16: review pending, started at 20240fdf09433916025c8db6578fee50a719934b
 - Build 181a5862 (0.43.20), fix rounds 4c5c4abb, 98670525, 621c69be, 7ae74a53, takeover (the commit after 7ae74a53): "Find where CI broke" over 2+ Git Log rows, shown hidden. Earlier rounds' detail: this file's git history.
 - Takeover (5 open findings): 1-4 were missing tests, not code faults; each now has a test that a mutant of the code turns red by name: (1) amber needs flaky AND isolated (two view tests); (2) the walk uses the host's loaded parents, not the webview's; (3) an unread neighbour (failed read, or a partial read matching by name only) breaks an isolated red; (4) a cancelled bisect asks the source for no queued commit (counts getChecks calls). No source file changed.
-- Finding 5 (sign-in or CI settings change under a running bisect leaves the view on "k / N commits" with Cancel) is OPEN: confirmed that only the view's own Cancel/Close buttons call closeCiBisect, and the plan has no rule for it. Fixing it needs a protocol field on ciBisectResult (section 4) or a reply after the generation changed (section 4 says a stale result is dropped), so it waits for the owner.
+- Finding 5 (sign-in or CI settings change under a running bisect leaves the view on "k / N commits" with Cancel) is ANSWERED (owner 2026-11-24, see below); confirmed that only the view's own Cancel/Close buttons call closeCiBisect, and the plan has no rule for it. Fixing it needs a protocol field on ciBisectResult (section 4) or a reply after the generation changed (section 4 says a stale result is dropped), so it waits for the owner.
 - Gates at the takeover: format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; `bun run test` with a fresh `NODE_OPTIONS=--localstorage-file`: 547 files, 8788 passed, 1 skipped. Use a new flag file per run (a reused one fails commitCiColumn.integration.test.tsx).
 
-BLOCKED: owner decision on finding 5 (bisect stuck on progress after a sign-in or CI settings change): A accept, Cancel is the exit (plan note only); B host posts a terminal ciBisectResult with a new `stopped` field (protocol change, rewrites the ciBisectHandler.test.ts silence assertion); C host posts the existing failed-reads result (error + Retry, no new field) after the generation changed, which bends section 4's "stale result is dropped".
+Answered: finding 5 and the compact Git Log gap, owner 2026-11-24, "B + compact now". (1) Finding 5 = B: when the generation fence stops a bisect, the host posts one final bisect reply marked stopped (one new field in the bisect's own section 4 messages; rewrite the ciBisectHandler.test.ts silence test; new text in every catalog; no reply while the Checks tab switch is off; no `commitCiDetailInvalidated` listener and no change to the settings handler in repositoryMode.ts); the view leaves "k / N commits", says the check stopped because sign-in or CI settings changed, and offers to run it again. (2) The compact Git Log layout gets the same "Find where CI broke" row action behind `isChecksTabEnabled()`, with its own switch-off test; the witness tests/integration/webviews/compactGitLogCiBisect.integration.test.tsx (repro/PLAN-6, 100b688b) must land on this branch and pass. Plan: PLAN.md Phase 16, the line after the finding 6 answer.
 
 ## Decisions and why
 - Finding 6: owner 2026-11-22 "C: drop both + issue" (#453): result text is only "broke at <short sha>".
@@ -38,7 +38,6 @@ BLOCKED: owner decision on finding 5 (bisect stuck on progress after a sign-in o
 - Takeover mutation copies were made with rsync, not `git ls-files | tar`: the worktree guard refuses git inside a pipe.
 
 ## Open risks
-- Finding 5 above (owner decision).
 - E2E tests/e2e/ciBisect.spec.ts not run locally (CI runs test:e2e).
 - GitNexus impact and detect-changes not run (no tool exposed to builder sessions).
 - A long range shows a thin horizontal scrollbar under the sparkline (strip a few px taller).
