@@ -1070,6 +1070,7 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
             { hash: "a".repeat(40), parents: ["b".repeat(40)] },
             { hash: "b".repeat(40), parents: [] },
         ];
+        loadRows(provider, commits);
         const before = posted.length;
 
         setE2eControlChannelActive(false);
@@ -1083,6 +1084,52 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
         expect(relayed, "the control: with the switch on the range is handed on").toEqual([
             commits,
         ]);
+    });
+
+    /** Rows the compact graph has loaded, as a page load records them. */
+    function loadRows(
+        provider: CommitGraphViewProvider,
+        rows: ReadonlyArray<{ hash: string; parents: string[] }>,
+    ): void {
+        const loaded = (provider as unknown as { loadedCommitHashes: Map<string, string[]> })
+            .loadedCommitHashes;
+        for (const { hash, parents } of rows) loaded.set(hash, parents);
+    }
+
+    it("rejects a compact bisect click queued in A after the host switches to B", async () => {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            buildProviderOptions("compact"),
+        );
+        const { webviewView, receiveMessage } = createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+        const relayed: unknown[] = [];
+        provider.onFindCiBreakInChecks((commits) => relayed.push(commits));
+        const rowsOfA = [
+            { hash: "a".repeat(40), parents: ["b".repeat(40)] },
+            { hash: "b".repeat(40), parents: [] },
+        ];
+        loadRows(provider, rowsOfA);
+        const clickInA = { type: "findCiBreakInChecks", commits: rowsOfA };
+
+        await receiveMessage(clickInA);
+        expect(relayed, "the control: a click on A's rows relays in A").toEqual([rowsOfA]);
+
+        relayed.length = 0;
+        // What repositoryMode.ts does on a switch, before B's first page arrives.
+        provider.resetFilters();
+        await receiveMessage(clickInA);
+        expect(relayed, "A's queued click must not start a bisect for B").toEqual([]);
+
+        loadRows(provider, [{ hash: "c".repeat(40), parents: [] }]);
+        await receiveMessage(clickInA);
+        expect(relayed, "nor once B's rows are loaded").toEqual([]);
     });
 
     it("a replaced view's late ready does not discard the current context's history reply", async () => {

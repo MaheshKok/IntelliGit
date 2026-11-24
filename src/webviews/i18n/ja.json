@@ -594,11 +594,11 @@
     "commit.checks.bisect.flakyNote": "不安定: {m} 件中 {n} 件が赤、赤の連続なし",
     "commit.checks.bisect.limited": "読み込まれた {count} 件のコミットに制限されています",
     "commit.checks.bisect.none": "これらのコミットの CI ジョブが見つかりません",
-    "commit.checks.bisect.failed": "一部のコミットの CI チェックを読み取れませんでした。未読のコミット: {count}",
+    "commit.checks.bisect.failed": "一部の CI データを読み取れませんでした。CI データが不完全なコミット: {count}",
     "commit.checks.bisect.retry": "再試行",
     "commit.checks.bisect.stopped": "サインインまたは CI 設定が変更されたため、チェックを停止しました。",
     "commit.checks.bisect.runAgain": "もう一度実行",
     "commit.checks.bisect.square": "{hash}: {state}",
-    "commit.checks.bisect.notRead": "未読込",
+    "commit.checks.bisect.noResult": "結果なし",
     "commit.menu.findCiBreak": "CI が壊れた箇所を探す"
 }

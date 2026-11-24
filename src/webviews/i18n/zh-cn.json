@@ -594,11 +594,11 @@
     "commit.checks.bisect.flakyNote": "不稳定：{m} 个中有 {n} 个红色，没有连续红色",
     "commit.checks.bisect.limited": "仅限已加载的 {count} 个提交",
     "commit.checks.bisect.none": "未找到这些提交的 CI 作业",
-    "commit.checks.bisect.failed": "无法读取部分提交的 CI 检查。未读取的提交数：{count}",
+    "commit.checks.bisect.failed": "无法读取部分 CI 数据。CI 数据不完整的提交数：{count}",
     "commit.checks.bisect.retry": "重试",
     "commit.checks.bisect.stopped": "由于登录或 CI 设置已更改，检查已停止。",
     "commit.checks.bisect.runAgain": "重新运行",
     "commit.checks.bisect.square": "{hash}: {state}",
-    "commit.checks.bisect.notRead": "未读取",
+    "commit.checks.bisect.noResult": "无结果",
     "commit.menu.findCiBreak": "查找 CI 出错的位置"
 }

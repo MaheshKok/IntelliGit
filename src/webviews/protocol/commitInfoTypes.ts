@@ -104,6 +104,8 @@ export type CommitInfoInbound =
           type: "clear";
           /** True while the host expects an automatic replacement selection to arrive. */
           loading?: boolean;
+          /** Repository the cleared pane now belongs to; another repository's bisect is retired. */
+          ciRepoKey?: string;
       }
     | CommitCiDetailMessage
     | CommitCiDetailInvalidatedMessage

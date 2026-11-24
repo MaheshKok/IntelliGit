@@ -283,7 +283,10 @@ The break point is the oldest red of the newest run of reds that follows a green
 - A job that went red for a single commit between greens carries the flaky tag described
   under [Flaky jobs](#flaky-jobs).
 - Signing in again or changing a CI setting while the check runs stops it; the view says so
-  and offers **Run again**.
+  and offers **Run again**. Switching to another repository ends it without a message.
+- A square with no colour means "no result": the commit was not read, or it was read and has
+  no run of that job. When some CI data could not be read (a commit's checks or its re-run
+  history), the view counts the commits with incomplete CI data and offers **Retry**.
 
 ## Authentication per provider
 

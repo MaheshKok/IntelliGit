@@ -630,11 +630,11 @@
     "commit.checks.bisect.flakyNote": "нестабильный: красных {n} из {m}, нет серии красных",
     "commit.checks.bisect.limited": "Ограничено загруженными коммитами: {count}",
     "commit.checks.bisect.none": "Задания CI для этих коммитов не найдены",
-    "commit.checks.bisect.failed": "Не удалось прочитать проверки CI некоторых коммитов. Непрочитанных коммитов: {count}",
+    "commit.checks.bisect.failed": "Не удалось прочитать часть данных CI. Коммитов с неполными данными CI: {count}",
     "commit.checks.bisect.retry": "Повторить",
     "commit.checks.bisect.stopped": "Проверка остановлена, потому что изменился вход или настройки CI.",
     "commit.checks.bisect.runAgain": "Запустить снова",
     "commit.checks.bisect.square": "{hash}: {state}",
-    "commit.checks.bisect.notRead": "не прочитано",
+    "commit.checks.bisect.noResult": "нет результата",
     "commit.menu.findCiBreak": "Найти, где сломалась CI"
 }

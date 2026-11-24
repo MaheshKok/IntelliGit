@@ -670,13 +670,18 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     /**
      * "Find where CI broke" from the compact layout: hands the range to the Changed Files view's
      * Checks tab. Ships hidden like the bisect itself: off with the Checks tab switch, before
-     * validating, so a disabled range posts not even an error.
+     * validating, so a disabled range posts not even an error. Only rows this graph has loaded
+     * relay: a repository switch forgets the previous repository's rows, so a click queued there
+     * cannot start a bisect for the new one.
      *
      * @param commits - The selected rows, unvalidated from the webview.
      */
     private relayFindCiBreak(commits: unknown): void {
-        if (isE2eControlChannelActive())
-            this._onFindCiBreakInChecks.fire(readLoadedCommits(commits));
+        if (!isE2eControlChannelActive()) return;
+        const range = readLoadedCommits(commits);
+        if (range.every(({ hash }) => this.loadedCommitHashes.has(hash))) {
+            this._onFindCiBreakInChecks.fire(range);
+        }
     }
 
     /**

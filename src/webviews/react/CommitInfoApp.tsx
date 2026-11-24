@@ -7,7 +7,7 @@ import { getVsCodeApi } from "./shared/vscodeApi";
 import theme from "./commit-panel/theme";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
 import { openChecksTab } from "./commit-info/checks/checksTabState";
-import { startCiBisect } from "./commit-info/checks/ciBisect";
+import { retireCiBisect, startCiBisect } from "./commit-info/checks/ciBisect";
 import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 
 const vscode = getVsCodeApi<CommitInfoOutbound, unknown>();
@@ -84,10 +84,12 @@ function App(): React.ReactElement {
             switch (msg.type) {
                 case "clear":
                     shownRepoKey = undefined;
+                    retireCiBisect(msg.ciRepoKey);
                     dispatch({ type: "clear", loading: msg.loading ?? false });
                     return;
                 case "setCommitDetail":
                     shownRepoKey = msg.ciRepoKey;
+                    retireCiBisect(msg.ciRepoKey);
                     if (heldRepoKey !== undefined && heldRepoKey === shownRepoKey) openChecksTab();
                     heldRepoKey = undefined;
                     dispatch({

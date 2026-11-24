@@ -391,7 +391,9 @@ describe("CommitInfoViewProvider Checks tab scan re-posts", () => {
         repoKey = "/repo-b";
         posted.length = 0;
         provider.clear();
-        expect(posted, "the switch clears the pane").toEqual([{ type: "clear" }]);
+        expect(posted, "the switch clears the pane").toEqual([
+            { type: "clear", ciRepoKey: "/repo-b" },
+        ]);
         // The same commit, as both repositories can share history.
         provider.setCommitDetail(sampleDetail());
         await flushMicrotasks();

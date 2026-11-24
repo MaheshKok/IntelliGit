@@ -116,6 +116,16 @@ export function closeCiBisect(): void {
     if (view) publish(null);
 }
 
+/**
+ * Drops a bisect of another repository than the pane's, mounted Checks tab or not: the host ends
+ * that run when it switches repository, so coming back must not show progress that never finishes.
+ *
+ * @param repoKey - Repository the pane belongs to now.
+ */
+export function retireCiBisect(repoKey: string | undefined): void {
+    if (view && view.repoKey !== repoKey) publish(null);
+}
+
 function subscribe(listener: () => void): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);

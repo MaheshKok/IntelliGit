@@ -70,6 +70,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     private pendingBisect?: { repoKey: string; commits: CiLoadedCommit[] };
     private readonly ciDetailLoops = new CommitCiDetailLoops();
     private readonly ciBisectRuns = new CommitCiDetailLoops();
+    /** Repository of the last bisect this view started; a switch away from it ends that run. */
+    private bisectRepoKey?: string;
     private readonly iconTheme: IconThemeService;
     private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
         commitHash: string;
@@ -283,6 +285,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         }
         if (!this.ciSource) return;
         const generation = this.webviewGeneration;
+        this.bisectRepoKey = this.ciSource.repoKey();
         await answerStartCiBisect(
             this.ciSource,
             { ...msg },
@@ -459,9 +462,21 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.lastPostedPayload = undefined;
         // The held commit's load was cancelled; a later plain click must not open Checks.
         this.pendingChecks = undefined;
-        if (this.ready) {
-            this.postToWebview(this.loading ? { type: "clear", loading: true } : { type: "clear" });
-        }
+        // A repository switch clears this pane: the previous repository's bisect ends here, with
+        // its Checks tab mounted or not, so switching back cannot revive a run its view retired.
+        const repoKey = this.ciSource?.repoKey();
+        if (this.bisectRepoKey !== repoKey) this.ciBisectRuns.dispose();
+        if (this.pendingBisect?.repoKey !== repoKey) this.pendingBisect = undefined;
+        if (this.ready) this.postToWebview(this.clearMessage());
+    }
+
+    /** The pane's clear, naming its repository so the webview retires another one's bisect. */
+    private clearMessage(): CommitInfoInbound {
+        return {
+            type: "clear",
+            ...(this.loading && { loading: true }),
+            ...(this.ciSource && { ciRepoKey: this.ciSource.repoKey() }),
+        };
     }
 
     /**
@@ -475,7 +490,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         if (!this.detail) {
             this.lastPostedPayload = undefined;
-            this.postToWebview(this.loading ? { type: "clear", loading: true } : { type: "clear" });
+            this.postToWebview(this.clearMessage());
             return;
         }
         const payload: CommitInfoInbound = {

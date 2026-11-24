@@ -618,11 +618,11 @@
     "commit.checks.bisect.flakyNote": "instável: {n} vermelho(s) em {m}, sem sequência de vermelhos",
     "commit.checks.bisect.limited": "Limitado aos {count} commits carregados",
     "commit.checks.bisect.none": "Nenhum job de CI encontrado para estes commits",
-    "commit.checks.bisect.failed": "Não foi possível ler as verificações de CI de alguns commits. Commits não lidos: {count}",
+    "commit.checks.bisect.failed": "Não foi possível ler alguns dados de CI. Commits com dados de CI incompletos: {count}",
     "commit.checks.bisect.retry": "Tentar novamente",
     "commit.checks.bisect.stopped": "A verificação parou porque o login ou as configurações de CI mudaram.",
     "commit.checks.bisect.runAgain": "Executar novamente",
     "commit.checks.bisect.square": "{hash}: {state}",
-    "commit.checks.bisect.notRead": "não lido",
+    "commit.checks.bisect.noResult": "sem resultado",
     "commit.menu.findCiBreak": "Encontrar onde a CI quebrou"
 }

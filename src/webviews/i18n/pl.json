@@ -630,11 +630,11 @@
     "commit.checks.bisect.flakyNote": "niestabilny: czerwone {n} z {m}, brak serii czerwonych",
     "commit.checks.bisect.limited": "Ograniczono do wczytanych commitów: {count}",
     "commit.checks.bisect.none": "Nie znaleziono zadań CI dla tych commitów",
-    "commit.checks.bisect.failed": "Nie można odczytać kontroli CI niektórych commitów. Nieodczytane commity: {count}",
+    "commit.checks.bisect.failed": "Nie można odczytać części danych CI. Commity z niepełnymi danymi CI: {count}",
     "commit.checks.bisect.retry": "Ponów",
     "commit.checks.bisect.stopped": "Sprawdzanie zostało zatrzymane, ponieważ zmieniło się logowanie lub ustawienia CI.",
     "commit.checks.bisect.runAgain": "Uruchom ponownie",
     "commit.checks.bisect.square": "{hash}: {state}",
-    "commit.checks.bisect.notRead": "nie odczytano",
+    "commit.checks.bisect.noResult": "brak wyniku",
     "commit.menu.findCiBreak": "Znajdź, gdzie CI przestało działać"
 }

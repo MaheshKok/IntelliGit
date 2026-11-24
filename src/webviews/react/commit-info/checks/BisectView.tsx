@@ -76,7 +76,8 @@ function Sparkline({
                 const tone = toneOf(job, index);
                 const label = t("commit.checks.bisect.square", {
                     hash: hash.slice(0, 7),
-                    state: state ? stateLabel(state) : t("commit.checks.bisect.notRead"),
+                    // Null is both an unread commit and a read one that lists no run of this job.
+                    state: state ? stateLabel(state) : t("commit.checks.bisect.noResult"),
                 });
                 return (
                     <span

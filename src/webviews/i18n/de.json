@@ -606,11 +606,11 @@
     "commit.checks.bisect.flakyNote": "instabil: {n} rot von {m}, keine rote Serie",
     "commit.checks.bisect.limited": "Auf die {count} geladenen Commits beschränkt",
     "commit.checks.bisect.none": "Keine CI-Jobs für diese Commits gefunden",
-    "commit.checks.bisect.failed": "CI-Prüfungen einiger Commits konnten nicht gelesen werden. Nicht gelesene Commits: {count}",
+    "commit.checks.bisect.failed": "Einige CI-Daten konnten nicht gelesen werden. Commits mit unvollständigen CI-Daten: {count}",
     "commit.checks.bisect.retry": "Erneut versuchen",
     "commit.checks.bisect.stopped": "Die Prüfung wurde angehalten, weil sich die Anmeldung oder die CI-Einstellungen geändert haben.",
     "commit.checks.bisect.runAgain": "Erneut ausführen",
     "commit.checks.bisect.square": "{hash}: {state}",
-    "commit.checks.bisect.notRead": "nicht gelesen",
+    "commit.checks.bisect.noResult": "kein Ergebnis",
     "commit.menu.findCiBreak": "Finden, wo CI fehlschlug"
 }
