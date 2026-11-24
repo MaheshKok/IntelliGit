@@ -727,6 +727,10 @@ function TreeFileRowImpl({
             fontSize="13px"
             fontFamily={SYSTEM_FONT_STACK}
             cursor="pointer"
+            // A file row is a list item with activation gestures: double-click opens its
+            // diff and click selects it. Without this, both gestures also let the browser
+            // select the file name under the pointer.
+            userSelect="none"
             position="relative"
             tabIndex={isCommitPanel ? undefined : 0}
             role={isCommitPanel ? undefined : "treeitem"}

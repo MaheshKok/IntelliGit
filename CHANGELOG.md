@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A commit that renames files now lists them as renamed in its changed files, instead of as one added file and one deleted file. Hovering a renamed file shows its old and new name.
 
+## [0.43.20] - 2026-11-24
+
+### Fixed
+
+- Shift-clicking to select a range of commits in the Git Log, or double-clicking a changed file to open its diff, no longer highlights the text of the rows in blue as well.
+
 ## [0.43.19] - 2026-11-22
 
 ### Added

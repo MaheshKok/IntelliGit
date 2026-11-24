@@ -136,7 +136,10 @@ export const FILTER_INPUT_CLASS = "commit-filter-input";
  * sweeping the list never re-renders a row; the selected row keeps its own fill.
  */
 export const COMMIT_ROW_CLASS_CSS = `
-.commit-row { transition: background-color ${MOTION.state}; }
+/* A commit row is a list row, not a text surface: shift-click is the range-selection
+   gesture, and without this the browser also extends the document text selection from
+   the previous click, painting the messages, refs and metadata of every row in between. */
+.commit-row { transition: background-color ${MOTION.state}; user-select: none; }
 .commit-row:hover:not([aria-current="true"]) { background-color: ${JETBRAINS_UI.color.hover}; }
 .commit-column-resize { border: 0; padding: 0; background-color: transparent; }
 .commit-column-resize::before,
