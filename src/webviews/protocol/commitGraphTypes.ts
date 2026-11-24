@@ -37,6 +37,7 @@ import type {
     OpenCommitChecksSettingsMessage,
     OpenChecksTabMessage,
     OpenCommitInChecksMessage,
+    FindCiBreakInChecksMessage,
     PreviewCiLogMessage,
     RequestCommitCiDetailMessage,
 } from "./commitCiMessages";
@@ -275,7 +276,8 @@ export type CommitGraphOutbound =
     | StartCiBisectMessage
     | CancelCiBisectMessage
     | OpenCommitChecksSettingsMessage
-    | OpenCommitInChecksMessage;
+    | OpenCommitInChecksMessage
+    | FindCiBreakInChecksMessage;
 
 /** How the user answered the review card. `later` is the only non-terminal outcome. */
 export type ReviewPromptDecision = "rated" | "declined" | "later";

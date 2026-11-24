@@ -596,6 +596,8 @@
     "commit.checks.bisect.none": "이 커밋들에 대한 CI 작업이 없습니다",
     "commit.checks.bisect.failed": "일부 커밋의 CI 검사를 읽지 못했습니다. 읽지 못한 커밋: {count}",
     "commit.checks.bisect.retry": "다시 시도",
+    "commit.checks.bisect.stopped": "로그인 또는 CI 설정이 변경되어 검사가 중지되었습니다.",
+    "commit.checks.bisect.runAgain": "다시 실행",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.notRead": "읽지 않음",
     "commit.menu.findCiBreak": "CI가 깨진 지점 찾기"

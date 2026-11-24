@@ -20,6 +20,7 @@ import type {
     CommitGraphOutbound,
     RebaseTodoEntry,
 } from "../protocol/commitGraphTypes";
+import type { CiLoadedCommit } from "../protocol/commitCiMessages";
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { RebaseDialog } from "./shared/components/RebaseDialog/RebaseDialog";
@@ -329,6 +330,14 @@ export function NativeCommitGraph({
         },
         [vscode],
     );
+    // "Find where CI broke" runs in the Changed Files view's Checks tab too; the row menu shows it
+    // only while the Checks tab switch is on (commitMenu.tsx).
+    const handleFindCiBreak = useCallback(
+        (selected: CiLoadedCommit[]) => {
+            vscode.postMessage({ type: "findCiBreakInChecks", commits: selected });
+        },
+        [vscode],
+    );
     const handleRebaseDialogSubmit = useCallback(
         (entries: readonly RebaseTodoEntry[]) => {
             const dialog = rebaseDialogRef.current;
@@ -372,6 +381,7 @@ export function NativeCommitGraph({
                     commitChecksEnabled ? handleSignInForCommitChecks : undefined
                 }
                 onOpenCommitInChecks={commitChecksEnabled ? handleOpenCommitInChecks : undefined}
+                onFindCiBreak={commitChecksEnabled ? handleFindCiBreak : undefined}
                 showCiColumn={showCiColumn}
                 isViewVisible={isViewVisible}
                 showSearch={false}

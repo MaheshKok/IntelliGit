@@ -111,6 +111,15 @@ export interface CiBisectProgressMessage {
     requestId: number;
     done: number;
     total: number;
+    /** The final reply of a bisect stopped because sign-in or CI settings changed; no result follows. */
+    stopped?: true;
+}
+
+/** Host tells the Changed Files view to find where CI broke over a range the sidebar graph sent. */
+export interface StartCiBisectInChecksMessage {
+    type: "startCiBisectInChecks";
+    repoKey: string;
+    commits: CiLoadedCommit[];
 }
 
 /**
@@ -166,6 +175,12 @@ type CommitCiOutbound =
           /** Sidebar graph asks its host to show a commit in the Changed Files view's Checks tab. */
           type: "openCommitInChecks";
           hash: string;
+      }
+    | {
+          /** Sidebar graph asks its host to find where CI broke in the Changed Files view's Checks tab. */
+          type: "findCiBreakInChecks";
+          /** The selected loaded commits, newest first, with their parents. */
+          commits: CiLoadedCommit[];
       }
     | {
           /** Checks tab asks for the excerpt of a selected failed job's log; opens no editor. */
@@ -280,6 +295,8 @@ export type OpenCommitChecksSettingsMessage = Extract<
 >;
 /** Sidebar graph asks its host to show a commit in the Checks tab. */
 export type OpenCommitInChecksMessage = Extract<CommitCiOutbound, { type: "openCommitInChecks" }>;
+/** Sidebar graph asks to find where CI broke in the Checks tab. */
+export type FindCiBreakInChecksMessage = Extract<CommitCiOutbound, { type: "findCiBreakInChecks" }>;
 /** Checks tab asks for a failed job's log excerpt. */
 export type PreviewCiLogMessage = Extract<CommitCiOutbound, { type: "previewCiLog" }>;
 /** Checks tab asks to open a job's full log in an editor. */

@@ -171,6 +171,7 @@ vi.mock("../../../src/views/CommitGraphViewProvider", () => ({
         clearChecksCache = vi.fn();
         refresh = vi.fn(async () => undefined);
         onOpenCommitInChecks = event();
+        onFindCiBreakInChecks = event();
         getCommitCiDetail = vi.fn(async () => undefined);
         ciDetailSource = vi.fn((repoKey: () => string) => ({
             repoKey,
@@ -188,6 +189,7 @@ vi.mock("../../../src/views/CommitInfoViewProvider", () => ({
         clear = vi.fn();
         setCiSource = vi.fn();
         openChecksTab = vi.fn();
+        startCiBisect = vi.fn();
         refreshChecksTab = vi.fn();
         dispose = vi.fn();
         constructor(..._args: unknown[]) {

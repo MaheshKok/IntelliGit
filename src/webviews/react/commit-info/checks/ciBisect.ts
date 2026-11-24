@@ -12,9 +12,15 @@ import type {
 import { getVsCodeApi } from "../../shared/vscodeApi";
 import { openChecksTab } from "./checksTabState";
 
-/** The bisect on screen: still reading commits, or answered. */
+/** The bisect on screen: still reading commits, stopped by a sign-in or CI settings change, or answered. */
 export type CiBisectView =
-    | { status: "running"; requestId: number; repoKey: string; done: number; total: number }
+    | {
+          status: "running" | "stopped";
+          requestId: number;
+          repoKey: string;
+          done: number;
+          total: number;
+      }
     | { status: "done"; requestId: number; repoKey: string; result: CiBisectResultMessage };
 
 let lastRequestId = 0;
@@ -33,8 +39,8 @@ function onMessage(event: MessageEvent<unknown>): void {
     const data = event.data as Partial<CiBisectProgressMessage | CiBisectResultMessage> | null;
     if (view?.status !== "running" || data?.requestId !== view.requestId) return;
     if (data.type === "ciBisectProgress") {
-        const { done, total } = data as CiBisectProgressMessage;
-        publish({ ...view, done, total });
+        const { done, total, stopped } = data as CiBisectProgressMessage;
+        publish({ ...view, done, total, status: stopped ? "stopped" : "running" });
     } else if (data.type === "ciBisectResult" && data.repoKey === view.repoKey) {
         publish({
             status: "done",
@@ -90,7 +96,10 @@ export function findCiBreakHandler(
     return (commits) => startCiBisect(repoKey, commits);
 }
 
-/** Runs the newest bisect's range again, after some commits' checks could not be read. */
+/**
+ * Runs the newest bisect's range again, after some commits' checks could not be read or after
+ * the host stopped it.
+ */
 export function retryCiBisect(): void {
     if (lastRange) startCiBisect(lastRange.repoKey, lastRange.commits, true);
 }

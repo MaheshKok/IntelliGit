@@ -596,6 +596,8 @@
     "commit.checks.bisect.none": "找不到這些提交的 CI 作業",
     "commit.checks.bisect.failed": "無法讀取部分提交的 CI 檢查。未讀取的提交數：{count}",
     "commit.checks.bisect.retry": "重試",
+    "commit.checks.bisect.stopped": "由於登入或 CI 設定已變更，檢查已停止。",
+    "commit.checks.bisect.runAgain": "重新執行",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.notRead": "未讀取",
     "commit.menu.findCiBreak": "尋找 CI 出錯的位置"

@@ -7,6 +7,7 @@ import { getVsCodeApi } from "./shared/vscodeApi";
 import theme from "./commit-panel/theme";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
 import { openChecksTab } from "./commit-info/checks/checksTabState";
+import { startCiBisect } from "./commit-info/checks/ciBisect";
 import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 
 const vscode = getVsCodeApi<CommitInfoOutbound, unknown>();
@@ -105,6 +106,10 @@ function App(): React.ReactElement {
                     if (shownRepoKey === undefined) heldRepoKey = msg.repoKey;
                     else if (msg.repoKey === shownRepoKey) openChecksTab();
                     return;
+                case "startCiBisectInChecks":
+                    // The sidebar graph's "Find where CI broke": this view's Checks tab runs it.
+                    startCiBisect(msg.repoKey, msg.commits);
+                    return;
                 case "commitCiDetail":
                 case "commitCiDetailInvalidated":
                 case "ciLogPreview":
@@ -112,8 +117,11 @@ function App(): React.ReactElement {
                 case "ciActionResult":
                 case "ciHistory":
                 case "changedSinceGreen":
+                case "ciBisectProgress":
+                case "ciBisectResult":
                     // useCommitCiDetail, the job's log panel, the action buttons, the history
-                    // tags and the changed-since-green list listen for their own messages.
+                    // tags, the changed-since-green list and the bisect listen for their own
+                    // messages.
                     return;
                 default: {
                     const exhaustive: never = msg;

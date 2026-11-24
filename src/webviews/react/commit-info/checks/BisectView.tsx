@@ -139,7 +139,8 @@ function HelpLine(): React.ReactElement {
 /**
  * The Checks tab's "Find where CI broke" section: progress with Cancel while the host reads the
  * selected commits, then one row per job with its sparkline, where it broke (or why there is no
- * break point), its flaky tag, and the cap note.
+ * break point), its flaky tag, and the cap note; or, when a sign-in or CI settings change stopped
+ * it, why, with Run again.
  */
 export function BisectView({ view }: { view: CiBisectView }): React.ReactElement {
     const result = view.status === "done" ? view.result : undefined;
@@ -209,6 +210,26 @@ export function BisectView({ view }: { view: CiBisectView }): React.ReactElement
                         </button>
                     </div>
                 </>
+            ) : view.status === "stopped" ? (
+                <div role="alert" data-testid="ci-bisect-stopped" style={noteStyle}>
+                    <span>{t("commit.checks.bisect.stopped")}</span>
+                    <button
+                        type="button"
+                        data-testid="ci-bisect-run-again"
+                        style={checksStyles.linkButton}
+                        onClick={retryCiBisect}
+                    >
+                        {t("commit.checks.bisect.runAgain")}
+                    </button>
+                    <button
+                        type="button"
+                        data-testid="ci-bisect-close"
+                        style={checksStyles.linkButton}
+                        onClick={closeCiBisect}
+                    >
+                        {t("commit.checks.bisect.close")}
+                    </button>
+                </div>
             ) : (
                 <div role="status" style={noteStyle}>
                     <span style={checksStyles.muted}>

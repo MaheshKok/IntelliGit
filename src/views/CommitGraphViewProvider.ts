@@ -68,7 +68,7 @@ import { answerCiLogMessage } from "./ciLogHandler";
 import { answerOpenCiAnnotation } from "./ciAnnotationHandler";
 import type { CiAnnotationsAccess } from "../services/commitChecks/ciDiagnostics";
 import { answerCiActionMessage, ciActionAccess, type CiActionOptions } from "./ciActionHandler";
-import { answerCiHistoryRequest } from "./ciHistoryHandler";
+import { answerCiHistoryRequest, readLoadedCommits } from "./ciHistoryHandler";
 import { answerCancelCiBisect, answerStartCiBisect } from "./ciBisectHandler";
 import {
     answerChangedSinceGreenRequest,
@@ -197,6 +197,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     /** The sidebar graph's "Open in Checks": its details pane lives in another view. */
     private readonly _onOpenCommitInChecks = new vscode.EventEmitter<string>();
     readonly onOpenCommitInChecks = this._onOpenCommitInChecks.event;
+
+    /** The sidebar graph's "Find where CI broke": the selected range, for the other view's Checks tab. */
+    private readonly _onFindCiBreakInChecks = new vscode.EventEmitter<LoadedCommit[]>();
+    readonly onFindCiBreakInChecks = this._onFindCiBreakInChecks.event;
 
     /**
      * Creates the graph provider for one active repository view contribution.
@@ -639,6 +643,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                     case "openCommitInChecks":
                         this._onOpenCommitInChecks.fire(this.assertGitHash(msg.hash, "hash"));
                         break;
+                    case "findCiBreakInChecks":
+                        this.relayFindCiBreak(msg.commits);
+                        break;
                     case "fetch":
                     case "pull":
                     case "push":
@@ -658,6 +665,18 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                 this.postToWebview({ type: "error", message });
             }
         });
+    }
+
+    /**
+     * "Find where CI broke" from the compact layout: hands the range to the Changed Files view's
+     * Checks tab. Ships hidden like the bisect itself: off with the Checks tab switch, before
+     * validating, so a disabled range posts not even an error.
+     *
+     * @param commits - The selected rows, unvalidated from the webview.
+     */
+    private relayFindCiBreak(commits: unknown): void {
+        if (isE2eControlChannelActive())
+            this._onFindCiBreakInChecks.fire(readLoadedCommits(commits));
     }
 
     /**
@@ -1404,6 +1423,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         this._onRebaseDialogCancel.dispose();
         this._onOpenCommitFileDiff.dispose();
         this._onOpenCommitInChecks.dispose();
+        this._onFindCiBreakInChecks.dispose();
     }
 
     /**

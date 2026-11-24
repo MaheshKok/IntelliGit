@@ -435,13 +435,20 @@ export async function activateRepositoryMode(
         },
     );
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
+    const graphCiSource = commitGraph.ciDetailSource(() => repoRoot);
     commitInfo.setCiSource({
-        ...commitGraph.ciDetailSource(() => repoRoot),
+        ...graphCiSource,
         enabled: commitCheckSettings.enabled,
         // Either graph's selection fills this view; both show the same repository's history.
         loadedCommits: () => [...commitGraph.loadedCommits(), ...sidebarGraph.loadedCommits()],
+        // Only the sidebar graph's rows start a bisect here, so its loaded page is the cap.
+        bisect: graphCiSource.bisect && {
+            ...graphCiSource.bisect,
+            loaded: () => sidebarGraph.loadedCommits(),
+        },
     });
     sidebarGraph.onOpenCommitInChecks((hash) => commitInfo.openChecksTab(hash));
+    sidebarGraph.onFindCiBreakInChecks((commits) => commitInfo.startCiBisect(commits));
     const headChecks = registerHeadChecks({
         context,
         commitGraph,

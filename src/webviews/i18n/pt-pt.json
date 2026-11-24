@@ -620,6 +620,8 @@
     "commit.checks.bisect.none": "Nenhuma tarefa de CI encontrada para estes commits",
     "commit.checks.bisect.failed": "Não foi possível ler as verificações de CI de alguns commits. Commits não lidos: {count}",
     "commit.checks.bisect.retry": "Tentar novamente",
+    "commit.checks.bisect.stopped": "A verificação parou porque o início de sessão ou as definições de CI foram alterados.",
+    "commit.checks.bisect.runAgain": "Executar novamente",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.notRead": "não lido",
     "commit.menu.findCiBreak": "Encontrar onde a CI falhou"

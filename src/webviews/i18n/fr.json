@@ -620,6 +620,8 @@
     "commit.checks.bisect.none": "Aucun job CI trouvé pour ces commits",
     "commit.checks.bisect.failed": "Impossible de lire les vérifications CI de certains commits. Commits non lus : {count}",
     "commit.checks.bisect.retry": "Réessayer",
+    "commit.checks.bisect.stopped": "La vérification s'est arrêtée car la connexion ou les paramètres CI ont changé.",
+    "commit.checks.bisect.runAgain": "Relancer",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.notRead": "non lu",
     "commit.menu.findCiBreak": "Trouver où la CI a cassé"

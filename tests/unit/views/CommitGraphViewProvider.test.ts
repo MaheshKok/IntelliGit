@@ -1049,6 +1049,42 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
         );
     });
 
+    // Owner 2026-11-24 "compact now": the sidebar graph has no Checks tab, so it hands the range on.
+    it("the compact graph hands no range to the Checks tab while the Checks tab switch is off", async () => {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            buildProviderOptions("compact"),
+        );
+        const { webviewView, posted, receiveMessage } =
+            createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+        const relayed: unknown[] = [];
+        provider.onFindCiBreakInChecks((commits) => relayed.push(commits));
+        const commits = [
+            { hash: "a".repeat(40), parents: ["b".repeat(40)] },
+            { hash: "b".repeat(40), parents: [] },
+        ];
+        const before = posted.length;
+
+        setE2eControlChannelActive(false);
+        await receiveMessage({ type: "findCiBreakInChecks", commits });
+        await receiveMessage({ type: "findCiBreakInChecks", commits: "nope" });
+        expect(relayed, "the switch is off: nothing reaches the Checks tab").toEqual([]);
+        expect(posted.slice(before), "and nothing, errors included, is posted").toEqual([]);
+
+        setE2eControlChannelActive(true);
+        await receiveMessage({ type: "findCiBreakInChecks", commits });
+        expect(relayed, "the control: with the switch on the range is handed on").toEqual([
+            commits,
+        ]);
+    });
+
     it("a replaced view's late ready does not discard the current context's history reply", async () => {
         const gitOps = new GitOps(
             new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),

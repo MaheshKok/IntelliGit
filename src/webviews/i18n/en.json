@@ -202,6 +202,8 @@
     "commit.checks.bisect.none": "No CI jobs found for these commits",
     "commit.checks.bisect.failed": "Could not read the CI checks of some commits. Commits not read: {count}",
     "commit.checks.bisect.retry": "Retry",
+    "commit.checks.bisect.stopped": "The check stopped because sign-in or CI settings changed.",
+    "commit.checks.bisect.runAgain": "Run again",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.notRead": "not read",
     "commit.checks.tab.changedSinceGreen": "Changed since last green ({hash})",

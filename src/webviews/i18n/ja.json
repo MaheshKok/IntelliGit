@@ -596,6 +596,8 @@
     "commit.checks.bisect.none": "これらのコミットの CI ジョブが見つかりません",
     "commit.checks.bisect.failed": "一部のコミットの CI チェックを読み取れませんでした。未読のコミット: {count}",
     "commit.checks.bisect.retry": "再試行",
+    "commit.checks.bisect.stopped": "サインインまたは CI 設定が変更されたため、チェックを停止しました。",
+    "commit.checks.bisect.runAgain": "もう一度実行",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.notRead": "未読込",
     "commit.menu.findCiBreak": "CI が壊れた箇所を探す"

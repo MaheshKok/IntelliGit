@@ -13,8 +13,8 @@ import { readLoadedCommits } from "./ciHistoryHandler";
 
 /**
  * Validates a `startCiBisect` message, runs the bisect and posts its progress and result. A newer
- * bisect, a cancel or the host's disposal stops it (`runs`); nothing is posted once the
- * repository, sign-in or CI settings changed.
+ * bisect, a cancel or the host's disposal stops it (`runs`) and posts nothing more; a sign-in or
+ * CI settings change stops it with one final progress reply marked `stopped`.
  *
  * @param source - The host's repository, generations and bisect access.
  * @param msg - Untrusted webview message.
@@ -50,17 +50,30 @@ export async function answerStartCiBisect(
             : repoKey === currentRepoKey;
     };
     const signal = runs.start(requestId);
+    const progress = { done: 0, total: selected.length };
     const result = await runCiBisect(
         bisect.source,
         selected,
         bisect.loaded(),
         signal,
-        (done, total) => post({ type: "ciBisectProgress", requestId, done, total }),
+        (done, total) => {
+            progress.done = done;
+            progress.total = total;
+            post({ type: "ciBisectProgress", requestId, done, total });
+        },
         current,
         msg.retry === true,
     );
-    if (!result || signal.aborted || !current()) return;
-    post({ type: "ciBisectResult", requestId, repoKey, ...result });
+    if (signal.aborted) return;
+    if (!current()) {
+        // Sign-in or CI settings changed (the generation fence): one final reply, so the view
+        // leaves "k / N commits". A repository change has no view of that repository left to tell.
+        if (repoKey === source.repoKey()) {
+            post({ type: "ciBisectProgress", requestId, ...progress, stopped: true });
+        }
+        return;
+    }
+    if (result) post({ type: "ciBisectResult", requestId, repoKey, ...result });
 }
 
 /**

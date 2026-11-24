@@ -456,4 +456,77 @@ describe("CI bisect view", () => {
             unmount(root, container);
         });
     });
+
+    // Owner 2026-11-24, finding 5 answer B.
+    describe("a bisect the host stopped because sign-in or CI settings changed", () => {
+        const cancel = (container: HTMLElement) =>
+            container.querySelector('[data-testid="ci-bisect-cancel"]');
+
+        it("leaves the progress state, says why and offers to run it again", () => {
+            const { root, container } = mount(<Harness />);
+            act(() => startCiBisect(REPO, RANGE));
+            const first = lastStartRequestId();
+            reply({ type: "ciBisectProgress", requestId: first, done: 1, total: 3 });
+            expect(cancel(container), "control: running shows Cancel").not.toBeNull();
+
+            reply({ type: "ciBisectProgress", requestId: first, done: 1, total: 3, stopped: true });
+            expect(cancel(container), "no Cancel once stopped").toBeNull();
+            expect(text(container), "the progress line is gone").not.toContain("1 / 3 commits");
+            expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+                "The check stopped because sign-in or CI settings changed.",
+            );
+
+            mockVscodeApi.postMessage.mockClear();
+            act(() => {
+                container
+                    .querySelector<HTMLButtonElement>('[data-testid="ci-bisect-run-again"]')!
+                    .click();
+            });
+            expect(
+                mockVscodeApi.postMessage,
+                "Run again asks for the same range",
+            ).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "startCiBisect",
+                    requestId: first + 1,
+                    repoKey: REPO,
+                    commits: RANGE,
+                }),
+            );
+            expect(cancel(container), "running again").not.toBeNull();
+            unmount(root, container);
+        });
+
+        it("Close after a stop sends no cancel", () => {
+            const { root, container } = mount(<Harness />);
+            act(() => startCiBisect(REPO, RANGE));
+            reply({
+                type: "ciBisectProgress",
+                requestId: lastStartRequestId(),
+                done: 0,
+                total: 3,
+                stopped: true,
+            });
+            mockVscodeApi.postMessage.mockClear();
+            act(() => {
+                container
+                    .querySelector<HTMLButtonElement>('[data-testid="ci-bisect-close"]')!
+                    .click();
+            });
+            expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
+            expect(container.querySelector('[data-testid="ci-bisect"]')).toBeNull();
+            unmount(root, container);
+        });
+
+        it("ignores a stopped reply for an older bisect", () => {
+            const { root, container } = mount(<Harness />);
+            act(() => startCiBisect(REPO, RANGE));
+            const first = lastStartRequestId();
+            act(() => startCiBisect(REPO, RANGE));
+            reply({ type: "ciBisectProgress", requestId: first, done: 0, total: 3, stopped: true });
+            expect(cancel(container)).not.toBeNull();
+            expect(container.querySelector('[role="alert"]')).toBeNull();
+            unmount(root, container);
+        });
+    });
 });

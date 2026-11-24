@@ -928,3 +928,112 @@ describe("CommitInfoViewProvider Checks tab history after a webview reload", () 
         ).toHaveLength(1);
     });
 });
+
+// Owner 2026-11-24 "compact now": the compact Git Log's "Find where CI broke" runs in the Changed
+// Files view's Checks tab, so this view hosts the bisect too, behind the same Checks tab switch.
+describe("CommitInfoViewProvider Find where CI broke", () => {
+    afterEach(() => setE2eControlChannelActive(false));
+
+    const commit = { hash: "a".repeat(40), parents: ["b".repeat(40)] };
+    const bisectPosts = (posted: readonly unknown[]) =>
+        posted.filter(
+            (message) => isRecord(message) && String(message.type).startsWith("ciBisect"),
+        );
+
+    /** A ready view whose CI source bisects with `getChecks`; `hold` keeps every read waiting. */
+    async function bisectHarness(hold = false) {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        const view = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await view.receiveMessage({ type: "ready" });
+        const reads: Array<{ isCurrent: () => boolean }> = [];
+        const getChecks = vi.fn(async (hash: string, options: { isCurrent: () => boolean }) => {
+            reads.push(options);
+            if (hold) await new Promise(() => undefined);
+            return { hash, state: "failure" as const, summary: "", items: [] };
+        });
+        const capabilities = vi.fn(async () => undefined);
+        provider.setCiSource({
+            enabled: true,
+            repoKey: () => "/repo",
+            getDetail: vi.fn(),
+            bisect: {
+                source: { getChecks, capabilities, attemptHistory: async () => [] },
+                loaded: () => [commit],
+            },
+        } as never);
+        const start = { type: "startCiBisect", requestId: 1, repoKey: "/repo", commits: [commit] };
+        return { provider, view, reads, getChecks, capabilities, start };
+    }
+
+    it("starts no bisect and sends no request while the Checks tab switch is off", async () => {
+        const { view, getChecks, capabilities, start } = await bisectHarness();
+        setE2eControlChannelActive(false);
+        const before = view.posted.length;
+        await view.receiveMessage(start);
+        await view.receiveMessage({ type: "startCiBisect", requestId: "x", commits: "nope" });
+        expect(getChecks, "no snapshot fetch, so no gate task").not.toHaveBeenCalled();
+        expect(capabilities).not.toHaveBeenCalled();
+        expect(view.posted.slice(before), "nothing posted while the switch is off").toEqual([]);
+
+        setE2eControlChannelActive(true);
+        await view.receiveMessage(start);
+        expect(getChecks, "the control: with the switch on the bisect reads").toHaveBeenCalledTimes(
+            1,
+        );
+        expect(
+            bisectPosts(view.posted).map((message) => (message as { type: string }).type),
+        ).toEqual(["ciBisectProgress", "ciBisectResult"]);
+    });
+
+    it("cancelCiBisect does nothing while the Checks tab switch is off", async () => {
+        const { view, reads, start } = await bisectHarness(true);
+        setE2eControlChannelActive(true);
+        void view.receiveMessage(start);
+        await flushMicrotasks();
+        expect(reads).toHaveLength(1);
+        setE2eControlChannelActive(false);
+        await view.receiveMessage({ type: "cancelCiBisect", requestId: 1 });
+        expect(reads[0].isCurrent(), "the switch is off: the running bisect is not cancelled").toBe(
+            true,
+        );
+        expect(bisectPosts(view.posted)).toEqual([]);
+
+        setE2eControlChannelActive(true);
+        await view.receiveMessage({ type: "cancelCiBisect", requestId: 1 });
+        expect(reads[0].isCurrent(), "the control: with the switch on the cancel stops it").toBe(
+            false,
+        );
+    });
+
+    it("hands the sidebar graph's range to its webview, held until the view is ready", async () => {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        provider.setCiSource({ enabled: true, repoKey: () => "/repo", getDetail: vi.fn() });
+        const view = createInspectableFakeWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const starts = () =>
+            view.posted.filter(
+                (message) => isRecord(message) && message.type === "startCiBisectInChecks",
+            );
+
+        provider.startCiBisect([commit]);
+        expect(starts(), "posted before the webview listens").toEqual([]);
+        await view.receiveMessage({ type: "ready" });
+        expect(starts()).toEqual([
+            { type: "startCiBisectInChecks", repoKey: "/repo", commits: [commit] },
+        ]);
+        await view.receiveMessage({ type: "ready" });
+        expect(starts(), "a reload does not start the bisect again").toHaveLength(1);
+    });
+
+    it("a webview reload stops the bisect it was running", async () => {
+        const { view, reads, start } = await bisectHarness(true);
+        setE2eControlChannelActive(true);
+        void view.receiveMessage(start);
+        await flushMicrotasks();
+        await view.receiveMessage({ type: "ready" });
+        expect(reads[0].isCurrent(), "the reloaded webview no longer shows that bisect").toBe(
+            false,
+        );
+    });
+});

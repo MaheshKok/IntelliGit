@@ -266,7 +266,8 @@ read when IntelliGit starts; reload the window after changing it.
 > Planned: the row menu entry and the bisect view stay off until the Checks tab ships. This
 > section describes how they will behave.
 
-Select a range of rows in the Git Log, right-click and choose **Find where CI broke**. The
+Select a range of rows in the Git Log, right-click and choose **Find where CI broke**. In the
+compact sidebar Git Log the result appears in the Changed Files view's Checks tab. The
 Checks tab shows the progress ("12 / 40 commits") with **Cancel**, then one row per CI job: a
 small square per commit (newest on the left; green passed, red failed, yellow running or a
 lone red in a flaky job) and where the job broke, such as "broke at 9e8d7c6 · 4 commits ago".
@@ -281,6 +282,8 @@ The break point is the oldest red of the newest run of reds that follows a green
   40 loaded commits".
 - A job that went red for a single commit between greens carries the flaky tag described
   under [Flaky jobs](#flaky-jobs).
+- Signing in again or changing a CI setting while the check runs stops it; the view says so
+  and offers **Run again**.
 
 ## Authentication per provider
 
