@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.21] - 2026-11-24
+
+### Fixed
+
+- A commit that renames files now lists them as renamed in its changed files, instead of as one added file and one deleted file. Hovering a renamed file shows its old and new name.
+
 ## [0.43.19] - 2026-11-22
 
 ### Added
