@@ -73,6 +73,8 @@ const ENTRY_ROW_INDENT_METRICS = Object.freeze({
 /** The minimum a row needs; both `CommitFile` and `WorkingFile` satisfy it. */
 export interface TreeRowFile {
     path: string;
+    /** Pre-change path of a rename or copy, when the listing has one. */
+    oldPath?: string;
     status: string;
     additions: number;
     deletions: number;
@@ -666,6 +668,11 @@ function TreeFileStagedMarker({
     );
 }
 
+/** Row tooltip: a rename shows both sides, every other status shows the path alone. */
+function fileRowTitle(file: TreeRowFile): string {
+    return file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
+}
+
 // This row keeps file visuals, staged markers, and selection wiring synchronized across row variants.
 // react-doctor-disable-next-line react-doctor/no-high-complexity-react-function -- The shared row's visual and interaction variants are intentionally co-located.
 function TreeFileRowImpl({
@@ -781,7 +788,7 @@ function TreeFileRowImpl({
             }}
             onDoubleClick={isCommitPanel ? undefined : onActivate}
             onContextMenu={isCommitPanel ? undefined : openContextMenu}
-            title={file.path}
+            title={fileRowTitle(file)}
         >
             <TreeIndentGuides
                 treeDepth={depth}

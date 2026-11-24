@@ -395,16 +395,16 @@ export type CiAnnotationLevel = "failure" | "warning" | "notice";
  */
 export interface CommitFile {
     path: string;
+    /** Source path of a rename or copy; absent for every other status. */
+    oldPath?: string;
     status: "A" | "M" | "D" | "R" | "C" | "T";
     additions: number;
     deletions: number;
     icon?: ThemeTreeIcon;
 }
 
-/** A file changed between two revisions, as `CommitFile` plus `oldPath`, the source of a rename or copy. */
-export interface CiChangedFile extends CommitFile {
-    oldPath?: string;
-}
+/** A file changed between two revisions, as `CommitFile` plus optional rename metadata. */
+export type CiChangedFile = CommitFile;
 
 /** What opening a file's two-revision diff needs. */
 export type CiRangeDiffFile = Pick<CiChangedFile, "path" | "status" | "oldPath">;
