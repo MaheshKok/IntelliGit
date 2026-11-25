@@ -1559,3 +1559,4 @@ Phase 16 takeover after fix round 2 (Opus): 4 findings fixed, each with a test r
 - MINOR labels: null square "no result" (key commit.checks.bisect.noResult); failed note "Commits with incomplete CI data", 12 catalogs + CSV. Reds: "expected 'ccccccc: not read' to be 'ccccccc: no result'"; "expected 'Could not read the CI checks of some …' not to contain 'not read'".
 - Related suites (unit/services/commitChecks, unit/views, integration/webviews, unit/shared, integration/extension, unit/l10n, unit/webviews): 140 files, 2840 passed, 1 failed (an expected `clear` payload, updated), 1 skipped; touched files re-run 63/63. verify.py gates --stage round: GREEN. l10n:validate passed.
 - Open: the card and undocked Git Log hosts keep their own bisect across A-B-A while the Checks tab is unmounted (handoff, Open risks).
+PHASE 16: HALT review still failing after takeover
