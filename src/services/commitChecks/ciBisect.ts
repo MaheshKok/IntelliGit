@@ -54,8 +54,8 @@ export interface CiBisectResult {
     commits: string[];
     jobs: CiBisectJob[];
     /**
-     * Set when some commits' checks or re-run histories could not be read: how many commits, so
-     * the view shows an error with Retry.
+     * Set when some commits' checks or re-run histories could not be read, or were read only in
+     * part: how many commits, so the view shows an error with Retry.
      */
     failedReads?: number;
     /** Set when selected commits the Git Log no longer has loaded were dropped: the count read. */
@@ -253,8 +253,33 @@ interface JobContext {
     attemptsCounted: boolean;
 }
 
+/**
+ * A commit status's own re-run histories: those holding its execution id (a GitLab pipeline job's
+ * status id is the job id) under its name, relabelled `key`. Any other flat status has none.
+ */
+function statusAttempts(
+    item: CommitCheckItem,
+    attempts: readonly CiAttemptHistory[],
+    key: string,
+): CiAttemptHistory[] {
+    if (item.id === undefined) return [];
+    return attempts
+        .filter(
+            ({ logicalId, attempts: runs }) =>
+                logicalId.startsWith("job\0") &&
+                logicalId.endsWith(`\0${item.name}`) &&
+                runs.some((attempt) => attempt.executionId === item.id),
+        )
+        .map((history) => ({ ...history, logicalId: key }));
+}
+
 function jobOf(job: JobRow, context: JobContext): CiBisectJob {
     const { reads, linear, attemptsCounted } = context;
+    // A flat commit status has no re-runs of its own name: a same-named workflow job's history is
+    // not its own, unless its execution id is one of that history's (`statusAttempts`).
+    const named = job.status ? undefined : context.attemptIds.get(job.name);
+    // The one history job bearing the name; none or several name no job.
+    const key = job.logicalId ?? (named?.size === 1 ? [...named][0] : undefined) ?? job.name;
     const line = reads.map((read, at): CiFlakyCommit & { hash: string } => {
         const index = context.readIndexes[at];
         const kind = job.status ? "status" : "other";
@@ -266,24 +291,21 @@ function jobOf(job: JobRow, context: JobContext): CiBisectJob {
         return {
             hash: read.hash,
             state: usable ? toCiState(found.state) : null,
-            attempts: read.attempts,
+            attempts: !job.status
+                ? read.attempts
+                : usable
+                  ? statusAttempts(found, read.attempts, key)
+                  : [],
             // Unread or not provable: may hold a red, so it breaks an isolated one.
             ...((found === "ambiguous" || (read.partial && !usable)) && { unread: true as const }),
         };
     });
-    // A flat commit status has no re-runs: a same-named workflow job's history is not its own.
-    const named = job.status ? undefined : context.attemptIds.get(job.name);
     return {
         checkName: job.name,
         states: line.map((commit) => commit.state as CiState | null).reverse(),
         isolated: isolatedReds(line).reverse(),
         brokeAt: linear ? brokeAt(line) : null,
-        flaky: flaky(
-            // The one history job bearing the name; none or several name no job.
-            job.logicalId ?? (named?.size === 1 ? [...named][0] : undefined) ?? job.name,
-            line,
-            attemptsCounted,
-        ),
+        flaky: flaky(key, line, attemptsCounted),
     };
 }
 
@@ -382,7 +404,10 @@ export async function runCiBisect(
         if (!(await tick(known.length))) return undefined;
         jobs.push(jobOf(row, context));
     }
-    const failedReads = known.filter((read) => read.items === null || read.attemptsFailed).length;
+    // A partial read is incomplete CI data too: an empty one is not "no jobs".
+    const failedReads = known.filter(
+        (read) => read.items === null || read.partial || read.attemptsFailed,
+    ).length;
     return {
         linear: chain !== null,
         commits: known.map((read) => read.hash).reverse(),

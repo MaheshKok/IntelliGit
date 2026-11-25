@@ -505,6 +505,39 @@ describe("CommitGraphViewProvider redundant setCommitDetail post on webview relo
     );
 });
 
+// The card's rows and commit detail arrive separately, so its "Find where CI broke" menu takes the
+// repository from the page its rows came from: the replacing page must name it.
+describe("CommitGraphViewProvider card page repository", () => {
+    it("a replacing card page names the card's repository", async () => {
+        const root = { current: "/A" };
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const getLog = gitOps.getLog.bind(gitOps);
+        // The repository moves while A's log is still being read: the rows are still A's.
+        vi.spyOn(gitOps, "getLog").mockImplementationOnce((...args) => {
+            root.current = "/B";
+            return getLog(...args);
+        });
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            { ...buildProviderOptions("card"), ciRepoKey: () => root.current },
+        );
+        const { webviewView, posted, receiveMessage } =
+            createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+        await vi.waitFor(() => expect(loadCommitsPages(posted).length).toBeGreaterThan(0));
+        const pages = loadCommitsPages(posted);
+        expect(pages[0], "the card page names the repository its log was read from").toMatchObject({
+            append: false,
+            repoKey: "/A",
+        });
+    });
+});
+
 /** Every `loadCommits` page the provider posted, in posted order. */
 function loadCommitsPages(posted: readonly unknown[]): Record<string, unknown>[] {
     return posted.filter(

@@ -165,9 +165,25 @@ describe("Find where CI broke: a menu opened on A in the card and undocked layou
                 },
                 ciRepoKey: repo,
             });
+        // The card's menu takes its repository from the page its rows came from.
+        const pageIn = (repo: string): void =>
+            dispatch({
+                type: "loadCommits",
+                commits: [],
+                append: false,
+                hasMore: false,
+                unpushedHashes: [],
+                repoKey: repo,
+            });
         await clickAMenuAfterMovingToB(
-            () => showIn("/B"),
-            () => showIn("/A"),
+            () => {
+                showIn("/B");
+                pageIn("/B");
+            },
+            () => {
+                showIn("/A");
+                pageIn("/A");
+            },
         );
     });
 

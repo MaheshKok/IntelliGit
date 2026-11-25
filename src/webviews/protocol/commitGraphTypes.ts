@@ -336,8 +336,9 @@ export type CommitGraphInbound =
           /** Full hashes from `git rev-list --branches --not --remotes` used for display badges. */
           unpushedHashes: string[];
           /**
-           * The sidebar graph's repository, on a replacing page only (appends follow it); its
-           * "Find where CI broke" relay names it. Absent in every other graph.
+           * The sidebar or card graph's repository, on a replacing page only (appends follow
+           * it); a "Find where CI broke" menu takes it from the rows it opened on. Absent in
+           * every other graph.
            */
           repoKey?: string;
       }

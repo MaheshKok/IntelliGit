@@ -104,6 +104,7 @@ export function useCommitGraphMessages(params: {
                         hasMore: data.hasMore,
                         selectedHash: nextSelectedHash,
                         unpushedHashes: data.unpushedHashes,
+                        repoKey: data.repoKey,
                     });
                     if (
                         !data.append &&

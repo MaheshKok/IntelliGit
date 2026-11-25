@@ -10,28 +10,24 @@
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
 ## Phase 16: review pending, started at 20240fdf09433916025c8db6578fee50a719934b
-- Build 181a5862 (0.43.20), fix rounds 4c5c4abb, 98670525, 621c69be, 7ae74a53, takeover b8ab4529, owner-"B" build 95b90b98: "Find where CI broke" over 2+ Git Log rows, shown hidden. Earlier detail: this file's git history.
-- Owner "B + compact now": a generation-fence stop posts one `ciBisectProgress` with `stopped: true`; the compact Git Log relays to the Changed Files view's Checks tab. Owner "A: 8.5 MiB": verifyVsixPackage.js limit.
-- Owner "B: require all 4" (95b90b98): card/undocked resets dispose `ciBisectRuns`; compact relay carries `relayRepoKey` / page `repoKey`; range goes whole to the bisect.
-- Fix round 1 after that build (7 findings, each with a test red before the fix):
-  - Compact menu: CommitList snapshots `ciRange` and `ciScope` (`findCiBreakScope` prop = the page's repoKey, now state in NativeCommitGraph) when the menu opens; a click sends those, so an A menu never sends B, and a replaced page cannot shrink the range or hide the entry.
-  - Webview slot: card `clearCommitDetail` now carries `ciRepoKey` (host: CommitGraphViewProvider) and useCommitGraphMessages calls `retireCiBisect`; undocked `repositories` switch calls it in handleRepositoriesMessage. Same-repository clears keep the run.
-  - ciBisectHandler: the stopped reply is posted only while the switch is on.
-  - runCiBisect: a capabilities (remote lookup) rejection marks every commit unread (`failedReads`), so Retry shows; a cancel during it still returns undefined.
-  - BisectView: result text is "broke at" or "no break point"; the flaky tag carries the count. `commit.checks.bisect.flakyNote` is removed from 12 catalogs and the CSV (ciBisectCatalogs.test.ts now asserts it is gone).
-- Fix round 2 (1 finding, test red before the fix): the card and undocked menus now snapshot their repository like the compact one. `findCiBreakHandler` returns `(commits, menuRepoKey?)` and starts only when `menuRepoKey` equals its own repository; CommitGraphPanel and UndockedLayout pass `findCiBreakScope`. Test: ciBisectMenuScopeLayouts.integration (red line: "the A menu must never start a bisect in B").
-- Tests: ciBisectHostPane.integration (new), compactGitLogCiBisectMenu, ciBisectView, ciBisectHandler, ciBisect (unit), CommitGraphViewProvider (card clear names its repository).
+- Build 181a5862 (0.43.20), earlier fix rounds and takeover b8ab4529, owner-"B" build 95b90b98, fix rounds 534e4f62 and 1861411c; detail in this file's git history.
+- Owner answers carried: "B + compact now" (stopped reply, compact relay), "A: 8.5 MiB" (VSIX limit), "B: require all 4" (card/undocked resets, relay repository, whole range).
+- Takeover after fix round 2 (3 findings, each with a test red before the fix):
+  - Card menu provenance: the card host's replacing `loadCommits` page now carries `repoKey` (the repository read when its `git log` starts; the sidebar's `relayRepoKey` still wins there). CommitGraphPanel keeps it as `pageRepoKey` (appends keep it) and passes it as `findCiBreakScope`; `findCiBreakHandler` starts only when it equals the detail's `ciRepoKey`, so A rows never go out as B and B rows never as A. Tests: ciBisectCardPageScope.integration (new), CommitGraphViewProvider "a replacing card page names the card's repository", ciBisectMenuScopeLayouts (card case now sends its page).
+  - GitLab re-runs: GitLab status items carry `id` (the job id, as the detail path already assumed, gitlabProvider.ts:673-677). In ciBisect a status job takes only the attempt histories holding that execution id under its own name (`statusAttempts`); any other flat status keeps none. Test: ciBisectSnapshotCoverage "counts a GitLab pipeline job's ..." and the two "keeps an unrelated flat status apart" cases.
+  - Incomplete snapshots: a partial read now counts in `failedReads` (the view's "Commits with incomplete CI data: N" + Retry), identity-matched entries kept as before; Retry (`refreshUnavailable`) also re-reads a commit cached as partial. Tests: ciBisectSnapshotCoverage "reports incomplete CI ..." and "Retry reads a commit cached as a partial snapshot again".
 
-## Decisions and why (this round)
-- Menu scope: a `findCiBreakScope` prop snapshotted at open, not a ref read at click, so the value is the one the menu opened with. `onFindCiBreak(commits, scope?)`; round 2: the card and undocked handler discards a click whose scope is not its own repository (strict equality, so a layout that forgets the prop starts nothing and the new test fails).
-- Slot retirement: the host names the repository on `clearCommitDetail` (as the sidebar `clear` does) instead of a new message; undocked reuses `repositories`.
-- Discovery failure: a retryable "unread" result, not a thrown error; passed on a new reply type (more protocol).
-- Flaky note: dropped from the result text; passed on rewording it, because any count there can contradict the squares.
+## Decisions and why (this step)
+- Card page provenance from the host page, not from the detail: rows and detail are separate messages, only the page knows where its rows came from. Passed on clearing rows on `clearCommitDetail` (a same-repository clear would blank the list).
+- Read the page repository at request start, not at post time, so a log read in A that lands after a switch is still labelled A.
+- Status-to-history link by execution id AND name: the id alone could collide with an unrelated status's id; the name alone is the false transfer an earlier round removed.
+- Every partial read counts as incomplete, including GitLab's 100-status page bound (Retry cannot fix that one; the text stays accurate).
+- No version bump: fix rounds stay on 0.43.20 like the earlier ones.
 
 ## Open risks
-- E2E tests/e2e/ciBisect.spec.ts not run locally (CI runs test:e2e); no E2E drives the compact relay, the stopped reply or the new clear message.
-- A bisect stopped by a repository switch tells no view (by design); the new repository's view never showed it.
-- A long range shows a thin horizontal scrollbar under the sparkline.
+- E2E tests/e2e/ciBisect.spec.ts not run locally (CI runs test:e2e); no E2E drives the compact relay, the stopped reply or the card page repository.
+- Snapshots cached before this change hold GitLab status items without `id`, so their re-runs are not counted until the entry is read again.
+- A long range shows a thin horizontal scrollbar under the sparkline. A stopped bisect after a repository switch tells no view (by design).
 - Owner questions carried: Phase 15's skipped/cancelled/neutral denominator; whether the commit panel's embedded graph shows checks (Phase 18).
 
 ## Next phase: per the phase-run dry run (Phases 17-18 per their Depends on lines)
@@ -39,7 +35,8 @@
 ## Found outside scope
 - ciBisectHandler still posts progress and a result if the switch turns off mid-run (only the stopped reply is guarded).
 - Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
-- commit-list-column-resize fails on Node 26 without `--localstorage-file`; updateWithLocalChanges.integration.test.ts fails on Node 24.3.0.
+- commit-list-column-resize fails on Node 26 without `--localstorage-file`; with one shared file across the whole suite, stored widths leak into commitCiColumn.integration (2 failures seen 2026-11-25). updateWithLocalChanges.integration.test.ts fails on Node 24.3.0.
 - GitHub carryScans treats two missing `runAttempt` values as the same run; `bun run package` can pack ignored `output/` leftovers; noRepositoryMode.ts registers a placeholder `refreshBadges`.
 - A worktree has an empty node_modules until linked to the main checkout's node_modules; GitLab snapshot could follow `x-next-page` pages.
 - CommitPanelViewProvider never posts `commitChecksEnabled` (owner question for Phase 18); knip hint: selectedRemovalCrashWorker.ts in knip.jsonc.
+- gitlabProvider.ts:677 now sets `id` twice (toStatusItem already does); harmless, could become `.map(toStatusItem)`.

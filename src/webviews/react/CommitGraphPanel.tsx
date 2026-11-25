@@ -146,6 +146,8 @@ interface CommitGraphPanelState {
     commitChecksEnabled: boolean;
     showCiColumn: boolean;
     ciRepoKey?: string;
+    /** The repository the shown rows came from; it can differ from `ciRepoKey` mid-switch. */
+    pageRepoKey?: string;
 }
 
 const initialCommitGraphPanelState: CommitGraphPanelState = {
@@ -177,6 +179,7 @@ function commitGraphPanelReducer(
                 selectedHash: action.selectedHash,
                 hasMore: action.hasMore,
                 unpushedHashes: new Set(action.unpushedHashes ?? []),
+                pageRepoKey: action.append ? state.pageRepoKey : action.repoKey,
             };
         case "setBranches":
             return {
@@ -280,6 +283,7 @@ export function CommitGraphPanel({
         commitChecksEnabled,
         showCiColumn,
         ciRepoKey,
+        pageRepoKey,
     } = state;
     const [branchWidth, setBranchWidth] = useState(() => {
         try {
@@ -610,7 +614,7 @@ export function CommitGraphPanel({
                         }
                         onOpenCommitInChecks={commitChecksEnabled ? openChecksTab : undefined}
                         onFindCiBreak={findCiBreakHandler(commitChecksEnabled, ciRepoKey)}
-                        findCiBreakScope={ciRepoKey}
+                        findCiBreakScope={pageRepoKey}
                         showCiColumn={showCiColumn}
                         isViewVisible={viewVisible}
                     />

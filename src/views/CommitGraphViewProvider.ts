@@ -957,6 +957,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             this.postToWebview({ type: "setSelectedBranch", branch: null });
         }
 
+        // The page names the repository its log is read from: a "Find where CI broke" menu takes
+        // it from the rows it opened on, not from the commit detail, which arrives separately.
+        const pageRepoKey = (this.options.relayRepoKey ?? this.options.ciRepoKey)?.();
         try {
             const [commits, unpushedHashes] = await Promise.all([
                 this.gitOps.getLog(
@@ -976,7 +979,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                     hasMore: commits.length >= this.PAGE_SIZE,
                     append: false,
                     unpushedHashes,
-                    ...(this.options.relayRepoKey && { repoKey: this.options.relayRepoKey() }),
+                    ...(pageRepoKey !== undefined && { repoKey: pageRepoKey }),
                 });
             }
         } catch (err) {
