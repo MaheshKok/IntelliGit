@@ -262,9 +262,17 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
 
     private postPendingBisect(): void {
         const pending = this.pendingBisect;
-        if (!this.ready || !pending) return;
-        this.pendingBisect = undefined;
-        this.postToWebview({ type: "startCiBisectInChecks", ...pending });
+        const view = this.view;
+        if (!this.ready || !pending || !view) return;
+        // Held until the webview reports it received: a refused relay goes again on its next `ready`.
+        postWebviewMessage(
+            view.webview,
+            { type: "startCiBisectInChecks", ...pending },
+            "Commit info",
+            () => {
+                if (this.pendingBisect === pending) this.pendingBisect = undefined;
+            },
+        );
     }
 
     /**
