@@ -158,3 +158,29 @@ it("card rejects an old menu as soon as clearCommitDetail announces the reposito
         unmount(root, container);
     }
 });
+
+it("card: an appended page keeps the repository of the page it extends", () => {
+    const { root, container } = graph();
+    try {
+        // A "load more" page carries no repository of its own.
+        send({
+            type: "loadCommits",
+            commits: [
+                {
+                    ...makeRows("/A")[2],
+                    hash: "d".repeat(40),
+                    shortHash: "ddddddd",
+                    message: "/A row 3",
+                },
+            ],
+            append: true,
+            hasMore: false,
+        });
+        selectAndFind(container, "/A");
+        expect(starts(), "rows of an appended A page still start in A").toEqual([
+            expect.objectContaining({ repoKey: "/A" }),
+        ]);
+    } finally {
+        unmount(root, container);
+    }
+});
