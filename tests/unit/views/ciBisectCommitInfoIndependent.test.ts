@@ -137,4 +137,93 @@ describe("CommitInfoViewProvider sidebar relay", () => {
             provider.dispose();
         }
     });
+
+    /** A ready view whose every post waits until the test answers it. */
+    function heldRelay() {
+        setE2eControlChannelActive(true);
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        let receive!: (message: unknown) => Promise<unknown>;
+        const answers: Array<{ type: string; answer: (delivered: boolean) => void }> = [];
+        const delivery = vi.fn(
+            (message: { type: string }) =>
+                new Promise<boolean>((answer) => answers.push({ type: message.type, answer })),
+        );
+        provider.resolveWebviewView(
+            {
+                webview: {
+                    options: {},
+                    html: "",
+                    cspSource: "vscode-webview://fake",
+                    asWebviewUri: (uri: vscode.Uri) => uri,
+                    onDidReceiveMessage: (listener: typeof receive) => {
+                        receive = listener;
+                        return { dispose(): void {} };
+                    },
+                    postMessage: delivery,
+                },
+                onDidDispose: () => ({ dispose(): void {} }),
+            } as unknown as vscode.WebviewView,
+            {} as never,
+            {} as never,
+        );
+        provider.setCiSource({
+            enabled: true,
+            repoKey: () => "/A",
+            getDetail: vi.fn(),
+            bisect: { source: {}, loaded: () => [] },
+        } as never);
+        const relays = () =>
+            delivery.mock.calls.flat().filter((msg) => msg.type === "startCiBisectInChecks");
+        const relayAnswers = () => answers.filter(({ type }) => type === "startCiBisectInChecks");
+        return { provider, receive: (msg: unknown) => receive(msg), answers, relays, relayAnswers };
+    }
+
+    const first = [{ hash: "a".repeat(40), parents: ["b".repeat(40)] }];
+    const second = [{ hash: "c".repeat(40), parents: ["d".repeat(40)] }];
+
+    it("one click is relayed once even when ready re-runs while it is in flight", async () => {
+        const { provider, receive, answers, relays } = heldRelay();
+        try {
+            await receive({ type: "ready" });
+            let initDone!: () => void;
+            const iconTheme = (provider as unknown as { iconTheme: object }).iconTheme as {
+                initIconThemeData(): Promise<void>;
+            };
+            vi.spyOn(iconTheme, "initIconThemeData").mockImplementationOnce(
+                () => new Promise<void>((resolve) => (initDone = resolve)),
+            );
+            const reload = receive({ type: "ready" });
+            provider.startCiBisect(first);
+            initDone();
+            await reload;
+            answers.forEach(({ answer }) => answer(true));
+            await flush();
+            expect(
+                relays(),
+                "one click is relayed once even when ready re-runs while it is in flight",
+            ).toHaveLength(1);
+        } finally {
+            provider.dispose();
+        }
+    });
+
+    it("a second click made while the first relay is in flight survives the first delivery", async () => {
+        const { provider, receive, relays, relayAnswers } = heldRelay();
+        try {
+            await receive({ type: "ready" });
+            provider.startCiBisect(first);
+            provider.startCiBisect(second);
+            const [firstPost, secondPost] = relayAnswers();
+            firstPost.answer(true);
+            secondPost.answer(false);
+            await flush();
+            await receive({ type: "ready" });
+            expect(
+                relays().map((msg) => (msg as { commits?: unknown }).commits),
+                "the undelivered second click is sent again after the reload",
+            ).toEqual([first, second, second]);
+        } finally {
+            provider.dispose();
+        }
+    });
 });

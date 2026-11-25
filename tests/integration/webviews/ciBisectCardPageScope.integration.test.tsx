@@ -159,6 +159,20 @@ it("card rejects an old menu as soon as clearCommitDetail announces the reposito
     }
 });
 
+it("card: a clear that names no repository keeps the menu working for the current one", () => {
+    const { root, container } = graph();
+    try {
+        // A branch or filter change in the same repository clears the detail without a repository.
+        send({ type: "clearCommitDetail", loading: true });
+        selectAndFind(container, "/A");
+        expect(starts(), "a same-repository clear keeps Find where CI broke in A").toEqual([
+            expect.objectContaining({ repoKey: "/A" }),
+        ]);
+    } finally {
+        unmount(root, container);
+    }
+});
+
 it("card: an appended page keeps the repository of the page it extends", () => {
     const { root, container } = graph();
     try {

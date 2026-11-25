@@ -68,6 +68,9 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     private pendingChecks?: { repoKey: string; hash: string };
     /** A sidebar graph range for "Find where CI broke", held until the webview is ready. */
     private pendingBisect?: { repoKey: string; commits: CiLoadedCommit[] };
+    /** The `pendingBisect` last posted, and the webview generation it was posted to. */
+    private postedBisect?: { repoKey: string; commits: CiLoadedCommit[] };
+    private postedGeneration = 0;
     private readonly ciDetailLoops = new CommitCiDetailLoops();
     private readonly ciBisectRuns = new CommitCiDetailLoops();
     /** Repository of the last bisect this view started; a switch away from it ends that run. */
@@ -264,6 +267,11 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         const pending = this.pendingBisect;
         const view = this.view;
         if (!this.ready || !pending || !view) return;
+        // A ready that re-runs while this relay is in flight would post the same click twice.
+        if (this.postedBisect === pending && this.postedGeneration === this.webviewGeneration)
+            return;
+        this.postedBisect = pending;
+        this.postedGeneration = this.webviewGeneration;
         // Held until the webview reports it received: a refused relay goes again on its next `ready`.
         postWebviewMessage(
             view.webview,
