@@ -19,10 +19,11 @@
   - ciBisectHandler: the stopped reply is posted only while the switch is on.
   - runCiBisect: a capabilities (remote lookup) rejection marks every commit unread (`failedReads`), so Retry shows; a cancel during it still returns undefined.
   - BisectView: result text is "broke at" or "no break point"; the flaky tag carries the count. `commit.checks.bisect.flakyNote` is removed from 12 catalogs and the CSV (ciBisectCatalogs.test.ts now asserts it is gone).
+- Fix round 2 (1 finding, test red before the fix): the card and undocked menus now snapshot their repository like the compact one. `findCiBreakHandler` returns `(commits, menuRepoKey?)` and starts only when `menuRepoKey` equals its own repository; CommitGraphPanel and UndockedLayout pass `findCiBreakScope`. Test: ciBisectMenuScopeLayouts.integration (red line: "the A menu must never start a bisect in B").
 - Tests: ciBisectHostPane.integration (new), compactGitLogCiBisectMenu, ciBisectView, ciBisectHandler, ciBisect (unit), CommitGraphViewProvider (card clear names its repository).
 
 ## Decisions and why (this round)
-- Menu scope: a `findCiBreakScope` prop snapshotted at open, not a ref read at click, so the value is the one the menu opened with. `onFindCiBreak(commits, scope?)`; the card and undocked ignore the scope.
+- Menu scope: a `findCiBreakScope` prop snapshotted at open, not a ref read at click, so the value is the one the menu opened with. `onFindCiBreak(commits, scope?)`; round 2: the card and undocked handler discards a click whose scope is not its own repository (strict equality, so a layout that forgets the prop starts nothing and the new test fails).
 - Slot retirement: the host names the repository on `clearCommitDetail` (as the sidebar `clear` does) instead of a new message; undocked reuses `repositories`.
 - Discovery failure: a retryable "unread" result, not a thrown error; passed on a new reply type (more protocol).
 - Flaky note: dropped from the result text; passed on rewording it, because any count there can contradict the squares.

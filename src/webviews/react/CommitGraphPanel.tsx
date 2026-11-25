@@ -610,6 +610,7 @@ export function CommitGraphPanel({
                         }
                         onOpenCommitInChecks={commitChecksEnabled ? openChecksTab : undefined}
                         onFindCiBreak={findCiBreakHandler(commitChecksEnabled, ciRepoKey)}
+                        findCiBreakScope={ciRepoKey}
                         showCiColumn={showCiColumn}
                         isViewVisible={viewVisible}
                     />

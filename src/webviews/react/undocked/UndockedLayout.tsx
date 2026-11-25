@@ -407,6 +407,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                             commitChecksEnabled,
                                             repositoryRoot,
                                         )}
+                                        findCiBreakScope={repositoryRoot}
                                         showCiColumn={showCiColumn}
                                         isViewVisible={isViewVisible}
                                     />

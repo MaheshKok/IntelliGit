@@ -88,13 +88,17 @@ export function startCiBisect(
  *
  * @param enabled - CI checks are on.
  * @param repoKey - Repository of the Git Log.
+ * @returns A handler that takes the repository the clicked menu opened on and drops the click when
+ * the pane has moved to another one since (the range is the old repository's).
  */
 export function findCiBreakHandler(
     enabled: boolean,
     repoKey: string | undefined,
-): ((commits: CiLoadedCommit[]) => void) | undefined {
+): ((commits: CiLoadedCommit[], menuRepoKey?: string) => void) | undefined {
     if (!enabled || !repoKey) return undefined;
-    return (commits) => startCiBisect(repoKey, commits);
+    return (commits, menuRepoKey) => {
+        if (menuRepoKey === repoKey) startCiBisect(repoKey, commits);
+    };
 }
 
 /**
