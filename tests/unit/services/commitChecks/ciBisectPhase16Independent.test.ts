@@ -225,4 +225,54 @@ describe("runCiBisect round 2", () => {
         expect(result?.jobs[0].isolated).toEqual([false, false, false, false]);
         expect(result?.jobs[0].flaky).toBeNull();
     });
+
+    it("side-branch green rows cannot make an unrelated failure look isolated", async () => {
+        const [a, b, c] = ["a", "b", "c"].map(h);
+        // Each first parent lies outside the selection: no first-parent chain links the rows.
+        const branches = [
+            { hash: a, parents: [h("d")] },
+            { hash: b, parents: [h("e")] },
+            { hash: c, parents: [] },
+        ];
+        const result = await run(
+            new Map([
+                [a, [checkItem("check-run", "success")]],
+                [b, [checkItem("check-run", "failure")]],
+                [c, [checkItem("check-run", "success")]],
+            ]),
+            branches,
+        );
+        expect(result).toMatchObject({ linear: false, commits: [c, b, a] });
+        expect(result?.jobs[0].brokeAt).toBeNull();
+        expect(
+            result?.jobs[0].flaky,
+            "unrelated branch neighbours cannot prove an isolated red",
+        ).toBeNull();
+        expect(result?.jobs[0].isolated).toEqual([false, false, false]);
+    });
+
+    it("control: a non-linear selection still counts a job's own failed-then-passed re-run", async () => {
+        const branches = [
+            { hash: h("a"), parents: [h("d")] },
+            { hash: h("b"), parents: [h("e")] },
+        ];
+        const result = await runCiBisect(
+            {
+                capabilities: async () => ({ attemptHistory: true }) as never,
+                attemptHistory: async (hash) => (hash === h("b") ? [jobRerun] : []),
+                getChecks: async (hash) => ({
+                    hash,
+                    state: "success",
+                    summary: "",
+                    items: [checkItem("check-run", "success")],
+                }),
+            },
+            branches,
+            branches,
+            new AbortController().signal,
+            () => {},
+        );
+        expect(result).toMatchObject({ linear: false });
+        expect(result?.jobs[0].flaky).toEqual({ n: 1, m: 2, attemptsCounted: true });
+    });
 });

@@ -300,12 +300,14 @@ function jobOf(job: JobRow, context: JobContext): CiBisectJob {
             ...((found === "ambiguous" || (read.partial && !usable)) && { unread: true as const }),
         };
     });
+    // Off a first-parent chain, list neighbours are unrelated commits: only a re-run shows a flake.
+    const isolated = linear ? isolatedReds(line) : line.map(() => false);
     return {
         checkName: job.name,
         states: line.map((commit) => commit.state as CiState | null).reverse(),
-        isolated: isolatedReds(line).reverse(),
+        isolated: [...isolated].reverse(),
         brokeAt: linear ? brokeAt(line) : null,
-        flaky: flaky(key, line, attemptsCounted),
+        flaky: flaky(key, line, attemptsCounted, isolated),
     };
 }
 

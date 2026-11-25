@@ -232,14 +232,14 @@ export function isolatedReds(line: readonly CiFlakyCommit[]): boolean[] {
 /**
  * Counts the commits of `line` (newest first, first parents only) where the check flaked:
  * an isolated red (see {@link isolatedReds}) or an attempt history of the check that failed and
- * then passed. `null` when none did.
+ * then passed. `null` when none did. `isolated` overrides which reds count as isolated.
  */
 export function flaky(
     logicalId: string,
     line: readonly CiFlakyCommit[],
     attemptsCounted: boolean,
+    isolated: readonly boolean[] = isolatedReds(line),
 ): CiFlaky | null {
-    const isolated = isolatedReds(line);
     const n = line.filter(
         (commit, at) =>
             isComplete(commit.state) &&
