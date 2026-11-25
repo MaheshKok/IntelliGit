@@ -131,6 +131,57 @@ describe("compact Git Log Find where CI broke", () => {
         unmount(root, container);
     });
 
+    it("does not relabel a still-open A menu as B when B loads shared rows", () => {
+        window.intelligitE2E = true;
+        const { root, container, vscode } = renderCompact();
+        send({
+            type: "loadCommits",
+            commits: COMMITS,
+            append: false,
+            hasMore: false,
+            repoKey: "/repo-b",
+        });
+        const item = menuItems().find((el) => el.textContent?.includes("Find where CI broke"));
+        expect(item, "control: the A menu is still open").toBeDefined();
+        act(() => item!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+        expect(
+            vscode.postMessage,
+            "a menu opened on A cannot send a B click",
+        ).not.toHaveBeenCalledWith(expect.objectContaining({ repoKey: "/repo-b" }));
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "findCiBreakInChecks", repoKey: "/repo-a" }),
+        );
+        unmount(root, container);
+    });
+
+    it("passes the original range if a new page arrives while its menu is open in A", () => {
+        window.intelligitE2E = true;
+        const { root, container, vscode } = renderCompact();
+        send({
+            type: "loadCommits",
+            commits: [COMMITS[0]!],
+            append: false,
+            hasMore: false,
+            repoKey: "/repo-a",
+        });
+        const item = menuItems().find((el) => el.textContent?.includes("Find where CI broke"));
+        expect(item, "control: the menu is still open").toBeDefined();
+        act(() => item!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+        expect(
+            vscode.postMessage,
+            "the host must see the removed rows so it can display the cap note",
+        ).toHaveBeenCalledWith({
+            type: "findCiBreakInChecks",
+            commits: [
+                { hash: "aaa1111", parents: ["bbb2222"] },
+                { hash: "bbb2222", parents: ["ccc3333"] },
+                { hash: "ccc3333", parents: ["ddd4444"] },
+            ],
+            repoKey: "/repo-a",
+        });
+        unmount(root, container);
+    });
+
     it("sends no range from rows whose page named no repository", () => {
         window.intelligitE2E = true;
         const { root, container, vscode } = renderCompact({});

@@ -197,7 +197,6 @@
     },
     "commit.checks.bisect.notLinear": "not a straight line — no break point",
     "commit.checks.bisect.noBreak": "no break point in this range",
-    "commit.checks.bisect.flakyNote": "flaky: {n} red in {m}, no run of red",
     "commit.checks.bisect.limited": "Limited to the {count} loaded commits",
     "commit.checks.bisect.none": "No CI jobs found for these commits",
     "commit.checks.bisect.failed": "Some CI data could not be read. Commits with incomplete CI data: {count}",

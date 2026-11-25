@@ -86,7 +86,9 @@ interface Props {
     /** Shows the commit's Checks tab in the details pane (the row is selected first). */
     onOpenCommitInChecks?: (hash: string) => void;
     /** Starts "Find where CI broke" over the selected rows; the row menu offers it only when set. */
-    onFindCiBreak?: (commits: CiLoadedCommit[]) => void;
+    onFindCiBreak?: (commits: CiLoadedCommit[], scope?: string) => void;
+    /** Names where the rows came from; a menu keeps the value it opened with and hands it to `onFindCiBreak`. */
+    findCiBreakScope?: string;
     showSearch?: boolean;
     showAuthorDate?: boolean;
     /**
@@ -117,6 +119,9 @@ type CommitContextMenu = {
     y: number;
     commit: Commit;
     selectedHashes: ReadonlySet<string>;
+    /** The selected rows and the scope as the menu opened; a page that replaces the list cannot change them. */
+    ciRange: CiLoadedCommit[];
+    ciScope: string | undefined;
 };
 
 /** Returns the selected displayed row nearest to a removed primary row. */
@@ -142,7 +147,7 @@ function nearestSelectedHash(
 }
 
 /** "Find where CI broke" needs a host that runs it and a range of rows. */
-function offersFindCiBreak(onFindCiBreak: unknown, selectedCommits: readonly Commit[]): boolean {
+function offersFindCiBreak(onFindCiBreak: unknown, selectedCommits: readonly unknown[]): boolean {
     return onFindCiBreak !== undefined && selectedCommits.length > 1;
 }
 
@@ -201,6 +206,7 @@ export function CommitList({
     onSignInForCommitChecks,
     onOpenCommitInChecks,
     onFindCiBreak,
+    findCiBreakScope,
     showSearch = true,
     showAuthorDate = true,
     showCiColumn,
@@ -372,9 +378,13 @@ export function CommitList({
                 y: event.clientY,
                 commit,
                 selectedHashes: menuSelectedHashes,
+                ciRange: commits
+                    .filter((row) => menuSelectedHashes.has(row.hash))
+                    .map((row) => ({ hash: row.hash, parents: row.parentHashes })),
+                ciScope: findCiBreakScope,
             });
         },
-        [publishPrimaryHash, selectedHashes],
+        [commits, findCiBreakScope, publishPrimaryHash, selectedHashes],
     );
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
@@ -401,12 +411,7 @@ export function CommitList({
         (action: string) => {
             if (!contextMenu) return;
             if (action === FIND_CI_BREAK_ACTION) {
-                onFindCiBreak?.(
-                    contextMenuSelectedCommits.map((commit) => ({
-                        hash: commit.hash,
-                        parents: commit.parentHashes,
-                    })),
-                );
+                onFindCiBreak?.(contextMenu.ciRange, contextMenu.ciScope);
                 return;
             }
             if (!isCommitAction(action)) return;
@@ -417,7 +422,7 @@ export function CommitList({
                     : contextMenu.commit.hash,
             );
         },
-        [contextMenu, contextMenuSelectedCommits, onCommitAction, onFindCiBreak, squashTargetHash],
+        [contextMenu, onCommitAction, onFindCiBreak, squashTargetHash],
     );
 
     const handleScroll = useCallback(
@@ -806,7 +811,7 @@ export function CommitList({
                         isUnpushedCommit(contextMenu.commit.hash),
                         canCherryPickFromSelectedScope,
                         canSquashSelectedCommits,
-                        offersFindCiBreak(onFindCiBreak, contextMenuSelectedCommits),
+                        offersFindCiBreak(onFindCiBreak, contextMenu.ciRange),
                     )}
                     onSelect={handleContextMenuAction}
                     onClose={closeContextMenu}

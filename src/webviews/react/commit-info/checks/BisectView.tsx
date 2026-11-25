@@ -48,12 +48,7 @@ function resultText(job: CiBisectJob, result: CiBisectResultMessage): string {
             ? t("commit.checks.bisect.brokeAtThis", { hash })
             : t("commit.checks.bisect.brokeAtAgo", { hash, count: ago });
     }
-    if (job.flaky) {
-        return t("commit.checks.bisect.flakyNote", {
-            n: String(job.flaky.n),
-            m: String(job.flaky.m),
-        });
-    }
+    // The flaky tag beside it carries the attempt-aware count; this text only speaks for the squares.
     return t("commit.checks.bisect.noBreak");
 }
 

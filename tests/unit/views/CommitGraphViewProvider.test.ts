@@ -1002,6 +1002,7 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
             provider.resetFilters();
         };
         return {
+            provider,
             receiveMessage,
             posted,
             getChecks,
@@ -1024,6 +1025,16 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
         expect(h.reads[0].isCurrent(), "returning to A must not revive the retired card run").toBe(
             false,
         );
+    });
+
+    it("review: a cleared card detail names the repository the pane belongs to now", async () => {
+        const h = await bisectHarness();
+        h.switchTo("/other");
+        h.provider.clearCommitDetail({ loading: true });
+        expect(
+            h.posted,
+            "the webview retires another repository's run on this message",
+        ).toContainEqual({ type: "clearCommitDetail", loading: true, ciRepoKey: "/other" });
     });
 
     it("a malformed start posts nothing back while the Checks tab switch is off", async () => {

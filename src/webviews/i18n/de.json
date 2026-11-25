@@ -603,7 +603,6 @@
     },
     "commit.checks.bisect.notLinear": "keine gerade Linie – kein Bruchpunkt",
     "commit.checks.bisect.noBreak": "kein Bruchpunkt in diesem Bereich",
-    "commit.checks.bisect.flakyNote": "instabil: {n} rot von {m}, keine rote Serie",
     "commit.checks.bisect.limited": "Auf die {count} geladenen Commits beschränkt",
     "commit.checks.bisect.none": "Keine CI-Jobs für diese Commits gefunden",
     "commit.checks.bisect.failed": "Einige CI-Daten konnten nicht gelesen werden. Commits mit unvollständigen CI-Daten: {count}",

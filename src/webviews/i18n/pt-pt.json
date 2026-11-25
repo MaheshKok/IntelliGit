@@ -615,7 +615,6 @@
     },
     "commit.checks.bisect.notLinear": "não é uma linha reta — sem ponto de falha",
     "commit.checks.bisect.noBreak": "sem ponto de falha neste intervalo",
-    "commit.checks.bisect.flakyNote": "instável: {n} vermelho(s) em {m}, sem sequência de vermelhos",
     "commit.checks.bisect.limited": "Limitado aos {count} commits carregados",
     "commit.checks.bisect.none": "Nenhuma tarefa de CI encontrada para estes commits",
     "commit.checks.bisect.failed": "Não foi possível ler alguns dados de CI. Commits com dados de CI incompletos: {count}",

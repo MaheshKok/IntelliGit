@@ -1372,11 +1372,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             return;
         }
         this.lastPostedPayload = undefined;
-        this.postToWebview(
-            this.commitDetailLoading
-                ? { type: "clearCommitDetail", loading: true }
-                : { type: "clearCommitDetail" },
-        );
+        const ciRepoKey = this.options.ciRepoKey?.();
+        this.postToWebview({
+            type: "clearCommitDetail",
+            ...(this.commitDetailLoading && { loading: true }),
+            ...(ciRepoKey !== undefined && { ciRepoKey }),
+        });
     }
 
     /**

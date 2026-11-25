@@ -424,6 +424,57 @@ describe("runCiBisect", () => {
         });
     });
 
+    it("review: failed provider discovery finishes with a retryable result", async () => {
+        const [a, b] = [h("a"), h("b")];
+        const commits = chain(a, b);
+        let remotesDown = true;
+        const source: CiBisectSource = {
+            capabilities: async () => {
+                if (remotesDown) throw new Error("git remote unavailable");
+                return undefined;
+            },
+            attemptHistory: async () => [],
+            getChecks: async (hash) => ({
+                hash,
+                state: "success",
+                summary: "",
+                items: [check("unit", hash === a ? "failure" : "success", "w/unit")],
+            }),
+        };
+        const signal = new AbortController().signal;
+        const failed = await runCiBisect(source, commits, commits, signal, () => {});
+        expect(failed?.failedReads, "every commit is unread: the view offers Retry").toBe(2);
+        remotesDown = false;
+        const retried = await runCiBisect(
+            source,
+            commits,
+            commits,
+            signal,
+            () => {},
+            undefined,
+            true,
+        );
+        expect(retried?.failedReads, "Retry reads again once the remotes answer").toBeUndefined();
+        expect(retried?.jobs[0].brokeAt).toBe(a);
+    });
+
+    it("a cancel during failed provider discovery still finishes with nothing", async () => {
+        const [a, b] = [h("a"), h("b")];
+        const commits = chain(a, b);
+        const controller = new AbortController();
+        const source: CiBisectSource = {
+            capabilities: async () => {
+                controller.abort();
+                throw new Error("git remote unavailable");
+            },
+            attemptHistory: async () => [],
+            getChecks: async (hash) => ({ hash, state: "success", summary: "", items: [] }),
+        };
+        await expect(
+            runCiBisect(source, commits, commits, controller.signal, () => {}),
+        ).resolves.toBeUndefined();
+    });
+
     it("Retry after a provider outage reads the recovered provider, not the cached errors", async () => {
         const [a, b] = [h("a"), h("b")];
         const commits = chain(a, b);

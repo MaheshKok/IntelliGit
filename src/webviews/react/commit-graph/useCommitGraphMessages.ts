@@ -5,6 +5,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type React from "react";
 import type { CommitGraphInbound } from "../../protocol/commitGraphTypes";
+import { retireCiBisect } from "../commit-info/checks/ciBisect";
 import { openChecksTab } from "../commit-info/checks/checksTabState";
 import type { CommitGraphPanelAction } from "./types";
 import type { VsCodeApi } from "../shared/vscodeApi";
@@ -157,6 +158,9 @@ export function useCommitGraphMessages(params: {
                     }
                     break;
                 case "clearCommitDetail":
+                    // The host ended the run of the repository it left; a Checks tab that is not
+                    // mounted cannot retire it, and coming back would show it again.
+                    if (data.ciRepoKey !== undefined) retireCiBisect(data.ciRepoKey);
                     dispatch({ type: "clearCommitDetail", loading: data.loading ?? false });
                     break;
                 case "setCommitChecks":

@@ -161,8 +161,9 @@ export function NativeCommitGraph({
     const loadingMore = useRef(false);
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
-    // The repository of the rows shown, from the last replacing page; a relayed click names it.
-    const repoKeyRef = useRef<string | undefined>(undefined);
+    // The repository of the rows shown, from the last replacing page; the list hands it back with
+    // a click from a menu, as it stood when that menu opened.
+    const [repoKey, setRepoKey] = useState<string | undefined>(undefined);
     useLayoutEffect(() => {
         selectedHashRef.current = selectedHash;
     }, [selectedHash]);
@@ -201,7 +202,7 @@ export function NativeCommitGraph({
                           (!data.append ? firstCommitHash : previousSelectedHash));
                     if (!data.append) {
                         selectFirstOnNextLoadRef.current = false;
-                        repoKeyRef.current = data.repoKey;
+                        setRepoKey(data.repoKey);
                     }
                     selectedHashRef.current = nextSelectedHash;
                     dispatch({
@@ -336,11 +337,14 @@ export function NativeCommitGraph({
     // "Find where CI broke" runs in the Changed Files view's Checks tab too; the row menu shows it
     // only while the Checks tab switch is on (commitMenu.tsx).
     const handleFindCiBreak = useCallback(
-        (selected: CiLoadedCommit[]) => {
-            const repoKey = repoKeyRef.current;
+        (selected: CiLoadedCommit[], menuRepoKey?: string) => {
             // Rows no host named a repository for cannot be relayed; the host would drop them.
-            if (repoKey === undefined) return;
-            vscode.postMessage({ type: "findCiBreakInChecks", commits: selected, repoKey });
+            if (menuRepoKey === undefined) return;
+            vscode.postMessage({
+                type: "findCiBreakInChecks",
+                commits: selected,
+                repoKey: menuRepoKey,
+            });
         },
         [vscode],
     );
@@ -388,6 +392,7 @@ export function NativeCommitGraph({
                 }
                 onOpenCommitInChecks={commitChecksEnabled ? handleOpenCommitInChecks : undefined}
                 onFindCiBreak={commitChecksEnabled ? handleFindCiBreak : undefined}
+                findCiBreakScope={repoKey}
                 showCiColumn={showCiColumn}
                 isViewVisible={isViewVisible}
                 showSearch={false}

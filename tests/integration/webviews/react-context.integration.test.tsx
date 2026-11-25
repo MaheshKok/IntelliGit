@@ -654,11 +654,15 @@ describe("CommitList integration", () => {
                     new MouseEvent("click", { bubbles: true }),
                 );
             });
-            expect(on.onFindCiBreak).toHaveBeenCalledWith([
-                { hash: "aaa1111", parents: ["bbb2222"] },
-                { hash: "bbb2222", parents: ["ccc3333"] },
-                { hash: "ccc3333", parents: ["ddd4444"] },
-            ]);
+            // The list names no scope here: only the compact graph gives one.
+            expect(on.onFindCiBreak).toHaveBeenCalledWith(
+                [
+                    { hash: "aaa1111", parents: ["bbb2222"] },
+                    { hash: "bbb2222", parents: ["ccc3333"] },
+                    { hash: "ccc3333", parents: ["ddd4444"] },
+                ],
+                undefined,
+            );
             expect(on.onCommitAction).not.toHaveBeenCalled();
             unmount(on.root, on.container);
         } finally {

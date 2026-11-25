@@ -67,8 +67,9 @@ export async function answerStartCiBisect(
     if (signal.aborted) return;
     if (!current()) {
         // Sign-in or CI settings changed (the generation fence): one final reply, so the view
-        // leaves "k / N commits". A repository change has no view of that repository left to tell.
-        if (repoKey === source.repoKey()) {
+        // leaves "k / N commits". A repository change has no view of that repository left to tell,
+        // and a switch turned off during the run posts nothing at all.
+        if (repoKey === source.repoKey() && isE2eControlChannelActive()) {
             post({ type: "ciBisectProgress", requestId, repoKey, ...progress, stopped: true });
         }
         return;

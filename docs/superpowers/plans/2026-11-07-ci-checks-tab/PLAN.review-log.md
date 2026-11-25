@@ -1568,3 +1568,13 @@ PHASE 16: HALT review still failing after takeover
 - Mutations on a copy (mut-16-build-1, perl alarm 150 s): 10 of 10 red, each naming its test (card reset keeps run, undocked reset keeps run, relay ignores repository, relay accepts missing repository, relay drops unloaded rows, page names no repository, webview forgets page repository, webview reads appends, webview posts without repository, repositoryMode drops relayRepoKey).
 - Gates: phase tests, format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, test (556 files, 8841 passed, 1 skipped; NODE_OPTIONS=--localstorage-file), build:prod, package, verify:manifest all exit 0. Not run: E2E.
 - Phase 16: built, review pending
+
+### Phase 16 fix round 1 (7 findings after the owner-"B" build 95b90b98), 2026-11-25
+- Compact menu: CommitList snapshots range and scope (repoKey) at open. Reds: "a menu opened on A cannot send a B click: expected vi.fn() to not be called with arguments: [ ObjectContaining{...} ]"; "control: the menu is still open: expected undefined to be defined" (the replaced page hid the entry and the range).
+- Card and undocked slot: `clearCommitDetail.ciRepoKey` and the `repositories` switch call retireCiBisect. Reds: "A must not restore the retired run's progress: expected 'running' to be 'none'" (both).
+- ciBisectHandler: stopped reply needs the switch on. Red: "no bisect reply while the Checks tab switch is off: expected [ { type: 'ciBisectProgress', ... stopped: true } ] to deeply equal []".
+- runCiBisect: remote lookup rejection becomes failedReads. Red: promise rejected "Error: git remote unavailable" instead of resolving.
+- BisectView: flaky note dropped from the result text (key removed from 12 catalogs + CSV). Red: "two consecutive red commits cannot be described as no run of red: expected ... not to contain 'no run of red'".
+- Mutations on a copy (mut-16-fix-1, -2): 9 of 9 valid mutations red, each naming its test; a stale-closure variant of the scope mutation survived and was replaced by a live-ref one (red).
+- Gates: phase tests (120 files, 2535 passed, 1 skipped), format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, test (557 files, 8849 passed, 1 skipped; NODE_OPTIONS=--localstorage-file), build:prod, package, verify:manifest all exit 0. Not run: E2E.
+- Phase 16: fix round 1 built, review pending

@@ -143,6 +143,33 @@ describe("CI bisect view", () => {
         unmount(root, container);
     });
 
+    it("review: a flaky re-run does not erase a visible run of red commits", () => {
+        const { root, container } = mount(<Harness />);
+        act(() => startCiBisect(REPO, RANGE));
+        reply(
+            result(lastStartRequestId(), [
+                {
+                    checkName: "unit",
+                    // Two consecutive reds with no green under them: no qualifying baseline.
+                    states: ["failure", "failure", "failure"],
+                    brokeAt: null,
+                    // The attempt-aware count: a failed-then-passed re-run, not a red commit.
+                    flaky: { n: 1, m: 3, attemptsCounted: true },
+                },
+            ]),
+        );
+        const row = container.querySelector<HTMLElement>('[data-testid="ci-bisect-job"]');
+        expect(
+            row?.textContent,
+            "two consecutive red commits cannot be described as no run of red",
+        ).not.toContain("no run of red");
+        expect(row?.textContent).toContain("no break point in this range");
+        expect(row?.querySelector('[data-testid="ci-bisect-flaky"]')?.textContent).toBe(
+            "flaky 1/3",
+        );
+        unmount(root, container);
+    });
+
     it("an isolated red of a job that is not flaky stays red", () => {
         const { root, container } = mount(<Harness />);
         act(() => startCiBisect(REPO, RANGE));
@@ -211,8 +238,8 @@ describe("CI bisect view", () => {
         ]);
         expect(rows[0]!.textContent).toContain(`broke at ${B.slice(0, 7)} · 1 commit ago`);
         expect(rows[1]!.textContent).toContain(`broke at ${A.slice(0, 7)} · this commit`);
-        // The owner dropped the blame phrase (#453): the flaky line says what was seen, not whose.
-        expect(rows[2]!.textContent).toContain("flaky: 1 red in 3, no run of red");
+        // The owner dropped the blame phrase (#453): the flaky tag says what was seen, not whose.
+        expect(rows[2]!.textContent).toContain("no break point in this range");
         expect(rows[2]!.textContent, "no judgement of whose fault it is").not.toContain(
             "likely not yours",
         );

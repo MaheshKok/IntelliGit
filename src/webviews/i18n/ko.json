@@ -591,7 +591,6 @@
     },
     "commit.checks.bisect.notLinear": "직선이 아님 — 깨진 지점 없음",
     "commit.checks.bisect.noBreak": "이 범위에 깨진 지점 없음",
-    "commit.checks.bisect.flakyNote": "불안정: {m}개 중 {n}개 빨강, 연속 빨강 없음",
     "commit.checks.bisect.limited": "로드된 커밋 {count}개로 제한됨",
     "commit.checks.bisect.none": "이 커밋들에 대한 CI 작업이 없습니다",
     "commit.checks.bisect.failed": "일부 CI 데이터를 읽지 못했습니다. CI 데이터가 불완전한 커밋: {count}",

@@ -172,6 +172,15 @@ describe("answerStartCiBisect invalidation", () => {
         expect(posts, "the user's own Cancel needs no stopped reply").toEqual([]);
     });
 
+    it("review: sign-out after the switch turns off does not publish stopped", async () => {
+        setE2eControlChannelActive(true);
+        const { posts } = await invalidate(({ generations }) => {
+            generations.bumpAuth();
+            setE2eControlChannelActive(false);
+        });
+        expect(posts, "no bisect reply while the Checks tab switch is off").toEqual([]);
+    });
+
     it("posts no stopped reply while the Checks tab switch is off", async () => {
         setE2eControlChannelActive(false);
         const { reads, posts } = await invalidate(({ generations }) => generations.bumpAuth());

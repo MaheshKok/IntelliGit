@@ -591,7 +591,6 @@
     },
     "commit.checks.bisect.notLinear": "不是一條直線 — 沒有出錯點",
     "commit.checks.bisect.noBreak": "此範圍內沒有出錯點",
-    "commit.checks.bisect.flakyNote": "不穩定：{m} 個中有 {n} 個紅色，沒有連續紅色",
     "commit.checks.bisect.limited": "僅限已載入的 {count} 個提交",
     "commit.checks.bisect.none": "找不到這些提交的 CI 作業",
     "commit.checks.bisect.failed": "無法讀取部分 CI 資料。CI 資料不完整的提交數：{count}",

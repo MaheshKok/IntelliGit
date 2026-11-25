@@ -418,6 +418,11 @@ export type CommitGraphInbound =
           type: "clearCommitDetail";
           /** True while branch filtering is expected to auto-select the first loaded commit. */
           loading?: boolean;
+          /**
+           * Repository the cleared pane belongs to now; a bisect of another repository is retired
+           * even while no Checks tab is mounted. Absent = the host runs no bisect here.
+           */
+          ciRepoKey?: string;
       }
     | {
           /** Response for a failed Git log request; graph panes may clear stale rows. */

@@ -627,7 +627,6 @@
     },
     "commit.checks.bisect.notLinear": "не прямая линия — точки поломки нет",
     "commit.checks.bisect.noBreak": "в этом диапазоне нет точки поломки",
-    "commit.checks.bisect.flakyNote": "нестабильный: красных {n} из {m}, нет серии красных",
     "commit.checks.bisect.limited": "Ограничено загруженными коммитами: {count}",
     "commit.checks.bisect.none": "Задания CI для этих коммитов не найдены",
     "commit.checks.bisect.failed": "Не удалось прочитать часть данных CI. Коммитов с неполными данными CI: {count}",

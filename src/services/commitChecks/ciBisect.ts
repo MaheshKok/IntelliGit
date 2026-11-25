@@ -323,8 +323,18 @@ export async function runCiBisect(
     const chain = firstParentChain(commits);
     const ordered = chain ?? commits;
     const newest = ordered[0];
-    const attemptsCounted =
-        newest !== undefined && (await source.capabilities(newest.hash))?.attemptHistory === true;
+    let attemptsCounted = false;
+    // Unreadable Git remotes leave no provider to ask: every commit reads as unread, so the view
+    // shows its error with Retry instead of staying on progress.
+    let discoveryFailed = false;
+    if (newest !== undefined) {
+        try {
+            attemptsCounted = (await source.capabilities(newest.hash))?.attemptHistory === true;
+        } catch {
+            if (!live()) return undefined;
+            discoveryFailed = true;
+        }
+    }
     let done = 0;
     const reads = await mapWithConcurrency(
         ordered,
@@ -332,11 +342,13 @@ export async function runCiBisect(
         async ({ hash }): Promise<CommitRead | undefined> => {
             if (!live()) return undefined;
             // One read per commit: a retry asks again only a commit the cache holds as an error.
-            const snapshot = await source.getChecks(hash, {
-                isCurrent: live,
-                sendGuard: live,
-                ...(refresh && { refreshUnavailable: true as const }),
-            });
+            const snapshot = discoveryFailed
+                ? undefined
+                : await source.getChecks(hash, {
+                      isCurrent: live,
+                      sendGuard: live,
+                      ...(refresh && { refreshUnavailable: true as const }),
+                  });
             const attempts =
                 attemptsCounted && live() ? await source.attemptHistory(hash, live) : [];
             if (!live()) return undefined;
@@ -344,8 +356,8 @@ export async function runCiBisect(
             onProgress(done, ordered.length);
             return {
                 hash,
-                items: snapshot.state === "unavailable" ? null : snapshot.items,
-                partial: snapshot.partial === true,
+                items: !snapshot || snapshot.state === "unavailable" ? null : snapshot.items,
+                partial: snapshot?.partial === true,
                 attempts: attempts ?? [],
                 attemptsFailed: attempts === null,
             };
