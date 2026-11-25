@@ -46,7 +46,7 @@ export type CommitGraphPanelAction =
           iconFonts?: ThemeIconFont[];
           ciRepoKey?: string;
       }
-    | { type: "clearCommitDetail"; loading?: boolean }
+    | { type: "clearCommitDetail"; loading?: boolean; ciRepoKey?: string }
     | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
     | { type: "markCommitChecksLoading"; hash: string }
     | { type: "loadError"; clearCommits: boolean }

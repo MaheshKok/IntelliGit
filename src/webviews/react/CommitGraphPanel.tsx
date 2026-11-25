@@ -214,6 +214,8 @@ function commitGraphPanelReducer(
                 commitFolderIcon: undefined,
                 commitFolderExpandedIcon: undefined,
                 commitFolderIconsByName: undefined,
+                // The host has left the old repository: a menu opened on its rows no longer matches.
+                ciRepoKey: action.ciRepoKey ?? state.ciRepoKey,
             };
         case "setCommitChecks": {
             const next = new Map(state.commitChecks);

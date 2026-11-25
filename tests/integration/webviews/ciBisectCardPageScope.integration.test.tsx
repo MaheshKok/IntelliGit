@@ -49,7 +49,18 @@ const detail = (repo: string): void =>
         ciRepoKey: repo,
     });
 
+const findItem = (): HTMLElement | undefined =>
+    Array.from(document.querySelectorAll<HTMLElement>(".intelligit-context-item")).find((node) =>
+        node.textContent?.includes("Find where CI broke"),
+    );
+
 function selectAndFind(container: HTMLElement, repo: string): void {
+    openMenu(container, repo);
+    const find = findItem();
+    if (find) act(() => find.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+}
+
+function openMenu(container: HTMLElement, repo: string): void {
     const row = (at: number) =>
         Array.from(container.querySelectorAll<HTMLElement>(".commit-row")).find((el) =>
             el.textContent?.includes(`${repo} row ${at}`),
@@ -69,8 +80,6 @@ function selectAndFind(container: HTMLElement, repo: string): void {
         menu.some((node) => node.textContent?.includes("Squash Commits")),
         "the multi-row menu opened",
     ).toBe(true);
-    const find = menu.find((node) => node.textContent?.includes("Find where CI broke"));
-    if (find) act(() => find.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
 
 function graph(): ReturnType<typeof mount> {
@@ -125,7 +134,26 @@ it("card: new B rows never send a bisect labeled A while B detail is still loadi
         send({ type: "clearCommitDetail", ciRepoKey: "/B", loading: true });
         page("/B");
         selectAndFind(container, "/B");
-        expect(starts(), "B rows must never be sent to the host as repository A").toEqual([]);
+        // The clear already named B, so the host can answer B's rows.
+        expect(starts(), "B rows must never be sent to the host as repository A").toEqual([
+            expect.objectContaining({ repoKey: "/B" }),
+        ]);
+    } finally {
+        unmount(root, container);
+    }
+});
+
+it("card rejects an old menu as soon as clearCommitDetail announces the repository switch", () => {
+    const { root, container } = graph();
+    try {
+        openMenu(container, "/A");
+        send({ type: "clearCommitDetail", ciRepoKey: "/B", loading: true });
+        const find = findItem();
+        expect(find, "the A menu is still open after the switch").toBeDefined();
+        act(() => find!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+        expect(starts(), "the host has switched to B and cannot answer a new A request").toEqual(
+            [],
+        );
     } finally {
         unmount(root, container);
     }
