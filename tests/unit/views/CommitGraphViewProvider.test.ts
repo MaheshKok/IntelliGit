@@ -952,6 +952,7 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
 
     /** A card graph whose coordinator answers a bisect's reads, and its posted bisect replies. */
     async function bisectHarness(hold = false) {
+        let repo = "/repo";
         const gitOps = new GitOps(
             new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
         );
@@ -959,7 +960,7 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
             createFakeExtensionUri(),
             gitOps,
             new CredentialStore(createInertSecretStorage()),
-            { ...buildProviderOptions("card"), ciRepoKey: () => "/repo" },
+            { ...buildProviderOptions("card"), ciRepoKey: () => repo },
         );
         const { webviewView, posted, receiveMessage } =
             createInspectableFakeCommitGraphWebviewView();
@@ -995,8 +996,35 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
             posted.filter(
                 (message) => isRecord(message) && String(message.type).startsWith("ciBisect"),
             );
-        return { receiveMessage, posted, getChecks, capabilities, reads, start, bisectPosts };
+        /** What repositoryMode.ts does on a repository switch. */
+        const switchTo = (next: string): void => {
+            repo = next;
+            provider.resetFilters();
+        };
+        return {
+            receiveMessage,
+            posted,
+            getChecks,
+            capabilities,
+            reads,
+            start,
+            bisectPosts,
+            switchTo,
+        };
     }
+
+    it("review: card A-B-A retires an active run before it can send", async () => {
+        const h = await bisectHarness(true);
+        void h.receiveMessage(h.start);
+        await flushMicrotasks();
+        expect(h.reads).toHaveLength(1);
+        h.switchTo("/other");
+        expect(h.reads[0].isCurrent(), "outside A the request is fenced").toBe(false);
+        h.switchTo("/repo");
+        expect(h.reads[0].isCurrent(), "returning to A must not revive the retired card run").toBe(
+            false,
+        );
+    });
 
     it("a malformed start posts nothing back while the Checks tab switch is off", async () => {
         const { receiveMessage, posted } = await bisectHarness();
@@ -1058,7 +1086,7 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
             createFakeExtensionUri(),
             gitOps,
             new CredentialStore(createInertSecretStorage()),
-            buildProviderOptions("compact"),
+            { ...buildProviderOptions("compact"), relayRepoKey: () => "/repo" },
         );
         const { webviewView, posted, receiveMessage } =
             createInspectableFakeCommitGraphWebviewView();
@@ -1074,13 +1102,13 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
         const before = posted.length;
 
         setE2eControlChannelActive(false);
-        await receiveMessage({ type: "findCiBreakInChecks", commits });
-        await receiveMessage({ type: "findCiBreakInChecks", commits: "nope" });
+        await receiveMessage({ type: "findCiBreakInChecks", commits, repoKey: "/repo" });
+        await receiveMessage({ type: "findCiBreakInChecks", commits: "nope", repoKey: "/repo" });
         expect(relayed, "the switch is off: nothing reaches the Checks tab").toEqual([]);
         expect(posted.slice(before), "and nothing, errors included, is posted").toEqual([]);
 
         setE2eControlChannelActive(true);
-        await receiveMessage({ type: "findCiBreakInChecks", commits });
+        await receiveMessage({ type: "findCiBreakInChecks", commits, repoKey: "/repo" });
         expect(relayed, "the control: with the switch on the range is handed on").toEqual([
             commits,
         ]);
@@ -1096,33 +1124,39 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
         for (const { hash, parents } of rows) loaded.set(hash, parents);
     }
 
-    it("rejects a compact bisect click queued in A after the host switches to B", async () => {
-        const gitOps = new GitOps(
-            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
-        );
+    /** A compact graph in repository `root.current`, and the ranges it hands to the Checks tab. */
+    async function compactRelayHarness(root: { current: string }) {
         const provider = new CommitGraphViewProvider(
             createFakeExtensionUri(),
-            gitOps,
+            new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
             new CredentialStore(createInertSecretStorage()),
-            buildProviderOptions("compact"),
+            { ...buildProviderOptions("compact"), relayRepoKey: () => root.current },
         );
-        const { webviewView, receiveMessage } = createInspectableFakeCommitGraphWebviewView();
+        const { webviewView, posted, receiveMessage } =
+            createInspectableFakeCommitGraphWebviewView();
         provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
         await receiveMessage({ type: "ready" });
         const relayed: unknown[] = [];
         provider.onFindCiBreakInChecks((commits) => relayed.push(commits));
+        return { provider, posted, receiveMessage, relayed };
+    }
+
+    it("rejects a compact bisect click queued in A after the host switches to B", async () => {
+        const root = { current: "/A" };
+        const { provider, receiveMessage, relayed } = await compactRelayHarness(root);
         const rowsOfA = [
             { hash: "a".repeat(40), parents: ["b".repeat(40)] },
             { hash: "b".repeat(40), parents: [] },
         ];
         loadRows(provider, rowsOfA);
-        const clickInA = { type: "findCiBreakInChecks", commits: rowsOfA };
+        const clickInA = { type: "findCiBreakInChecks", commits: rowsOfA, repoKey: "/A" };
 
         await receiveMessage(clickInA);
         expect(relayed, "the control: a click on A's rows relays in A").toEqual([rowsOfA]);
 
         relayed.length = 0;
         // What repositoryMode.ts does on a switch, before B's first page arrives.
+        root.current = "/B";
         provider.resetFilters();
         await receiveMessage(clickInA);
         expect(relayed, "A's queued click must not start a bisect for B").toEqual([]);
@@ -1130,6 +1164,81 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
         loadRows(provider, [{ hash: "c".repeat(40), parents: [] }]);
         await receiveMessage(clickInA);
         expect(relayed, "nor once B's rows are loaded").toEqual([]);
+    });
+
+    it("review: compact delayed click from A cannot be relayed in B with shared history", async () => {
+        const root = { current: "/A" };
+        const { provider, receiveMessage, relayed } = await compactRelayHarness(root);
+        const rows = [
+            { hash: "d".repeat(40), parents: ["c".repeat(40)] },
+            { hash: "c".repeat(40), parents: [] },
+        ];
+        loadRows(provider, rows);
+        const clickInA = { type: "findCiBreakInChecks", commits: rows, repoKey: "/A" };
+        await receiveMessage(clickInA);
+        expect(relayed, "the control: A's click relays in A").toEqual([rows]);
+
+        root.current = "/B";
+        provider.resetFilters();
+        loadRows(provider, rows);
+        await receiveMessage(clickInA);
+        expect(relayed, "shared SHAs must not authorize an A click in B").toEqual([rows]);
+    });
+
+    it("a compact click that names no repository, or another one, is not relayed", async () => {
+        const { provider, posted, receiveMessage, relayed } = await compactRelayHarness({
+            current: "/A",
+        });
+        const rows = [{ hash: "d".repeat(40), parents: [] }];
+        loadRows(provider, rows);
+        const before = posted.length;
+        await receiveMessage({ type: "findCiBreakInChecks", commits: rows });
+        await receiveMessage({ type: "findCiBreakInChecks", commits: rows, repoKey: 7 });
+        await receiveMessage({ type: "findCiBreakInChecks", commits: rows, repoKey: "/B" });
+        expect(relayed).toEqual([]);
+        expect(posted.slice(before), "a stale click is dropped, not reported").toEqual([]);
+    });
+
+    it("compact delayed click still relays after the same repository reloads the same rows", async () => {
+        const { provider, receiveMessage, relayed } = await compactRelayHarness({ current: "/A" });
+        const rows = [
+            { hash: "d".repeat(40), parents: ["c".repeat(40)] },
+            { hash: "c".repeat(40), parents: [] },
+        ];
+        loadRows(provider, rows);
+        (
+            provider as unknown as { clearCommitCheckHashScope: () => void }
+        ).clearCommitCheckHashScope();
+        loadRows(provider, rows);
+        await receiveMessage({ type: "findCiBreakInChecks", commits: rows, repoKey: "/A" });
+        expect(relayed).toEqual([rows]);
+    });
+
+    it("review: compact same-repository page replacement still hands off a range for capping", async () => {
+        const { provider, receiveMessage, relayed } = await compactRelayHarness({ current: "/A" });
+        const rows = [
+            { hash: "d".repeat(40), parents: ["c".repeat(40)] },
+            { hash: "c".repeat(40), parents: ["b".repeat(40)] },
+            { hash: "b".repeat(40), parents: [] },
+        ];
+        loadRows(provider, rows);
+        (
+            provider as unknown as { clearCommitCheckHashScope: () => void }
+        ).clearCommitCheckHashScope();
+        loadRows(provider, rows.slice(1));
+        await receiveMessage({ type: "findCiBreakInChecks", commits: rows, repoKey: "/A" });
+        expect(
+            relayed,
+            "a live selection reaches the bisect whole, which caps it to the loaded rows",
+        ).toEqual([rows]);
+    });
+
+    it("the compact graph's pages name their repository for the relay", async () => {
+        const { posted } = await compactRelayHarness({ current: "/A" });
+        await vi.waitFor(() => {
+            expect(loadCommitsPages(posted).length, "ready loads a page").toBeGreaterThan(0);
+        });
+        for (const page of loadCommitsPages(posted)) expect(page).toMatchObject({ repoKey: "/A" });
     });
 
     it("a replaced view's late ready does not discard the current context's history reply", async () => {

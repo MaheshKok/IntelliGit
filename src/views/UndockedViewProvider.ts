@@ -684,6 +684,8 @@ export class UndockedViewProvider {
         this.commitChecksGeneration += 1;
         this.commitChecks.clearProviderResolution();
         this.clearCommitCheckHashScope();
+        // Aborted, not fenced: the fence reads the current repository, so A -> B -> A would revive it.
+        this.ciBisectRuns.dispose();
         this.filterText = "";
         this.offset = 0;
         this.loadingMore = false;

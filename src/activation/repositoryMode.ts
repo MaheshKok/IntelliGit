@@ -429,6 +429,7 @@ export async function activateRepositoryMode(
             ciGenerations,
             ciTrace,
             commitChecksProviders,
+            relayRepoKey: () => repoRoot,
             ciFixture,
             ciLogStore,
             ciActions,

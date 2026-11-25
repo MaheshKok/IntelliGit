@@ -363,7 +363,12 @@ class MockCommitGraphViewProvider {
         _uri: unknown,
         _gitOps: unknown,
         _credentialStore: unknown,
-        options?: { scriptFile?: string; title?: string },
+        readonly options?: {
+            scriptFile?: string;
+            title?: string;
+            ciRepoKey?: () => string;
+            relayRepoKey?: () => string;
+        },
     ) {
         if (options?.scriptFile === "webview-compactcommitgraph.js") {
             latestSidebarGraphProvider = this;
@@ -1432,6 +1437,17 @@ describe("extension integration", () => {
         latestCommitGraphProvider.loadedCommits.mockReturnValue([{ hash: "c".repeat(40) }]);
         latestSidebarGraphProvider.loadedCommits.mockReturnValue(range);
         expect(source.bisect.loaded(), "the cap is the sidebar graph's loaded page").toEqual(range);
+
+        const repoKey = latestCommitGraphProvider.options?.ciRepoKey?.();
+        expect(repoKey, "the control: the card graph names its repository").toBeTruthy();
+        expect(
+            latestSidebarGraphProvider.options?.relayRepoKey?.(),
+            "the sidebar's relay checks clicks against the current repository",
+        ).toBe(repoKey);
+        expect(
+            latestSidebarGraphProvider.options?.ciRepoKey,
+            "and gets no Checks tab handlers of its own",
+        ).toBeUndefined();
     });
 
     it("clears the activity bar changed-files badge when the refreshed count reaches zero", async () => {

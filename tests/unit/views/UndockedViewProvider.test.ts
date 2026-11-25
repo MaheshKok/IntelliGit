@@ -1101,6 +1101,31 @@ describe("UndockedViewProvider Checks tab loops", () => {
         });
     });
 
+    it("review: undocked A-B-A retires an active run before it can send", async () => {
+        await withLoopHarness(async ({ provider }) => {
+            const h = bisectHarness(provider, true);
+            void h.panel.receiveMessage(h.start);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(h.reads).toHaveLength(1);
+            vi.spyOn(
+                provider as unknown as { reloadSelectedRepository: () => Promise<void> },
+                "reloadSelectedRepository",
+            ).mockResolvedValue(undefined);
+            const repos = ["/repo-a", "/repo-b"].map((root) => ({
+                root,
+                label: root,
+                kind: "repository" as const,
+            }));
+            provider.setRepositories(repos, "/repo-b");
+            expect(h.reads[0].isCurrent(), "outside A the request is fenced").toBe(false);
+            provider.setRepositories(repos, "/repo-a");
+            expect(
+                h.reads[0].isCurrent(),
+                "returning to A must not revive the retired undocked run",
+            ).toBe(false);
+        });
+    });
+
     it("a closed panel's late ready does not discard the current panel's history reply", async () => {
         await withLoopHarness(async ({ provider }) => {
             const retired = openTestPanel(provider);

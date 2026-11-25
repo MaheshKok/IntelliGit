@@ -47,11 +47,11 @@ function menuItems(): HTMLElement[] {
     return Array.from(document.querySelectorAll<HTMLElement>(".intelligit-context-item"));
 }
 
-function renderCompact() {
+function renderCompact(page: { repoKey?: string } = { repoKey: "/repo-a" }) {
     const vscode = { postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() };
     const mounted = mount(<NativeCommitGraph vscode={vscode as never} sendReady={false} />);
     send({ type: "setBranches", branches: [], commitChecksEnabled: true });
-    send({ type: "loadCommits", commits: COMMITS, append: false, hasMore: false });
+    send({ type: "loadCommits", commits: COMMITS, append: false, hasMore: false, ...page });
     act(() => {
         row(mounted.container, "feat: oldest selected").dispatchEvent(
             new MouseEvent("click", { bubbles: true, shiftKey: true }),
@@ -104,7 +104,42 @@ describe("compact Git Log Find where CI broke", () => {
                 { hash: "bbb2222", parents: ["ccc3333"] },
                 { hash: "ccc3333", parents: ["ddd4444"] },
             ],
+            repoKey: "/repo-a",
         });
+        unmount(root, container);
+    });
+
+    it("names the repository of the page the rows came from, not a later appended page", () => {
+        window.intelligitE2E = true;
+        const { root, container, vscode } = renderCompact();
+        send({
+            type: "loadCommits",
+            commits: [commit("ddd4444", "eee5555", "feat: appended")],
+            append: true,
+            hasMore: false,
+        });
+        act(() => {
+            row(container, "feat: middle").dispatchEvent(
+                new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+            );
+        });
+        const item = menuItems().find((el) => el.textContent?.includes("Find where CI broke"));
+        act(() => item!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "findCiBreakInChecks", repoKey: "/repo-a" }),
+        );
+        unmount(root, container);
+    });
+
+    it("sends no range from rows whose page named no repository", () => {
+        window.intelligitE2E = true;
+        const { root, container, vscode } = renderCompact({});
+        const item = menuItems().find((el) => el.textContent?.includes("Find where CI broke"));
+        expect(item, "the control: the menu still offers the action").toBeDefined();
+        act(() => item!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "findCiBreakInChecks" }),
+        );
         unmount(root, container);
     });
 

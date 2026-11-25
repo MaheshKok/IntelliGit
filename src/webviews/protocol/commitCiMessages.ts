@@ -183,6 +183,8 @@ type CommitCiOutbound =
           type: "findCiBreakInChecks";
           /** The selected loaded commits, newest first, with their parents. */
           commits: CiLoadedCommit[];
+          /** The repository of the page the rows came from; the host drops any other. */
+          repoKey: string;
       }
     | {
           /** Checks tab asks for the excerpt of a selected failed job's log; opens no editor. */

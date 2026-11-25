@@ -335,6 +335,11 @@ export type CommitGraphInbound =
           append: boolean;
           /** Full hashes from `git rev-list --branches --not --remotes` used for display badges. */
           unpushedHashes: string[];
+          /**
+           * The sidebar graph's repository, on a replacing page only (appends follow it); its
+           * "Find where CI broke" relay names it. Absent in every other graph.
+           */
+          repoKey?: string;
       }
     | {
           /** State update carrying branch data and optional folder icon theme metadata. */

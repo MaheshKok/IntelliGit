@@ -161,6 +161,8 @@ export function NativeCommitGraph({
     const loadingMore = useRef(false);
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
+    // The repository of the rows shown, from the last replacing page; a relayed click names it.
+    const repoKeyRef = useRef<string | undefined>(undefined);
     useLayoutEffect(() => {
         selectedHashRef.current = selectedHash;
     }, [selectedHash]);
@@ -199,6 +201,7 @@ export function NativeCommitGraph({
                           (!data.append ? firstCommitHash : previousSelectedHash));
                     if (!data.append) {
                         selectFirstOnNextLoadRef.current = false;
+                        repoKeyRef.current = data.repoKey;
                     }
                     selectedHashRef.current = nextSelectedHash;
                     dispatch({
@@ -334,7 +337,10 @@ export function NativeCommitGraph({
     // only while the Checks tab switch is on (commitMenu.tsx).
     const handleFindCiBreak = useCallback(
         (selected: CiLoadedCommit[]) => {
-            vscode.postMessage({ type: "findCiBreakInChecks", commits: selected });
+            const repoKey = repoKeyRef.current;
+            // Rows no host named a repository for cannot be relayed; the host would drop them.
+            if (repoKey === undefined) return;
+            vscode.postMessage({ type: "findCiBreakInChecks", commits: selected, repoKey });
         },
         [vscode],
     );

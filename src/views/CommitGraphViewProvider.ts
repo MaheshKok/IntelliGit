@@ -227,6 +227,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             commitChecksProviders?: readonly CommitChecksProvider[];
             /** Repository the Checks tab asks about; absent hides the Checks tab. */
             ciRepoKey?: () => string;
+            /**
+             * The sidebar graph's repository, which its pages name and a "Find where CI broke" relay
+             * must match; absent = no relay. Separate from `ciRepoKey`, which would turn on this
+             * view's own Checks tab handlers.
+             */
+            relayRepoKey?: () => string;
             ciFixture?: CommitChecksCoordinatorOptions["fixture"];
             /** The window's CI log store; absent = the Checks tab gets no log. */
             ciLogStore?: CiLogMemoryStore;
@@ -644,7 +650,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         this._onOpenCommitInChecks.fire(this.assertGitHash(msg.hash, "hash"));
                         break;
                     case "findCiBreakInChecks":
-                        this.relayFindCiBreak(msg.commits);
+                        this.relayFindCiBreak(msg.commits, msg.repoKey);
                         break;
                     case "fetch":
                     case "pull":
@@ -670,18 +676,19 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     /**
      * "Find where CI broke" from the compact layout: hands the range to the Changed Files view's
      * Checks tab. Ships hidden like the bisect itself: off with the Checks tab switch, before
-     * validating, so a disabled range posts not even an error. Only rows this graph has loaded
-     * relay: a repository switch forgets the previous repository's rows, so a click queued there
-     * cannot start a bisect for the new one.
+     * validating, so a disabled range posts not even an error. Only a click naming the current
+     * repository relays, so one queued before a switch cannot start a bisect for the new
+     * repository, even over shared history. The range goes on whole: the bisect caps it to the
+     * loaded rows and says so.
      *
      * @param commits - The selected rows, unvalidated from the webview.
+     * @param repoKey - The repository of the page the rows came from, unvalidated.
      */
-    private relayFindCiBreak(commits: unknown): void {
+    private relayFindCiBreak(commits: unknown, repoKey: unknown): void {
         if (!isE2eControlChannelActive()) return;
-        const range = readLoadedCommits(commits);
-        if (range.every(({ hash }) => this.loadedCommitHashes.has(hash))) {
-            this._onFindCiBreakInChecks.fire(range);
-        }
+        const current = this.options.relayRepoKey;
+        if (!current || typeof repoKey !== "string" || repoKey !== current()) return;
+        this._onFindCiBreakInChecks.fire(readLoadedCommits(commits));
     }
 
     /**
@@ -824,6 +831,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         this.filterText = "";
         this.commitChecks.clearProviderResolution();
         this.clearCommitCheckHashScope();
+        // Aborted, not fenced: the fence reads the current repository, so A -> B -> A would revive it.
+        this.ciBisectRuns.dispose();
         this.postToWebview({ type: "setSelectedBranch", branch: null });
         this.postToWebview({ type: "setFilterText", text: "" });
     }
@@ -967,6 +976,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                     hasMore: commits.length >= this.PAGE_SIZE,
                     append: false,
                     unpushedHashes,
+                    ...(this.options.relayRepoKey && { repoKey: this.options.relayRepoKey() }),
                 });
             }
         } catch (err) {
