@@ -50,11 +50,26 @@ test.use({ scenario: "clean" });
 test("Find where CI broke from the row menu", async ({ fixtureWorkspace }, testInfo) => {
     test.setTimeout(240_000);
     const { workspace } = fixtureWorkspace;
-    const git = (args: string[]) => runGit(workspace.root, args, workspace.env);
+    const git = (args: string[], env = workspace.env) => runGit(workspace.root, args, env);
+    // The seeded history's first commit has the env's pinned date, and the Git Log lists `--all` in
+    // date order, so a commit made with that same date can sort between these three rows. Each one
+    // gets its own date after the newest seeded commit, so they show as three adjacent rows.
+    const newest = Math.max(
+        ...(await git(["log", "--all", "--format=%ct"])).split("\n").map(Number),
+    );
+    if (!Number.isFinite(newest))
+        throw new Error("Could not read the fixture's newest commit time");
+    let dated = 0;
     const commit = async (content: string, message: string): Promise<string> => {
         await writeFile(path.join(workspace.root, FILE), `${content}\n`);
         await git(["add", "--", FILE]);
-        await git(["commit", "-m", message]);
+        dated += 1;
+        const when = `@${newest + dated * 60} +0000`;
+        await git(["commit", "-m", message], {
+            ...workspace.env,
+            GIT_AUTHOR_DATE: when,
+            GIT_COMMITTER_DATE: when,
+        });
         return git(["rev-parse", "HEAD"]);
     };
     await commit("green", "bisect: CI passes");
