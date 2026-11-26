@@ -7,6 +7,7 @@
 - Phase 9: 37ba9d13, manual, elephant OK 2026-11-14 (#430, 63b8ea88). Phase 10: 8ff6422d, manual, owner "A" 2026-11-14 (#435, bc063074). Phase 11: b9d710d6, verification incomplete (#439, 928c1aae).
 - Phase 12: owner accepted by hand 2026-11-18 at c874d0b3 (#444, 29efe7ec). Phase 13: owner accepted by hand 2026-11-21 at 3b31283b (#448, 49893e1f).
 - Phase 14: owner accepted by hand 2026-11-22 at ca1834d5 (#450, f3cf1afa). Phase 15: accepted 20240fdf (#452; the wave accepted dd67fe22, verification incomplete).
+- Phase 16: owner accepted by hand 2026-11-26 at 6518aa81 (answer "A: accept + issue"; Codex's two relay timing findings filed as #456).
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
 ## Phase 16: review pending, started at 20240fdf09433916025c8db6578fee50a719934b
