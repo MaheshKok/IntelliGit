@@ -1,7 +1,7 @@
 // Checks tab messages shared by every webview that renders the commit details pane
 // (the Git Log panel, the standalone Changed Files view and the undocked window).
 
-import type { CiHistory } from "../../shared/ci/history";
+import type { CiBisectJob, CiHistory } from "../../shared/ci/history";
 import type { CiAction, CiChangedFile, CommitCiDetail } from "../../types";
 
 /** Host's reply to {@link RequestCommitCiDetailMessage}. */
@@ -105,6 +105,43 @@ export interface ChangedSinceGreenMessage {
     files: CiChangedFile[];
 }
 
+/** Host's progress on a {@link StartCiBisectMessage}: commits read so far. */
+export interface CiBisectProgressMessage {
+    type: "ciBisectProgress";
+    requestId: number;
+    /** The repository the bisect runs in, so a reply of another repository's run is told apart. */
+    repoKey: string;
+    done: number;
+    total: number;
+    /** The final reply of a bisect stopped because sign-in or CI settings changed; no result follows. */
+    stopped?: true;
+}
+
+/** Host tells the Changed Files view to find where CI broke over a range the sidebar graph sent. */
+export interface StartCiBisectInChecksMessage {
+    type: "startCiBisectInChecks";
+    repoKey: string;
+    commits: CiLoadedCommit[];
+}
+
+/**
+ * Host's answer to a {@link StartCiBisectMessage}: each job's state per commit, oldest first,
+ * where it broke (on a first-parent chain only) and whether it is flaky. A cancelled bisect gets
+ * none. `limitedTo` is set when selected commits the Git Log no longer had loaded were dropped;
+ * `failedReads` when the checks of some commits could not be read (how many).
+ */
+export interface CiBisectResultMessage {
+    type: "ciBisectResult";
+    requestId: number;
+    repoKey: string;
+    linear: boolean;
+    /** The commit of each job's square, oldest first, the order of each job's `states`. */
+    commits: string[];
+    jobs: CiBisectJob[];
+    failedReads?: number;
+    limitedTo?: number;
+}
+
 /** One loaded Git Log commit with its parents, first parent first. */
 export interface CiLoadedCommit {
     hash: string;
@@ -140,6 +177,14 @@ type CommitCiOutbound =
           /** Sidebar graph asks its host to show a commit in the Changed Files view's Checks tab. */
           type: "openCommitInChecks";
           hash: string;
+      }
+    | {
+          /** Sidebar graph asks its host to find where CI broke in the Changed Files view's Checks tab. */
+          type: "findCiBreakInChecks";
+          /** The selected loaded commits, newest first, with their parents. */
+          commits: CiLoadedCommit[];
+          /** The repository of the page the rows came from; the host drops any other. */
+          repoKey: string;
       }
     | {
           /** Checks tab asks for the excerpt of a selected failed job's log; opens no editor. */
@@ -219,6 +264,22 @@ type CommitCiOutbound =
           path: string;
           /** 1-based, as the Annotations section lists it. */
           line: number;
+      }
+    | {
+          /** Git Log row menu asks its host to find where CI broke over the selected commits. */
+          type: "startCiBisect";
+          /** Monotonic per webview; only the newest bisect's replies render. */
+          requestId: number;
+          repoKey: string;
+          /** The selected loaded commits, newest first; the host keeps the ones it has loaded. */
+          commits: CiLoadedCommit[];
+          /** Set by Retry: commits whose checks were cached as an error are read again. */
+          retry?: true;
+      }
+    | {
+          /** The Bisect section's Cancel: the host sends no more of that bisect's requests. */
+          type: "cancelCiBisect";
+          requestId: number;
       };
 
 /** Checks tab asks its host for a commit's CI detail. */
@@ -238,6 +299,8 @@ export type OpenCommitChecksSettingsMessage = Extract<
 >;
 /** Sidebar graph asks its host to show a commit in the Checks tab. */
 export type OpenCommitInChecksMessage = Extract<CommitCiOutbound, { type: "openCommitInChecks" }>;
+/** Sidebar graph asks to find where CI broke in the Checks tab. */
+export type FindCiBreakInChecksMessage = Extract<CommitCiOutbound, { type: "findCiBreakInChecks" }>;
 /** Checks tab asks for a failed job's log excerpt. */
 export type PreviewCiLogMessage = Extract<CommitCiOutbound, { type: "previewCiLog" }>;
 /** Checks tab asks to open a job's full log in an editor. */
@@ -255,3 +318,7 @@ export type RequestChangedSinceGreenMessage = Extract<
 export type OpenCiRangeDiffMessage = Extract<CommitCiOutbound, { type: "openCiRangeDiff" }>;
 /** Checks tab asks to open a CI annotation's file at its line. */
 export type OpenCiAnnotationMessage = Extract<CommitCiOutbound, { type: "openCiAnnotation" }>;
+/** Git Log asks to find where CI broke over a range of commits. */
+export type StartCiBisectMessage = Extract<CommitCiOutbound, { type: "startCiBisect" }>;
+/** The Bisect section cancels its bisect. */
+export type CancelCiBisectMessage = Extract<CommitCiOutbound, { type: "cancelCiBisect" }>;

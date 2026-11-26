@@ -1,59 +1,43 @@
 # CI Checks tab: handoff
 
 ## Phases accepted
-- Phase 1: accepted 3965f37a, verification incomplete.
-- Phase 2: accepted bfea9112, manual: finished by hand and merged as #415; owner OK 2026-11-11.
-- Phase 4: accepted f005d90f, verification incomplete (merged as #417, d3438a11).
-- Phase 19: accepted f005d90f, verification incomplete (merged as #418, 2490ec17).
-- Phase 3: accepted 15a47c9d, manual; owner OK 2026-11-11 (merged as #419, c246d0d4).
-- Phase 5: accepted 6898d332, manual; owner OK 2026-11-12 (merged as #420, 86088cab).
-- Phase 6: accepted 69e809bb, verification incomplete (squash-merged as #422, 51b0c3ab).
-- Phase 7: accepted 6fef8c59, manual; owner OK 2026-11-12 (squash-merged as #424, 36bef4be).
-- Phase 8: accepted b5a56002, manual; owner OK 2026-11-13 (squash-merged as #426, 7941c809).
-- Phase 9: accepted 37ba9d13, manual; elephant OK 2026-11-14 (squash-merged as #430, 63b8ea88).
-- Phase 10: accepted 8ff6422d, manual, owner answer "A" 2026-11-14 (squash-merged as #435, bc063074).
-- Phase 11: accepted b9d710d6, verification incomplete (squash-merged as #439, 928c1aae).
-- Phase 12: accepted by the owner by hand 2026-11-18 at c874d0b3 ("A: accept, file issue"; gaps in #443; squash-merged as #444, 29efe7ec).
-- Phase 13: owner accepted by hand 2026-11-21 at 3b31283b (answer "For phase 13 A"); open gaps in #447; the review log's last Phase 13 line stays HALT (squash-merged as #448, 49893e1f).
-- Phase 14: owner accepted by hand 2026-11-22 at ca1834d5 (answer "C: targeted fix"); the review log's last Phase 14 line stays HALT (squash-merged as #450, f3cf1afa).
-- Phase 15: accepted dd67fe22, verification incomplete.
+- Phase 1: 3965f37a, verification incomplete. Phase 2: bfea9112, manual, owner OK 2026-11-11 (#415). Phase 4: f005d90f, verification incomplete (#417, d3438a11).
+- Phase 19: f005d90f, verification incomplete (#418, 2490ec17). Phase 3: 15a47c9d, manual, owner OK 2026-11-11 (#419, c246d0d4). Phase 5: 6898d332, manual, owner OK 2026-11-12 (#420, 86088cab).
+- Phase 6: 69e809bb, verification incomplete (#422, 51b0c3ab). Phase 7: 6fef8c59, manual, owner OK 2026-11-12 (#424, 36bef4be). Phase 8: b5a56002, manual, owner OK 2026-11-13 (#426, 7941c809).
+- Phase 9: 37ba9d13, manual, elephant OK 2026-11-14 (#430, 63b8ea88). Phase 10: 8ff6422d, manual, owner "A" 2026-11-14 (#435, bc063074). Phase 11: b9d710d6, verification incomplete (#439, 928c1aae).
+- Phase 12: owner accepted by hand 2026-11-18 at c874d0b3 (#444, 29efe7ec). Phase 13: owner accepted by hand 2026-11-21 at 3b31283b (#448, 49893e1f).
+- Phase 14: owner accepted by hand 2026-11-22 at ca1834d5 (#450, f3cf1afa). Phase 15: accepted 20240fdf (#452; the wave accepted dd67fe22, verification incomplete).
+- Phase 16: owner accepted by hand 2026-11-26 at 6518aa81 (answer "A: accept + issue"; Codex's two relay timing findings filed as #456).
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 15: accepted dd67fe22, verification incomplete, started at a2fa6a15158555a8eadacf8adf6402a9a5518be2 (owner answer "A: fix base, re-run", 2026-11-22: the first wave carried the Phase 14 branch head, which the squash merge left out of this branch's history)
-- Build ae49a11e (0.43.19): optional CI column in the Git Log, hidden behind the Checks tab switch. Details and proof in PLAN.review-log.md "Phase 15: built, review pending".
-- 12 mutations on copy mut-15-build-1, each red naming its planned test. Full chain exit 0 except `bun run test` (10 of 8687 red, the known set, see Open risks). verify.py gates --stage round GREEN.
-- Takeover (review pending again; test-only, no production change; after the review of 44dd15cb): a new integration test renders the real CommitList with `showAuthorDate={false}` (as NativeCommitGraph does), the CI column on and a checks requester, and asserts the CI cell renders and the old badge does not. Coupling mutation (`showAuthorDate &&` added at CommitList.tsx:471) on copy mut-15-takeover-1: red `CI cell renders independently of Author/Date: expected null not to be null`, the other 24 green. Full chain exit 0 except `bun run test` (10 of 8700 red, the known set).
-- Fix round 4 (test-only, no production change; after the review of 947b908b): commitCiColumn.integration.test.tsx now pins click call counts (once, stopPropagation), the no-handler click, selection with the switch off, loading and missing-entry cells with literal title and aria-label, literal 4 px margins on cell and header plus a `beforeAuthor: false` header case, and an absent flag after a true flag in all three apps. Mutations on copy mut-15-fix-4 each red naming those assertions; unmutated 24 of 24 green. Full chain exit 0 except `bun run test` (10 of 8699 red, the same known set).
-- Fix round 1 (review pending again): the 99 px lock is now asserted with literal 99/8/44/8/6 px in commitCiColumn.integration.test.tsx and tests/e2e/ciColumn.spec.ts:140 (literal 99). Mutations on copy mut-15-fix-1: CI_COL_WIDTH 99 to 100, CI_CELL_INSET 8 to 9, CI_BAR_WIDTH 44 to 45, CI_BAR_HEIGHT 8 to 9, CI_BAR_GAP 6 to 7 each go red naming the new test; unmutated copy green. Full chain exit 0 except `bun run test` (10 of 8688 red, the same known set).
-- Fix round 2 (review pending again; tests and the e2e spec only, no production change): integration cases for bar colours, timed_out/action_required/cancelled/skipped/neutral counting (pinned as today: every item is in the denominator, only success/failure/pending have segments; the owner has not ruled on skipped/cancelled and section 12 is silent), and `showCiColumn` without `onRequestCommitChecks`; e2e reads the computed colour of the success and failure segments per theme (not run locally). Five mutations on copy mut-15-fix-21 each red naming its test; unmutated 17 of 17 green.
-- Gate G redone on a fresh GitNexus index of this worktree (fb8518a, analyzed 2026-11-22): colorForState impact LOW (10 callers, 2 direct, 0 flows), CiColumnCell LOW (1), ciColumnFits LOW (7), CiColumnHeader LOW (7); activateRepositoryMode impact UNKNOWN (no resolved callers), confirmed by text search: extension.ts:57-63, noRepositoryMode.ts:112 and the host-wiring and view-providers integration tests; the signature is unchanged, one settings field is added. detect-changes compare a2fa6a15: 44 files, 161 symbols, risk high, 9 flows, all ActivateRepositoryMode ones, driven by `showCiColumn` in activateRepositoryMode; scope all: low (docs only).
-- Re-run after the base fix (2026-11-22, no rebuild): a2fa6a15 is an ancestor of HEAD 4ec753fc; verify.py gates --stage round GREEN warn=0; focused 6 files 108 of 108; format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package exit 0; `bun run test` 10 of 8691 red, the known set (the 8 resize tests pass with --localstorage-file).
-- Fix round 3 (review pending again; after the review of 9d27c24c): (1) the commit panel's embedded graph now carries the CI column gate and a host test (red before: `the control: with the switch on the setting reaches the webview: expected [ undefined ] to include true`); (2) the colour test pins green/red/yellow tokens exactly; (3) a new integration test resizes one mounted list wide, narrow, wide. Mutations on copies mut-15-fix-1..3: success/failure colour swap goes red on `success contract colour`; deleting the memo clause goes red on `narrow: the same row drops its CI cell`; dropping the switch conjunct in the panel goes red on `the setting is on but the switch is off`.
+## Phase 16: review pending, started at 20240fdf09433916025c8db6578fee50a719934b
+- Build 181a5862 (0.43.20), earlier fix rounds and takeover b8ab4529, owner-"B" build 95b90b98, fix rounds 534e4f62 and 1861411c; detail in this file's git history.
+- Owner answers carried: "B + compact now" (stopped reply, compact relay), "A: 8.5 MiB" (VSIX limit), "B: require all 4" (card/undocked resets, relay repository, whole range).
+- Takeover after fix round 2 (3 findings, each with a test red before the fix):
+  - Card menu provenance: the card host's replacing `loadCommits` page now carries `repoKey` (the repository read when its `git log` starts; the sidebar's `relayRepoKey` still wins there). CommitGraphPanel keeps it as `pageRepoKey` (appends keep it) and passes it as `findCiBreakScope`; `findCiBreakHandler` starts only when it equals the detail's `ciRepoKey`, so A rows never go out as B and B rows never as A. Tests: ciBisectCardPageScope.integration (new), CommitGraphViewProvider "a replacing card page names the card's repository", ciBisectMenuScopeLayouts (card case now sends its page).
+  - GitLab re-runs: GitLab status items carry `id` (the job id, as the detail path already assumed, gitlabProvider.ts:673-677). In ciBisect a status job takes only the attempt histories holding that execution id under its own name (`statusAttempts`); any other flat status keeps none. Test: ciBisectSnapshotCoverage "counts a GitLab pipeline job's ..." and the two "keeps an unrelated flat status apart" cases.
+  - Incomplete snapshots: a partial read now counts in `failedReads` (the view's "Commits with incomplete CI data: N" + Retry), identity-matched entries kept as before; Retry (`refreshUnavailable`) also re-reads a commit cached as partial. Tests: ciBisectSnapshotCoverage "reports incomplete CI ..." and "Retry reads a commit cached as a partial snapshot again".
 
-## Decisions and why
-- Layout: the CI column shows only when it fits beside the Author/Date the badge layout already shows (`ciColumnFits`); otherwise the row keeps today's badge layout. Author/Date widths are computed as before, so the column never takes their space (the review gate's "deficit onto a sibling" concern).
-- The host posts `showCiColumn: true` only when the switch and the setting are both on; the key is absent otherwise, so recorded visual fixtures stay byte-identical.
-- The setting is read once at activation (reload to change), like the other commit-checks settings, with default false and no package.json contribution (Phase 18).
-- Every host that posts setBranches carries its own gate (spec line 855): CommitGraphViewProvider, UndockedViewProvider and, since fix round 3, CommitPanelViewProvider.sendGraphBranches (new optional last constructor argument `commitChecksSettings`, wired in repositoryMode.ts; same `isE2eControlChannelActive() && showCiColumn === true` conjunct; host test in CommitPanelViewProvider.test.ts). The compact Git Log (NativeCommitGraph) is wired like the card view.
-- CommitList's lint complexity limit (25) moved the request flag into `ciColumnFits` and the header into `CiColumnHeader`.
+## Decisions and why (this step)
+- Card page provenance from the host page, not from the detail: rows and detail are separate messages, only the page knows where its rows came from. Passed on clearing rows on `clearCommitDetail` (a same-repository clear would blank the list).
+- Read the page repository at request start, not at post time, so a log read in A that lands after a switch is still labelled A.
+- Status-to-history link by execution id AND name: the id alone could collide with an unrelated status's id; the name alone is the false transfer an earlier round removed.
+- Every partial read counts as incomplete, including GitLab's 100-status page bound (Retry cannot fix that one; the text stays accurate).
+- No version bump: fix rounds stay on 0.43.20 like the earlier ones.
 
 ## Open risks
-- E2E `tests/e2e/ciColumn.spec.ts` not run locally (CI runs `test:e2e`); its width assertions read the rendered graph margin and the style constants.
-- GitNexus detect-changes still reports risk HIGH, driven by `activateRepositoryMode`'s execution flows (one added settings field); the index is now fresh (fb8518a). With it colorForState impact is LOW. The run log is under the TMPDIR phase-run folder (gitnexus15-fix1.log).
-- Owner question for the CI cell: should skipped, cancelled and neutral checks count in the `passed/total` denominator? Today they do (8 passed and 2 skipped read `8/10`, a fifth of the bar empty); a new test pins that.
-- Gate U ran regex-only (no element rules such as contrast or tiny text).
-- `bun run test` known reds: 8 commit-list-column-resize (Node 26 has no localStorage; all 8 pass with NODE_OPTIONS=--localstorage-file), tsconfigCoverage and screenshotComparatorMeta (pass in a copy with linked node_modules).
+- E2E tests/e2e/ciBisect.spec.ts not run locally (CI runs test:e2e); no E2E drives the compact relay, the stopped reply or the card page repository.
+- Snapshots cached before this change hold GitLab status items without `id`, so their re-runs are not counted until the entry is read again.
+- A long range shows a thin horizontal scrollbar under the sparkline. A stopped bisect after a repository switch tells no view (by design).
+- Owner questions carried: Phase 15's skipped/cancelled/neutral denominator; whether the commit panel's embedded graph shows checks (Phase 18).
 
-## Next phase: per the phase-run dry run (Phases 16-18 per their Depends on lines)
+## Next phase: per the phase-run dry run (Phases 17-18 per their Depends on lines)
 
 ## Found outside scope
+- ciBisectHandler still posts progress and a result if the switch turns off mid-run (only the stopped reply is guarded).
 - Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
-- tests/integration/git/updateWithLocalChanges.integration.test.ts fails on Node 24.3.0; commit-list-column-resize fails on Node 26 unless `--localstorage-file` is given (a vitest setup could pass it).
-- GitHub carryScans treats two missing `runAttempt` values as the same run.
-- `bun run package` can pack ignored `output/` leftovers; noRepositoryMode.ts registers a placeholder `refreshBadges`.
-- Mutation copies must link the main checkout's node_modules; a copy has no .git or dist (git inside a compound command is refused here, so copy with rsync from a script).
-- GitLab snapshot could follow `x-next-page` pages if getChecks moved to `fetchWithMeta`.
-- The main checkout's GitNexus index is stale; its runner works with `--repo <worktree>` from a script under the TMPDIR phase-run folder.
-- Any Bash command that mentions the path segment "IntelliGit" next to a script, or ".gitnexus", is refused by the worktree git guard as "too complex"; put scripts under the TMPDIR phase-run folder.
-- This worktree has no node_modules folder: tsconfigCoverage and screenshotComparatorMeta read `<repo>/node_modules` by path and fail here only.
-- The commit panel's embedded graph (CommitPanelViewProvider) never posts `commitChecksEnabled`; it posts the CI column flag under the same switch-and-setting gate as the other hosts. Whether it should show checks at all stays an owner question for Phase 18.
+- commit-list-column-resize fails on Node 26 without `--localstorage-file`; with one shared file across the whole suite, stored widths leak into commitCiColumn.integration (2 failures seen 2026-11-25). updateWithLocalChanges.integration.test.ts fails on Node 24.3.0.
+- GitHub carryScans treats two missing `runAttempt` values as the same run; `bun run package` can pack ignored `output/` leftovers; noRepositoryMode.ts registers a placeholder `refreshBadges`.
+- A worktree has an empty node_modules until linked to the main checkout's node_modules; GitLab snapshot could follow `x-next-page` pages.
+- CommitPanelViewProvider never posts `commitChecksEnabled` (owner question for Phase 18); knip hint: selectedRemovalCrashWorker.ts in knip.jsonc.
+- gitlabProvider.ts:677 now sets `id` twice (toStatusItem already does); harmless, could become `.map(toStatusItem)`.

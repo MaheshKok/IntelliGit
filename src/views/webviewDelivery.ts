@@ -42,11 +42,13 @@ function reportFailedPost(source: string, type: string, error: unknown): void {
  * @param message - The payload; its `type` is what the report names.
  * @param source - Human-readable name of the sending view, e.g. `"Commit panel"`. It is the only
  *   way a reader can tell which of the four providers dropped the message.
+ * @param onDelivered - Called once the webview reports the message received.
  */
 export function postWebviewMessage(
     webview: Pick<vscode.Webview, "postMessage">,
     message: TypedWebviewMessage,
     source: string,
+    onDelivered?: () => void,
 ): void {
     let sent: Thenable<boolean>;
     try {
@@ -57,7 +59,10 @@ export function postWebviewMessage(
     }
     void Promise.resolve(sent).then(
         (delivered) => {
-            if (delivered) return;
+            if (delivered) {
+                onDelivered?.();
+                return;
+            }
             console.error(
                 `[IntelliGit] ${source} webview did not receive a "${message.type}" message.`,
             );

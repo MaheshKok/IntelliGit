@@ -5,6 +5,7 @@ import type { CiLoadedCommit } from "../../../protocol/commitCiMessages";
 import { SPIN_KEYFRAMES } from "../../shared/components/iconStyles";
 import { t } from "../../shared/i18n";
 import { getVsCodeApi } from "../../shared/vscodeApi";
+import { BisectInPlace } from "./BisectView";
 import { CheckAnnotations } from "./CheckAnnotations";
 import { CheckJobDetail } from "./CheckJobDetail";
 import { CheckTree } from "./CheckTree";
@@ -196,41 +197,43 @@ export function ChecksTab({
                 </div>
             ) : null}
             <div className="intelligit-checks-body" style={{ flex: "1 1 auto", overflowY: "auto" }}>
-                {loaded ? (
-                    <div className="intelligit-checks-columns">
-                        <CheckTree
-                            detail={loaded}
-                            hash={hash}
-                            history={history}
-                            defaultBranchUnknown={defaultBranchUnknown}
-                            selectedJobId={selectedJob?.id ?? null}
-                            onSelectJob={(job) => setPicked({ commitKey, jobId: job.id })}
-                            onOpenUrl={openUrl}
-                            onRefresh={refresh}
-                        />
-                        {loaded.runs.length > 0 ? (
-                            <CheckJobDetail
-                                job={selectedJob}
-                                showSteps={loaded.capabilities.steps}
-                                showFailureSummary={loaded.capabilities.failureSummary}
-                                logJob={logJob}
-                                rerunJob={
-                                    rerunJob
-                                        ? {
-                                              target: rerunJob,
-                                              busy: action.busy,
-                                              onAction: action.run,
-                                          }
-                                        : null
-                                }
-                                changedSinceGreen={changedSinceGreen}
+                <BisectInPlace repoKey={repoKey}>
+                    {loaded ? (
+                        <div className="intelligit-checks-columns">
+                            <CheckTree
+                                detail={loaded}
+                                hash={hash}
+                                history={history}
+                                defaultBranchUnknown={defaultBranchUnknown}
+                                selectedJobId={selectedJob?.id ?? null}
+                                onSelectJob={(job) => setPicked({ commitKey, jobId: job.id })}
                                 onOpenUrl={openUrl}
+                                onRefresh={refresh}
                             />
-                        ) : null}
-                    </div>
-                ) : (
-                    <StateMessage state={state} detail={detail} onRefresh={refresh} />
-                )}
+                            {loaded.runs.length > 0 ? (
+                                <CheckJobDetail
+                                    job={selectedJob}
+                                    showSteps={loaded.capabilities.steps}
+                                    showFailureSummary={loaded.capabilities.failureSummary}
+                                    logJob={logJob}
+                                    rerunJob={
+                                        rerunJob
+                                            ? {
+                                                  target: rerunJob,
+                                                  busy: action.busy,
+                                                  onAction: action.run,
+                                              }
+                                            : null
+                                    }
+                                    changedSinceGreen={changedSinceGreen}
+                                    onOpenUrl={openUrl}
+                                />
+                            ) : null}
+                        </div>
+                    ) : (
+                        <StateMessage state={state} detail={detail} onRefresh={refresh} />
+                    )}
+                </BisectInPlace>
                 <CheckAnnotations repoKey={repoKey} hash={hash} detail={loaded} />
             </div>
         </div>

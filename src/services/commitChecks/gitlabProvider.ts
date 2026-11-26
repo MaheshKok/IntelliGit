@@ -1069,6 +1069,8 @@ function toStatusItem(status: GitLabStatus): CommitCheckItem {
         state: mapGitLabStatus(readString(status.status)),
         source: "status",
         url: readString(status.target_url) || undefined,
+        // A pipeline job's status id is its job id: the bisect finds the job's re-runs by it.
+        id: readId(status.id),
     };
 }
 

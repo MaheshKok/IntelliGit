@@ -612,5 +612,28 @@
     "commit.checks.tab.annotationsTruncated": "Показаны первые 1 000 аннотаций",
     "commit.checks.tab.annotationsRejectedNext": "Показано первых аннотаций: {count} — ссылка поставщика на следующую страницу отклонена",
     "commit.checks.tab.annotationsForbidden": "Аннотации недоступны с этим токеном",
-    "commit.checks.tab.annotationsUnavailable": "Аннотации недоступны: {reason}"
+    "commit.checks.tab.annotationsUnavailable": "Аннотации недоступны: {reason}",
+    "commit.checks.bisect.title": "Найти, где сломалась CI",
+    "commit.checks.bisect.help": "Щёлкните диапазон правой кнопкой → {action}. Один квадрат на коммит, новейший слева; первый красный после зелёного — место поломки.",
+    "commit.checks.bisect.progress": "{done} / {total} коммитов",
+    "commit.checks.bisect.cancel": "Отмена",
+    "commit.checks.bisect.close": "Закрыть",
+    "commit.checks.bisect.brokeAtThis": "сломалось на {hash} · этот коммит",
+    "commit.checks.bisect.brokeAtAgo": {
+        "few": "сломалось на {hash} · коммитов назад: {count}",
+        "many": "сломалось на {hash} · коммитов назад: {count}",
+        "one": "сломалось на {hash} · {count} коммит назад",
+        "other": "сломалось на {hash} · коммитов назад: {count}"
+    },
+    "commit.checks.bisect.notLinear": "не прямая линия — точки поломки нет",
+    "commit.checks.bisect.noBreak": "в этом диапазоне нет точки поломки",
+    "commit.checks.bisect.limited": "Ограничено загруженными коммитами: {count}",
+    "commit.checks.bisect.none": "Задания CI для этих коммитов не найдены",
+    "commit.checks.bisect.failed": "Не удалось прочитать часть данных CI. Коммитов с неполными данными CI: {count}",
+    "commit.checks.bisect.retry": "Повторить",
+    "commit.checks.bisect.stopped": "Проверка остановлена, потому что изменился вход или настройки CI.",
+    "commit.checks.bisect.runAgain": "Запустить снова",
+    "commit.checks.bisect.square": "{hash}: {state}",
+    "commit.checks.bisect.noResult": "нет результата",
+    "commit.menu.findCiBreak": "Найти, где сломалась CI"
 }

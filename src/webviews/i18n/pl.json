@@ -612,5 +612,28 @@
     "commit.checks.tab.annotationsTruncated": "Wyświetlanie pierwszych 1 000 adnotacji",
     "commit.checks.tab.annotationsRejectedNext": "Liczba wyświetlonych pierwszych adnotacji: {count} — odrzucono link dostawcy do następnej strony",
     "commit.checks.tab.annotationsForbidden": "Adnotacje niedostępne z tym tokenem",
-    "commit.checks.tab.annotationsUnavailable": "Adnotacje niedostępne: {reason}"
+    "commit.checks.tab.annotationsUnavailable": "Adnotacje niedostępne: {reason}",
+    "commit.checks.bisect.title": "Znajdź, gdzie CI przestało działać",
+    "commit.checks.bisect.help": "Kliknij prawym przyciskiem zakres → {action}. Jeden kwadrat na commit, najnowszy po lewej; pierwszy czerwony po zielonym to miejsce awarii.",
+    "commit.checks.bisect.progress": "{done} / {total} commitów",
+    "commit.checks.bisect.cancel": "Anuluj",
+    "commit.checks.bisect.close": "Zamknij",
+    "commit.checks.bisect.brokeAtThis": "awaria w {hash} · ten commit",
+    "commit.checks.bisect.brokeAtAgo": {
+        "few": "awaria w {hash} · commitów temu: {count}",
+        "many": "awaria w {hash} · commitów temu: {count}",
+        "one": "awaria w {hash} · {count} commit temu",
+        "other": "awaria w {hash} · commitów temu: {count}"
+    },
+    "commit.checks.bisect.notLinear": "to nie jest prosta linia — brak punktu awarii",
+    "commit.checks.bisect.noBreak": "brak punktu awarii w tym zakresie",
+    "commit.checks.bisect.limited": "Ograniczono do wczytanych commitów: {count}",
+    "commit.checks.bisect.none": "Nie znaleziono zadań CI dla tych commitów",
+    "commit.checks.bisect.failed": "Nie można odczytać części danych CI. Commity z niepełnymi danymi CI: {count}",
+    "commit.checks.bisect.retry": "Ponów",
+    "commit.checks.bisect.stopped": "Sprawdzanie zostało zatrzymane, ponieważ zmieniło się logowanie lub ustawienia CI.",
+    "commit.checks.bisect.runAgain": "Uruchom ponownie",
+    "commit.checks.bisect.square": "{hash}: {state}",
+    "commit.checks.bisect.noResult": "brak wyniku",
+    "commit.menu.findCiBreak": "Znajdź, gdzie CI przestało działać"
 }

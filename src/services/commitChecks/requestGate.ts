@@ -1,6 +1,7 @@
 // Long-lived request gates for commit-check HTTP calls. Every provider/API-origin
 // bucket caps concurrent automatic work and shares server-directed cooldowns.
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { getErrorMessage } from "../../utils/errors";
 import {
     createConditionalRequest,
@@ -244,6 +245,23 @@ export class RequestGateCooldownError extends HttpError {
     }
 }
 
+const sendGuards = new AsyncLocalStorage<() => boolean>();
+
+/** A request the gate admitted was refused by its caller's send guard (the caller was cancelled). */
+class SendRefusedError extends Error {}
+
+/**
+ * Runs `work` so that every request it starts through a request gate asks `maySend` once the gate
+ * admits it, right before it is sent: false refuses it with {@link SendRefusedError}, so a caller
+ * cancelled while its requests waited for a slot sends nothing more. Providers need no change.
+ *
+ * @param maySend - Read after the queue wait, inside the gate.
+ * @param work - The reads to guard.
+ */
+export function withSendGuard<T>(maySend: () => boolean, work: () => Promise<T>): Promise<T> {
+    return sendGuards.run(maySend, work);
+}
+
 /** Whether `error` was sent by `origin`; an error that names no host, or a gate with none, is. */
 function answeredFrom(error: unknown, origin: string | undefined): boolean {
     if (origin === undefined || !(error instanceof HttpError) || error.url === undefined) {
@@ -296,6 +314,10 @@ class ProviderRequestGate {
             this.pruneStartedAt();
             this.throwIfCoolingDown();
             this.throwIfRequestBudgetExhausted();
+            // Before the start is counted: a refused request never reached the provider.
+            if (sendGuards.getStore()?.() === false) {
+                throw new SendRefusedError("The request was cancelled.");
+            }
             const generation = this.generation;
             taskGeneration = generation;
             this.startedAt.push(this.now());

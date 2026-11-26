@@ -22,6 +22,8 @@ export type CommitGraphPanelAction =
           hasMore: boolean;
           selectedHash: string | null;
           unpushedHashes?: string[];
+          /** The page's repository, on a replacing page only. */
+          repoKey?: string;
       }
     | {
           type: "setBranches";
@@ -44,7 +46,7 @@ export type CommitGraphPanelAction =
           iconFonts?: ThemeIconFont[];
           ciRepoKey?: string;
       }
-    | { type: "clearCommitDetail"; loading?: boolean }
+    | { type: "clearCommitDetail"; loading?: boolean; ciRepoKey?: string }
     | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
     | { type: "markCommitChecksLoading"; hash: string }
     | { type: "loadError"; clearCommits: boolean }

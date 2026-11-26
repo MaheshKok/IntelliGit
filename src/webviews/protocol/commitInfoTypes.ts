@@ -3,8 +3,11 @@
 
 import type { CommitDetail, ThemeFolderIconMap, ThemeIconFont, ThemeTreeIcon } from "../../types";
 import type {
+    CancelCiBisectMessage,
     CancelCommitCiDetailMessage,
     CiActionResultMessage,
+    CiBisectProgressMessage,
+    CiBisectResultMessage,
     ChangedSinceGreenMessage,
     CiHistoryMessage,
     CiLogPreviewMessage,
@@ -21,6 +24,8 @@ import type {
     OpenCommitChecksSettingsMessage,
     PreviewCiLogMessage,
     RequestCommitCiDetailMessage,
+    StartCiBisectInChecksMessage,
+    StartCiBisectMessage,
 } from "./commitCiMessages";
 
 /**
@@ -52,6 +57,8 @@ export type CommitInfoOutbound =
     | RequestChangedSinceGreenMessage
     | OpenCiRangeDiffMessage
     | OpenCiAnnotationMessage
+    | StartCiBisectMessage
+    | CancelCiBisectMessage
     | OpenCommitChecksSettingsMessage
     | {
           /** Request to open a CI run, job or check URL outside the webview. */
@@ -97,6 +104,8 @@ export type CommitInfoInbound =
           type: "clear";
           /** True while the host expects an automatic replacement selection to arrive. */
           loading?: boolean;
+          /** Repository the cleared pane now belongs to; another repository's bisect is retired. */
+          ciRepoKey?: string;
       }
     | CommitCiDetailMessage
     | CommitCiDetailInvalidatedMessage
@@ -105,4 +114,7 @@ export type CommitInfoInbound =
     | CiActionResultMessage
     | CiHistoryMessage
     | ChangedSinceGreenMessage
-    | OpenChecksTabMessage;
+    | OpenChecksTabMessage
+    | StartCiBisectInChecksMessage
+    | CiBisectProgressMessage
+    | CiBisectResultMessage;

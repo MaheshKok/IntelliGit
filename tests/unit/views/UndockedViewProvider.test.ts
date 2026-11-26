@@ -997,6 +997,135 @@ describe("UndockedViewProvider Checks tab loops", () => {
         });
     });
 
+    /** The panel's coordinator answering a bisect's reads, and the bisect replies it posts. */
+    function bisectHarness(provider: UndockedViewProvider, hold = false) {
+        const panel = openTestPanel(provider);
+        const posted = attachPostedMessageRecorder(panel);
+        const coordinator = (
+            provider as unknown as {
+                commitChecks: { getChecks: () => unknown; capabilities: () => unknown };
+            }
+        ).commitChecks;
+        const reads: Array<{ isCurrent: () => boolean }> = [];
+        const getChecks = vi
+            .spyOn(coordinator, "getChecks")
+            .mockImplementation(async (hash: unknown, options: unknown) => {
+                reads.push(options as { isCurrent: () => boolean });
+                if (hold) await new Promise(() => undefined);
+                return {
+                    hash,
+                    state: "failure",
+                    summary: "",
+                    items: [
+                        { name: "unit", description: "", state: "failure", source: "check-run" },
+                    ],
+                } as never;
+            });
+        const capabilities = vi
+            .spyOn(coordinator, "capabilities")
+            .mockResolvedValue(undefined as never);
+        const commit = { hash: HASH_A, parents: [HASH_B] };
+        vi.spyOn(
+            provider as unknown as { loadedCommits: () => unknown },
+            "loadedCommits",
+        ).mockReturnValue([commit]);
+        const start = {
+            type: "startCiBisect",
+            requestId: 1,
+            repoKey: "/repo-a",
+            commits: [commit],
+        };
+        const bisectPosts = () =>
+            posted.filter((message) =>
+                String((message as { type?: string }).type).startsWith("ciBisect"),
+            );
+        return { panel, posted, getChecks, capabilities, reads, start, bisectPosts };
+    }
+
+    it("a malformed start posts nothing back while the Checks tab switch is off", async () => {
+        await withLoopHarness(async ({ provider }) => {
+            const { panel, posted } = bisectHarness(provider);
+            setE2eControlChannelActive(false);
+            const before = posted.length;
+            await panel.receiveMessage({ type: "startCiBisect", requestId: 1, repoKey: "/repo-a" });
+            await panel.receiveMessage({ type: "startCiBisect", requestId: "x", commits: "nope" });
+            expect(
+                posted.slice(before),
+                "a disabled bisect must post nothing, errors included",
+            ).toEqual([]);
+        });
+    });
+
+    it("starts no bisect and sends no request while the Checks tab switch is off", async () => {
+        await withLoopHarness(async ({ provider }) => {
+            const { panel, getChecks, capabilities, start, bisectPosts } = bisectHarness(provider);
+            setE2eControlChannelActive(false);
+            await panel.receiveMessage(start);
+            expect(getChecks, "no snapshot fetch, so no gate task").not.toHaveBeenCalled();
+            expect(capabilities).not.toHaveBeenCalled();
+            expect(bisectPosts(), "nothing posted while the switch is off").toEqual([]);
+
+            setE2eControlChannelActive(true);
+            await panel.receiveMessage(start);
+            expect(
+                getChecks,
+                "the control: with the switch on the bisect reads",
+            ).toHaveBeenCalledTimes(1);
+            expect(bisectPosts().map((message) => (message as { type: string }).type)).toEqual([
+                "ciBisectProgress",
+                "ciBisectResult",
+            ]);
+        });
+    });
+
+    it("cancelCiBisect does nothing while the Checks tab switch is off", async () => {
+        await withLoopHarness(async ({ provider }) => {
+            const { panel, reads, start, bisectPosts } = bisectHarness(provider, true);
+            void panel.receiveMessage(start);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(reads).toHaveLength(1);
+            setE2eControlChannelActive(false);
+            await panel.receiveMessage({ type: "cancelCiBisect", requestId: 1 });
+            expect(
+                reads[0].isCurrent(),
+                "the switch is off: the running bisect is not cancelled",
+            ).toBe(true);
+            expect(bisectPosts()).toEqual([]);
+
+            setE2eControlChannelActive(true);
+            await panel.receiveMessage({ type: "cancelCiBisect", requestId: 1 });
+            expect(
+                reads[0].isCurrent(),
+                "the control: with the switch on the cancel stops it",
+            ).toBe(false);
+        });
+    });
+
+    it("review: undocked A-B-A retires an active run before it can send", async () => {
+        await withLoopHarness(async ({ provider }) => {
+            const h = bisectHarness(provider, true);
+            void h.panel.receiveMessage(h.start);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(h.reads).toHaveLength(1);
+            vi.spyOn(
+                provider as unknown as { reloadSelectedRepository: () => Promise<void> },
+                "reloadSelectedRepository",
+            ).mockResolvedValue(undefined);
+            const repos = ["/repo-a", "/repo-b"].map((root) => ({
+                root,
+                label: root,
+                kind: "repository" as const,
+            }));
+            provider.setRepositories(repos, "/repo-b");
+            expect(h.reads[0].isCurrent(), "outside A the request is fenced").toBe(false);
+            provider.setRepositories(repos, "/repo-a");
+            expect(
+                h.reads[0].isCurrent(),
+                "returning to A must not revive the retired undocked run",
+            ).toBe(false);
+        });
+    });
+
     it("a closed panel's late ready does not discard the current panel's history reply", async () => {
         await withLoopHarness(async ({ provider }) => {
             const retired = openTestPanel(provider);

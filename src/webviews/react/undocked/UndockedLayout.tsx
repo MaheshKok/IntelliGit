@@ -20,6 +20,7 @@ import { BranchColumn } from "../BranchColumn";
 import { CommitList } from "../CommitList";
 import { CommitInfoPane } from "../commit-info/CommitInfoPane";
 import { openChecksTab } from "../commit-info/checks/checksTabState";
+import { findCiBreakHandler } from "../commit-info/checks/ciBisect";
 import theme from "../commit-panel/theme";
 import { t } from "../shared/i18n";
 import { JETBRAINS_UI } from "../shared/tokens";
@@ -402,6 +403,11 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                         onOpenCommitInChecks={
                                             commitChecksEnabled ? openChecksTab : undefined
                                         }
+                                        onFindCiBreak={findCiBreakHandler(
+                                            commitChecksEnabled,
+                                            repositoryRoot,
+                                        )}
+                                        findCiBreakScope={repositoryRoot}
                                         showCiColumn={showCiColumn}
                                         isViewVisible={isViewVisible}
                                     />

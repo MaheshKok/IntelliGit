@@ -68,7 +68,8 @@ import { answerCiLogMessage } from "./ciLogHandler";
 import { answerOpenCiAnnotation } from "./ciAnnotationHandler";
 import type { CiAnnotationsAccess } from "../services/commitChecks/ciDiagnostics";
 import { answerCiActionMessage, ciActionAccess, type CiActionOptions } from "./ciActionHandler";
-import { answerCiHistoryRequest } from "./ciHistoryHandler";
+import { answerCiHistoryRequest, readLoadedCommits } from "./ciHistoryHandler";
+import { answerCancelCiBisect, answerStartCiBisect } from "./ciBisectHandler";
 import {
     answerChangedSinceGreenRequest,
     answerOpenCiRangeDiff,
@@ -120,6 +121,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     private readonly commitChecks: CommitChecksCoordinator;
     private commitCheckDemandSeq = 0;
     private readonly ciDetailLoops = new CommitCiDetailLoops();
+    private readonly ciBisectRuns = new CommitCiDetailLoops();
     private readonly rangeDiffGrant = new CiRangeDiffGrant();
     /** Each loaded commit's parents, so the standalone Changed Files view can walk them too. */
     private loadedCommitHashes = new Map<string, readonly string[]>();
@@ -196,6 +198,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     private readonly _onOpenCommitInChecks = new vscode.EventEmitter<string>();
     readonly onOpenCommitInChecks = this._onOpenCommitInChecks.event;
 
+    /** The sidebar graph's "Find where CI broke": the selected range, for the other view's Checks tab. */
+    private readonly _onFindCiBreakInChecks = new vscode.EventEmitter<LoadedCommit[]>();
+    readonly onFindCiBreakInChecks = this._onFindCiBreakInChecks.event;
+
     /**
      * Creates the graph provider for one active repository view contribution.
      *
@@ -221,6 +227,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             commitChecksProviders?: readonly CommitChecksProvider[];
             /** Repository the Checks tab asks about; absent hides the Checks tab. */
             ciRepoKey?: () => string;
+            /**
+             * The sidebar graph's repository, which its pages name and a "Find where CI broke" relay
+             * must match; absent = no relay. Separate from `ciRepoKey`, which would turn on this
+             * view's own Checks tab handlers.
+             */
+            relayRepoKey?: () => string;
             ciFixture?: CommitChecksCoordinatorOptions["fixture"];
             /** The window's CI log store; absent = the Checks tab gets no log. */
             ciLogStore?: CiLogMemoryStore;
@@ -354,6 +366,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                 actions: ciActionAccess(this.commitChecks, ciActions),
             }),
             ...(this.options.ciAnnotations && { annotations: this.options.ciAnnotations }),
+            bisect: { source: this.commitChecks, loaded: () => this.loadedCommits() },
         };
     }
 
@@ -393,6 +406,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         this.iconTheme.dispose();
         // The replaced view's re-post loop would keep fetching for a webview that is gone.
         this.ciDetailLoops.dispose();
+        this.ciBisectRuns.dispose();
         this.view = webviewView;
         this.checksReady = false;
         this.lastPostedPayload = undefined;
@@ -412,6 +426,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             if (this.view === webviewView) {
                 this.commitCheckDemandSeq += 1;
                 this.ciDetailLoops.dispose();
+                this.ciBisectRuns.dispose();
                 this.rangeDiffGrant.clear();
                 this.view = undefined;
                 this.checksReady = false;
@@ -456,6 +471,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         if (this.view === webviewView) {
                             this.webviewGeneration += 1;
                             this.ciDetailLoops.dispose();
+                            this.ciBisectRuns.dispose();
                             this.rangeDiffGrant.clear();
                         }
                         this.postToWebview({
@@ -623,11 +639,18 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                     case "cancelCommitCiDetail":
                         if (this.view === webviewView) this.ciDetailLoops.cancel(msg.requestId);
                         break;
+                    case "startCiBisect":
+                    case "cancelCiBisect":
+                        await this.handleCiBisectMessage(webviewView, msg);
+                        break;
                     case "openCommitChecksSettings":
                         await openCommitChecksSettings();
                         break;
                     case "openCommitInChecks":
                         this._onOpenCommitInChecks.fire(this.assertGitHash(msg.hash, "hash"));
+                        break;
+                    case "findCiBreakInChecks":
+                        this.relayFindCiBreak(msg.commits, msg.repoKey);
                         break;
                     case "fetch":
                     case "pull":
@@ -648,6 +671,55 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                 this.postToWebview({ type: "error", message });
             }
         });
+    }
+
+    /**
+     * "Find where CI broke" from the compact layout: hands the range to the Changed Files view's
+     * Checks tab. Ships hidden like the bisect itself: off with the Checks tab switch, before
+     * validating, so a disabled range posts not even an error. Only a click naming the current
+     * repository relays, so one queued before a switch cannot start a bisect for the new
+     * repository, even over shared history. The range goes on whole: the bisect caps it to the
+     * loaded rows and says so.
+     *
+     * @param commits - The selected rows, unvalidated from the webview.
+     * @param repoKey - The repository of the page the rows came from, unvalidated.
+     */
+    private relayFindCiBreak(commits: unknown, repoKey: unknown): void {
+        if (!isE2eControlChannelActive()) return;
+        const current = this.options.relayRepoKey;
+        if (!current || typeof repoKey !== "string" || repoKey !== current()) return;
+        this._onFindCiBreakInChecks.fire(readLoadedCommits(commits));
+    }
+
+    /**
+     * "Find where CI broke": runs a bisect for the webview that asked and posts its progress and
+     * result there, unless it reloaded since, or stops the running one.
+     *
+     * @param webviewView - The view the message came from.
+     * @param msg - The row menu's start or the bisect view's cancel.
+     */
+    private async handleCiBisectMessage(
+        webviewView: vscode.WebviewView,
+        msg: Extract<CommitGraphOutbound, { type: "startCiBisect" | "cancelCiBisect" }>,
+    ): Promise<void> {
+        const repoKey = this.options.ciRepoKey;
+        if (this.view !== webviewView) return;
+        if (msg.type === "cancelCiBisect") {
+            answerCancelCiBisect({ ...msg }, this.ciBisectRuns);
+            return;
+        }
+        if (!repoKey) return;
+        const generation = this.webviewGeneration;
+        await answerStartCiBisect(
+            this.ciDetailSource(repoKey),
+            { ...msg },
+            (reply) => {
+                if (this.view === webviewView && generation === this.webviewGeneration) {
+                    this.postToWebview(reply);
+                }
+            },
+            this.ciBisectRuns,
+        );
     }
 
     /**
@@ -759,6 +831,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         this.filterText = "";
         this.commitChecks.clearProviderResolution();
         this.clearCommitCheckHashScope();
+        // Aborted, not fenced: the fence reads the current repository, so A -> B -> A would revive it.
+        this.ciBisectRuns.dispose();
         this.postToWebview({ type: "setSelectedBranch", branch: null });
         this.postToWebview({ type: "setFilterText", text: "" });
     }
@@ -883,6 +957,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             this.postToWebview({ type: "setSelectedBranch", branch: null });
         }
 
+        // The page names the repository its log is read from: a "Find where CI broke" menu takes
+        // it from the rows it opened on, not from the commit detail, which arrives separately.
+        const pageRepoKey = (this.options.relayRepoKey ?? this.options.ciRepoKey)?.();
         try {
             const [commits, unpushedHashes] = await Promise.all([
                 this.gitOps.getLog(
@@ -902,6 +979,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                     hasMore: commits.length >= this.PAGE_SIZE,
                     append: false,
                     unpushedHashes,
+                    ...(pageRepoKey !== undefined && { repoKey: pageRepoKey }),
                 });
             }
         } catch (err) {
@@ -1297,11 +1375,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             return;
         }
         this.lastPostedPayload = undefined;
-        this.postToWebview(
-            this.commitDetailLoading
-                ? { type: "clearCommitDetail", loading: true }
-                : { type: "clearCommitDetail" },
-        );
+        const ciRepoKey = this.options.ciRepoKey?.();
+        this.postToWebview({
+            type: "clearCommitDetail",
+            ...(this.commitDetailLoading && { loading: true }),
+            ...(ciRepoKey !== undefined && { ciRepoKey }),
+        });
     }
 
     /**
@@ -1350,6 +1429,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     dispose(): void {
         this.commitCheckDemandSeq += 1;
         this.ciDetailLoops.dispose();
+        this.ciBisectRuns.dispose();
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
         this._onCommitSelected.dispose();
@@ -1362,6 +1442,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         this._onRebaseDialogCancel.dispose();
         this._onOpenCommitFileDiff.dispose();
         this._onOpenCommitInChecks.dispose();
+        this._onFindCiBreakInChecks.dispose();
     }
 
     /**

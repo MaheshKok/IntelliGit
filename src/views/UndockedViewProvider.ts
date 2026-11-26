@@ -38,6 +38,7 @@ import {
 import { answerCiLogMessage } from "./ciLogHandler";
 import { answerCiActionMessage, ciActionAccess, type CiActionOptions } from "./ciActionHandler";
 import { answerCiHistoryRequest } from "./ciHistoryHandler";
+import { answerCancelCiBisect, answerStartCiBisect } from "./ciBisectHandler";
 import {
     answerChangedSinceGreenRequest,
     answerOpenCiRangeDiff,
@@ -275,8 +276,10 @@ export class UndockedViewProvider {
     private commitChecksGeneration = 0;
     private commitCheckDemandSeq = 0;
     private readonly ciDetailLoops = new CommitCiDetailLoops();
+    private readonly ciBisectRuns = new CommitCiDetailLoops();
     private readonly rangeDiffGrant = new CiRangeDiffGrant();
-    private loadedCommitHashes = new Set<string>();
+    /** Loaded commit hashes with their parents, which a bisect's first-parent walk trusts. */
+    private loadedCommitHashes = new Map<string, readonly string[]>();
     private checkableCommitHashes = new Set<string>();
     private constrainCommitCheckHashes = false;
     private folderIconsByName: ThemeFolderIconMap = {};
@@ -481,7 +484,13 @@ export class UndockedViewProvider {
             }),
             ...(ciActions && { actions: ciActionAccess(this.commitChecks, ciActions) }),
             ...(this.ciAnnotations && { annotations: this.ciAnnotations }),
+            bisect: { source: this.commitChecks, loaded: () => this.loadedCommits() },
         };
+    }
+
+    /** The commits the panel's Git Log has loaded, with their parents. */
+    private loadedCommits(): { hash: string; parents: readonly string[] }[] {
+        return [...this.loadedCommitHashes].map(([hash, parents]) => ({ hash, parents }));
     }
     /**
      * Updates the panel title fragment used when the active repository label changes.
@@ -675,6 +684,8 @@ export class UndockedViewProvider {
         this.commitChecksGeneration += 1;
         this.commitChecks.clearProviderResolution();
         this.clearCommitCheckHashScope();
+        // Aborted, not fenced: the fence reads the current repository, so A -> B -> A would revive it.
+        this.ciBisectRuns.dispose();
         this.filterText = "";
         this.offset = 0;
         this.loadingMore = false;
@@ -839,6 +850,7 @@ export class UndockedViewProvider {
             this.fileStats.dispose();
             this.commitCheckDemandSeq += 1;
             this.ciDetailLoops.dispose();
+            this.ciBisectRuns.dispose();
             this.rangeDiffGrant.clear();
             this.commitMessageGenerationCoordinator?.dropHost(this.commitMessageGenerationHost);
             this.nativeCommitInputBridge.setVisible(false);
@@ -860,13 +872,16 @@ export class UndockedViewProvider {
                 msg.type === "requestCiHistory" ||
                 msg.type === "requestChangedSinceGreen" ||
                 msg.type === "openCiRangeDiff" ||
-                msg.type === "openCiAnnotation";
+                msg.type === "openCiAnnotation" ||
+                msg.type === "startCiBisect" ||
+                msg.type === "cancelCiBisect";
             if (ciMessage && this.panel !== panel) return;
             // A window reload sends ready without reopening the panel: it ends the old scan loop
             // and orphans a history reply asked before it. A closed panel's late ready does neither.
             if (msg.type === "ready" && this.panel === panel) {
                 this.webviewGeneration += 1;
                 this.ciDetailLoops.dispose();
+                this.ciBisectRuns.dispose();
                 this.rangeDiffGrant.clear();
             }
             try {
@@ -1405,6 +1420,24 @@ export class UndockedViewProvider {
                 break;
             case "cancelCommitCiDetail":
                 this.ciDetailLoops.cancel(msg.requestId);
+                break;
+            case "startCiBisect": {
+                const panel = this.panel;
+                const generation = this.webviewGeneration;
+                await answerStartCiBisect(
+                    this.ciDetailSource(),
+                    { ...msg },
+                    (reply) => {
+                        if (this.panel === panel && generation === this.webviewGeneration) {
+                            this.postToWebview(reply);
+                        }
+                    },
+                    this.ciBisectRuns,
+                );
+                break;
+            }
+            case "cancelCiBisect":
+                answerCancelCiBisect({ ...msg }, this.ciBisectRuns);
                 break;
             case "openCommitChecksSettings":
                 await openCommitChecksSettings();
@@ -2043,7 +2076,7 @@ export class UndockedViewProvider {
     /** Replaces first-page hash scope and invalidates demand tied to the previous graph result. */
     private replaceCommitCheckHashScope(commits: Commit[], unpushedHashes: string[]): void {
         this.commitCheckDemandSeq += 1;
-        this.loadedCommitHashes = new Set();
+        this.loadedCommitHashes = new Map();
         this.checkableCommitHashes = new Set();
         this.constrainCommitCheckHashes = true;
         this.addCommitCheckHashScope(commits, unpushedHashes);
@@ -2057,7 +2090,7 @@ export class UndockedViewProvider {
         const unpushed = new Set(unpushedHashes);
         this.constrainCommitCheckHashes = true;
         for (const commit of commits) {
-            this.loadedCommitHashes.add(commit.hash);
+            this.loadedCommitHashes.set(commit.hash, commit.parentHashes);
             if (unpushed.has(commit.hash)) {
                 this.checkableCommitHashes.delete(commit.hash);
             } else {

@@ -16,10 +16,14 @@ import type {
     RebaseSubmissionEntry,
 } from "../../git/interactiveRebase/types";
 import type {
+    CancelCiBisectMessage,
     CancelCommitCiDetailMessage,
     CiActionResultMessage,
+    CiBisectProgressMessage,
+    CiBisectResultMessage,
     ChangedSinceGreenMessage,
     CiHistoryMessage,
+    StartCiBisectMessage,
     CiLogPreviewMessage,
     CiLogResultMessage,
     CommitCiDetailInvalidatedMessage,
@@ -33,6 +37,7 @@ import type {
     OpenCommitChecksSettingsMessage,
     OpenChecksTabMessage,
     OpenCommitInChecksMessage,
+    FindCiBreakInChecksMessage,
     PreviewCiLogMessage,
     RequestCommitCiDetailMessage,
 } from "./commitCiMessages";
@@ -268,8 +273,11 @@ export type CommitGraphOutbound =
     | RequestChangedSinceGreenMessage
     | OpenCiRangeDiffMessage
     | OpenCiAnnotationMessage
+    | StartCiBisectMessage
+    | CancelCiBisectMessage
     | OpenCommitChecksSettingsMessage
-    | OpenCommitInChecksMessage;
+    | OpenCommitInChecksMessage
+    | FindCiBreakInChecksMessage;
 
 /** How the user answered the review card. `later` is the only non-terminal outcome. */
 export type ReviewPromptDecision = "rated" | "declined" | "later";
@@ -327,6 +335,12 @@ export type CommitGraphInbound =
           append: boolean;
           /** Full hashes from `git rev-list --branches --not --remotes` used for display badges. */
           unpushedHashes: string[];
+          /**
+           * The sidebar or card graph's repository, on a replacing page only (appends follow
+           * it); a "Find where CI broke" menu takes it from the rows it opened on. Absent in
+           * every other graph.
+           */
+          repoKey?: string;
       }
     | {
           /** State update carrying branch data and optional folder icon theme metadata. */
@@ -405,6 +419,11 @@ export type CommitGraphInbound =
           type: "clearCommitDetail";
           /** True while branch filtering is expected to auto-select the first loaded commit. */
           loading?: boolean;
+          /**
+           * Repository the cleared pane belongs to now; a bisect of another repository is retired
+           * even while no Checks tab is mounted. Absent = the host runs no bisect here.
+           */
+          ciRepoKey?: string;
       }
     | {
           /** Response for a failed Git log request; graph panes may clear stale rows. */
@@ -443,4 +462,6 @@ export type CommitGraphInbound =
     | CiActionResultMessage
     | CiHistoryMessage
     | ChangedSinceGreenMessage
+    | CiBisectProgressMessage
+    | CiBisectResultMessage
     | OpenChecksTabMessage;

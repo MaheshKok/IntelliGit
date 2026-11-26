@@ -505,6 +505,39 @@ describe("CommitGraphViewProvider redundant setCommitDetail post on webview relo
     );
 });
 
+// The card's rows and commit detail arrive separately, so its "Find where CI broke" menu takes the
+// repository from the page its rows came from: the replacing page must name it.
+describe("CommitGraphViewProvider card page repository", () => {
+    it("a replacing card page names the card's repository", async () => {
+        const root = { current: "/A" };
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const getLog = gitOps.getLog.bind(gitOps);
+        // The repository moves while A's log is still being read: the rows are still A's.
+        vi.spyOn(gitOps, "getLog").mockImplementationOnce((...args) => {
+            root.current = "/B";
+            return getLog(...args);
+        });
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            { ...buildProviderOptions("card"), ciRepoKey: () => root.current },
+        );
+        const { webviewView, posted, receiveMessage } =
+            createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+        await vi.waitFor(() => expect(loadCommitsPages(posted).length).toBeGreaterThan(0));
+        const pages = loadCommitsPages(posted);
+        expect(pages[0], "the card page names the repository its log was read from").toMatchObject({
+            append: false,
+            repoKey: "/A",
+        });
+    });
+});
+
 /** Every `loadCommits` page the provider posted, in posted order. */
 function loadCommitsPages(posted: readonly unknown[]): Record<string, unknown>[] {
     return posted.filter(
@@ -948,6 +981,308 @@ describe("CommitGraphViewProvider Checks tab history after a webview reload", ()
         } finally {
             setE2eControlChannelActive(wasOn);
         }
+    });
+
+    /** A card graph whose coordinator answers a bisect's reads, and its posted bisect replies. */
+    async function bisectHarness(hold = false) {
+        let repo = "/repo";
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            { ...buildProviderOptions("card"), ciRepoKey: () => repo },
+        );
+        const { webviewView, posted, receiveMessage } =
+            createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+        const coordinator = (
+            provider as unknown as {
+                commitChecks: { getChecks: () => unknown; capabilities: () => unknown };
+            }
+        ).commitChecks;
+        const reads: Array<{ isCurrent: () => boolean }> = [];
+        const getChecks = vi
+            .spyOn(coordinator, "getChecks")
+            .mockImplementation(async (hash: unknown, options: unknown) => {
+                reads.push(options as { isCurrent: () => boolean });
+                if (hold) await new Promise(() => undefined);
+                return {
+                    hash,
+                    state: "failure",
+                    summary: "",
+                    items: [
+                        { name: "unit", description: "", state: "failure", source: "check-run" },
+                    ],
+                } as never;
+            });
+        const capabilities = vi
+            .spyOn(coordinator, "capabilities")
+            .mockResolvedValue(undefined as never);
+        const commit = { hash: "a".repeat(40), parents: ["b".repeat(40)] };
+        vi.spyOn(provider, "loadedCommits").mockReturnValue([commit]);
+        const start = { type: "startCiBisect", requestId: 1, repoKey: "/repo", commits: [commit] };
+        const bisectPosts = () =>
+            posted.filter(
+                (message) => isRecord(message) && String(message.type).startsWith("ciBisect"),
+            );
+        /** What repositoryMode.ts does on a repository switch. */
+        const switchTo = (next: string): void => {
+            repo = next;
+            provider.resetFilters();
+        };
+        return {
+            provider,
+            receiveMessage,
+            posted,
+            getChecks,
+            capabilities,
+            reads,
+            start,
+            bisectPosts,
+            switchTo,
+        };
+    }
+
+    it("review: card A-B-A retires an active run before it can send", async () => {
+        const h = await bisectHarness(true);
+        void h.receiveMessage(h.start);
+        await flushMicrotasks();
+        expect(h.reads).toHaveLength(1);
+        h.switchTo("/other");
+        expect(h.reads[0].isCurrent(), "outside A the request is fenced").toBe(false);
+        h.switchTo("/repo");
+        expect(h.reads[0].isCurrent(), "returning to A must not revive the retired card run").toBe(
+            false,
+        );
+    });
+
+    it("review: a cleared card detail names the repository the pane belongs to now", async () => {
+        const h = await bisectHarness();
+        h.switchTo("/other");
+        h.provider.clearCommitDetail({ loading: true });
+        expect(
+            h.posted,
+            "the webview retires another repository's run on this message",
+        ).toContainEqual({ type: "clearCommitDetail", loading: true, ciRepoKey: "/other" });
+    });
+
+    it("a malformed start posts nothing back while the Checks tab switch is off", async () => {
+        const { receiveMessage, posted } = await bisectHarness();
+        setE2eControlChannelActive(false);
+        const before = posted.length;
+        await receiveMessage({ type: "startCiBisect", requestId: 1, repoKey: "/repo" });
+        await receiveMessage({ type: "startCiBisect", requestId: "x", commits: "nope" });
+        expect(
+            posted.slice(before),
+            "a disabled bisect must post nothing, errors included",
+        ).toEqual([]);
+    });
+
+    it("starts no bisect and sends no request while the Checks tab switch is off", async () => {
+        const { receiveMessage, getChecks, capabilities, start, bisectPosts } =
+            await bisectHarness();
+        setE2eControlChannelActive(false);
+        await receiveMessage(start);
+        expect(getChecks, "no snapshot fetch, so no gate task").not.toHaveBeenCalled();
+        expect(capabilities).not.toHaveBeenCalled();
+        expect(bisectPosts(), "nothing posted while the switch is off").toEqual([]);
+
+        setE2eControlChannelActive(true);
+        await receiveMessage(start);
+        expect(getChecks, "the control: with the switch on the bisect reads").toHaveBeenCalledTimes(
+            1,
+        );
+        expect(bisectPosts().map((message) => (message as { type: string }).type)).toEqual([
+            "ciBisectProgress",
+            "ciBisectResult",
+        ]);
+    });
+
+    it("cancelCiBisect does nothing while the Checks tab switch is off", async () => {
+        const { receiveMessage, reads, start, bisectPosts } = await bisectHarness(true);
+        void receiveMessage(start);
+        await flushMicrotasks();
+        expect(reads).toHaveLength(1);
+        setE2eControlChannelActive(false);
+        await receiveMessage({ type: "cancelCiBisect", requestId: 1 });
+        expect(reads[0].isCurrent(), "the switch is off: the running bisect is not cancelled").toBe(
+            true,
+        );
+        expect(bisectPosts()).toEqual([]);
+
+        setE2eControlChannelActive(true);
+        await receiveMessage({ type: "cancelCiBisect", requestId: 1 });
+        expect(reads[0].isCurrent(), "the control: with the switch on the cancel stops it").toBe(
+            false,
+        );
+    });
+
+    // Owner 2026-11-24 "compact now": the sidebar graph has no Checks tab, so it hands the range on.
+    it("the compact graph hands no range to the Checks tab while the Checks tab switch is off", async () => {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            { ...buildProviderOptions("compact"), relayRepoKey: () => "/repo" },
+        );
+        const { webviewView, posted, receiveMessage } =
+            createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+        const relayed: unknown[] = [];
+        provider.onFindCiBreakInChecks((commits) => relayed.push(commits));
+        const commits = [
+            { hash: "a".repeat(40), parents: ["b".repeat(40)] },
+            { hash: "b".repeat(40), parents: [] },
+        ];
+        loadRows(provider, commits);
+        const before = posted.length;
+
+        setE2eControlChannelActive(false);
+        await receiveMessage({ type: "findCiBreakInChecks", commits, repoKey: "/repo" });
+        await receiveMessage({ type: "findCiBreakInChecks", commits: "nope", repoKey: "/repo" });
+        expect(relayed, "the switch is off: nothing reaches the Checks tab").toEqual([]);
+        expect(posted.slice(before), "and nothing, errors included, is posted").toEqual([]);
+
+        setE2eControlChannelActive(true);
+        await receiveMessage({ type: "findCiBreakInChecks", commits, repoKey: "/repo" });
+        expect(relayed, "the control: with the switch on the range is handed on").toEqual([
+            commits,
+        ]);
+    });
+
+    /** Rows the compact graph has loaded, as a page load records them. */
+    function loadRows(
+        provider: CommitGraphViewProvider,
+        rows: ReadonlyArray<{ hash: string; parents: string[] }>,
+    ): void {
+        const loaded = (provider as unknown as { loadedCommitHashes: Map<string, string[]> })
+            .loadedCommitHashes;
+        for (const { hash, parents } of rows) loaded.set(hash, parents);
+    }
+
+    /** A compact graph in repository `root.current`, and the ranges it hands to the Checks tab. */
+    async function compactRelayHarness(root: { current: string }) {
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
+            new CredentialStore(createInertSecretStorage()),
+            { ...buildProviderOptions("compact"), relayRepoKey: () => root.current },
+        );
+        const { webviewView, posted, receiveMessage } =
+            createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+        const relayed: unknown[] = [];
+        provider.onFindCiBreakInChecks((commits) => relayed.push(commits));
+        return { provider, posted, receiveMessage, relayed };
+    }
+
+    it("rejects a compact bisect click queued in A after the host switches to B", async () => {
+        const root = { current: "/A" };
+        const { provider, receiveMessage, relayed } = await compactRelayHarness(root);
+        const rowsOfA = [
+            { hash: "a".repeat(40), parents: ["b".repeat(40)] },
+            { hash: "b".repeat(40), parents: [] },
+        ];
+        loadRows(provider, rowsOfA);
+        const clickInA = { type: "findCiBreakInChecks", commits: rowsOfA, repoKey: "/A" };
+
+        await receiveMessage(clickInA);
+        expect(relayed, "the control: a click on A's rows relays in A").toEqual([rowsOfA]);
+
+        relayed.length = 0;
+        // What repositoryMode.ts does on a switch, before B's first page arrives.
+        root.current = "/B";
+        provider.resetFilters();
+        await receiveMessage(clickInA);
+        expect(relayed, "A's queued click must not start a bisect for B").toEqual([]);
+
+        loadRows(provider, [{ hash: "c".repeat(40), parents: [] }]);
+        await receiveMessage(clickInA);
+        expect(relayed, "nor once B's rows are loaded").toEqual([]);
+    });
+
+    it("review: compact delayed click from A cannot be relayed in B with shared history", async () => {
+        const root = { current: "/A" };
+        const { provider, receiveMessage, relayed } = await compactRelayHarness(root);
+        const rows = [
+            { hash: "d".repeat(40), parents: ["c".repeat(40)] },
+            { hash: "c".repeat(40), parents: [] },
+        ];
+        loadRows(provider, rows);
+        const clickInA = { type: "findCiBreakInChecks", commits: rows, repoKey: "/A" };
+        await receiveMessage(clickInA);
+        expect(relayed, "the control: A's click relays in A").toEqual([rows]);
+
+        root.current = "/B";
+        provider.resetFilters();
+        loadRows(provider, rows);
+        await receiveMessage(clickInA);
+        expect(relayed, "shared SHAs must not authorize an A click in B").toEqual([rows]);
+    });
+
+    it("a compact click that names no repository, or another one, is not relayed", async () => {
+        const { provider, posted, receiveMessage, relayed } = await compactRelayHarness({
+            current: "/A",
+        });
+        const rows = [{ hash: "d".repeat(40), parents: [] }];
+        loadRows(provider, rows);
+        const before = posted.length;
+        await receiveMessage({ type: "findCiBreakInChecks", commits: rows });
+        await receiveMessage({ type: "findCiBreakInChecks", commits: rows, repoKey: 7 });
+        await receiveMessage({ type: "findCiBreakInChecks", commits: rows, repoKey: "/B" });
+        expect(relayed).toEqual([]);
+        expect(posted.slice(before), "a stale click is dropped, not reported").toEqual([]);
+    });
+
+    it("compact delayed click still relays after the same repository reloads the same rows", async () => {
+        const { provider, receiveMessage, relayed } = await compactRelayHarness({ current: "/A" });
+        const rows = [
+            { hash: "d".repeat(40), parents: ["c".repeat(40)] },
+            { hash: "c".repeat(40), parents: [] },
+        ];
+        loadRows(provider, rows);
+        (
+            provider as unknown as { clearCommitCheckHashScope: () => void }
+        ).clearCommitCheckHashScope();
+        loadRows(provider, rows);
+        await receiveMessage({ type: "findCiBreakInChecks", commits: rows, repoKey: "/A" });
+        expect(relayed).toEqual([rows]);
+    });
+
+    it("review: compact same-repository page replacement still hands off a range for capping", async () => {
+        const { provider, receiveMessage, relayed } = await compactRelayHarness({ current: "/A" });
+        const rows = [
+            { hash: "d".repeat(40), parents: ["c".repeat(40)] },
+            { hash: "c".repeat(40), parents: ["b".repeat(40)] },
+            { hash: "b".repeat(40), parents: [] },
+        ];
+        loadRows(provider, rows);
+        (
+            provider as unknown as { clearCommitCheckHashScope: () => void }
+        ).clearCommitCheckHashScope();
+        loadRows(provider, rows.slice(1));
+        await receiveMessage({ type: "findCiBreakInChecks", commits: rows, repoKey: "/A" });
+        expect(
+            relayed,
+            "a live selection reaches the bisect whole, which caps it to the loaded rows",
+        ).toEqual([rows]);
+    });
+
+    it("the compact graph's pages name their repository for the relay", async () => {
+        const { posted } = await compactRelayHarness({ current: "/A" });
+        await vi.waitFor(() => {
+            expect(loadCommitsPages(posted).length, "ready loads a page").toBeGreaterThan(0);
+        });
+        for (const page of loadCommitsPages(posted)) expect(page).toMatchObject({ repoKey: "/A" });
     });
 
     it("a replaced view's late ready does not discard the current context's history reply", async () => {

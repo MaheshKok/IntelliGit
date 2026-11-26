@@ -3,13 +3,18 @@ import { IoMdRefresh } from "react-icons/io";
 import { TbCherryFilled } from "react-icons/tb";
 import type { Commit } from "../../../types";
 import type { CommitAction } from "../../protocol/commitGraphTypes";
+import { isChecksTabEnabled } from "../commit-info/checks/checksTabState";
 import type { MenuItem } from "../shared/components/ContextMenu";
 import { t } from "../shared/i18n";
 import { resolveIconColor } from "../shared/settings";
 import { ICON_ACCENTS } from "../shared/tokens";
 
 type SeparatorAction = `sep-${string}`;
-type CommitMenuItem = Omit<MenuItem, "action"> & { action: CommitAction | SeparatorAction };
+/** The webview's own row action: it opens the bisect view instead of asking the host to run a Git command. */
+export const FIND_CI_BREAK_ACTION = "findCiBreak";
+type CommitMenuItem = Omit<MenuItem, "action"> & {
+    action: CommitAction | SeparatorAction | typeof FIND_CI_BREAK_ACTION;
+};
 const STANDARD_MENU_ICON_COLOR = "var(--vscode-menu-foreground, var(--vscode-icon-foreground))";
 
 function commitMenuIcon(color: string, path: React.ReactNode): React.ReactElement {
@@ -32,13 +37,16 @@ function commitMenuIcon(color: string, path: React.ReactNode): React.ReactElemen
  * Edit/rebase-style mutations are disabled for pushed commits and merge commits,
  * while reset/copy actions remain available according to their own command rules.
  * `canSquashSelection` adds only the multi-row eligibility gate; omitting it
- * preserves the existing single-row squash behavior.
+ * preserves the existing single-row squash behavior. `canFindCiBreak` adds
+ * "Find where CI broke" for a selected range, and only while the Checks tab
+ * switch is on.
  */
 export function getCommitMenuItems(
     commit: Commit,
     isUnpushed: boolean,
     canCherryPick: boolean,
     canSquashSelection = true,
+    canFindCiBreak = false,
 ): CommitMenuItem[] {
     const isPushed = !isUnpushed;
     const isMergeCommit = commit.parentHashes.length > 1;
@@ -107,6 +115,11 @@ export function getCommitMenuItems(
     items.push({ separator: true, label: "", action: "sep-create" });
     items.push({ label: t("commit.menu.newBranch"), action: "newBranch" });
     items.push({ label: t("commit.menu.newTag"), action: "newTag" });
+
+    if (canFindCiBreak && isChecksTabEnabled()) {
+        items.push({ separator: true, label: "", action: "sep-ci" });
+        items.push({ label: t("commit.menu.findCiBreak"), action: FIND_CI_BREAK_ACTION });
+    }
 
     return items;
 }

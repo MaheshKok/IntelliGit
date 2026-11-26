@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { CommitDetail, ThemeFolderIconMap } from "../types";
 import type { CommitInfoInbound, CommitInfoOutbound } from "../webviews/protocol/commitInfoTypes";
+import type { CiLoadedCommit } from "../webviews/protocol/commitCiMessages";
 import { IconThemeService } from "./shared/IconThemeService";
 import { isRedundantPost, serializeWebviewPayload } from "./shared/postedPayload";
 import { buildWebviewShellHtml } from "./webviewHtml";
@@ -23,6 +24,7 @@ import {
     CiRangeDiffGrant,
 } from "./ciChangedSinceGreenHandler";
 import { answerOpenCiAnnotation } from "./ciAnnotationHandler";
+import { answerCancelCiBisect, answerStartCiBisect } from "./ciBisectHandler";
 import type { LoadedCommit } from "../services/commitChecks/changedSinceGreen";
 
 /** What the Changed Files view needs to serve its Checks tab. */
@@ -64,7 +66,15 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     /** "Open in Checks" asked for before the webview could receive it, with the repository it
      * was asked in: a repository switch before the view is ready must not re-key it. */
     private pendingChecks?: { repoKey: string; hash: string };
+    /** A sidebar graph range for "Find where CI broke", held until the webview is ready. */
+    private pendingBisect?: { repoKey: string; commits: CiLoadedCommit[] };
+    /** The `pendingBisect` last posted, and the webview generation it was posted to. */
+    private postedBisect?: { repoKey: string; commits: CiLoadedCommit[] };
+    private postedGeneration = 0;
     private readonly ciDetailLoops = new CommitCiDetailLoops();
+    private readonly ciBisectRuns = new CommitCiDetailLoops();
+    /** Repository of the last bisect this view started; a switch away from it ends that run. */
+    private bisectRepoKey?: string;
     private readonly iconTheme: IconThemeService;
     private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
         commitHash: string;
@@ -97,6 +107,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.iconTheme.dispose();
         // The replaced view's re-post loop would keep fetching for a webview that is gone.
         this.ciDetailLoops.dispose();
+        this.ciBisectRuns.dispose();
         this.view = webviewView;
         this.ready = false;
         this.lastPostedPayload = undefined;
@@ -129,6 +140,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     if (this.view === webviewView) {
                         this.webviewGeneration += 1;
                         this.ciDetailLoops.dispose();
+                        this.ciBisectRuns.dispose();
                         this.rangeDiffGrant.clear();
                     }
                     try {
@@ -141,6 +153,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     this.ready = true;
                     this.postCurrentState();
                     this.postPendingChecksTab();
+                    this.postPendingBisect();
                     break;
                 case "openCommitFileDiff":
                     try {
@@ -178,6 +191,17 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                         );
                     }
                     break;
+                case "startCiBisect":
+                case "cancelCiBisect":
+                    try {
+                        await this.handleCiBisectMessage(msg, webviewView);
+                    } catch (err) {
+                        const message = getErrorMessage(err);
+                        vscode.window.showErrorMessage(
+                            vscode.l10n.t("Commit checks error: {message}", { message }),
+                        );
+                    }
+                    break;
             }
         });
 
@@ -185,6 +209,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
             // A replaced view's late dispose must not tear down its successor.
             if (this.view !== webviewView) return;
             this.ciDetailLoops.dispose();
+            this.ciBisectRuns.dispose();
             this.rangeDiffGrant.clear();
             this.view = undefined;
             this.ready = false;
@@ -221,6 +246,72 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         if (!this.ciSource) return;
         this.pendingChecks = { repoKey: this.ciSource.repoKey(), hash };
         this.postPendingChecksTab();
+    }
+
+    /**
+     * "Find where CI broke" from the sidebar graph's rows: this view's Checks tab runs and shows it.
+     *
+     * @param commits - The selected range, newest first, with their parents.
+     */
+    startCiBisect(commits: readonly LoadedCommit[]): void {
+        // Held until the webview is ready: the view may be collapsed, unresolved or still loading.
+        if (!this.ciSource) return;
+        this.pendingBisect = {
+            repoKey: this.ciSource.repoKey(),
+            commits: commits.map(({ hash, parents }) => ({ hash, parents: [...parents] })),
+        };
+        this.postPendingBisect();
+    }
+
+    private postPendingBisect(): void {
+        const pending = this.pendingBisect;
+        const view = this.view;
+        if (!this.ready || !pending || !view) return;
+        // A ready that re-runs while this relay is in flight would post the same click twice.
+        if (this.postedBisect === pending && this.postedGeneration === this.webviewGeneration)
+            return;
+        this.postedBisect = pending;
+        this.postedGeneration = this.webviewGeneration;
+        // Held until the webview reports it received: a refused relay goes again on its next `ready`.
+        postWebviewMessage(
+            view.webview,
+            { type: "startCiBisectInChecks", ...pending },
+            "Commit info",
+            () => {
+                if (this.pendingBisect === pending) this.pendingBisect = undefined;
+            },
+        );
+    }
+
+    /**
+     * Runs or stops the Checks tab's bisect for the webview that asked; its replies go to that
+     * webview unless it reloaded since.
+     *
+     * @param msg - The Checks tab's start (after `startCiBisectInChecks`) or its Cancel.
+     * @param view - The view the message came from.
+     */
+    private async handleCiBisectMessage(
+        msg: Extract<CommitInfoOutbound, { type: "startCiBisect" | "cancelCiBisect" }>,
+        view: vscode.WebviewView,
+    ): Promise<void> {
+        if (this.view !== view) return;
+        if (msg.type === "cancelCiBisect") {
+            answerCancelCiBisect({ ...msg }, this.ciBisectRuns);
+            return;
+        }
+        if (!this.ciSource) return;
+        const generation = this.webviewGeneration;
+        this.bisectRepoKey = this.ciSource.repoKey();
+        await answerStartCiBisect(
+            this.ciSource,
+            { ...msg },
+            (reply) => {
+                if (this.view === view && generation === this.webviewGeneration) {
+                    this.postToWebview(reply);
+                }
+            },
+            this.ciBisectRuns,
+        );
     }
 
     /** After a sign-in or sign-out: the Checks tab drops the previous account's detail and asks again. */
@@ -387,9 +478,21 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.lastPostedPayload = undefined;
         // The held commit's load was cancelled; a later plain click must not open Checks.
         this.pendingChecks = undefined;
-        if (this.ready) {
-            this.postToWebview(this.loading ? { type: "clear", loading: true } : { type: "clear" });
-        }
+        // A repository switch clears this pane: the previous repository's bisect ends here, with
+        // its Checks tab mounted or not, so switching back cannot revive a run its view retired.
+        const repoKey = this.ciSource?.repoKey();
+        if (this.bisectRepoKey !== repoKey) this.ciBisectRuns.dispose();
+        if (this.pendingBisect?.repoKey !== repoKey) this.pendingBisect = undefined;
+        if (this.ready) this.postToWebview(this.clearMessage());
+    }
+
+    /** The pane's clear, naming its repository so the webview retires another one's bisect. */
+    private clearMessage(): CommitInfoInbound {
+        return {
+            type: "clear",
+            ...(this.loading && { loading: true }),
+            ...(this.ciSource && { ciRepoKey: this.ciSource.repoKey() }),
+        };
     }
 
     /**
@@ -403,7 +506,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         if (!this.detail) {
             this.lastPostedPayload = undefined;
-            this.postToWebview(this.loading ? { type: "clear", loading: true } : { type: "clear" });
+            this.postToWebview(this.clearMessage());
             return;
         }
         const payload: CommitInfoInbound = {
@@ -473,6 +576,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
      */
     dispose(): void {
         this.ciDetailLoops.dispose();
+        this.ciBisectRuns.dispose();
         this.iconTheme.dispose();
         this._onOpenCommitFileDiff.dispose();
     }

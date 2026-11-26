@@ -9,6 +9,7 @@ import type {
     UnifiedInbound,
     UnifiedOutbound,
 } from "../../protocol/undockedMessages";
+import { retireCiBisect } from "../commit-info/checks/ciBisect";
 import { openChecksTab } from "../commit-info/checks/checksTabState";
 import { getVsCodeApi } from "../shared/vscodeApi";
 import type { SectionWidths } from "./sectionWidths";
@@ -127,6 +128,8 @@ function handleRepositoriesMessage(
     context.setSelectedRepositoryRoot(data.selectedRepositoryRoot);
     if (previousRoot !== data.selectedRepositoryRoot) {
         context.selectedRepositoryRootRef.current = data.selectedRepositoryRoot;
+        // The host aborts the old repository's bisect on this switch; its slot goes too.
+        retireCiBisect(data.selectedRepositoryRoot);
         context.selectedHashRef.current = null;
         context.loadingMore.current = false;
         context.graphDispatch({ type: "resetRepository" });

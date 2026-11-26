@@ -579,5 +579,25 @@
     "commit.checks.tab.annotationsTruncated": "最初の 1 000 件のアノテーションを表示しています",
     "commit.checks.tab.annotationsRejectedNext": "最初の {count} 件のアノテーションを表示しています — プロバイダーの次ページのリンクは拒否されました",
     "commit.checks.tab.annotationsForbidden": "このトークンではアノテーションを利用できません",
-    "commit.checks.tab.annotationsUnavailable": "アノテーションを利用できません: {reason}"
+    "commit.checks.tab.annotationsUnavailable": "アノテーションを利用できません: {reason}",
+    "commit.checks.bisect.title": "CI が壊れた箇所を探す",
+    "commit.checks.bisect.help": "範囲を右クリック → {action}。コミットごとに 1 つの四角、最新が左。緑の後の最初の赤が壊れた箇所です。",
+    "commit.checks.bisect.progress": "{done} / {total} コミット",
+    "commit.checks.bisect.cancel": "キャンセル",
+    "commit.checks.bisect.close": "閉じる",
+    "commit.checks.bisect.brokeAtThis": "{hash} で壊れました · このコミット",
+    "commit.checks.bisect.brokeAtAgo": {
+        "other": "{hash} で壊れました · {count} コミット前"
+    },
+    "commit.checks.bisect.notLinear": "一直線ではありません — 壊れた箇所なし",
+    "commit.checks.bisect.noBreak": "この範囲に壊れた箇所はありません",
+    "commit.checks.bisect.limited": "読み込まれた {count} 件のコミットに制限されています",
+    "commit.checks.bisect.none": "これらのコミットの CI ジョブが見つかりません",
+    "commit.checks.bisect.failed": "一部の CI データを読み取れませんでした。CI データが不完全なコミット: {count}",
+    "commit.checks.bisect.retry": "再試行",
+    "commit.checks.bisect.stopped": "サインインまたは CI 設定が変更されたため、チェックを停止しました。",
+    "commit.checks.bisect.runAgain": "もう一度実行",
+    "commit.checks.bisect.square": "{hash}: {state}",
+    "commit.checks.bisect.noResult": "結果なし",
+    "commit.menu.findCiBreak": "CI が壊れた箇所を探す"
 }

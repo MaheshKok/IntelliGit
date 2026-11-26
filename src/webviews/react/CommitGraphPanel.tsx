@@ -30,6 +30,7 @@ import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/type
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
 import { openChecksTab } from "./commit-info/checks/checksTabState";
+import { findCiBreakHandler } from "./commit-info/checks/ciBisect";
 import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 import { JETBRAINS_UI } from "./shared/tokens";
 import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
@@ -145,6 +146,8 @@ interface CommitGraphPanelState {
     commitChecksEnabled: boolean;
     showCiColumn: boolean;
     ciRepoKey?: string;
+    /** The repository the shown rows came from; it can differ from `ciRepoKey` mid-switch. */
+    pageRepoKey?: string;
 }
 
 const initialCommitGraphPanelState: CommitGraphPanelState = {
@@ -176,6 +179,7 @@ function commitGraphPanelReducer(
                 selectedHash: action.selectedHash,
                 hasMore: action.hasMore,
                 unpushedHashes: new Set(action.unpushedHashes ?? []),
+                pageRepoKey: action.append ? state.pageRepoKey : action.repoKey,
             };
         case "setBranches":
             return {
@@ -210,6 +214,8 @@ function commitGraphPanelReducer(
                 commitFolderIcon: undefined,
                 commitFolderExpandedIcon: undefined,
                 commitFolderIconsByName: undefined,
+                // The host has left the old repository: a menu opened on its rows no longer matches.
+                ciRepoKey: action.ciRepoKey ?? state.ciRepoKey,
             };
         case "setCommitChecks": {
             const next = new Map(state.commitChecks);
@@ -279,6 +285,7 @@ export function CommitGraphPanel({
         commitChecksEnabled,
         showCiColumn,
         ciRepoKey,
+        pageRepoKey,
     } = state;
     const [branchWidth, setBranchWidth] = useState(() => {
         try {
@@ -608,6 +615,8 @@ export function CommitGraphPanel({
                             commitChecksEnabled ? handleSignInForCommitChecks : undefined
                         }
                         onOpenCommitInChecks={commitChecksEnabled ? openChecksTab : undefined}
+                        onFindCiBreak={findCiBreakHandler(commitChecksEnabled, ciRepoKey)}
+                        findCiBreakScope={pageRepoKey}
                         showCiColumn={showCiColumn}
                         isViewVisible={viewVisible}
                     />

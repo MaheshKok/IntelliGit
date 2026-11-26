@@ -38,6 +38,7 @@ import {
     UNKNOWN_REQUIRED,
     type RequiredChecks,
 } from "./requiredChecks";
+import { withSendGuard } from "./requestGate";
 import { CommitChecksService, type CommitChecksFetchOptions } from "./service";
 import type {
     CiAnnotation,
@@ -77,8 +78,20 @@ class AccountChangedError extends Error {}
  */
 class StaleCallerError extends Error {}
 
-/** Fetch options with the caller's own liveness check, run again before any provider request. */
-type LiveFetchOptions = CommitChecksFetchOptions & { isCurrent?: () => boolean };
+/**
+ * Fetch options with the caller's own liveness check, run again before any provider request.
+ * `sendGuard` is also read inside the request gate, after any wait for a slot (`withSendGuard`);
+ * a refusal there stores nothing and rejects the shared fetch like a stale caller.
+ */
+type LiveFetchOptions = CommitChecksFetchOptions & {
+    isCurrent?: () => boolean;
+    sendGuard?: () => boolean;
+    /**
+     * Cache first, but a commit cached as an error or as a partial read is asked again: one read
+     * either way.
+     */
+    refreshUnavailable?: true;
+};
 
 /**
  * Default cache TTL for pending snapshots, aligned with the webview poll interval
@@ -144,7 +157,12 @@ export class CommitChecksCoordinator {
     private readonly now: () => number;
     private readonly attemptReads = new Map<
         string,
-        { at: number; read: Promise<CiAttemptHistory[]> }
+        {
+            at: number;
+            read: Promise<CiAttemptHistory[]>;
+            /** The send guard of every caller that started or joined the read. */
+            guards: Set<() => boolean>;
+        }
     >();
     private resolvedProvider = false;
     private providerMatch: ProviderMatch | null = null;
@@ -242,7 +260,10 @@ export class CommitChecksCoordinator {
                 ...(signInHost === undefined ? {} : { signInHost }),
             };
         }
-        return this.fetchFresh(hash, options);
+        // Peeked before the fetch, so an uncached commit that fails is asked once, not twice.
+        const cached = options.refreshUnavailable === true && (await this.cachedSnapshot(hash));
+        const retry = cached && (cached.state === "unavailable" || cached.partial === true);
+        return this.fetchFresh(hash, retry ? { ...options, force: true } : options);
     }
 
     /**
@@ -314,31 +335,63 @@ export class CommitChecksCoordinator {
     }
 
     /**
+     * A commit's attempt histories (an E2E fixture's seeded ones) for a bisect; `sendGuard` is
+     * read inside the request gate before each request. Empty when checks are off or the
+     * provider lists no re-runs; `null` when the read failed or was refused.
+     *
+     * @param hash - Full Git commit hash.
+     * @param sendGuard - False once the caller was cancelled.
+     */
+    async attemptHistory(
+        hash: string,
+        sendGuard: () => boolean,
+    ): Promise<CiAttemptHistory[] | null> {
+        if (!this.enabled) return [];
+        const seeded = this.fixture?.(hash);
+        if (seeded) return seeded.detail.attemptHistory ?? [];
+        return withSendGuard(sendGuard, () => this.readAttemptHistory(hash, sendGuard));
+    }
+
+    /**
      * A commit's attempt histories from the provider, remembered briefly per account so repeated
      * badge requests share one read. Empty when the provider lists no re-runs; `null` (unread,
      * never an empty history) when the read failed or the account changed meanwhile. A failure
      * is not remembered, so the next request (Refresh) reads it again.
+     *
+     * @param hash - Full Git commit hash.
+     * @param sendGuard - The caller's guard. The shared read is sent while any caller that joined
+     *   it is live, so one caller's cancel never fails a read another live caller awaits.
      */
-    private async readAttemptHistory(hash: string): Promise<CiAttemptHistory[] | null> {
+    private async readAttemptHistory(
+        hash: string,
+        sendGuard: () => boolean = () => true,
+    ): Promise<CiAttemptHistory[] | null> {
         const providerGeneration = this.providerGeneration;
         try {
             const match = await this.resolveEnabledMatch();
             if (!match?.provider.capabilities.attemptHistory) return [];
             const { provider, ref } = match;
-            if (!provider.getAttemptHistory) return [];
+            const getAttemptHistory = provider.getAttemptHistory?.bind(provider);
+            if (!getAttemptHistory) return [];
             const key = this.snapshotKey(match, await this.readAccount(match), hash);
             const now = this.now();
             const kept = this.attemptReads.get(key);
-            let read = kept && now - kept.at < ATTEMPT_HISTORY_TTL_MS ? kept.read : undefined;
-            if (!read) {
-                const fresh = provider.getAttemptHistory(ref, hash);
-                this.attemptReads.set(key, { at: now, read: fresh });
+            let entry = kept && now - kept.at < ATTEMPT_HISTORY_TTL_MS ? kept : undefined;
+            if (entry) {
+                entry.guards.add(sendGuard);
+            } else {
+                const guards = new Set([sendGuard]);
+                const fresh = withSendGuard(
+                    () => [...guards].some((guard) => guard()),
+                    () => getAttemptHistory(ref, hash),
+                );
+                entry = { at: now, read: fresh, guards };
+                this.attemptReads.set(key, entry);
                 fresh.catch(() => {
                     if (this.attemptReads.get(key)?.read === fresh) this.attemptReads.delete(key);
                 });
-                read = fresh;
             }
-            const answer = await read;
+            const answer = await entry.read;
             return providerGeneration === this.providerGeneration ? answer : null;
         } catch {
             return null;
@@ -944,11 +997,24 @@ export class CommitChecksCoordinator {
         const fetchChecks = async (): Promise<CommitChecksSnapshot> => {
             // The account and the caches were read first: a caller gone stale sends nothing.
             if (options.isCurrent?.() === false) throw new StaleCallerError();
+            const maySend = options.sendGuard;
+            let refused = false;
+            const read = (): Promise<CommitChecksSnapshot> =>
+                match.provider.getChecks(match.ref, hash);
+            let snapshot: CommitChecksSnapshot;
             try {
-                return await match.provider.getChecks(match.ref, hash);
+                snapshot = maySend
+                    ? await withSendGuard(() => {
+                          if (!maySend()) refused = true;
+                          return !refused;
+                      }, read)
+                    : await read();
             } catch (err) {
-                return unavailableSnapshot(hash, getErrorMessage(err));
+                snapshot = unavailableSnapshot(hash, getErrorMessage(err));
             }
+            // Providers turn a failed request into a snapshot: a refused one is not an answer.
+            if (refused) throw new StaleCallerError();
+            return snapshot;
         };
         return this.withAccount(
             match,

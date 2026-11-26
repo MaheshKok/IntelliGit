@@ -20,6 +20,7 @@ import type {
     CommitGraphOutbound,
     RebaseTodoEntry,
 } from "../protocol/commitGraphTypes";
+import type { CiLoadedCommit } from "../protocol/commitCiMessages";
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { RebaseDialog } from "./shared/components/RebaseDialog/RebaseDialog";
@@ -160,6 +161,9 @@ export function NativeCommitGraph({
     const loadingMore = useRef(false);
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
+    // The repository of the rows shown, from the last replacing page; the list hands it back with
+    // a click from a menu, as it stood when that menu opened.
+    const [repoKey, setRepoKey] = useState<string | undefined>(undefined);
     useLayoutEffect(() => {
         selectedHashRef.current = selectedHash;
     }, [selectedHash]);
@@ -198,6 +202,7 @@ export function NativeCommitGraph({
                           (!data.append ? firstCommitHash : previousSelectedHash));
                     if (!data.append) {
                         selectFirstOnNextLoadRef.current = false;
+                        setRepoKey(data.repoKey);
                     }
                     selectedHashRef.current = nextSelectedHash;
                     dispatch({
@@ -329,6 +334,20 @@ export function NativeCommitGraph({
         },
         [vscode],
     );
+    // "Find where CI broke" runs in the Changed Files view's Checks tab too; the row menu shows it
+    // only while the Checks tab switch is on (commitMenu.tsx).
+    const handleFindCiBreak = useCallback(
+        (selected: CiLoadedCommit[], menuRepoKey?: string) => {
+            // Rows no host named a repository for cannot be relayed; the host would drop them.
+            if (menuRepoKey === undefined) return;
+            vscode.postMessage({
+                type: "findCiBreakInChecks",
+                commits: selected,
+                repoKey: menuRepoKey,
+            });
+        },
+        [vscode],
+    );
     const handleRebaseDialogSubmit = useCallback(
         (entries: readonly RebaseTodoEntry[]) => {
             const dialog = rebaseDialogRef.current;
@@ -372,6 +391,8 @@ export function NativeCommitGraph({
                     commitChecksEnabled ? handleSignInForCommitChecks : undefined
                 }
                 onOpenCommitInChecks={commitChecksEnabled ? handleOpenCommitInChecks : undefined}
+                onFindCiBreak={commitChecksEnabled ? handleFindCiBreak : undefined}
+                findCiBreakScope={repoKey}
                 showCiColumn={showCiColumn}
                 isViewVisible={isViewVisible}
                 showSearch={false}

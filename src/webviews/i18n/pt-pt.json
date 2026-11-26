@@ -601,5 +601,27 @@
     "commit.checks.tab.annotationsTruncated": "A mostrar as primeiras 1 000 anotações",
     "commit.checks.tab.annotationsRejectedNext": "A mostrar as primeiras {count} anotações — a ligação para a página seguinte do fornecedor foi recusada",
     "commit.checks.tab.annotationsForbidden": "Anotações indisponíveis com este token",
-    "commit.checks.tab.annotationsUnavailable": "Anotações indisponíveis: {reason}"
+    "commit.checks.tab.annotationsUnavailable": "Anotações indisponíveis: {reason}",
+    "commit.checks.bisect.title": "Encontrar onde a CI falhou",
+    "commit.checks.bisect.help": "Clique com o botão direito num intervalo → {action}. Um quadrado por commit, o mais recente à esquerda; o primeiro vermelho após um verde é a falha.",
+    "commit.checks.bisect.progress": "{done} / {total} commits",
+    "commit.checks.bisect.cancel": "Cancelar",
+    "commit.checks.bisect.close": "Fechar",
+    "commit.checks.bisect.brokeAtThis": "falhou em {hash} · este commit",
+    "commit.checks.bisect.brokeAtAgo": {
+        "many": "falhou em {hash} · há {count} commits",
+        "one": "falhou em {hash} · há {count} commit",
+        "other": "falhou em {hash} · há {count} commits"
+    },
+    "commit.checks.bisect.notLinear": "não é uma linha reta — sem ponto de falha",
+    "commit.checks.bisect.noBreak": "sem ponto de falha neste intervalo",
+    "commit.checks.bisect.limited": "Limitado aos {count} commits carregados",
+    "commit.checks.bisect.none": "Nenhuma tarefa de CI encontrada para estes commits",
+    "commit.checks.bisect.failed": "Não foi possível ler alguns dados de CI. Commits com dados de CI incompletos: {count}",
+    "commit.checks.bisect.retry": "Tentar novamente",
+    "commit.checks.bisect.stopped": "A verificação parou porque o início de sessão ou as definições de CI foram alterados.",
+    "commit.checks.bisect.runAgain": "Executar novamente",
+    "commit.checks.bisect.square": "{hash}: {state}",
+    "commit.checks.bisect.noResult": "sem resultado",
+    "commit.menu.findCiBreak": "Encontrar onde a CI falhou"
 }

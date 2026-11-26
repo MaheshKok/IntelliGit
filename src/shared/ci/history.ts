@@ -91,18 +91,51 @@ export function matchCheck(
     current: readonly CiHistoryCheck[],
     parent: readonly CommitCheckItem[],
 ): CommitCheckItem | "none" | "ambiguous" {
+    return matchIndexed(check, indexChecks(current), indexChecks(parent));
+}
+
+/** One commit's checks grouped by logical id and by name, so a join looks each up at once. */
+export interface CheckIndex<T extends { name: string; logicalId?: string }> {
+    byId: Map<string, T[]>;
+    byName: Map<string, T[]>;
+}
+
+/** Groups `items` for {@link matchIndexed}; a caller joining many checks builds it once. */
+export function indexChecks<T extends { name: string; logicalId?: string }>(
+    items: readonly T[],
+): CheckIndex<T> {
+    const byId = new Map<string, T[]>();
+    const byName = new Map<string, T[]>();
+    const push = <K>(map: Map<K, T[]>, key: K, item: T): void => {
+        const list = map.get(key);
+        if (list) list.push(item);
+        else map.set(key, [item]);
+    };
+    for (const item of items) {
+        if (item.logicalId !== undefined) push(byId, item.logicalId, item);
+        push(byName, item.name, item);
+    }
+    return { byId, byName };
+}
+
+/** `matchCheck` over checks already grouped by {@link indexChecks}. */
+export function matchIndexed(
+    check: CiHistoryCheck,
+    current: CheckIndex<CiHistoryCheck>,
+    parent: CheckIndex<CommitCheckItem>,
+): CommitCheckItem | "none" | "ambiguous" {
     if (check.logicalId !== undefined) {
-        const byId = parent.filter((item) => item.logicalId === check.logicalId);
+        const byId = parent.byId.get(check.logicalId) ?? [];
         if (byId.length > 0) {
-            const sameIdNow = current.filter((other) => other.logicalId === check.logicalId);
-            return byId.length === 1 && sameIdNow.length === 1 ? byId[0] : "ambiguous";
+            const sameIdNow = current.byId.get(check.logicalId)?.length ?? 0;
+            return byId.length === 1 && sameIdNow === 1 ? byId[0] : "ambiguous";
         }
     }
     // The name fallback's scope is the whole commit: every same-named parent item counts, an
     // identified one of another workflow included. Only then is the one left a match, and
     // another logical id on both sides is another check, even under the same name.
-    const byName = parent.filter((item) => item.name === check.name);
-    const sameNameNow = current.filter((other) => other.name === check.name).length;
+    const byName = parent.byName.get(check.name) ?? [];
+    const sameNameNow = current.byName.get(check.name)?.length ?? 0;
     const [only] = byName;
     if (byName.length === 0) return "none";
     if (byName.length === 1 && only.logicalId !== undefined && check.logicalId !== undefined) {
@@ -177,29 +210,76 @@ function failedThenPassed(logicalId: string, attempts: readonly CiAttemptHistory
 }
 
 /**
+ * Per commit of `line` (newest first), whether its red is isolated: the nearest newer and older
+ * commits with a result are both green, with no unread commit between. An unread commit may hold
+ * a red, so it stays as a neighbour; only a commit that read "no result" drops out.
+ */
+export function isolatedReds(line: readonly CiFlakyCommit[]): boolean[] {
+    const known = line.flatMap((commit, at) =>
+        commit.unread || isComplete(commit.state) ? [{ commit, at }] : [],
+    );
+    const isolated = line.map(() => false);
+    known.forEach(({ commit, at }, index) => {
+        isolated[at] =
+            isComplete(commit.state) &&
+            isRed(commit.state as string) &&
+            known[index - 1]?.commit.state === "success" &&
+            known[index + 1]?.commit.state === "success";
+    });
+    return isolated;
+}
+
+/**
  * Counts the commits of `line` (newest first, first parents only) where the check flaked:
- * an isolated red (the nearest newer and older commits with a result are both green, with no
- * unread commit between) or an attempt history of the check that failed and then passed.
- * `null` when none did.
+ * an isolated red (see {@link isolatedReds}) or an attempt history of the check that failed and
+ * then passed. `null` when none did. `isolated` overrides which reds count as isolated.
  */
 export function flaky(
     logicalId: string,
     line: readonly CiFlakyCommit[],
     attemptsCounted: boolean,
+    isolated: readonly boolean[] = isolatedReds(line),
 ): CiFlaky | null {
-    // An unread commit may hold a red, so it stays as a neighbour; only a commit that read
-    // "no result" drops out.
-    const known = line.filter((commit) => commit.unread || isComplete(commit.state));
-    const n = known.filter((commit, index) => {
-        if (!isComplete(commit.state)) return false;
-        const isolated =
-            isRed(commit.state as string) &&
-            known[index - 1]?.state === "success" &&
-            known[index + 1]?.state === "success";
-        return isolated || failedThenPassed(logicalId, commit.attempts);
-    }).length;
-    const m = known.filter((commit) => isComplete(commit.state)).length;
+    const n = line.filter(
+        (commit, at) =>
+            isComplete(commit.state) &&
+            (isolated[at] || failedThenPassed(logicalId, commit.attempts)),
+    ).length;
+    const m = line.filter((commit) => isComplete(commit.state)).length;
     return n === 0 ? null : { n, m, attemptsCounted };
+}
+
+/**
+ * §9 "broke at", for a first-parent chain only (`line` newest first): the oldest commit of the
+ * newest unbroken run of reds, when the commit right before that run is green. `null` when there
+ * is no red, or no green right before the run (a commit with no result breaks the run).
+ */
+export function brokeAt(
+    line: readonly { hash: string; state: CiState | CommitCheckState | null }[],
+): string | null {
+    const red = (index: number): boolean => {
+        const state = line[index]?.state;
+        return state !== undefined && state !== null && isRed(state);
+    };
+    let oldest = line.findIndex((_, index) => red(index));
+    if (oldest === -1) return null;
+    while (red(oldest + 1)) oldest += 1;
+    return line[oldest + 1]?.state === "success" ? line[oldest].hash : null;
+}
+
+/** One job of a bisect (§4 `ciBisectResult`): its state per commit, oldest first. */
+export interface CiBisectJob {
+    checkName: string;
+    /** `null` = the commit has no result for the job, or its checks could not be read. */
+    states: (CiState | null)[];
+    /**
+     * Per commit of `states`: the flaky tag counted its red as isolated, so the sparkline draws
+     * it with the tag's own decision.
+     */
+    isolated: boolean[];
+    /** Set only on a first-parent chain (`brokeAt` above). */
+    brokeAt: string | null;
+    flaky: CiFlaky | null;
 }
 
 /**

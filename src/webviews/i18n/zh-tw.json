@@ -579,5 +579,25 @@
     "commit.checks.tab.annotationsTruncated": "顯示前 1 000 則註解",
     "commit.checks.tab.annotationsRejectedNext": "顯示前 {count} 則註解 — 提供者的下一頁連結遭到拒絕",
     "commit.checks.tab.annotationsForbidden": "此權杖無法使用註解",
-    "commit.checks.tab.annotationsUnavailable": "註解無法使用：{reason}"
+    "commit.checks.tab.annotationsUnavailable": "註解無法使用：{reason}",
+    "commit.checks.bisect.title": "尋找 CI 出錯的位置",
+    "commit.checks.bisect.help": "以滑鼠右鍵按一下範圍 → {action}。每個提交一個方塊，最新的在左；綠色之後的第一個紅色就是出錯處。",
+    "commit.checks.bisect.progress": "{done} / {total} 個提交",
+    "commit.checks.bisect.cancel": "取消",
+    "commit.checks.bisect.close": "關閉",
+    "commit.checks.bisect.brokeAtThis": "在 {hash} 出錯 · 此提交",
+    "commit.checks.bisect.brokeAtAgo": {
+        "other": "在 {hash} 出錯 · {count} 個提交之前"
+    },
+    "commit.checks.bisect.notLinear": "不是一條直線 — 沒有出錯點",
+    "commit.checks.bisect.noBreak": "此範圍內沒有出錯點",
+    "commit.checks.bisect.limited": "僅限已載入的 {count} 個提交",
+    "commit.checks.bisect.none": "找不到這些提交的 CI 作業",
+    "commit.checks.bisect.failed": "無法讀取部分 CI 資料。CI 資料不完整的提交數：{count}",
+    "commit.checks.bisect.retry": "重試",
+    "commit.checks.bisect.stopped": "由於登入或 CI 設定已變更，檢查已停止。",
+    "commit.checks.bisect.runAgain": "重新執行",
+    "commit.checks.bisect.square": "{hash}: {state}",
+    "commit.checks.bisect.noResult": "無結果",
+    "commit.menu.findCiBreak": "尋找 CI 出錯的位置"
 }

@@ -357,12 +357,18 @@ class MockCommitGraphViewProvider {
         filePath: string;
     }>();
     private openCommitInChecksEmitter = new MockEventEmitter<string>();
+    private findCiBreakInChecksEmitter = new MockEventEmitter<unknown[]>();
 
     constructor(
         _uri: unknown,
         _gitOps: unknown,
         _credentialStore: unknown,
-        options?: { scriptFile?: string; title?: string },
+        readonly options?: {
+            scriptFile?: string;
+            title?: string;
+            ciRepoKey?: () => string;
+            relayRepoKey?: () => string;
+        },
     ) {
         if (options?.scriptFile === "webview-compactcommitgraph.js") {
             latestSidebarGraphProvider = this;
@@ -379,10 +385,13 @@ class MockCommitGraphViewProvider {
     onRebaseDialogCancel = this.rebaseDialogCancelEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     onOpenCommitInChecks = this.openCommitInChecksEmitter.event;
+    onFindCiBreakInChecks = this.findCiBreakInChecksEmitter.event;
     getCommitCiDetail = vi.fn(async () => undefined);
+    loadedCommits = vi.fn((): unknown[] => []);
     ciDetailSource = vi.fn((repoKey: () => string) => ({
         repoKey,
         getDetail: (...args: unknown[]) => this.getCommitCiDetail(...(args as [])),
+        bisect: { source: {}, loaded: () => this.loadedCommits() },
     }));
     headChecksSource = vi.fn(() => ({}));
     openChecksTab = vi.fn();
@@ -435,6 +444,10 @@ class MockCommitGraphViewProvider {
     emitOpenCommitInChecks(hash: string): void {
         this.openCommitInChecksEmitter.fire(hash);
     }
+    /** Emits a "Find where CI broke" range from the mocked compact graph's row menu. */
+    emitFindCiBreakInChecks(commits: unknown[]): void {
+        this.findCiBreakInChecksEmitter.fire(commits);
+    }
 }
 
 /** Commit info provider mock for file-diff event plumbing. */
@@ -451,6 +464,7 @@ class MockCommitInfoViewProvider {
     clear = vi.fn();
     setCiSource = vi.fn();
     openChecksTab = vi.fn();
+    startCiBisect = vi.fn();
     refreshChecksTab = vi.fn();
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     dispose = vi.fn();
@@ -1399,6 +1413,41 @@ describe("extension integration", () => {
         latestSidebarGraphProvider.emitOpenCommitInChecks(hash);
 
         expect(latestCommitInfoProvider.openChecksTab).toHaveBeenCalledWith(hash);
+    });
+
+    it("Find where CI broke from the sidebar graph runs in the details pane's Checks tab, capped to the sidebar's rows", async () => {
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        if (!latestSidebarGraphProvider) throw new Error("Expected sidebar graph provider");
+        if (!latestCommitGraphProvider) throw new Error("Expected commit graph provider");
+        if (!latestCommitInfoProvider) throw new Error("Expected commit info provider");
+        const range = [{ hash: "a".repeat(40), parents: ["b".repeat(40)] }];
+
+        latestSidebarGraphProvider.emitFindCiBreakInChecks(range);
+        expect(latestCommitInfoProvider.startCiBisect).toHaveBeenCalledWith(range);
+
+        const source = latestCommitInfoProvider.setCiSource.mock.calls.at(-1)?.[0] as {
+            bisect: { loaded: () => unknown[] };
+        };
+        latestCommitGraphProvider.loadedCommits.mockReturnValue([{ hash: "c".repeat(40) }]);
+        latestSidebarGraphProvider.loadedCommits.mockReturnValue(range);
+        expect(source.bisect.loaded(), "the cap is the sidebar graph's loaded page").toEqual(range);
+
+        const repoKey = latestCommitGraphProvider.options?.ciRepoKey?.();
+        expect(repoKey, "the control: the card graph names its repository").toBeTruthy();
+        expect(
+            latestSidebarGraphProvider.options?.relayRepoKey?.(),
+            "the sidebar's relay checks clicks against the current repository",
+        ).toBe(repoKey);
+        expect(
+            latestSidebarGraphProvider.options?.ciRepoKey,
+            "and gets no Checks tab handlers of its own",
+        ).toBeUndefined();
     });
 
     it("clears the activity bar changed-files badge when the refreshed count reaches zero", async () => {
