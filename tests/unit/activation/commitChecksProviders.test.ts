@@ -331,7 +331,7 @@ describe("createCommitChecksProviders", () => {
                 if (!current) throw new Error("Remote data changed.");
             });
             const action = provider
-                .runAction(target, { action: "cancel", runId: "1" }, beforeSend)
+                .runAction(target, { action: "cancel", runId: "1", attempt: 1 }, beforeSend)
                 .catch((reason: unknown) => reason);
             await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -361,7 +361,7 @@ describe("createCommitChecksProviders", () => {
                     bitbucket.provider
                         .runAction(
                             bitbucket.ref,
-                            { action: "cancel", runId: `{p${i}}` },
+                            { action: "cancel", runId: `{p${i}}`, attempt: 1 },
                             beforeSend,
                         )
                         .catch((reason: unknown) => reason),
@@ -396,7 +396,7 @@ describe("createCommitChecksProviders", () => {
             const beforeSend = vi.fn(async () => undefined);
 
             const error = await provider
-                .runAction(repo, { action: "cancel", runId: "1" }, beforeSend)
+                .runAction(repo, { action: "cancel", runId: "1", attempt: 1 }, beforeSend)
                 .catch((reason: unknown) => reason);
 
             expect(error, provider.id).toMatchObject({
@@ -505,7 +505,13 @@ describe("createCommitChecksProviders", () => {
                     respond(response);
                     response.emit(
                         "data",
-                        Buffer.from(JSON.stringify({ uuid: "1", state: { name: "IN_PROGRESS" } })),
+                        Buffer.from(
+                            JSON.stringify({
+                                uuid: "1",
+                                run_number: 1,
+                                state: { name: "IN_PROGRESS" },
+                            }),
+                        ),
                     );
                     response.emit("end");
                 });
@@ -524,7 +530,7 @@ describe("createCommitChecksProviders", () => {
             );
             const queued = vi.spyOn(registry, "run");
             const stop = cloud
-                .runAction(cloudRef, { action: "cancel", runId: "1" }, async () => {})
+                .runAction(cloudRef, { action: "cancel", runId: "1", attempt: 1 }, async () => {})
                 .catch(() => {});
             await vi.waitFor(() => expect(queued).toHaveBeenCalledOnce());
 
@@ -547,7 +553,7 @@ describe("createCommitChecksProviders", () => {
             const begin = vi.fn(async () => {});
             try {
                 await cloud
-                    .runAction(cloudRef, { action: "cancel", runId: "1" }, begin)
+                    .runAction(cloudRef, { action: "cancel", runId: "1", attempt: 1 }, begin)
                     .catch(() => {});
 
                 expect(registry.cooldownEnd("bitbucket-cloud", CLOUD)).toBeGreaterThan(0);

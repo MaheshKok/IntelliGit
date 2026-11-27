@@ -505,7 +505,7 @@ describe("Bitbucket Cloud review fixes, round 2", () => {
                     fences: { begin, fail: vi.fn(), fenceFor: vi.fn(), endByUserRefresh: vi.fn() },
                 } as never,
                 SHA,
-                { action: "cancel", runId: PIPE },
+                { action: "cancel", runId: PIPE, attempt: Number(pipelineFixture.run_number) },
                 new CiGenerations().capture("/repo"),
             );
             return { posted, begin, outcome };

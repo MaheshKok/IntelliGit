@@ -85,9 +85,14 @@ export async function runCiAction(
     let fenced = false;
     let stale = false;
     try {
-        await provider.runAction(match.ref, { ...request, attempt: run.attempt }, async () => {
-            await deps.fences.begin(start);
-            fenced = true;
+        // The attempt the user confirmed, never one the fresh read adopted for a request without it.
+        await provider.runAction(match.ref, request, async () => {
+            // A provider that reads the run again after the fence calls this once more right
+            // before sending: the fence is written once, the check below runs each time.
+            if (!fenced) {
+                await deps.fences.begin(start);
+                fenced = true;
+            }
             // Runs once the request gate admitted the write: the sign-in or repository may have
             // changed while it queued or while the fence was written, so send nothing then.
             if (!stillCurrent()) {

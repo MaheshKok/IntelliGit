@@ -61,12 +61,14 @@ export class RequestNotSentError extends Error {
      * @param message - Token-free display message.
      * @param superseded - Set when the sign-in or settings changed, so the data shown is stale
      *     rather than the request malformed.
+     * @param options - The error that stopped the request, as `cause`.
      */
     constructor(
         message: string,
         readonly superseded = false,
+        options?: ErrorOptions,
     ) {
-        super(message);
+        super(message, options);
         this.name = "RequestNotSentError";
     }
 }

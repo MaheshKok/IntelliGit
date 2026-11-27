@@ -237,9 +237,14 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
      *
      * @param ref - The repository reference produced by `match`.
      * @param hash - The full commit SHA to fetch statuses for.
+     * @param onRejectedNext - Called when a refused or malformed next link left the list partial.
      * @returns A CommitChecksSnapshot.
      */
-    async getChecks(ref: ProviderRepoRef, hash: string): Promise<CommitChecksSnapshot> {
+    async getChecks(
+        ref: ProviderRepoRef,
+        hash: string,
+        onRejectedNext?: () => void,
+    ): Promise<CommitChecksSnapshot> {
         const { host, workspace, repo } = ref as BitbucketCloudRepoRef;
 
         let token: string | undefined;
@@ -271,6 +276,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
                 first,
                 headers,
                 this.etags?.forCommit(commitKey),
+                onRejectedNext,
             ));
         } catch (err) {
             const message = getErrorMessage(err);
@@ -316,6 +322,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
      * @param headers - The auth headers to send on every page request.
      * @param conditional - The conditional-request store, for a commit still running at its
      *   last read; the `next` link is in the body, so a 304's stored body keeps it.
+     * @param onRejectedNext - Called when a refused or malformed next link leaves a page unread.
      * @returns All status rows gathered across the fetched pages, and whether a page was left
      *   unread (the bound was hit, or a page was not a status page).
      */
@@ -324,6 +331,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         firstUrl: string,
         headers: Record<string, string>,
         conditional: EtagStore | undefined,
+        onRejectedNext?: () => void,
     ): Promise<{ rows: BitbucketStatus[]; truncated: boolean }> {
         const rows: BitbucketStatus[] = [];
         let url: string | undefined = firstUrl;
@@ -336,6 +344,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             url = normalizeBitbucketCloudNextUrl(raw.next);
             // A next link that is present but refused or malformed leaves its page unread.
             if (raw.next != null && (url === undefined || !this.allowNext(ref, url))) {
+                onRejectedNext?.();
                 return { rows, truncated: true };
             }
         }
@@ -365,10 +374,20 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             if (err instanceof HttpError && err.statusCode === 403) {
                 // A token without the `pipeline` scope still reads build statuses. A refused
                 // status list too means the token itself is refused, which the hint cannot fix.
-                const snapshot = await this.getChecks(ref, hash);
+                const refused = { next: false };
+                const snapshot = await this.getChecks(ref, hash, () => {
+                    refused.next = true;
+                });
                 if (snapshot.state === "unavailable") return flatDetail(snapshot);
                 return {
                     ...floorDetail(snapshot, this.id),
+                    // K33: a refused status link is named as refused, not as the page bound.
+                    ...(refused.next && {
+                        otherChecksCoverage: {
+                            reason: "rejectedNext" as const,
+                            shown: snapshot.items.length,
+                        },
+                    }),
                     scopeHelp: {
                         key: "commit.checks.tab.pipelineScopeHint",
                         ...(this.scopeHelpUrl && { url: this.scopeHelpUrl }),
@@ -601,6 +620,11 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         if (request.action !== "cancel") {
             throw new Error(vscode.l10n.t("This provider cannot re-run or cancel CI runs."));
         }
+        // Only the attempt the user confirmed authorizes Stop: without one, the pipeline read
+        // could show a re-run the user never saw.
+        if (request.attempt === undefined) {
+            throw new Error(vscode.l10n.t("Remote data changed. Reload and try again."));
+        }
         const cloudRef = ref as BitbucketCloudRepoRef;
         const url = `${repoApiUrl(cloudRef)}/pipelines/${encodeURIComponent(request.runId)}/stopPipeline`;
         const paused = vscode.l10n.t(
@@ -620,8 +644,20 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
                 if (this.cooldownEnd(url) > 0) throw new RequestNotSentError(paused, false);
                 await beforeSend();
                 // The fence write is awaited, so the pipeline may have changed meanwhile; a
-                // refusal here is a Stop not sent, and its fence is removed.
-                await this.requireStoppable(cloudRef, token, request);
+                // refusal here is a Stop not sent, and its fence is removed. So is a failed read:
+                // it is neither an uncertain Stop nor a missing write scope. A 401 keeps its
+                // sign-in path.
+                await this.requireStoppable(cloudRef, token, request).catch((err: unknown) => {
+                    if (
+                        err instanceof RequestNotSentError ||
+                        (err instanceof HttpError && err.statusCode === 401)
+                    ) {
+                        throw err;
+                    }
+                    throw new RequestNotSentError(getErrorMessage(err), false, { cause: err });
+                });
+                // The repository or provider may have switched during that read: checked again.
+                await beforeSend();
             });
         } catch (error) {
             throw redactError(error, token);
@@ -643,8 +679,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         if (
             readString(pipeline?.uuid) !== request.runId ||
             (state !== "queued" && state !== "running") ||
-            (request.attempt !== undefined &&
-                optionalNumber(pipeline?.run_number) !== request.attempt)
+            optionalNumber(pipeline?.run_number) !== request.attempt
         ) {
             throw new RequestNotSentError(
                 vscode.l10n.t("Remote data changed. Reload and try again."),

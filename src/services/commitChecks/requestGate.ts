@@ -273,7 +273,10 @@ const sendGuards = new AsyncLocalStorage<() => boolean>();
 interface SlotLease {
     readonly gate: ProviderRequestGate;
     active: boolean;
-    /** Settles when the last request sharing this slot is done; the next one waits for it. */
+    /**
+     * Settles when the last request sharing this slot is done or has left it; the next one waits
+     * for it.
+     */
     tail: Promise<void>;
 }
 
@@ -356,6 +359,8 @@ class ProviderRequestGate {
             );
         } finally {
             lease.active = false;
+            // A shared request already sent in this slot keeps it occupied until it settles.
+            await lease.tail;
             this.release();
         }
     }
@@ -373,8 +378,12 @@ class ProviderRequestGate {
         });
         try {
             await previous;
-            // Released while this request waited its turn: it queues for a slot of its own.
-            if (!lease.active) return await this.run(task, origin);
+            // Released while this request waited its turn: it leaves the released slot, which
+            // no longer waits for it, and queues for a slot of its own.
+            if (!lease.active) {
+                done();
+                return await this.run(task, origin);
+            }
             return await this.start(task, origin);
         } finally {
             done();

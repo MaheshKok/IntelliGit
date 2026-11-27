@@ -929,7 +929,12 @@ describe("Bitbucket Cloud cancel", () => {
         const bb = fakeBitbucket(state({ pipelines: [RUNNING] }));
         const { deps, ctx, workspace } = windowOver(provider(bb, { write: admitted(write) }));
 
-        const outcome = await runCiAction(deps, SHA, { action: "cancel", runId: PIPE }, ctx);
+        const outcome = await runCiAction(
+            deps,
+            SHA,
+            { action: "cancel", runId: PIPE, attempt: 1 },
+            ctx,
+        );
 
         expect(outcome).toEqual({ outcome: "ok" });
         expect(calls).toEqual([
@@ -952,7 +957,12 @@ describe("Bitbucket Cloud cancel", () => {
         const bitbucket = provider(bb, { write: admitted(write) });
         const { deps, ctx, fences, workspace } = windowOver(bitbucket);
 
-        const outcome = await runCiAction(deps, SHA, { action: "cancel", runId: PIPE }, ctx);
+        const outcome = await runCiAction(
+            deps,
+            SHA,
+            { action: "cancel", runId: PIPE, attempt: 1 },
+            ctx,
+        );
 
         expect(write).toHaveBeenCalledTimes(1);
         expect(outcome).toEqual({ outcome: "forbidden" });
