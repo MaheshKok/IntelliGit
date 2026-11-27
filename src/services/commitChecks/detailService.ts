@@ -65,19 +65,34 @@ const neverFetched = (): Promise<never> => Promise.reject(new Error("not cached"
 const SNAPSHOT = Symbol("ciDetailSnapshot");
 let snapshots = 0;
 
+/**
+ * The cache entry a served detail was built from: two copies with the same entry hold the same
+ * CI data (scan progress aside), and another entry is newer data. A symbol key, like SNAPSHOT.
+ */
+const ENTRY = Symbol("ciDetailEntry");
+
 /** What a read hands back before the read-time values are attached; never cached. */
 type ServedDetailData = CommitCiDetailData &
-    Pick<CommitCiDetail, "refreshError"> & { readonly [SNAPSHOT]?: number };
+    Pick<CommitCiDetail, "refreshError"> & {
+        readonly [SNAPSHOT]?: number;
+        readonly [ENTRY]?: DetailEntry;
+    };
 
 /** The snapshot number of a served detail or scan page; undefined when it was not served here. */
 export function snapshotOf(detail: CommitCiDetail): number | undefined {
     return (detail as { readonly [SNAPSHOT]?: number })[SNAPSHOT];
 }
 
-/** A copy of `detail` without its snapshot number. */
+/** The cache entry of a served detail or scan page; undefined when it was not served here. */
+export function entryOf(detail: CommitCiDetail): unknown {
+    return (detail as { readonly [ENTRY]?: unknown })[ENTRY];
+}
+
+/** A copy of `detail` without its snapshot number and cache entry. */
 export function withoutSnapshot(detail: CommitCiDetail): CommitCiDetail {
-    const next: CommitCiDetail & { [SNAPSHOT]?: number } = { ...detail };
+    const next: CommitCiDetail & { [SNAPSHOT]?: number; [ENTRY]?: unknown } = { ...detail };
     delete next[SNAPSHOT];
+    delete next[ENTRY];
     return next;
 }
 
@@ -123,6 +138,9 @@ export class CommitCiDetailService {
     private readonly inflight = new Map<string, Promise<ServedDetailData>>();
     // The newest requester's scan hooks per key, so each scan page reaches whoever shows it now.
     private readonly scanHooks = new Map<string, ScanRequester>();
+    // Requesters whose forced refresh failed while a scan ran; they stop re-reading, so every
+    // later page of the key reaches them too, even after a newer requester takes the hooks.
+    private readonly failedRefreshHooks = new Map<string, CiFailedScanHooks[]>();
     // Grows by one entry per invalidated key (a write action), never per fetch.
     private readonly keyGenerations = new Map<string, number>();
     // Keys whose saved copy invalidate() failed to delete: not read again until a window
@@ -179,7 +197,8 @@ export class CommitCiDetailService {
      *   that saved detail from L1 and L2 (never a newer one) and reaches every caller
      *   sharing the fetch.
      * @param scan - Reads failed-job pages past the page bound for the cursors the fetch
-     *   returns; the latest call's hooks receive every later scan page for the key.
+     *   returns; the latest call's hooks receive every later scan page for the key, and so do
+     *   the hooks of a call whose forced refresh failed while a scan ran, until the scans end.
      */
     async getOrFetch(
         key: string,
@@ -190,7 +209,26 @@ export class CommitCiDetailService {
         scan?: CiFailedScanHooks,
     ): Promise<CommitCiDetail> {
         if (scan) this.scanHooks.set(key, { hooks: scan, serve });
-        const data = await this.getData(key, fetchDetail, serve, options, confirm);
+        let data = await this.getData(key, fetchDetail, serve, options, confirm);
+        if (scan && data.refreshError !== undefined) {
+            // A page may have landed since the failed reply was built, before these hooks were
+            // listed: a reply of the entry still cached is rebuilt from it in this same step.
+            // A reply whose entry was cleared or replaced meanwhile lists nothing for the key.
+            const entry = this.cache.get(key);
+            if (entry && data[ENTRY] === entry) {
+                data = {
+                    ...served(entry),
+                    refreshError: data.refreshError,
+                    ...(data.signInHost !== undefined && { signInHost: data.signInHost }),
+                };
+                if (data.runs.some((run) => isScanning(run.failedScan?.state))) {
+                    const live = (this.failedRefreshHooks.get(key) ?? []).filter((each) =>
+                        each.isCurrent(),
+                    );
+                    this.failedRefreshHooks.set(key, [...live, scan]);
+                }
+            }
+        }
         return attach(data, serve, this.fences?.fenceFor(serve.repoKey, data.hash));
     }
 
@@ -319,7 +357,22 @@ export class CommitCiDetailService {
                         // A scan that finds its run changed must start a new fetch, not join this one.
                         if (this.inflight.get(key) === request) this.inflight.delete(key);
                         this.startScans(key, entry, generation);
-                        return served(entry);
+                        // The newest requester gets this entry as its reply; a failed Refresh's
+                        // hooks would otherwise keep showing the entry this one replaced.
+                        // The same served copy is the reply: a view that gets both drops one.
+                        // A failed normal read holds no data, so it must not blank their tree;
+                        // the list stays for the next entry that does hold data.
+                        const reply = served(entry);
+                        if (this.failedRefreshHooks.has(key) && data.outcome !== "unavailable") {
+                            this.updateFailedRefreshHooks(
+                                key,
+                                entry,
+                                serve,
+                                this.scanHooks.get(key)?.hooks,
+                                reply,
+                            );
+                        }
+                        return reply;
                     }
                 }
                 this.traceOutcome("discarded-generation", data, serve);
@@ -361,6 +414,7 @@ export class CommitCiDetailService {
         this.cache.delete(key);
         this.inflight.delete(key);
         this.scanHooks.delete(key);
+        this.failedRefreshHooks.delete(key);
         try {
             await this.persistentCache?.delete(key);
         } catch (error) {
@@ -375,6 +429,7 @@ export class CommitCiDetailService {
         this.cache.clear();
         this.inflight.clear();
         this.scanHooks.clear();
+        this.failedRefreshHooks.clear();
         this.usualDurations.clear();
         const clear = this.persistentCache?.clear();
         if (clear) {
@@ -471,6 +526,7 @@ export class CommitCiDetailService {
             const oldest = this.cache.keys().next().value;
             if (!oldest) return;
             this.cache.delete(oldest);
+            this.failedRefreshHooks.delete(oldest);
         }
     }
 
@@ -599,17 +655,42 @@ export class CommitCiDetailService {
                 } else {
                     this.traceScan(applyPage(scan, page), entry.data, requester.serve);
                 }
-                latest.hooks.onUpdate?.(
-                    attach(
-                        served(entry),
-                        latest.serve,
-                        this.fences?.fenceFor(latest.serve.repoKey, entry.data.hash),
-                    ),
+                // Built before the optional call: a newest read without onUpdate (a log or
+                // action read) would otherwise skip the listed hooks and their cleanup.
+                const update = this.updateFailedRefreshHooks(
+                    key,
+                    entry,
+                    latest.serve,
+                    latest.hooks,
                 );
+                latest.hooks.onUpdate?.(update);
             }
         } finally {
             scan.active = false;
         }
+    }
+
+    /**
+     * Builds the served update of `entry`, hands it to the listed hooks of failed Refreshes
+     * except `skip` (whoever gets it another way), and drops that list once no scan of the entry
+     * can send another page. Returns the update for the caller's own requester. `data` is the
+     * served copy of `entry` when the caller also returns it as a reply, so both share one snapshot.
+     */
+    private updateFailedRefreshHooks(
+        key: string,
+        entry: DetailEntry,
+        serve: CiDetailServeContext,
+        skip: CiFailedScanHooks | undefined,
+        data: ServedDetailData = served(entry),
+    ): CommitCiDetail {
+        const update = attach(data, serve, this.fences?.fenceFor(serve.repoKey, entry.data.hash));
+        for (const hooks of this.failedRefreshHooks.get(key) ?? []) {
+            if (hooks !== skip && hooks.isCurrent()) hooks.onUpdate?.(update);
+        }
+        if (![...(entry.scans?.values() ?? [])].some((each) => isScanning(each.state))) {
+            this.failedRefreshHooks.delete(key);
+        }
+        return update;
     }
 
     /** The scan still belongs to the current entry for the key, under the same generation. */
@@ -713,7 +794,7 @@ function carryScans(
  */
 function served(entry: DetailEntry): ServedDetailData {
     const scans = entry.scans;
-    if (!scans) return { ...entry.data, [SNAPSHOT]: ++snapshots };
+    if (!scans) return { ...entry.data, [SNAPSHOT]: ++snapshots, [ENTRY]: entry };
     const gitlab = entry.data.provider === "gitlab";
     const foundOwnChecks = new Set(
         [...scans.values()].flatMap((scan) =>
@@ -752,7 +833,13 @@ function served(entry: DetailEntry): ServedDetailData {
         otherChecks,
         runs,
         [SNAPSHOT]: ++snapshots,
+        [ENTRY]: entry,
     };
+}
+
+/** Whether an overflow scan in this state may still send pages. */
+function isScanning(state: CiFailedScan["state"] | undefined): boolean {
+    return state === "running" || state === "paused";
 }
 
 /**
