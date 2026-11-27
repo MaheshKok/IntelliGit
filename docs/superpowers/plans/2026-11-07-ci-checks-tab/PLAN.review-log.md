@@ -1589,3 +1589,4 @@ Phase 16 fix round 2 (builder): 1 finding (card and undocked menu opened on A co
 PHASE 16: HALT review still failing after takeover
 
 Phase 17: built, review pending (base 93e148bc used: BASE_HEAD 6518aa81 is not an ancestor of HEAD; full suite red only on load-sensitive timing tests that pass alone, load average 61-73)
+Phase 17 fix round 1 (builder): five findings fixed test-first in tests/unit/services/commitChecks/bitbucketCloudReview.test.ts (K33 repository prefix, mixed attempts across step pages, O1 stale count, run startedAt, Stop on a finished pipeline); each was red before its fix. The rename finding (code from #454, outside the Phase 17 diff) is not fixed and sits under "Found outside scope" in the handoff.

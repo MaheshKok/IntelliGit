@@ -406,6 +406,12 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
                 `${base}/pipelines/${encodeURIComponent(runId)}/steps/?pagelen=${CI_PAGE_SIZE}`,
                 valuesOf<BitbucketStep>,
             );
+            // A re-run between pages leaves steps of two attempts; no tree is built from them.
+            const attempts = new Set(stepsPage.items.map((s) => optionalNumber(s.run_number)));
+            attempts.delete(undefined);
+            if (attempts.size > 1) {
+                throw new Error(vscode.l10n.t("Remote data changed. Reload and try again."));
+            }
             const run = toRun(ref, pipeline, runId, stepsPage.items, stepsPage.coverage);
             runs.push(run);
             if (run.runNumber !== undefined) buildNumbers.add(String(run.runNumber));
@@ -496,14 +502,9 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             if (next === undefined) return { failed };
             const jobsRead = (cursor.jobsRead ?? 0) + items.length;
             const read = [...(cursor.read ?? []), cursor.url];
-            // A link back to a page already read, a count reached or an empty page that links
-            // onward makes no progress.
-            if (
-                !this.allowNext(ref, next) ||
-                read.includes(next) ||
-                items.length === 0 ||
-                (jobsTotal !== null && jobsRead >= jobsTotal)
-            ) {
+            // A link back to a page already read or an empty page that links onward makes no
+            // progress. The first page's count is not a stop: it can be stale by now.
+            if (!this.allowNext(ref, next) || read.includes(next) || items.length === 0) {
                 return { failed, error: refused, ...kept() };
             }
             return { failed, next: { ...cursor, url: next, read, jobsRead, jobsTotal } };
@@ -520,9 +521,14 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         }
     }
 
-    /** Continuation guard (K33): the snapshot path's next-link rule, under the API's `/2.0/`. */
-    allowNext(_ref: ProviderRepoRef, url: string): boolean {
-        return normalizeBitbucketCloudNextUrl(url) !== undefined;
+    /** Continuation guard (K33): the next link stays under the first request's repository path. */
+    allowNext(ref: ProviderRepoRef, url: string): boolean {
+        const next = normalizeBitbucketCloudNextUrl(url);
+        if (next === undefined) return false;
+        // The bearer token goes to the link, so another repository on the same origin is refused.
+        // Slugs match case-blind, as Bitbucket reads them.
+        const repoPath = `${new URL(repoApiUrl(ref as BitbucketCloudRepoRef)).pathname}/`;
+        return new URL(next).pathname.toLowerCase().startsWith(repoPath.toLowerCase());
     }
 
     /** Downloads a step's log with the stored token; the redirect to storage drops it. */
@@ -742,6 +748,8 @@ function toRun(
         runNumber: optionalNumber(pipeline.build_number),
         attempt: optionalNumber(pipeline.run_number),
         createdAt: optionalString(pipeline.created_on),
+        // Bitbucket sends no separate start time: creation to completion is the duration it reports.
+        startedAt: optionalString(pipeline.created_on),
         completedAt: optionalString(pipeline.completed_on),
         jobs: steps.map((step) => toJob(step, name, url, pipeline)),
         jobsCoverage,

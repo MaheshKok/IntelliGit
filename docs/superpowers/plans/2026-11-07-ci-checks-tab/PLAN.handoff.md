@@ -18,20 +18,23 @@
 - Mutation checks, all red naming their test: 8 provider mutations (mut.py) + hidden hint + ignored README anchor (mut2.py), scripts under $TMPDIR/phase-run/PLAN.
 
 ## Decisions and why (this step)
-- `allowNext` accepts any `https://api.bitbucket.org/2.0/` next link (the snapshot path's rule), rather than a narrower per-collection prefix: one rule for every Bitbucket Cloud page; the hostile-link test covers http, other host, other port, other prefix.
+- Fix round 1: `allowNext` now requires the selected repository's API path (`/2.0/repositories/<ws>/<repo>/`, case-blind) on top of the snapshot rule, for detail, timing and overflow-scan links. The snapshot path (`getChecks`) keeps the broader `/2.0/` rule: existing tests pin it and it is not Phase 17 code.
+- Fix round 1: a step read whose pages carry more than one `run_number` throws "Remote data changed", so the detail is unavailable and never saved; the overflow scan drops the stale first-page count as a stop (repeated-link and empty-page guards stay); runs get `startedAt` = `created_on`; cancel returns "changed" unless the fresh read shows the run queued or running (GitLab's cancel test now serves a running pipeline).
 - No change to http.ts credential stripping: `downloadCiLog` already drops Authorization on a cross-host redirect; a test pins it for Bitbucket.
 - Version 0.44.0 with the plan's CHANGELOG line, as Phase 17's text says, though the tab stays hidden until Phase 18.
 - ciHistoryPartialCoverage now injects a 403 so it still tests the floor detail; without it the test would hit the real network.
 
 ## Open risks
-- No mid-read re-run detection for Bitbucket (GitLab has `retriedMidRead`); a pipeline re-run during the read can mix steps.
-- `bun run test`: diffBudgets' wall-clock budget failed in every full-suite run on this machine (93-95 ms vs 59), passed 3/3 alone and on base under load once; src/diff is untouched.
+- Mixed-attempt detection compares steps' `run_number` across the read pages; if Bitbucket legitimately gives one pipeline's steps different `run_number`s, the detail would show unavailable. Not checked against live data.
+- `bun run test` on Node 26 (this machine): 8896 passed, 8 failed, all in commit-list-column-resize (Node 26 localStorage; red on base too); that file passes 8/8 on Node 24.3.0.
 - GitNexus detect-changes: risk high (activateRepositoryMode in 9 flows; the change there is one extra argument). Index is the main checkout's.
 - E2E (Gate E) not run locally; CI runs it.
 
 ## Next phase: 18
 
 ## Found outside scope
+- Review finding, not fixed in fix round 1: commit details' forced `-M` rename detection (dc190ef5, #454, already in the base 93e148bc; the Phase 17 diff touches no file under src/git) drops the deleted row, so with diff.renames=false the old file contents are unreachable from the commit diff. Needs its own fix: resolve the source path against the selected parent in the commit-diff route.
+- Bitbucket `getChecks` (snapshot path, before Phase 17) still follows any `/2.0/` next link on the API origin with the bearer token, another repository's included.
 - ciBisectHandler still posts progress and a result if the switch turns off mid-run (only the stopped reply is guarded).
 - Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
 - commit-list-column-resize fails on Node 26 (red on base 93e148bc too); updateWithLocalChanges.integration fails on Node 24.3.0 (red on base too). Both pass on Node 22 (CI's version).

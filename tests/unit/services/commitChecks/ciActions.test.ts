@@ -384,16 +384,18 @@ describe("CI write actions", () => {
     });
 
     it("GitLab endpoints per action", async () => {
+        // Stop is only sent for a pipeline the fresh read shows as still running.
+        const gitlabRunning = detail("gitlab", [
+            run({ id: "300", attempt: undefined, state: "running", jobs: [job({ id: "401" })] }),
+        ]);
         const cases = [
-            ["rerunFailed", `${GITLAB_API}/pipelines/300/retry`],
-            ["cancel", `${GITLAB_API}/pipelines/300/cancel`],
-            ["rerunJob", `${GITLAB_API}/jobs/401/retry`],
+            ["rerunFailed", GITLAB_FAILED, `${GITLAB_API}/pipelines/300/retry`],
+            ["cancel", gitlabRunning, `${GITLAB_API}/pipelines/300/cancel`],
+            ["rerunJob", GITLAB_FAILED, `${GITLAB_API}/jobs/401/retry`],
         ] as const;
-        for (const [action, url] of cases) {
+        for (const [action, current, url] of cases) {
             const calls: WriteCall[] = [];
-            const { deps, ctx } = windowOver(
-                gitlab({ current: GITLAB_FAILED }, recordingWrite(calls)),
-            );
+            const { deps, ctx } = windowOver(gitlab({ current }, recordingWrite(calls)));
             await runCiAction(
                 deps,
                 HASH,

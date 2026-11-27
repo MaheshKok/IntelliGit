@@ -56,7 +56,14 @@ export async function runCiAction(
     if (!match || !provider?.runAction || !provider.capabilities[request.action] || !evidence) {
         return failed(vscode.l10n.t("This provider cannot re-run or cancel CI runs."));
     }
-    const run = current?.runs.find((candidate) => candidate.id === request.runId);
+    // The fresh read can show the run already over: Stop would act on nothing (or a later run).
+    const run = current?.runs.find(
+        (candidate) =>
+            candidate.id === request.runId &&
+            (request.action !== "cancel" ||
+                candidate.state === "queued" ||
+                candidate.state === "running"),
+    );
     const job =
         request.action === "rerunJob"
             ? run?.jobs.find((candidate) => candidate.id === request.jobId)
