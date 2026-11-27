@@ -1599,3 +1599,5 @@ WORKTREE 0 17: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-ru
 - Mutation pass on a copy: 17 mutations, 17 red on their own assertion. The reviewer's archived probes (11 named) all pass on the fixed tree.
 - Proof: commit-checks, activation, views and webview integration suites green; typecheck and lint:strict exit 0; bun run test 8928 passed, 10 failed (commit-list-column-resize x8, red on the pre-takeover tree too under Node 26; diffBudgets and operationBenchmark pass alone, 16/16).
 - Not run: GitNexus impact and detect-changes (no runner in this worktree).
+WORKTREE 0 17: /private/var/folders/_k/7dgz_h9s6j35knpn0rnkk1ym0000gn/T/phase-run/PLAN/repro-411-2 repro/411-2
+PHASE 17: HALT review still failing after takeover

@@ -8,13 +8,15 @@
 - Phase 12: owner accepted by hand 2026-11-18 at c874d0b3 (#444, 29efe7ec). Phase 13: owner accepted by hand 2026-11-21 at 3b31283b (#448, 49893e1f).
 - Phase 14: owner accepted by hand 2026-11-22 at ca1834d5 (#450, f3cf1afa). Phase 15: accepted 20240fdf (#452; the wave accepted dd67fe22, verification incomplete).
 - Phase 16: owner accepted by hand 2026-11-26 at 6518aa81 (squash-merged as 93e148bc, #457; relay timing findings filed as #456).
+- Phase 17: owner accepted by hand 2026-11-27 at 7e1c1df9 (wave halted "review still failing after takeover"; targeted fix 841db208, 1ce80244, 7e1c1df9).
 - Earlier build records: git history of this file and PLAN.review-log.md.
 
-## Phase 17: review pending, started at 6518aa81d31a00c930a8555f7d6a573412f6a15c
+## Phase 17: owner accepted by hand, started at 6518aa81d31a00c930a8555f7d6a573412f6a15c
 - BASE_HEAD 6518aa81 is not an ancestor of HEAD (Phase 16 was squash-merged as 93e148bc); the build used 93e148bc as its base.
 - Built (0.44.0, b22292a6): Cloud `getDetail` (pipelines, steps as jobs, statuses minus each pipeline's own), overflow scan, step logs, Stop, usual duration, C3 hint. Contract version 10.
 - Fix round 1 (3bd515fc) and round 2 (a27a873f): repository-scoped `allowNext` for detail, log redirect scope, mixed-attempt refusal, Stop re-read at admission, malformed and empty pages.
-- Takeover (this commit): the 11 review findings after round 2, each with a regression test.
+- Takeover (1429f584): the 11 review findings after round 2, each with a regression test.
+- Targeted fix after the halt (841db208 tests, 1ce80244 fix, 7e1c1df9 tests): Stop needs the confirmed attempt; the repository is checked again after the final admission read; a failed final read is a Stop not sent (a 401 keeps sign-in); a revoked slot waits for its in-flight shared read; the C3 fallback names a refused link as `rejectedNext`.
 
 ## Decisions and why (takeover)
 - Status pager (snapshot and the C3 fallback) uses `allowNext`; a refused link marks the snapshot partial. Old snapshot pagination tests moved their links under `/2.0/repositories/acme/app/` (they encoded the broad `/2.0/` rule).
