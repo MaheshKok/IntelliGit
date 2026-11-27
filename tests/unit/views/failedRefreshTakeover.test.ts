@@ -1095,4 +1095,27 @@ describe("failed Refresh during a running scan: fix round 1", () => {
         pending.resolve(terminal);
         await settle();
     });
+
+    it("S7: a newest requester that leaves during a pause retires A's scan when it resumes", async () => {
+        const f = fixture();
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        let open = true;
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => open,
+        } as never);
+        pending.resolve({ pausedUntil: Date.now() + 1_000, next: cursor });
+        await settle();
+        expect(state(a), "setup: A sees the pause").toBe("paused");
+        open = false;
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.page, "nothing reads the next page").toHaveBeenCalledTimes(1);
+        expect(f.fetch, "nothing re-reads the provider").toHaveBeenCalledTimes(2);
+        expect(
+            ["running", "paused"],
+            "A cannot show progress after the newest requester left during a pause",
+        ).not.toContain(state(a));
+    });
 });
