@@ -967,7 +967,7 @@ export class CommitChecksCoordinator {
      * saved: a change by then makes the cache remove that saved answer. The account is
      * read once more when `run` returns (a saved answer read from disk may finish after a
      * switch). A sign-in change counts even when the same account is back by the next read
-     * (A -> B -> A), so the auth generation is compared as well as the account. Any change
+     * (A to B and back to A), so the auth generation is compared as well as the account. Any change
      * starts the operation over under the new account; when the tries run out the caller
      * gets `unavailable` and no try's answer stays saved.
      */

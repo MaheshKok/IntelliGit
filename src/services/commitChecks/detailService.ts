@@ -141,6 +141,9 @@ export class CommitCiDetailService {
     // Requesters whose forced refresh failed while a scan ran; they stop re-reading, so every
     // later page of the key reaches them too, even after a newer requester takes the hooks.
     private readonly failedRefreshHooks = new Map<string, CiFailedScanHooks[]>();
+    // The entry whose tree the listed hooks last got, so a drop retires the scans they were
+    // shown, whatever entry the cache holds by then.
+    private readonly failedRefreshShown = new Map<string, DetailEntry>();
     // Grows by one entry per invalidated key (a write action), never per fetch.
     private readonly keyGenerations = new Map<string, number>();
     // Keys whose saved copy invalidate() failed to delete: not read again until a window
@@ -213,7 +216,8 @@ export class CommitCiDetailService {
         if (scan && data.refreshError !== undefined) {
             // A page may have landed since the failed reply was built, before these hooks were
             // listed: a reply of the entry still cached is rebuilt from it in this same step.
-            // A reply whose entry was cleared or replaced meanwhile lists nothing for the key.
+            // A reply whose entry was cleared or replaced meanwhile lists nothing for the key,
+            // and shows its scans stopped: no page of that entry will reach it.
             const entry = this.cache.get(key);
             if (entry && data[ENTRY] === entry) {
                 data = {
@@ -226,7 +230,10 @@ export class CommitCiDetailService {
                         each.isCurrent(),
                     );
                     this.failedRefreshHooks.set(key, [...live, scan]);
+                    this.failedRefreshShown.set(key, entry);
                 }
+            } else {
+                data = stopScans(data);
             }
         }
         return attach(data, serve, this.fences?.fenceFor(serve.repoKey, data.hash));
@@ -357,22 +364,7 @@ export class CommitCiDetailService {
                         // A scan that finds its run changed must start a new fetch, not join this one.
                         if (this.inflight.get(key) === request) this.inflight.delete(key);
                         this.startScans(key, entry, generation);
-                        // A failed Refresh's hooks would otherwise keep showing the entry this
-                        // one replaced. None is skipped: the newest requester may never have
-                        // joined this fetch. The same served copy is the reply, so a view that
-                        // gets both drops one.
-                        // A failed normal read holds no data, so it must not blank their tree;
-                        // they get their tree with its orphaned scan stopped, and the list stays
-                        // for the next entry that does hold data.
-                        const reply = served(entry);
-                        if (this.failedRefreshHooks.has(key)) {
-                            if (data.outcome !== "unavailable") {
-                                this.updateFailedRefreshHooks(key, entry, serve, undefined, reply);
-                            } else if (previous && previous !== entry) {
-                                this.retireFailedRefreshHooks(key, previous);
-                            }
-                        }
-                        return reply;
+                        return this.fanOutFetched(key, entry, data, serve);
                     }
                 }
                 this.traceOutcome("discarded-generation", data, serve);
@@ -386,6 +378,31 @@ export class CommitCiDetailService {
             });
         this.inflight.set(key, request);
         return request;
+    }
+
+    /**
+     * The reply of a fetch whose entry is now cached, after the listed hooks of failed Refreshes
+     * are told. A failed Refresh's hooks would otherwise keep showing the entry this one replaced.
+     * None is skipped: the newest requester may never have joined this fetch. The same served copy
+     * is the reply, so a view that gets both drops one.
+     * A failed normal read holds no data, so it must not blank their tree; they get their tree
+     * with its orphaned scan stopped, and the list stays for the next entry that does hold data.
+     */
+    private fanOutFetched(
+        key: string,
+        entry: DetailEntry,
+        data: CommitCiDetailData,
+        serve: CiDetailServeContext,
+    ): ServedDetailData {
+        const reply = served(entry);
+        if (this.failedRefreshHooks.has(key)) {
+            if (data.outcome !== "unavailable") {
+                this.updateFailedRefreshHooks(key, entry, serve, undefined, reply);
+            } else {
+                this.retireFailedRefreshHooks(key);
+            }
+        }
+        return reply;
     }
 
     /**
@@ -411,11 +428,12 @@ export class CommitCiDetailService {
      */
     async invalidate(key: string): Promise<void> {
         this.keyGenerations.set(key, (this.keyGenerations.get(key) ?? 0) + 1);
-        this.retireFailedRefreshHooks(key, this.cache.get(key));
+        this.retireFailedRefreshHooks(key);
         this.cache.delete(key);
         this.inflight.delete(key);
         this.scanHooks.delete(key);
         this.failedRefreshHooks.delete(key);
+        this.failedRefreshShown.delete(key);
         try {
             await this.persistentCache?.delete(key);
         } catch (error) {
@@ -431,6 +449,7 @@ export class CommitCiDetailService {
         this.inflight.clear();
         this.scanHooks.clear();
         this.failedRefreshHooks.clear();
+        this.failedRefreshShown.clear();
         this.usualDurations.clear();
         const clear = this.persistentCache?.clear();
         if (clear) {
@@ -502,6 +521,9 @@ export class CommitCiDetailService {
     /** Keeps an entry read from the store in L1, unless a refresh running for it fills L1. */
     private keepStoredRead(key: string, entry: DetailEntry): void {
         if (this.inflight.has(key)) return;
+        // The stored copy replaces the entry the listed hooks were shown.
+        const current = this.cache.get(key);
+        if (current && current !== entry) this.retireFailedRefreshHooks(key);
         this.cache.set(key, entry);
         this.evictOldest();
     }
@@ -526,9 +548,10 @@ export class CommitCiDetailService {
         while (this.cache.size > this.maxEntries) {
             const oldest = this.cache.keys().next().value;
             if (!oldest) return;
-            this.retireFailedRefreshHooks(oldest, this.cache.get(oldest));
+            this.retireFailedRefreshHooks(oldest);
             this.cache.delete(oldest);
             this.failedRefreshHooks.delete(oldest);
+            this.failedRefreshShown.delete(oldest);
         }
     }
 
@@ -612,7 +635,11 @@ export class CommitCiDetailService {
         try {
             while (scan.state === "running") {
                 const requester = this.scanHooks.get(key);
-                if (!requester?.hooks.isCurrent() || !this.isScanLive(key, scan, generation)) {
+                const live = this.isScanLive(key, scan, generation);
+                if (!requester?.hooks.isCurrent() || !live) {
+                    // Nothing reads the next page until another view asks, and failed Refreshes
+                    // never re-read: the listed views must not wait for it.
+                    if (live) this.retireFailedRefreshHooks(key);
                     return;
                 }
                 // Serial by design: the gate paces the scan one page at a time (plan §3).
@@ -622,11 +649,15 @@ export class CommitCiDetailService {
                 const latest = this.scanHooks.get(key) ?? requester;
                 // A stale requester's page is dropped; the cursor stays for the next request
                 // but keeps the budget the page froze, so a later page cannot raise it.
-                if (!latest.hooks.isCurrent() || !this.isScanLive(key, scan, generation)) {
+                const liveAfter = this.isScanLive(key, scan, generation);
+                if (!latest.hooks.isCurrent() || !liveAfter) {
                     const frozen = "next" in page ? page.next?.jobsTotal : undefined;
                     if (scan.cursor.jobsTotal === undefined && frozen !== undefined) {
                         scan.cursor = { ...scan.cursor, jobsTotal: frozen };
                     }
+                    // Nothing reads the next page until another view asks, and failed Refreshes
+                    // never re-read: the listed views must not wait for it.
+                    if (liveAfter) this.retireFailedRefreshHooks(key);
                     return;
                 }
                 const entry = this.cache.get(key) as DetailEntry;
@@ -691,29 +722,34 @@ export class CommitCiDetailService {
         }
         if (![...(entry.scans?.values() ?? [])].some((each) => isScanning(each.state))) {
             this.failedRefreshHooks.delete(key);
+            this.failedRefreshShown.delete(key);
+        } else if (this.failedRefreshHooks.has(key)) {
+            this.failedRefreshShown.set(key, entry);
         }
         return update;
     }
 
     /**
-     * `entry`, which the listed hooks of failed Refreshes show, is leaving the cache with a scan
-     * still running or paused: no page of it will reach them, and they never re-read on their
-     * own. They get its tree with that scan stopped, which a Refresh resumes. The list itself
-     * stays as the caller leaves it.
+     * The entry the listed hooks of failed Refreshes last got is leaving the cache, or no page
+     * of it will be read, with a scan still running or paused: they never re-read on their own.
+     * They get its tree with that scan stopped, which a Refresh resumes, once: a later drop of
+     * the same entry posts nothing. The list itself stays as the caller leaves it.
      */
-    private retireFailedRefreshHooks(key: string, entry: DetailEntry | undefined): void {
+    private retireFailedRefreshHooks(key: string): void {
         const listed = this.failedRefreshHooks.get(key);
+        const entry = this.failedRefreshShown.get(key);
         const serve = this.scanHooks.get(key)?.serve;
         const scanning = [...(entry?.scans?.values() ?? [])].some((each) => isScanning(each.state));
         if (!listed || !entry || !serve || !scanning) return;
         const update = attach(
-            retired(entry),
+            stopScans(served(entry)),
             serve,
             this.fences?.fenceFor(serve.repoKey, entry.data.hash),
         );
         for (const hooks of listed) {
             if (hooks.isCurrent()) hooks.onUpdate?.(update);
         }
+        this.failedRefreshShown.delete(key);
     }
 
     /** The scan still belongs to the current entry for the key, under the same generation. */
@@ -860,9 +896,8 @@ function served(entry: DetailEntry): ServedDetailData {
     };
 }
 
-/** The entry served with each scan still running or paused shown as stopped. */
-function retired(entry: DetailEntry): ServedDetailData {
-    const data = served(entry);
+/** The served detail with each scan still running or paused shown as stopped. */
+function stopScans(data: ServedDetailData): ServedDetailData {
     const runs = data.runs.map((run) =>
         run.failedScan && isScanning(run.failedScan.state)
             ? { ...run, failedScan: { ...run.failedScan, state: "stopped" as const } }
