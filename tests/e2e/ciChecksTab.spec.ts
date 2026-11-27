@@ -225,6 +225,69 @@ async function expectFrameLayout(tab: Locator, bodyWidth?: number | null): Promi
     }
 }
 
+/**
+ * Measures the popover's Open in Checks button inside the webview: its box, the panel's box,
+ * the webview height, and whether a click at the button's centre lands on it.
+ */
+async function measureFooter(graph: Awaited<ReturnType<IntelliGitView["revealPanel"]>>) {
+    return graph.getByRole("button", { name: "Open in Checks" }).evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        const panel = button.parentElement!.parentElement!.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return {
+            button: [box.top, box.bottom],
+            panel: [panel.top, panel.bottom],
+            viewport: window.innerHeight,
+            hit: hit !== null && button.contains(hit),
+        };
+    });
+}
+
+test("a short Git Log panel keeps the popover's Open in Checks in view (#445)", async ({
+    fixtureWorkspace,
+}, testInfo) => {
+    test.setTimeout(240_000);
+    await withGitLog(fixtureWorkspace, testInfo, async ({ graph }) => {
+        // The bug needs a fully visible row with less room below it than the popup's 190 px
+        // minimum plus the 8 px margin: such a row opened downward past the panel's bottom.
+        const rows = await graph
+            .locator('[data-testid^="commit-checks-button-"]')
+            .evaluateAll((buttons) =>
+                buttons.map((button) => {
+                    const box = button.getBoundingClientRect();
+                    return {
+                        id: button.getAttribute("data-testid")!,
+                        top: box.top,
+                        bottom: box.bottom,
+                    };
+                }),
+            );
+        const viewport = await graph.locator("body").evaluate(() => window.innerHeight);
+        const cramped = rows.find(
+            (row) => row.top >= 0 && row.bottom <= viewport && viewport - row.top < 198,
+        );
+        expect(
+            cramped,
+            `no row lacks room below: ${JSON.stringify({ viewport, rows })}`,
+        ).toBeDefined();
+        await graph.getByTestId(cramped!.id).click();
+        const popover = graph.getByTestId("commit-checks-popover");
+        await expect(popover.getByRole("button", { name: "Open in Checks" })).toBeVisible();
+        for (const moment of ["at rest", "right after Refresh"]) {
+            if (moment !== "at rest") {
+                await popover.getByRole("button", { name: "Refresh" }).click();
+            }
+            const footer = await measureFooter(graph);
+            const label = `${moment}: ${JSON.stringify(footer)}`;
+            expect(footer.panel[0], label).toBeGreaterThanOrEqual(0);
+            expect(footer.panel[1], label).toBeLessThanOrEqual(footer.viewport);
+            expect(footer.button[0], label).toBeGreaterThanOrEqual(footer.panel[0]);
+            expect(footer.button[1], label).toBeLessThanOrEqual(footer.panel[1]);
+            expect(footer.hit, label).toBe(true);
+        }
+    });
+});
+
 test("Open in Checks from the popover", async ({ fixtureWorkspace }, testInfo) => {
     test.setTimeout(240_000);
     await withGitLog(fixtureWorkspace, testInfo, async ({ graph, head }) => {
