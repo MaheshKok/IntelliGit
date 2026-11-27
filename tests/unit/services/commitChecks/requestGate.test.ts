@@ -4,6 +4,7 @@ import {
     CommitChecksRequestGateRegistry,
     GitHubRequestGate,
     MAX_OBSERVED_REQUESTS_PER_WINDOW,
+    withSendGuard,
 } from "../../../../src/services/commitChecks/requestGate";
 
 const GITHUB_API_URL = "https://api.github.com/repos/acme/repo/commits/main/status";
@@ -390,6 +391,213 @@ describe("CommitChecksRequestGateRegistry", () => {
 
         while (releases.length > 0) releases.shift()?.();
         await Promise.all([...originalTasks, fifthTask]);
+    });
+
+    it("runs a request made inside an admitted task of its own bucket without a second slot", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+        const url = "https://api.bitbucket.org/2.0/repositories/acme/app/pipelines/";
+        const nested = vi.fn(async () => "read");
+
+        // Four admitted tasks fill the bucket; each one reads once more before it finishes.
+        const results = await Promise.race([
+            Promise.all(
+                Array.from({ length: 4 }, () =>
+                    registry.run("bitbucket-cloud", url, () =>
+                        registry.holding("bitbucket-cloud", url, () =>
+                            registry.run("bitbucket-cloud", url, nested),
+                        ),
+                    ),
+                ),
+            ),
+            new Promise<string>((resolve) => setTimeout(() => resolve("deadlocked"), 200)),
+        ]);
+
+        expect(results, "a nested request must not wait for its own task's slot").toEqual([
+            "read",
+            "read",
+            "read",
+            "read",
+        ]);
+        expect(nested).toHaveBeenCalledTimes(4);
+    });
+
+    describe("a held slot is a lease of its admitted task", () => {
+        const url = "https://api.bitbucket.org/2.0/repositories/acme/app/";
+
+        it("an async child cannot reuse a write slot after release", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            const fire = Promise.withResolvers<void>();
+            const release = Promise.withResolvers<void>();
+            let late!: Promise<void>;
+            let active = 0;
+            let peak = 0;
+            await gate.run("bitbucket-cloud", url, () =>
+                gate.holding("bitbucket-cloud", url, async () => {
+                    // Detached: it outlives the task that held the slot.
+                    late = fire.promise.then(() =>
+                        gate.run("bitbucket-cloud", url, async () => {
+                            peak = Math.max(peak, active + 1);
+                        }),
+                    );
+                }),
+            );
+            const occupied = Array.from({ length: 4 }, () =>
+                gate.run("bitbucket-cloud", url, async () => {
+                    active++;
+                    await release.promise;
+                }),
+            );
+            await Promise.resolve();
+            fire.resolve();
+            for (let i = 0; i < 8; i++) await Promise.resolve();
+            const peakWhileHeld = peak;
+            release.resolve();
+            await Promise.all([...occupied, late]);
+
+            expect(peakWhileHeld, "a completed lease must not bypass four active requests").toBe(0);
+        });
+
+        it("refuses to share a slot the caller does not hold", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            const work = vi.fn(async () => "read");
+
+            await expect(gate.holding("bitbucket-cloud", url, work)).rejects.toThrow();
+            expect(
+                work,
+                "no slot was admitted, so nothing runs as if one were",
+            ).not.toHaveBeenCalled();
+        });
+
+        it("runs the requests of one lease one at a time", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            let active = 0;
+            let peak = 0;
+            const read = () =>
+                gate.run("bitbucket-cloud", url, async () => {
+                    peak = Math.max(peak, ++active);
+                    await new Promise((resolve) => setTimeout(resolve, 1));
+                    active--;
+                });
+
+            await gate.run("bitbucket-cloud", url, () =>
+                gate.holding("bitbucket-cloud", url, () => Promise.all([read(), read(), read()])),
+            );
+
+            expect(peak, "one slot carries one request at a time").toBe(1);
+        });
+
+        it("a Stop admission read uses another request from the rolling budget", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            for (let i = 0; i < 299; i++) await gate.run("bitbucket-cloud", url, async () => {});
+
+            await expect(
+                gate.run("bitbucket-cloud", url, () =>
+                    gate.holding("bitbucket-cloud", url, () =>
+                        gate.run("bitbucket-cloud", url, async () => "sent"),
+                    ),
+                ),
+                "the admission read cannot exceed the Cloud bucket budget",
+            ).rejects.toThrow(COOLDOWN_MESSAGE);
+        });
+
+        it("a cancelled caller's read in a held slot is refused before it is sent", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            const sent = vi.fn(async () => "sent");
+
+            await expect(
+                gate.run("bitbucket-cloud", url, () =>
+                    gate.holding("bitbucket-cloud", url, () =>
+                        withSendGuard(
+                            () => false,
+                            () => gate.run("bitbucket-cloud", url, sent),
+                        ),
+                    ),
+                ),
+            ).rejects.toThrow();
+            expect(sent, "the send guard applies inside a held slot too").not.toHaveBeenCalled();
+        });
+
+        it("an already-started detached read still occupies the concurrency slot", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            const started = Promise.withResolvers<void>();
+            const stallRead = Promise.withResolvers<void>();
+            const stallOthers = Promise.withResolvers<void>();
+            const sent = vi.fn();
+            let detached!: Promise<void>;
+            const done = gate.run("bitbucket-cloud", url, () =>
+                gate.holding("bitbucket-cloud", url, async () => {
+                    // Detached: the shared read is still in flight when the holding task ends.
+                    detached = gate.run("bitbucket-cloud", url, async () => {
+                        started.resolve();
+                        await stallRead.promise;
+                    });
+                    await started.promise;
+                }),
+            );
+            await started.promise;
+            const others = Array.from({ length: 4 }, () =>
+                gate.run("bitbucket-cloud", url, async () => {
+                    sent();
+                    await stallOthers.promise;
+                }),
+            );
+            try {
+                await new Promise<void>((resolve) => setImmediate(resolve));
+                expect(
+                    sent,
+                    "a running detached read plus four newly admitted requests exceeds the four-slot limit",
+                ).toHaveBeenCalledTimes(3);
+            } finally {
+                stallRead.resolve();
+                stallOthers.resolve();
+                await Promise.all([...others, detached, done]);
+            }
+        });
+
+        it("a read queued behind a detached read leaves the released slot instead of holding it", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            const releaseFirst = Promise.withResolvers<void>();
+            const sentSecond = vi.fn();
+            const starts: Promise<void>[] = [];
+            const reads: Promise<void>[] = [];
+            // Four holders fill the bucket; each ends with read A in flight and read B queued
+            // behind it in the same slot.
+            const holders = Array.from({ length: 4 }, () => {
+                const started = Promise.withResolvers<void>();
+                starts.push(started.promise);
+                return gate.run("bitbucket-cloud", url, () =>
+                    gate.holding("bitbucket-cloud", url, async () => {
+                        reads.push(
+                            gate.run("bitbucket-cloud", url, async () => {
+                                started.resolve();
+                                await releaseFirst.promise;
+                            }),
+                            gate.run("bitbucket-cloud", url, async () => {
+                                sentSecond();
+                            }),
+                        );
+                        await started.promise;
+                    }),
+                );
+            });
+            await Promise.all(starts);
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            releaseFirst.resolve();
+
+            let timer!: ReturnType<typeof setTimeout>;
+            const outcome = await Promise.race([
+                Promise.all([...reads, ...holders]).then(() => "sent"),
+                new Promise<string>((resolve) => {
+                    timer = setTimeout(() => resolve("deadlocked"), 1000);
+                }),
+            ]).finally(() => clearTimeout(timer));
+
+            expect(
+                outcome,
+                "each queued read B left its released slot, so the holders freed theirs",
+            ).toBe("sent");
+            expect(sentSecond).toHaveBeenCalledTimes(4);
+        });
     });
 
     it("clears an idle cooldown without sharing it with another self-hosted host", async () => {

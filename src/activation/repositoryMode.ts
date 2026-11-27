@@ -362,6 +362,7 @@ export async function activateRepositoryMode(
         credentialStore,
         commitCheckSettings.ciCdPattern,
         ciGenerations,
+        writeActionsHelpUrl(context.extension?.packageJSON, "bitbucket-cloud-pipeline-scope"),
     );
 
     let currentBranches: Branch[] = [];

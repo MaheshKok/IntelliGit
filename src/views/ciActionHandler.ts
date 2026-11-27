@@ -43,6 +43,15 @@ export function ciActionAccess(
     };
 }
 
+/** The message's optional run attempt (the one the user confirmed); throws when malformed. */
+function attemptOf(attempt: unknown): number | undefined {
+    if (attempt === undefined) return undefined;
+    if (typeof attempt !== "number" || !Number.isSafeInteger(attempt)) {
+        throw new Error("Invalid CI action attempt.");
+    }
+    return attempt;
+}
+
 /**
  * Validates a `runCiAction` message, runs the action once and posts its outcome. The reply is
  * dropped when the repository, sign-in or CI settings changed meanwhile; the action itself is
@@ -59,6 +68,7 @@ export async function answerCiActionMessage(
     post: (reply: CiActionResultMessage) => void,
 ): Promise<void> {
     const { requestId, repoKey, hash, action, runId, jobId } = msg;
+    const attempt = attemptOf(msg.attempt);
     if (typeof requestId !== "number" || !Number.isSafeInteger(requestId)) {
         throw new Error("Invalid CI action request id.");
     }
@@ -84,6 +94,7 @@ export async function answerCiActionMessage(
             action: action as CiAction,
             runId,
             ...(jobId !== undefined && { jobId: jobId as string }),
+            ...(attempt !== undefined && { attempt }),
         },
         ctx,
         () => source.repoKey(),

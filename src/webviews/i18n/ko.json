@@ -599,5 +599,8 @@
     "commit.checks.bisect.runAgain": "다시 실행",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.noResult": "결과 없음",
-    "commit.menu.findCiBreak": "CI가 깨진 지점 찾기"
+    "commit.menu.findCiBreak": "CI가 깨진 지점 찾기",
+    "commit.checks.tab.writeScopeHelpBitbucketCloud": "Bitbucket Cloud 토큰으로는 파이프라인을 중지할 수 없습니다. 중지하려면 pipeline:write 범위를 추가하세요.",
+    "commit.checks.tab.pipelineScopeHint": "단계를 보려면 pipeline 범위가 필요합니다.",
+    "commit.checks.tab.scopeHelpLink": "범위를 추가하는 방법"
 }

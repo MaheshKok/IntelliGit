@@ -623,5 +623,8 @@
     "commit.checks.bisect.runAgain": "Ejecutar de nuevo",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.noResult": "sin resultado",
-    "commit.menu.findCiBreak": "Buscar dónde se rompió la CI"
+    "commit.menu.findCiBreak": "Buscar dónde se rompió la CI",
+    "commit.checks.tab.writeScopeHelpBitbucketCloud": "Su token de Bitbucket Cloud no puede detener pipelines. Añada el ámbito pipeline:write para detener uno.",
+    "commit.checks.tab.pipelineScopeHint": "Los pasos necesitan el ámbito pipeline.",
+    "commit.checks.tab.scopeHelpLink": "Cómo añadir el ámbito"
 }

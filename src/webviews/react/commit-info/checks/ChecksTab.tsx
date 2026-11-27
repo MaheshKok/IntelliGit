@@ -196,6 +196,7 @@ export function ChecksTab({
                     {t("commit.checks.tab.refreshFailed", { error: detail.refreshError })}
                 </div>
             ) : null}
+            <ScopeHint detail={detail} onOpenUrl={openUrl} />
             <div className="intelligit-checks-body" style={{ flex: "1 1 auto", overflowY: "auto" }}>
                 <BisectInPlace repoKey={repoKey}>
                     {loaded ? (
@@ -270,6 +271,33 @@ function ActionAlert({
                     onClick={() => onOpenUrl(helpUrl)}
                 >
                     {t("commit.checks.tab.writeActionsHelp")}
+                </button>
+            ) : null}
+        </div>
+    );
+}
+
+/** Why the tree stayed flat: a token scope the provider needs, with its docs link. */
+function ScopeHint({
+    detail,
+    onOpenUrl,
+}: {
+    detail: CommitCiDetail | null | undefined;
+    onOpenUrl: (url: string) => void;
+}): React.ReactElement | null {
+    const scopeHelp = detail?.scopeHelp;
+    if (!scopeHelp) return null;
+    const { url } = scopeHelp;
+    return (
+        <div role="note" data-testid="ci-scope-hint" style={checksStyles.note}>
+            <span>{t(scopeHelp.key)}</span>
+            {url ? (
+                <button
+                    type="button"
+                    style={checksStyles.linkButton}
+                    onClick={() => onOpenUrl(url)}
+                >
+                    {t("commit.checks.tab.scopeHelpLink")}
                 </button>
             ) : null}
         </div>

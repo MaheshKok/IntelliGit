@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.25] - 2026-11-27
+
+### Added
+
+- Groundwork for the coming Checks tab: IntelliGit can now read Bitbucket Cloud pipelines with their steps, logs and usual run time, and stop a running pipeline, but only the exact run you confirmed and only in the repository you are looking at. The tab is still hidden, so nothing changes in the extension yet.
+
 ## [0.43.24] - 2026-11-27
 
 ### Fixed

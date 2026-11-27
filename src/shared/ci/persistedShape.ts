@@ -211,4 +211,7 @@ export const isCommitCiDetailData = shape<CommitCiDetailData>({
     attemptHistory: optional(listOf(attemptHistory)),
     error: optionalString,
     signInHost: optionalString,
+    scopeHelp: optional(
+        shape<NonNullable<CommitCiDetailData["scopeHelp"]>>({ key: isString, url: optionalString }),
+    ),
 });

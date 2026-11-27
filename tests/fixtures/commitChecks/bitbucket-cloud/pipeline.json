@@ -1,0 +1,48 @@
+{
+    "type": "pipeline",
+    "uuid": "{8f2a1c4e-0b7d-4e55-9a51-3c2f6d1e7b90}",
+    "build_number": 42,
+    "run_number": 1,
+    "creator": {
+        "type": "user",
+        "uuid": "{5b0e2f1a-7c3d-4a8e-9f61-2d4c8b7a6e10}",
+        "display_name": "Ada Lovelace",
+        "nickname": "ada",
+        "account_id": "557058:1f2e3d4c-5b6a-7980-1a2b-3c4d5e6f7a8b"
+    },
+    "repository": {
+        "type": "repository",
+        "full_name": "acme/app",
+        "name": "app",
+        "uuid": "{0c9d8e7f-6a5b-4c3d-2e1f-0a9b8c7d6e5f}"
+    },
+    "target": {
+        "type": "pipeline_ref_target",
+        "ref_type": "branch",
+        "ref_name": "main",
+        "selector": { "type": "branches", "pattern": "main" },
+        "commit": {
+            "type": "commit",
+            "hash": "3f6c2b8a9d1e4f5a6b7c8d9e0f1a2b3c4d5e6f70"
+        }
+    },
+    "trigger": { "type": "pipeline_trigger_push", "name": "PUSH" },
+    "state": {
+        "type": "pipeline_state_completed",
+        "name": "COMPLETED",
+        "result": { "type": "pipeline_state_completed_successful", "name": "SUCCESSFUL" }
+    },
+    "created_on": "2026-11-20T10:00:00.000000Z",
+    "completed_on": "2026-11-20T10:05:30.000000Z",
+    "duration_in_seconds": 330,
+    "build_seconds_used": 300,
+    "has_variables": false,
+    "links": {
+        "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/acme/app/pipelines/%7B8f2a1c4e-0b7d-4e55-9a51-3c2f6d1e7b90%7D"
+        },
+        "steps": {
+            "href": "https://api.bitbucket.org/2.0/repositories/acme/app/pipelines/%7B8f2a1c4e-0b7d-4e55-9a51-3c2f6d1e7b90%7D/steps/"
+        }
+    }
+}

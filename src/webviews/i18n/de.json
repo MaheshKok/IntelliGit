@@ -611,5 +611,8 @@
     "commit.checks.bisect.runAgain": "Erneut ausführen",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.noResult": "kein Ergebnis",
-    "commit.menu.findCiBreak": "Finden, wo CI fehlschlug"
+    "commit.menu.findCiBreak": "Finden, wo CI fehlschlug",
+    "commit.checks.tab.writeScopeHelpBitbucketCloud": "Ihr Bitbucket Cloud-Token kann keine Pipelines stoppen. Fügen Sie den Bereich pipeline:write hinzu, um eine zu stoppen.",
+    "commit.checks.tab.pipelineScopeHint": "Schritte benötigen den Bereich pipeline.",
+    "commit.checks.tab.scopeHelpLink": "So fügen Sie den Bereich hinzu"
 }

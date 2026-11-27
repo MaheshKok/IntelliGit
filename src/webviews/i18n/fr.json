@@ -623,5 +623,8 @@
     "commit.checks.bisect.runAgain": "Relancer",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.noResult": "aucun résultat",
-    "commit.menu.findCiBreak": "Trouver où la CI a cassé"
+    "commit.menu.findCiBreak": "Trouver où la CI a cassé",
+    "commit.checks.tab.writeScopeHelpBitbucketCloud": "Votre jeton Bitbucket Cloud ne peut pas arrêter les pipelines. Ajoutez la portée pipeline:write pour en arrêter un.",
+    "commit.checks.tab.pipelineScopeHint": "Les étapes nécessitent la portée pipeline.",
+    "commit.checks.tab.scopeHelpLink": "Comment ajouter la portée"
 }

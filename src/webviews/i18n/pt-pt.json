@@ -623,5 +623,8 @@
     "commit.checks.bisect.runAgain": "Executar novamente",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.noResult": "sem resultado",
-    "commit.menu.findCiBreak": "Encontrar onde a CI falhou"
+    "commit.menu.findCiBreak": "Encontrar onde a CI falhou",
+    "commit.checks.tab.writeScopeHelpBitbucketCloud": "O seu token do Bitbucket Cloud não pode parar pipelines. Adicione o âmbito pipeline:write para parar um.",
+    "commit.checks.tab.pipelineScopeHint": "Os passos precisam do âmbito pipeline.",
+    "commit.checks.tab.scopeHelpLink": "Como adicionar o âmbito"
 }

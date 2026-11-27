@@ -328,6 +328,8 @@ export interface CommitCiDetailData {
     attemptHistory?: CiAttemptHistory[];
     error?: string;
     signInHost?: string;
+    /** A missing token scope keeps the tree flat: the webview message key and its docs link. */
+    scopeHelp?: { key: string; url?: string };
 }
 
 /** A CI write action the user can start from the Checks tab. */

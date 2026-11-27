@@ -12,6 +12,7 @@ import { readCiHistory } from "../../../../src/services/commitChecks/ciHistory";
 import { CommitChecksCoordinator } from "../../../../src/services/commitChecks/coordinator";
 import { CredentialStore } from "../../../../src/services/commitChecks/credentialStore";
 import { GitLabProvider } from "../../../../src/services/commitChecks/gitlabProvider";
+import { HttpError } from "../../../../src/services/commitChecks/http";
 import { CommitChecksPersistentCache } from "../../../../src/services/commitChecks/persistentCache";
 import { CommitChecksService } from "../../../../src/services/commitChecks/service";
 import type { CommitChecksSnapshot } from "../../../../src/types";
@@ -119,14 +120,21 @@ describe("partial coverage reaches every cache and detail", () => {
     });
 
     it("the floor detail of a partial snapshot does not claim full flat coverage", async () => {
-        // An endless chain of allowed pages: the page bound leaves the rest unread.
-        const provider = new BitbucketCloudProvider(async (url: string) => {
-            const page = Number(new URL(url).searchParams.get("page") ?? "1");
-            return {
-                values: [{ key: `k${page}`, name: `ci-${page}`, state: "FAILED" }],
-                next: `https://api.bitbucket.org/2.0/repositories/o/r/commit/${HASH}/statuses?page=${page + 1}`,
-            };
-        }, store());
+        // An endless chain of allowed pages: the page bound leaves the rest unread. Pipelines
+        // refused with 403 send Bitbucket Cloud's detail down to the floor of its status list.
+        const provider = new BitbucketCloudProvider(
+            async (url: string) => {
+                const page = Number(new URL(url).searchParams.get("page") ?? "1");
+                return {
+                    values: [{ key: `k${page}`, name: `ci-${page}`, state: "FAILED" }],
+                    next: `https://api.bitbucket.org/2.0/repositories/o/r/commit/${HASH}/statuses?page=${page + 1}`,
+                };
+            },
+            store(),
+            async () => {
+                throw new HttpError(403, "HTTP 403: Forbidden", {});
+            },
+        );
         const coordinator = new CommitChecksCoordinator(
             {
                 getRemotes: async () => ["origin"],
@@ -140,6 +148,9 @@ describe("partial coverage reaches every cache and detail", () => {
             HASH,
             {},
             { repoKey: "/repo", authGeneration: 0, lifecycleGeneration: 0 },
+        );
+        expect(detail?.scopeHelp?.key, "the floor detail was built").toBe(
+            "commit.checks.tab.pipelineScopeHint",
         );
         expect(detail?.otherChecksCoverage, "the current population is unproven").not.toBe("full");
     });

@@ -1,0 +1,24 @@
+{
+    "type": "pipeline_step",
+    "uuid": "{c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f}",
+    "name": "Unit tests",
+    "pipeline": {
+        "type": "pipeline",
+        "uuid": "{8f2a1c4e-0b7d-4e55-9a51-3c2f6d1e7b90}"
+    },
+    "trigger": { "type": "pipeline_step_trigger_automatic" },
+    "state": {
+        "type": "pipeline_step_state_completed",
+        "name": "COMPLETED",
+        "result": { "type": "pipeline_step_state_completed_successful", "name": "SUCCESSFUL" }
+    },
+    "image": { "name": "node:22" },
+    "started_on": "2026-11-20T10:00:10.000000Z",
+    "completed_on": "2026-11-20T10:03:10.000000Z",
+    "duration_in_seconds": 180,
+    "build_seconds_used": 180,
+    "run_number": 1,
+    "max_time": 120,
+    "setup_commands": [],
+    "script_commands": [{ "name": "npm test", "command": "npm test" }]
+}

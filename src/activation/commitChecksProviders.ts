@@ -1,3 +1,4 @@
+import * as vscode from "vscode";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
 import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
 import type { CiGenerations } from "../services/commitChecks/ciGenerations";
@@ -25,9 +26,13 @@ import type { CommitChecksProvider, ProviderId } from "../services/commitChecks/
  * as its manifest names it. `HEAD` follows the repository's default branch.
  *
  * @param packageJSON - The extension's manifest.
+ * @param section - The README section's anchor; another one links another section.
  * @returns Undefined when the manifest names no GitHub repository, so no link is shown.
  */
-export function writeActionsHelpUrl(packageJSON: unknown): string | undefined {
+export function writeActionsHelpUrl(
+    packageJSON: unknown,
+    section = "write-actions",
+): string | undefined {
     const repository = (packageJSON as { repository?: unknown } | undefined)?.repository;
     const url =
         typeof repository === "string" ? repository : (repository as { url?: unknown })?.url;
@@ -35,7 +40,7 @@ export function writeActionsHelpUrl(packageJSON: unknown): string | undefined {
     const base = /^(?:git\+)?(https:\/\/github\.com\/[\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(
         url,
     )?.[1];
-    return base && `${base}/blob/HEAD/docs/commit-checks/README.md#write-actions`;
+    return base && `${base}/blob/HEAD/docs/commit-checks/README.md#${section}`;
 }
 
 /**
@@ -46,12 +51,15 @@ export function writeActionsHelpUrl(packageJSON: unknown): string | undefined {
  * @param ciCdPattern - The user's CI/CD check-name pattern, if any.
  * @param generations - Its auth generation keys the window's conditional-request store, so a
  *   sign-in change never reuses a body read with another token.
+ * @param pipelineScopeHelpUrl - The docs section a Bitbucket Cloud token without the
+ *   `pipeline` scope is pointed to; none shows the hint without a link.
  */
 export function createCommitChecksProviders(
     requestGateRegistry: CommitChecksRequestGateRegistry,
     credentialStore: CredentialStore,
     ciCdPattern: RegExp | undefined,
     generations: CiGenerations,
+    pipelineScopeHelpUrl?: string,
 ): readonly CommitChecksProvider[] {
     const etags = new EtagStore(() => generations.capture("").authGeneration);
     const fetchFor =
@@ -65,22 +73,39 @@ export function createCommitChecksProviders(
             });
     const downloadFor =
         (providerId: ProviderId): DownloadCiLog =>
-        (url, headers, signal) =>
-            requestGateRegistry.run(providerId, url, () => downloadCiLog(url, headers, signal));
+        (url, headers, signal, credentialScope, credentialHeaders) =>
+            requestGateRegistry.run(providerId, url, () =>
+                downloadCiLog(url, headers, signal, credentialScope, credentialHeaders),
+            );
     const writeFor =
         (providerId: ProviderId): WriteJson =>
         (method, url, headers, body, beforeSend) => {
             const asked = generations.capture("");
-            return requestGateRegistry.run(providerId, url, async (generation) => {
-                // Admitted, so no cooldown refused it: only now is the fence written and the
-                // caller's repository and provider checks run, after any wait in the queue.
-                await beforeSend?.();
-                // The headers hold the token read before the request queued: a sign-in change
-                // while it waited for admission must not send it.
+            // The headers hold the token read before the request queued: a sign-in change while it
+            // waited for admission, or while the caller's checks ran, must not send it anywhere.
+            const requireSignIn = () => {
                 if (!generations.isCurrent(asked, "")) {
                     throw new RequestNotSentError(
                         "The sign-in changed before the request was sent.",
                         true,
+                    );
+                }
+            };
+            return requestGateRegistry.run(providerId, url, async (generation) => {
+                requireSignIn();
+                // Admitted, so no cooldown refused it: only now is the fence written and the
+                // caller's repository and provider checks run, after any wait in the queue.
+                // Its own re-reads (is the pipeline still the one shown) share this slot.
+                await requestGateRegistry.holding(providerId, url, async () => beforeSend?.());
+                requireSignIn();
+                // Admitted again: the checks' own reads, or any other answer meanwhile, may have
+                // started a cooldown.
+                if (requestGateRegistry.cooldownEnd(providerId, url) > 0) {
+                    throw new RequestNotSentError(
+                        vscode.l10n.t(
+                            "Commit-check requests are temporarily paused due to rate limiting.",
+                        ),
+                        false,
                     );
                 }
                 return createHttpRequestJson((response) => {
@@ -113,6 +138,10 @@ export function createCommitChecksProviders(
             credentialStore,
             gatedFetchWithMeta(requestGateRegistry, "bitbucket-cloud"),
             etags,
+            (url) => requestGateRegistry.cooldownEnd("bitbucket-cloud", url),
+            downloadFor("bitbucket-cloud"),
+            writeFor("bitbucket-cloud"),
+            pipelineScopeHelpUrl,
         ),
         new BitbucketServerProvider(
             fetchFor("bitbucket-server"),

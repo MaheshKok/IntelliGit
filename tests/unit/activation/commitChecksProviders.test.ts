@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import type { CredentialStore } from "../../../src/services/commitChecks/credentialStore";
-import type { ProviderRepoRef } from "../../../src/services/commitChecks/types";
+import type { ProviderId, ProviderRepoRef } from "../../../src/services/commitChecks/types";
 
 // `https.get` is the one place a request leaves the extension; counting its calls is the check.
 const mocks = vi.hoisted(() => ({
@@ -15,6 +15,11 @@ const mocks = vi.hoisted(() => ({
     duringSignIn: vi.fn(),
 }));
 
+// The real download, spied on, so a test can read what activation hands it.
+vi.mock("../../../src/services/commitChecks/http", async (importOriginal) => {
+    const http = await importOriginal<typeof import("../../../src/services/commitChecks/http")>();
+    return { ...http, downloadCiLog: vi.fn(http.downloadCiLog) };
+});
 vi.mock("https", () => ({ get: mocks.httpsGet, request: mocks.httpsRequest }));
 vi.mock("vscode", () => ({
     authentication: {
@@ -35,10 +40,12 @@ import {
     createCommitChecksProviders,
     writeActionsHelpUrl,
 } from "../../../src/activation/commitChecksProviders";
+import { BitbucketCloudProvider } from "../../../src/services/commitChecks/bitbucketCloudProvider";
 import { CiGenerations } from "../../../src/services/commitChecks/ciGenerations";
 import { GitHubProvider } from "../../../src/services/commitChecks/githubProvider";
 import { GitLabProvider } from "../../../src/services/commitChecks/gitlabProvider";
 import { CommitChecksRequestGateRegistry } from "../../../src/services/commitChecks/requestGate";
+import { downloadCiLog } from "../../../src/services/commitChecks/http";
 
 const ref = { host: "github.com", owner: "microsoft", repo: "vscode" } as ProviderRepoRef;
 const API = "https://api.github.com";
@@ -57,6 +64,17 @@ describe("writeActionsHelpUrl", () => {
         ).toBeUndefined();
         expect(writeActionsHelpUrl({})).toBeUndefined();
         expect(writeActionsHelpUrl(undefined)).toBeUndefined();
+    });
+
+    it("links another README section by its anchor", () => {
+        expect(
+            writeActionsHelpUrl(
+                { repository: { url: "https://github.com/acme/tool" } },
+                "bitbucket-cloud-pipeline-scope",
+            ),
+        ).toBe(
+            "https://github.com/acme/tool/blob/HEAD/docs/commit-checks/README.md#bitbucket-cloud-pipeline-scope",
+        );
     });
 });
 
@@ -261,7 +279,7 @@ describe("createCommitChecksProviders", () => {
         expect(error).toMatchObject({ name: "RequestNotSentError", superseded: true });
     });
 
-    /** Both write-capable providers, built over one gate the way the extension builds them. */
+    /** Every write-capable provider, built over one gate the way the extension builds them. */
     function writers(registry: CommitChecksRequestGateRegistry, onToken: () => void = () => {}) {
         const store = {
             get: async () => {
@@ -280,6 +298,13 @@ describe("createCommitChecksProviders", () => {
                 provider: all.find((p) => p instanceof GitLabProvider) as GitLabProvider,
                 ref: { host: "gitlab.com", owner: "group", repo: "app" } as ProviderRepoRef,
                 api: "https://gitlab.com/api/v4/projects/group%2Fapp",
+            },
+            {
+                provider: all.find(
+                    (p) => p instanceof BitbucketCloudProvider,
+                ) as BitbucketCloudProvider,
+                ref: { host: "bitbucket.org", workspace: "acme", repo: "app" } as ProviderRepoRef,
+                api: "https://api.bitbucket.org/2.0/repositories/acme/app",
             },
         ] as const;
     }
@@ -306,7 +331,7 @@ describe("createCommitChecksProviders", () => {
                 if (!current) throw new Error("Remote data changed.");
             });
             const action = provider
-                .runAction(target, { action: "cancel", runId: "1" }, beforeSend)
+                .runAction(target, { action: "cancel", runId: "1", attempt: 1 }, beforeSend)
                 .catch((reason: unknown) => reason);
             await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -322,11 +347,50 @@ describe("createCommitChecksProviders", () => {
         }
     });
 
+    it("four Stops at once re-read their pipeline in the slot they hold instead of waiting on each other", async () => {
+        mocks.httpsGet.mockClear();
+        mocks.httpsRequest.mockClear();
+        const registry = new CommitChecksRequestGateRegistry("cooling down");
+        const bitbucket = writers(registry)[2];
+        const beforeSend = vi.fn(async () => undefined);
+
+        // Four writes fill the bucket; each one reads its pipeline again once admitted.
+        const outcome = await Promise.race([
+            Promise.all(
+                Array.from({ length: 4 }, (_, i) =>
+                    bitbucket.provider
+                        .runAction(
+                            bitbucket.ref,
+                            { action: "cancel", runId: `{p${i}}`, attempt: 1 },
+                            beforeSend,
+                        )
+                        .catch((reason: unknown) => reason),
+                ),
+            ),
+            new Promise<string>((resolve) => setTimeout(() => resolve("deadlocked"), 1000)),
+        ]);
+
+        expect(outcome, "the re-reads waited for slots their own writes hold").not.toBe(
+            "deadlocked",
+        );
+        const reads = mocks.httpsGet.mock.calls.map((call) => String((call as unknown[])[0]));
+        for (let i = 0; i < 4; i++) {
+            const pipeline = `/pipelines/${encodeURIComponent(`{p${i}}`)}`;
+            expect(
+                reads.filter((url) => new URL(url).pathname.endsWith(pipeline)),
+                `write ${i} reached its re-read once`,
+            ).toHaveLength(1);
+        }
+        expect(mocks.httpsRequest, "the failed re-read sends no POST").not.toHaveBeenCalled();
+        expect(beforeSend, "no fence is written after a failed re-read").not.toHaveBeenCalled();
+    });
+
     it("a cooldown starting during the credential lookup writes no fence and sends nothing", async () => {
         const registry = new CommitChecksRequestGateRegistry("cooling down");
         let target = "";
+        let targetId: ProviderId = "github";
         const coolDown = () =>
-            registry.observeResponse(target === API ? "github" : "gitlab", {
+            registry.observeResponse(targetId, {
                 url: target,
                 statusCode: 429,
                 headers: { "retry-after": "60" },
@@ -335,10 +399,11 @@ describe("createCommitChecksProviders", () => {
         for (const { provider, ref: repo, api } of writers(registry, coolDown)) {
             mocks.httpsRequest.mockClear();
             target = api;
+            targetId = provider.id;
             const beforeSend = vi.fn(async () => undefined);
 
             const error = await provider
-                .runAction(repo, { action: "cancel", runId: "1" }, beforeSend)
+                .runAction(repo, { action: "cancel", runId: "1", attempt: 1 }, beforeSend)
                 .catch((reason: unknown) => reason);
 
             expect(error, provider.id).toMatchObject({
@@ -407,5 +472,165 @@ describe("createCommitChecksProviders", () => {
             await readLog({ [logsUrl]: busy }),
             "the API's own limit cools it down",
         ).toBeGreaterThan(0);
+    });
+
+    describe("Bitbucket Cloud Stop admission", () => {
+        const CLOUD = "https://api.bitbucket.org/2.0/repositories/acme/app";
+        const cloudRef = {
+            host: "bitbucket.org",
+            workspace: "acme",
+            repo: "app",
+        } as ProviderRepoRef;
+
+        function cloudWriter(
+            registry: CommitChecksRequestGateRegistry,
+            generations = new CiGenerations(),
+        ) {
+            const store = { get: async () => "fixture-token" } as unknown as CredentialStore;
+            return createCommitChecksProviders(registry, store, undefined, generations).find(
+                (provider) => provider instanceof BitbucketCloudProvider,
+            ) as BitbucketCloudProvider;
+        }
+
+        /** The pipeline read answers 200 with `headers`; the POST is never stubbed. */
+        function answerPipelineRead(headers: Record<string, string>) {
+            mocks.httpsGet.mockImplementation(((
+                _url: string,
+                _options: unknown,
+                respond: (response: unknown) => void,
+            ) => {
+                const request = Object.assign(new EventEmitter(), {
+                    setTimeout: vi.fn(),
+                    destroy: vi.fn(),
+                });
+                const response = Object.assign(new EventEmitter(), {
+                    statusCode: 200,
+                    headers,
+                    destroy: vi.fn(),
+                });
+                queueMicrotask(() => {
+                    respond(response);
+                    response.emit(
+                        "data",
+                        Buffer.from(
+                            JSON.stringify({
+                                uuid: "1",
+                                run_number: 1,
+                                state: { name: "IN_PROGRESS" },
+                            }),
+                        ),
+                    );
+                    response.emit("end");
+                });
+                return request;
+            }) as never);
+        }
+
+        it("a queued Stop does not read with the old token after sign-out", async () => {
+            mocks.httpsGet.mockClear();
+            const registry = new CommitChecksRequestGateRegistry("paused");
+            const generations = new CiGenerations();
+            const cloud = cloudWriter(registry, generations);
+            const locker = Promise.withResolvers<void>();
+            const busy = Array.from({ length: 4 }, () =>
+                registry.run("bitbucket-cloud", CLOUD, () => locker.promise),
+            );
+            const queued = vi.spyOn(registry, "run");
+            const stop = cloud
+                .runAction(cloudRef, { action: "cancel", runId: "1", attempt: 1 }, async () => {})
+                .catch(() => {});
+            await vi.waitFor(() => expect(queued).toHaveBeenCalledOnce());
+
+            generations.bumpAuth();
+            locker.resolve();
+            await Promise.all([...busy, stop]);
+
+            expect(
+                mocks.httpsGet,
+                "the queued Stop must check auth before its credentialed re-read",
+            ).not.toHaveBeenCalled();
+        });
+
+        it("a Stop sends no write if its admission read starts a cooldown", async () => {
+            mocks.httpsRequest.mockClear();
+            const registry = new CommitChecksRequestGateRegistry("paused");
+            const cloud = cloudWriter(registry);
+            const oldGet = mocks.httpsGet.getMockImplementation();
+            answerPipelineRead({ "x-ratelimit-nearlimit": "true" });
+            const begin = vi.fn(async () => {});
+            try {
+                await cloud
+                    .runAction(cloudRef, { action: "cancel", runId: "1", attempt: 1 }, begin)
+                    .catch(() => {});
+
+                expect(registry.cooldownEnd("bitbucket-cloud", CLOUD)).toBeGreaterThan(0);
+                expect(
+                    mocks.httpsRequest,
+                    "cooldown started by the read must stop the POST",
+                ).not.toHaveBeenCalled();
+                expect(begin, "no fence for a Stop the cooldown stopped").not.toHaveBeenCalled();
+            } finally {
+                if (oldGet) mocks.httpsGet.mockImplementation(oldGet);
+                else mocks.httpsGet.mockReset();
+            }
+        });
+
+        it("a write sends nothing if a cooldown starts while its fence is written", async () => {
+            mocks.httpsRequest.mockClear();
+            const registry = new CommitChecksRequestGateRegistry("paused");
+            const github = createCommitChecksProviders(
+                registry,
+                {} as CredentialStore,
+                undefined,
+                new CiGenerations(),
+            ).find((provider) => provider instanceof GitHubProvider) as GitHubProvider;
+            const begin = vi.fn(async () => {
+                registry.observeResponse("github", {
+                    url: API,
+                    statusCode: 429,
+                    headers: { "retry-after": "60" },
+                });
+            });
+
+            const error = await github
+                .runAction(ref, { action: "cancel", runId: "1" }, begin)
+                .catch((reason: unknown) => reason);
+
+            expect(begin).toHaveBeenCalledOnce();
+            expect(
+                mocks.httpsRequest,
+                "the POST is admitted again after the fence",
+            ).not.toHaveBeenCalled();
+            expect(error).toMatchObject({ name: "RequestNotSentError" });
+        });
+    });
+
+    it("activation forwards the provider credential header list to the download boundary", async () => {
+        const cloudBase = "https://api.bitbucket.org/2.0/repositories/acme/app";
+        const cloud = createCommitChecksProviders(
+            new CommitChecksRequestGateRegistry("paused"),
+            { get: async () => "fixture-token" } as unknown as CredentialStore,
+            undefined,
+            new CiGenerations(),
+        ).find((provider) => provider instanceof BitbucketCloudProvider) as BitbucketCloudProvider;
+        vi.mocked(downloadCiLog).mockResolvedValueOnce({ text: "log", truncated: false });
+        const signal = new AbortController().signal;
+
+        await cloud.getJobLog(
+            { host: "bitbucket.org", workspace: "acme", repo: "app" } as ProviderRepoRef,
+            { runId: "p", jobId: "s" },
+            signal,
+        );
+
+        expect(
+            downloadCiLog,
+            "the headers a redirect off the repository must drop reach the download",
+        ).toHaveBeenCalledWith(
+            `${cloudBase}/pipelines/p/steps/s/log`,
+            { Authorization: "Bearer fixture-token" },
+            signal,
+            `${cloudBase}/`,
+            ["authorization"],
+        );
     });
 });

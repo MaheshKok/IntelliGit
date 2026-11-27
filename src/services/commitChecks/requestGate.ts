@@ -77,6 +77,28 @@ export class CommitChecksRequestGateRegistry {
     }
 
     /**
+     * Runs `work` inside a slot the calling task holds on the bucket for `url`: the requests `work`
+     * makes through this registry share that slot, one at a time, instead of queuing for another.
+     * Each one is still admitted and counted like any request (cooldown, rolling budget, send
+     * guard). The share ends when the holding task's slot is released, so work left running after
+     * it queues like any other request. Only for work awaited by the holding task, such as a
+     * write's admission check.
+     *
+     * @param providerId - Provider that owns the held bucket.
+     * @param url - Any URL on the held bucket's API origin.
+     * @param work - The reads to run in the held slot.
+     * @throws When the caller holds no slot on that bucket.
+     */
+    holding<T>(providerId: ProviderId, url: string, work: () => Promise<T>): Promise<T> {
+        const gate = this.gateFor(providerId, url);
+        const lease = ownedSlots.getStore()?.find((slot) => slot.gate === gate && slot.active);
+        if (!lease) {
+            return Promise.reject(new Error("A held request slot is needed to share it."));
+        }
+        return sharedSlots.run([...(sharedSlots.getStore() ?? []), lease], work);
+    }
+
+    /**
      * Records token-free HTTP response metadata against the response's provider/API-origin bucket.
      *
      * @param providerId - Commit-check provider that received the response.
@@ -247,6 +269,23 @@ export class RequestGateCooldownError extends HttpError {
 
 const sendGuards = new AsyncLocalStorage<() => boolean>();
 
+/** One admitted task's slot; `active` turns false when the slot is released. */
+interface SlotLease {
+    readonly gate: ProviderRequestGate;
+    active: boolean;
+    /**
+     * Settles when the last request sharing this slot is done or has left it; the next one waits
+     * for it.
+     */
+    tail: Promise<void>;
+}
+
+/** The slots the running task was admitted to. */
+const ownedSlots = new AsyncLocalStorage<readonly SlotLease[]>();
+
+/** The slots `holding` shares with the reads of the running work. */
+const sharedSlots = new AsyncLocalStorage<readonly SlotLease[]>();
+
 /** A request the gate admitted was refused by its caller's send guard (the caller was cancelled). */
 class SendRefusedError extends Error {}
 
@@ -305,10 +344,57 @@ class ProviderRequestGate {
     ) {}
 
     async run<T>(task: (generation: number) => Promise<T>, origin?: string): Promise<T> {
+        // Inside `holding`, a read shares the slot its caller holds: queuing for another could
+        // wait on that very slot.
+        const shared = sharedSlots.getStore()?.find((slot) => slot.gate === this && slot.active);
+        if (shared) return this.runShared(shared, task, origin);
         this.pruneStartedAt();
         this.throwIfCoolingDown();
         this.throwIfRequestBudgetExhausted();
         await this.acquire();
+        const lease: SlotLease = { gate: this, active: true, tail: Promise.resolve() };
+        try {
+            return await ownedSlots.run([...(ownedSlots.getStore() ?? []), lease], () =>
+                this.start(task, origin),
+            );
+        } finally {
+            lease.active = false;
+            // A shared request already sent in this slot keeps it occupied until it settles.
+            await lease.tail;
+            this.release();
+        }
+    }
+
+    /** One request in a shared slot: after the slot's previous request, admitted like any other. */
+    private async runShared<T>(
+        lease: SlotLease,
+        task: (generation: number) => Promise<T>,
+        origin: string | undefined,
+    ): Promise<T> {
+        const previous = lease.tail;
+        let done!: () => void;
+        lease.tail = new Promise<void>((resolve) => {
+            done = resolve;
+        });
+        try {
+            await previous;
+            // Released while this request waited its turn: it leaves the released slot, which
+            // no longer waits for it, and queues for a slot of its own.
+            if (!lease.active) {
+                done();
+                return await this.run(task, origin);
+            }
+            return await this.start(task, origin);
+        } finally {
+            done();
+        }
+    }
+
+    /** Admits and counts one request in a slot this task holds, then sends it. */
+    private async start<T>(
+        task: (generation: number) => Promise<T>,
+        origin: string | undefined,
+    ): Promise<T> {
         let taskGeneration: number | undefined;
         try {
             this.pruneStartedAt();
@@ -327,8 +413,6 @@ class ProviderRequestGate {
                 this.rememberCooldown(err);
             }
             throw err;
-        } finally {
-            this.release();
         }
     }
 

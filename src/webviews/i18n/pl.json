@@ -635,5 +635,8 @@
     "commit.checks.bisect.runAgain": "Uruchom ponownie",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.noResult": "brak wyniku",
-    "commit.menu.findCiBreak": "Znajdź, gdzie CI przestało działać"
+    "commit.menu.findCiBreak": "Znajdź, gdzie CI przestało działać",
+    "commit.checks.tab.writeScopeHelpBitbucketCloud": "Twój token Bitbucket Cloud nie może zatrzymywać potoków. Dodaj zakres pipeline:write, aby zatrzymać potok.",
+    "commit.checks.tab.pipelineScopeHint": "Kroki wymagają zakresu pipeline.",
+    "commit.checks.tab.scopeHelpLink": "Jak dodać zakres"
 }

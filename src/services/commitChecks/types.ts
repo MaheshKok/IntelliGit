@@ -43,6 +43,11 @@ export interface CiFailedScanCursor {
     readonly runId: string;
     readonly runAttempt?: number;
     /**
+     * Bitbucket Cloud: the attempt the first read's steps named when the pipeline names none. Only
+     * the scan reads it; it never stands in for the run's attempt, so it never authorizes a Stop.
+     */
+    readonly stepAttempt?: number;
+    /**
      * GitLab: the pipeline's `updated_at` when the scan started. GitLab runs have no attempt, and
      * a retry rewrites the pipeline even when it fails again, so a different value discards the scan.
      */
@@ -156,7 +161,8 @@ export interface CommitChecksProvider {
      * Sends one write action. Refuses with `RequestGateCooldownError` while the request's
      * bucket cools down and with an `HttpError` 401 when signed out, both before `beforeSend`;
      * once the request gate admits the request, awaits `beforeSend` (the action fence; a
-     * rejection sends nothing) and sends one request, never retried. Rejects with the
+     * rejection sends nothing) and sends one request, never retried. A provider that reads the
+     * run again after `beforeSend` awaits it once more right before sending. Rejects with the
      * response's `HttpError`, or another error when the request may have reached the provider.
      */
     runAction?(
@@ -211,6 +217,8 @@ export interface CiActionRequest {
     readonly runId: string;
     /** Set for `rerunJob` only. */
     readonly jobId?: string;
+    /** The attempt the user saw; a provider that can tell refuses the action on another one. */
+    readonly attempt?: number;
 }
 
 /** The job whose log is downloaded; ids as the detail names them. */
