@@ -234,6 +234,7 @@ describe("Checks tab write actions", () => {
                 hash: HASH,
                 action: "cancel",
                 runId: "77",
+                attempt: 1,
             }),
         ]);
         expect(posted("runCiAction")[0]).not.toHaveProperty("jobId");

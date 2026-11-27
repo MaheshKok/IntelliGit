@@ -520,18 +520,26 @@ export type DownloadCiLog = (
     headers: Record<string, string>,
     signal: AbortSignal,
     credentialScope?: string,
+    credentialHeaders?: readonly string[],
 ) => Promise<DownloadedText>;
 
 /**
- * `downloadToString` at the per-log bound (O2), with the shared credential headers.
+ * `downloadToString` at the per-log bound (O2), with the shared credential headers and the
+ * provider's own.
  *
  * @param url - Log URL; must be `https:`.
  * @param headers - Request headers, credentials included.
  * @param signal - Aborts the download.
  * @param credentialScope - URL prefix the credentials may stay on across redirects.
+ * @param credentialHeaders - The provider's credential headers, stripped with the shared ones.
  */
-export const downloadCiLog: DownloadCiLog = (url, headers, signal, credentialScope) =>
-    downloadToString(url, headers, CI_LOG_MAX_BYTES, signal, undefined, credentialScope);
+export const downloadCiLog: DownloadCiLog = (
+    url,
+    headers,
+    signal,
+    credentialScope,
+    credentialHeaders,
+) => downloadToString(url, headers, CI_LOG_MAX_BYTES, signal, credentialHeaders, credentialScope);
 
 /** One HTTPS GET resolved at its response head; the idle timeout stays armed for the body. */
 function openResponse(

@@ -172,7 +172,11 @@ function HeaderActions({
                 <>
                     <ActionButton
                         label={t("commit.checks.tab.confirmCancel")}
-                        target={{ action: "cancel", runId: run.id }}
+                        target={{
+                            action: "cancel",
+                            runId: run.id,
+                            ...(run.attempt !== undefined && { attempt: run.attempt }),
+                        }}
                         busy={busy}
                         onClick={send}
                     />

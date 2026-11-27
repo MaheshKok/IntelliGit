@@ -219,6 +219,8 @@ type CommitCiOutbound =
           runId: string;
           /** Set for `rerunJob` only. */
           jobId?: string;
+          /** The run attempt shown when Stop was confirmed; the host refuses another one. */
+          attempt?: number;
       }
     | {
           /** Checks tab asks for the parent's and the default branch tip's snapshots. */

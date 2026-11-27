@@ -12,32 +12,33 @@
 
 ## Phase 17: review pending, started at 6518aa81d31a00c930a8555f7d6a573412f6a15c
 - BASE_HEAD 6518aa81 is not an ancestor of HEAD (Phase 16 was squash-merged as 93e148bc); the build used 93e148bc as its base.
-- Built (0.44.0): Bitbucket Cloud `getDetail` (pipelines, steps as jobs, statuses minus each pipeline's own status), the overflow scan of failed steps past 1 000, step logs through `downloadCiLog`, Stop (`runAction` cancel = `stopPipeline`), the usual duration. C3: a 403 keeps the flat list plus `scopeHelp`, never saved. Contract version 10.
-- Fix round 1 (3bd515fc): `allowNext` stays under the selected repository's API path; mixed step attempts are refused; the overflow scan ignores a stale first-page count; runs carry `startedAt`; Stop needs a queued or running run in the fresh read.
+- Built (0.44.0, b22292a6): Cloud `getDetail` (pipelines, steps as jobs, statuses minus each pipeline's own), overflow scan, step logs, Stop, usual duration, C3 hint. Contract version 10.
+- Fix round 1 (3bd515fc) and round 2 (a27a873f): repository-scoped `allowNext` for detail, log redirect scope, mixed-attempt refusal, Stop re-read at admission, malformed and empty pages.
+- Takeover (this commit): the 11 review findings after round 2, each with a regression test.
 
-## Decisions and why (fix round 2)
-- Log redirect: `followRedirects` got `credentialScope` (a URL prefix, case-blind); a redirect outside it strips the credentials for good, like an origin change. `DownloadCiLog` takes it as an optional 4th argument; Bitbucket passes `<repo API>/`; the activation wrapper forwards it. http.ts's origin rule is unchanged for GitHub and GitLab.
-- Attempts: a step page whose `run_number` differs from the listed pipeline's `run_number` throws "Remote data changed" (unavailable, never saved). Only checked when both numbers are present.
-- Stop at admission: `runAction` re-reads the pipeline inside the write's admission callback, before the fence (`requireStoppable`: same uuid, queued or running, same attempt via the new `CiActionRequest.attempt` that `runCiAction` fills from the run). It throws `RequestNotSentError`, so nothing is fenced or sent. The re-read would queue behind its own slot in the request gate, so `CommitChecksRequestGateRegistry.holding` lets reads made inside the admission callback share the held slot (AsyncLocalStorage, opt-in per call, used only in `writeFor`). Passed on: an ungated read (the provider has only gated transports) and a deeper gate rewrite.
-- Malformed collection: `valuesOf` throws on a page with no `values` list instead of returning []; it reuses the existing "Remote data changed. Reload and try again." text (no new translation).
-- Overflow scan: an empty page no longer stops the scan when its next link is new and allowed; the repeated-link guard stays and now has its own test.
+## Decisions and why (takeover)
+- Status pager (snapshot and the C3 fallback) uses `allowNext`; a refused link marks the snapshot partial. Old snapshot pagination tests moved their links under `/2.0/repositories/acme/app/` (they encoded the broad `/2.0/` rule).
+- Displayed attempt: the cancel button sends `attempt`; the host validates it (safe integer) and `runCiAction` refuses when the first fresh read shows another attempt; the provider re-checks it at admission and again after the fence.
+- Stop admission order (provider callback): re-read, cooldown check, fence, re-read. Write wrapper: sign-in check before the callback, sign-in and cooldown check again before the POST. Cooldown refusals after admission are `RequestNotSentError`, not gate 429s, so they never re-arm the cooldown.
+- Request gate: `holding` needs an active slot the caller was admitted to (else rejects). Shared reads run one at a time inside that slot and are admitted and counted like any request (cooldown, rolling budget, send guard). The slot's lease is revoked on release, so detached work queues normally. Passed on: a counter-based slot reuse (cannot tell a live owner from detached work).
+- Detail: steps without `run_number` trigger one fresh pipeline read; another uuid or attempt is "Remote data changed" (unavailable, never saved). Overflow refuses any row naming another attempt.
+- `runAction` rejects every action except cancel with the existing "cannot re-run or cancel" text.
+- `DownloadCiLog` gained a 5th argument `credentialHeaders`; Cloud passes `["authorization"]`; the activation wrapper forwards it.
 
 ## Open risks
-- Mixed-attempt and Stop attempt checks compare `run_number`; not checked against live Bitbucket data (if one pipeline's steps legitimately carry other numbers, the detail shows unavailable).
-- A chain of empty pages with always-new links under the repository path is followed one page per scan step with no page cap (the first-page count is not a stop, by round 1). Bitbucket's own API is the only source.
-- Missing `run_number` on either side skips the attempt check.
-- `bun run test` on Node 26 (this machine): commit-list-column-resize fails (Node 26 localStorage; red on base too); it passes on Node 24.3.0.
-- GitNexus detect-changes: risk high earlier (activateRepositoryMode, one extra argument). E2E (Gate E) runs on CI.
+- `run_number` checks are unverified against live Bitbucket data; a pipeline whose steps legitimately omit `run_number` costs one extra read per pipeline per detail fetch.
+- A chain of empty pages with always-new links under the repository path has no page cap beyond the rolling budget (the reviewer's probe shows it pauses at 300 requests).
+- GitNexus impact and detect-changes were not run in the takeover: no runner in this worktree and no GitNexus tool offered.
+- `bun run test` on Node 26: commit-list-column-resize fails (Node 26 localStorage; red on base too).
 
 ## Next phase: 18
 
 ## Found outside scope
-- Review finding: commit details' forced `-M` rename detection (dc190ef5, #454, already in the base) drops the deleted row, so with diff.renames=false the old file contents are unreachable. Needs its own fix: resolve the source path against the selected parent in the commit-diff route.
-- Bitbucket `getChecks` (snapshot path, before Phase 17) still follows any `/2.0/` next link on the API origin with the bearer token, another repository's included.
+- Review finding: commit details' forced `-M` rename detection (dc190ef5, #454, already in the base) drops the deleted row, so with diff.renames=false the old file contents are unreachable. Needs its own fix in the commit-diff route.
 - ciBisectHandler still posts progress and a result if the switch turns off mid-run (only the stopped reply is guarded).
 - Phase 7 code: githubProvider.ts `summaryMissed` marks a finished execution incomplete when an optional failure-summary lookup fails.
 - commit-list-column-resize fails on Node 26 (red on base too); updateWithLocalChanges.integration fails on Node 24.3.0 (red on base too). Both pass on Node 22 (CI's version).
 - GitHub carryScans treats two missing `runAttempt` values as the same run; `bun run package` can pack ignored `output/` leftovers; noRepositoryMode.ts registers a placeholder `refreshBadges`.
 - CommitPanelViewProvider never posts `commitChecksEnabled` (owner question for Phase 18); knip hint: selectedRemovalCrashWorker.ts in knip.jsonc.
 - gitlabProvider.ts:677 sets `id` twice; impeccable flags a pre-existing broken-image pattern at commitChecksTab.integration.test.tsx:1602.
-- GitHub and GitLab log downloads still strip credentials on an origin change only (no repository scope); the same-origin case does not arise for them today.
+- GitHub and GitLab log downloads still strip credentials on an origin change only (no repository scope) and pass no provider header list.

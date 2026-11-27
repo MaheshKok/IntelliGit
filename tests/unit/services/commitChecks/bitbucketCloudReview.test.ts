@@ -10,6 +10,7 @@ import { interpolateL10n } from "../../../helpers/l10nTestHelper";
 import pipelineFixture from "../../../fixtures/commitChecks/bitbucket-cloud/pipeline.json";
 import stepFixture from "../../../fixtures/commitChecks/bitbucket-cloud/step.json";
 import {
+    downloadCiLog,
     HttpError,
     type FetchJson,
     type FetchJsonWithMeta,
@@ -391,6 +392,50 @@ describe("Bitbucket Cloud review fixes, round 2", () => {
         expect(sent[1].headers.Authorization).toBe("Bearer bb-token");
     });
 
+    it("hands the log download the provider's credential header list", async () => {
+        const downloadLog = vi.fn(async () => ({ text: "", truncated: false }));
+        const store = { get: vi.fn(async () => "bb-token") } as unknown as CredentialStore;
+        const bitbucket = new BitbucketCloudProvider(
+            vi.fn() as unknown as FetchJson,
+            store,
+            vi.fn() as unknown as FetchJsonWithMeta,
+            undefined,
+            undefined,
+            downloadLog,
+        );
+
+        await bitbucket.getJobLog(
+            ref,
+            { runId: PIPE, jobId: stepFixture.uuid },
+            new AbortController().signal,
+        );
+
+        expect(downloadLog.mock.calls[0]?.[4], "Cloud's credential headers").toEqual([
+            "authorization",
+        ]);
+    });
+
+    it("the log download strips the credential headers it is given on an origin change", async () => {
+        const storage = "https://bbuseruploads.s3.amazonaws.com/log?sig=abc";
+        const sent = stubServer({
+            [stepLog]: [{ status: 307, location: storage }],
+            [storage]: [{ status: 200, body: "example log" }],
+        });
+
+        await downloadCiLog(
+            stepLog,
+            { Authorization: "Bearer bb-token", "X-Provider-Token": "secret" },
+            new AbortController().signal,
+            undefined,
+            ["x-provider-token"],
+        );
+
+        expect(
+            sent[1]?.headers,
+            "a provider-listed header never leaves its origin",
+        ).not.toHaveProperty("X-Provider-Token");
+    });
+
     it("does not accept a coherent tree whose steps belong to a later pipeline attempt", async () => {
         // The pipeline was listed as attempt 1 and re-run before its steps were read.
         const bb = fakeBitbucket({
@@ -554,5 +599,222 @@ describe("Bitbucket Cloud review fixes, round 2", () => {
             // The kept cursor is the one given: it never moves on to the repeated page.
             expect(page.next).not.toHaveProperty("read");
         });
+    });
+});
+
+// Phase 17 takeover: the status pager's next-link rule, the attempt the user saw carried to Stop,
+// a re-check after the fence, attempt evidence on the first read and the overflow scan, and
+// cancel as the only action the provider sends.
+describe("Bitbucket Cloud review fixes, takeover", () => {
+    const running = { name: "IN_PROGRESS" };
+
+    /** A provider whose write runs its admission callback, then counts the POST. */
+    function stopper(bb: ReturnType<typeof fakeBitbucket>) {
+        const posted = vi.fn();
+        const bitbucket = provider(bb, async (_method, _url, _headers, _body, beforeSend) => {
+            await beforeSend?.();
+            posted();
+            return {};
+        });
+        return { bitbucket, posted };
+    }
+
+    function stopFor(
+        bitbucket: BitbucketCloudProvider,
+        begin: () => Promise<void>,
+        attempt: number | undefined,
+    ) {
+        return runCiAction(
+            {
+                coordinator: {
+                    actionTarget: async () => ({ provider: bitbucket, ref }),
+                    actionGuard: () => () => true,
+                    getChecks: vi.fn(async () => ({})),
+                    getDetail: async () => bitbucket.getDetail(ref, SHA),
+                    invalidate: vi.fn(async () => {}),
+                },
+                fences: { begin, fail: vi.fn(), fenceFor: vi.fn(), endByUserRefresh: vi.fn() },
+            } as never,
+            SHA,
+            { action: "cancel", runId: PIPE, ...(attempt !== undefined && { attempt }) },
+            new CiGenerations().capture("/repo"),
+        );
+    }
+
+    it("the C3 fallback never follows a status cursor to another repository", async () => {
+        const otherRepo =
+            "https://api.bitbucket.org/2.0/repositories/acme/other/commit/statuses?page=2";
+        const fetchJson = vi.fn(async (url: string) =>
+            url === otherRepo ? { values: [] } : { values: [], next: otherRepo },
+        );
+        const bitbucket = provider({
+            log: [],
+            fetchJson,
+            fetchWithMeta: async () => {
+                throw new HttpError(403, "HTTP 403: Forbidden", {});
+            },
+        });
+
+        const detail = await bitbucket.getDetail(ref, SHA);
+
+        expect(detail).toHaveProperty("scopeHelp");
+        expect(
+            fetchJson.mock.calls.map(([url]) => url),
+            "fallback must not send a signed request to another repository",
+        ).not.toContain(otherRepo);
+        expect(detail.otherChecksCoverage, "the refused page leaves the list partial").not.toBe(
+            "full",
+        );
+    });
+
+    it("the snapshot keeps following a status cursor inside the repository", async () => {
+        const second = `${REPO_API}/commit/${SHA}/statuses?pagelen=100&page=2`;
+        const fetchJson = vi.fn(async (url: string) =>
+            url === second ? { values: [] } : { values: [], next: second },
+        );
+        const bitbucket = provider({ log: [], fetchJson, fetchWithMeta: vi.fn() });
+
+        const snapshot = await bitbucket.getChecks(ref, SHA);
+
+        expect(fetchJson.mock.calls.map(([url]) => url)).toContain(second);
+        expect(snapshot.partial).toBeUndefined();
+    });
+
+    it("Stop refuses the re-run already present at the first fresh read", async () => {
+        const { bitbucket, posted } = stopper(
+            fakeBitbucket({
+                pipelines: [{ ...pipelineFixture, run_number: 2, state: running }],
+                steps: [step(1, "SUCCESSFUL", { run_number: 2 })],
+            }),
+        );
+        const begin = vi.fn(async () => {});
+
+        const outcome = await stopFor(bitbucket, begin, 1);
+
+        expect(
+            posted,
+            "a Stop confirmed for attempt 1 never posts against attempt 2",
+        ).not.toHaveBeenCalled();
+        expect(begin).not.toHaveBeenCalled();
+        expect(outcome.outcome).toBe("failed");
+    });
+
+    it("Stop refuses a pipeline that changes while the fence is storing", async () => {
+        const pipeline = { ...pipelineFixture, state: running };
+        const { bitbucket, posted } = stopper(
+            fakeBitbucket({ pipelines: [pipeline], steps: [stepFixture] }),
+        );
+        const begin = vi.fn(async () => {
+            pipeline.run_number = 2;
+        });
+        const fail = vi.fn();
+
+        await runCiAction(
+            {
+                coordinator: {
+                    actionTarget: async () => ({ provider: bitbucket, ref }),
+                    actionGuard: () => () => true,
+                    getChecks: vi.fn(async () => ({})),
+                    getDetail: async () => bitbucket.getDetail(ref, SHA),
+                    invalidate: vi.fn(async () => {}),
+                },
+                fences: { begin, fail, fenceFor: vi.fn(), endByUserRefresh: vi.fn() },
+            } as never,
+            SHA,
+            { action: "cancel", runId: PIPE, attempt: 1 },
+            new CiGenerations().capture("/repo"),
+        );
+
+        expect(begin).toHaveBeenCalledOnce();
+        expect(
+            posted,
+            "the pipeline switched attempts during the fence write",
+        ).not.toHaveBeenCalled();
+        expect(fail, "the fence of the refused Stop is removed").toHaveBeenCalledOnce();
+    });
+
+    it("Stop still reaches the pipeline the user saw", async () => {
+        const { bitbucket, posted } = stopper(
+            fakeBitbucket({
+                pipelines: [{ ...pipelineFixture, state: running }],
+                steps: [stepFixture],
+            }),
+        );
+
+        const outcome = await stopFor(
+            bitbucket,
+            vi.fn(async () => {}),
+            1,
+        );
+
+        expect(posted).toHaveBeenCalledOnce();
+        expect(outcome.outcome).toBe("ok");
+    });
+
+    it("the Cloud provider rejects an unsupported re-run action", async () => {
+        const { bitbucket, posted } = stopper(
+            fakeBitbucket({
+                pipelines: [{ ...pipelineFixture, state: running }],
+                steps: [stepFixture],
+            }),
+        );
+
+        await expect(
+            bitbucket.runAction(ref, { action: "rerunFailed", runId: PIPE }, async () => {}),
+        ).rejects.toThrow();
+        expect(posted, "unsupported actions must never send stopPipeline").not.toHaveBeenCalled();
+    });
+
+    it("the detail revalidates an attempt when step evidence is absent", async () => {
+        const bb = fakeBitbucket({
+            pipelines: [FAILED],
+            steps: [step(1, "SUCCESSFUL", { run_number: undefined })],
+        });
+        const bitbucket = provider({
+            ...bb,
+            fetchWithMeta: (url, headers) =>
+                new URL(url).pathname.endsWith(`/pipelines/${encodeURIComponent(PIPE)}`)
+                    ? Promise.resolve({
+                          statusCode: 200,
+                          headers: {},
+                          body: { ...FAILED, run_number: 2 },
+                      })
+                    : bb.fetchWithMeta(url, headers),
+        });
+
+        const detail = await bitbucket.getDetail(ref, SHA);
+
+        expect(detail.outcome, "no step attempt evidence requires a fresh pipeline read").toBe(
+            "unavailable",
+        );
+    });
+
+    it("keeps the tree when steps name no attempt and the pipeline is unchanged", async () => {
+        const bb = fakeBitbucket({
+            pipelines: [FAILED],
+            steps: [step(1, "FAILED", { run_number: undefined })],
+        });
+
+        const detail = await provider(bb).getDetail(ref, SHA);
+
+        expect(detail.outcome).toBe("failure");
+        expect(detail.runs[0]?.jobs).toHaveLength(1);
+    });
+
+    it("the overflow scan refuses a step page from another attempt", async () => {
+        const bb = fakeBitbucket({
+            pipelines: [FAILED],
+            steps: [step(1, "FAILED", { run_number: 2 })],
+        });
+
+        const page = await provider(bb).continueFailedScan(ref, {
+            runId: PIPE,
+            runAttempt: 1,
+            runName: "main",
+            url: `${REPO_API}/pipelines/${encodeURIComponent(PIPE)}/steps/?pagelen=100`,
+        });
+
+        expect(page, "attempt 2 overflow must never merge into attempt 1").toHaveProperty("error");
+        expect(page.failed).toBeUndefined();
     });
 });

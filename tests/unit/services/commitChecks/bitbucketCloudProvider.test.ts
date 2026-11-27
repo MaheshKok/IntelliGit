@@ -389,7 +389,7 @@ describe("BitbucketCloudProvider.getChecks — request construction", () => {
 
 describe("BitbucketCloudProvider.getChecks — pagination", () => {
     it("follows a single 'next' link and merges statuses across both pages", async () => {
-        const page2 = "https://api.bitbucket.org/2.0/page2";
+        const page2 = "https://api.bitbucket.org/2.0/repositories/acme/app/page2";
         const fetchJson = vi.fn(async (url: string) => {
             if (url === page2) {
                 return { values: [{ key: "CI", name: "CI / deploy", state: "SUCCESSFUL" }] };
@@ -423,7 +423,7 @@ describe("BitbucketCloudProvider.getChecks — pagination", () => {
         // Every page returns a fresh 'next', so only the cap can terminate the loop.
         const fetchJson = vi.fn(async () => ({
             values: [{ key: "CI", name: "CI / build", state: "SUCCESSFUL" }],
-            next: "https://api.bitbucket.org/2.0/never-ending",
+            next: "https://api.bitbucket.org/2.0/repositories/acme/app/never-ending",
         }));
         const provider = new BitbucketCloudProvider(fetchJson, storeWithToken("bb-token"));
 
@@ -449,7 +449,7 @@ describe("BitbucketCloudProvider.getChecks — pagination", () => {
     it("Cloud continuation on another port is refused before requesting it", async () => {
         const fetch = vi.fn(async () => ({
             values: [{ key: "unit", name: "unit", state: "FAILED" }],
-            next: "https://api.bitbucket.org:444/2.0/more",
+            next: "https://api.bitbucket.org:444/2.0/repositories/acme/app/more",
         }));
         const snapshot = await new BitbucketCloudProvider(
             fetch,
@@ -462,31 +462,31 @@ describe("BitbucketCloudProvider.getChecks — pagination", () => {
         expect(snapshot.partial, "a refused continuation leaves unread work").toBe(true);
     });
 
-    it.each(["https://api.bitbucket.org/2.0/more", "https://api.bitbucket.org:443/2.0/more"])(
-        "follows a default-port continuation %s",
-        async (next) => {
-            const fetch = vi
-                .fn<FetchJson>()
-                .mockResolvedValueOnce({
-                    values: [{ key: "unit", name: "unit", state: "FAILED" }],
-                    next,
-                })
-                .mockResolvedValueOnce({
-                    values: [{ key: "lint", name: "lint", state: "SUCCESSFUL" }],
-                });
-            const snapshot = await new BitbucketCloudProvider(
-                fetch,
-                storeWithToken("bb-token"),
-            ).getChecks(bbRef, "a".repeat(40));
-            expect(fetch, "a default-port continuation is followed").toHaveBeenCalledTimes(2);
-            expect(snapshot.partial, "a fully read default-port chain is complete").toBeUndefined();
-        },
-    );
+    it.each([
+        "https://api.bitbucket.org/2.0/repositories/acme/app/more",
+        "https://api.bitbucket.org:443/2.0/repositories/acme/app/more",
+    ])("follows a default-port continuation %s", async (next) => {
+        const fetch = vi
+            .fn<FetchJson>()
+            .mockResolvedValueOnce({
+                values: [{ key: "unit", name: "unit", state: "FAILED" }],
+                next,
+            })
+            .mockResolvedValueOnce({
+                values: [{ key: "lint", name: "lint", state: "SUCCESSFUL" }],
+            });
+        const snapshot = await new BitbucketCloudProvider(
+            fetch,
+            storeWithToken("bb-token"),
+        ).getChecks(bbRef, "a".repeat(40));
+        expect(fetch, "a default-port continuation is followed").toHaveBeenCalledTimes(2);
+        expect(snapshot.partial, "a fully read default-port chain is complete").toBeUndefined();
+    });
 
     it("refuses a continuation carrying user info", async () => {
         const fetch = vi.fn(async () => ({
             values: [{ key: "unit", name: "unit", state: "FAILED" }],
-            next: "https://user:pass@api.bitbucket.org/2.0/more",
+            next: "https://user:pass@api.bitbucket.org/2.0/repositories/acme/app/more",
         }));
         const snapshot = await new BitbucketCloudProvider(
             fetch,
@@ -500,12 +500,16 @@ describe("BitbucketCloudProvider.getChecks — pagination", () => {
     });
 
     it.each([
-        ["plain http", "http://api.bitbucket.org/2.0/more"],
-        ["a password alone", "https://:pass@api.bitbucket.org/2.0/more"],
-        ["a user name alone", "https://user@api.bitbucket.org/2.0/more"],
-        ["a path outside /2.0/", "https://api.bitbucket.org/1.0/more"],
+        ["plain http", "http://api.bitbucket.org/2.0/repositories/acme/app/more"],
+        ["a password alone", "https://:pass@api.bitbucket.org/2.0/repositories/acme/app/more"],
+        ["a user name alone", "https://user@api.bitbucket.org/2.0/repositories/acme/app/more"],
+        ["a path outside /2.0/", "https://api.bitbucket.org/1.0/repositories/acme/app/more"],
         ["a path climbing out of /2.0/", "https://api.bitbucket.org/2.0/../secret"],
-        ["a host ending in the API host", "https://evilapi.bitbucket.org/2.0/more"],
+        [
+            "a host ending in the API host",
+            "https://evilapi.bitbucket.org/2.0/repositories/acme/app/more",
+        ],
+        ["another repository", "https://api.bitbucket.org/2.0/repositories/acme/other/more"],
     ])("refuses a continuation with %s", async (_label, next) => {
         const fetch = vi.fn(async () => ({
             values: [{ key: "unit", name: "unit", state: "FAILED" }],

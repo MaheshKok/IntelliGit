@@ -19,6 +19,8 @@ export interface CiActionTarget {
     action: CiAction;
     runId: string;
     jobId?: string;
+    /** The run attempt the user confirmed Stop for. */
+    attempt?: number;
 }
 
 // One counter per webview, so a request id is never reused by another pane instance.
@@ -112,6 +114,7 @@ export function useCiAction(
                 action: target.action,
                 runId: target.runId,
                 ...(target.jobId === undefined ? {} : { jobId: target.jobId }),
+                ...(target.attempt === undefined ? {} : { attempt: target.attempt }),
             });
         },
         [repoKey, hash],

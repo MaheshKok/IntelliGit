@@ -4,6 +4,7 @@ import {
     CommitChecksRequestGateRegistry,
     GitHubRequestGate,
     MAX_OBSERVED_REQUESTS_PER_WINDOW,
+    withSendGuard,
 } from "../../../../src/services/commitChecks/requestGate";
 
 const GITHUB_API_URL = "https://api.github.com/repos/acme/repo/commits/main/status";
@@ -418,6 +419,103 @@ describe("CommitChecksRequestGateRegistry", () => {
             "read",
         ]);
         expect(nested).toHaveBeenCalledTimes(4);
+    });
+
+    describe("a held slot is a lease of its admitted task", () => {
+        const url = "https://api.bitbucket.org/2.0/repositories/acme/app/";
+
+        it("an async child cannot reuse a write slot after release", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            const fire = Promise.withResolvers<void>();
+            const release = Promise.withResolvers<void>();
+            let late!: Promise<void>;
+            let active = 0;
+            let peak = 0;
+            await gate.run("bitbucket-cloud", url, () =>
+                gate.holding("bitbucket-cloud", url, async () => {
+                    // Detached: it outlives the task that held the slot.
+                    late = fire.promise.then(() =>
+                        gate.run("bitbucket-cloud", url, async () => {
+                            peak = Math.max(peak, active + 1);
+                        }),
+                    );
+                }),
+            );
+            const occupied = Array.from({ length: 4 }, () =>
+                gate.run("bitbucket-cloud", url, async () => {
+                    active++;
+                    await release.promise;
+                }),
+            );
+            await Promise.resolve();
+            fire.resolve();
+            for (let i = 0; i < 8; i++) await Promise.resolve();
+            const peakWhileHeld = peak;
+            release.resolve();
+            await Promise.all([...occupied, late]);
+
+            expect(peakWhileHeld, "a completed lease must not bypass four active requests").toBe(0);
+        });
+
+        it("refuses to share a slot the caller does not hold", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            const work = vi.fn(async () => "read");
+
+            await expect(gate.holding("bitbucket-cloud", url, work)).rejects.toThrow();
+            expect(
+                work,
+                "no slot was admitted, so nothing runs as if one were",
+            ).not.toHaveBeenCalled();
+        });
+
+        it("runs the requests of one lease one at a time", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            let active = 0;
+            let peak = 0;
+            const read = () =>
+                gate.run("bitbucket-cloud", url, async () => {
+                    peak = Math.max(peak, ++active);
+                    await new Promise((resolve) => setTimeout(resolve, 1));
+                    active--;
+                });
+
+            await gate.run("bitbucket-cloud", url, () =>
+                gate.holding("bitbucket-cloud", url, () => Promise.all([read(), read(), read()])),
+            );
+
+            expect(peak, "one slot carries one request at a time").toBe(1);
+        });
+
+        it("a Stop admission read uses another request from the rolling budget", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            for (let i = 0; i < 299; i++) await gate.run("bitbucket-cloud", url, async () => {});
+
+            await expect(
+                gate.run("bitbucket-cloud", url, () =>
+                    gate.holding("bitbucket-cloud", url, () =>
+                        gate.run("bitbucket-cloud", url, async () => "sent"),
+                    ),
+                ),
+                "the admission read cannot exceed the Cloud bucket budget",
+            ).rejects.toThrow(COOLDOWN_MESSAGE);
+        });
+
+        it("a cancelled caller's read in a held slot is refused before it is sent", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            const sent = vi.fn(async () => "sent");
+
+            await expect(
+                gate.run("bitbucket-cloud", url, () =>
+                    gate.holding("bitbucket-cloud", url, () =>
+                        withSendGuard(
+                            () => false,
+                            () => gate.run("bitbucket-cloud", url, sent),
+                        ),
+                    ),
+                ),
+            ).rejects.toThrow();
+            expect(sent, "the send guard applies inside a held slot too").not.toHaveBeenCalled();
+        });
     });
 
     it("clears an idle cooldown without sharing it with another self-hosted host", async () => {

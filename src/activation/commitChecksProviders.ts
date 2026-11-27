@@ -1,3 +1,4 @@
+import * as vscode from "vscode";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
 import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
 import type { CiGenerations } from "../services/commitChecks/ciGenerations";
@@ -72,25 +73,39 @@ export function createCommitChecksProviders(
             });
     const downloadFor =
         (providerId: ProviderId): DownloadCiLog =>
-        (url, headers, signal, credentialScope) =>
+        (url, headers, signal, credentialScope, credentialHeaders) =>
             requestGateRegistry.run(providerId, url, () =>
-                downloadCiLog(url, headers, signal, credentialScope),
+                downloadCiLog(url, headers, signal, credentialScope, credentialHeaders),
             );
     const writeFor =
         (providerId: ProviderId): WriteJson =>
         (method, url, headers, body, beforeSend) => {
             const asked = generations.capture("");
-            return requestGateRegistry.run(providerId, url, async (generation) => {
-                // Admitted, so no cooldown refused it: only now is the fence written and the
-                // caller's repository and provider checks run, after any wait in the queue.
-                // Its own re-reads (is the pipeline still the one shown) share this slot.
-                await requestGateRegistry.holding(providerId, url, async () => beforeSend?.());
-                // The headers hold the token read before the request queued: a sign-in change
-                // while it waited for admission must not send it.
+            // The headers hold the token read before the request queued: a sign-in change while it
+            // waited for admission, or while the caller's checks ran, must not send it anywhere.
+            const requireSignIn = () => {
                 if (!generations.isCurrent(asked, "")) {
                     throw new RequestNotSentError(
                         "The sign-in changed before the request was sent.",
                         true,
+                    );
+                }
+            };
+            return requestGateRegistry.run(providerId, url, async (generation) => {
+                requireSignIn();
+                // Admitted, so no cooldown refused it: only now is the fence written and the
+                // caller's repository and provider checks run, after any wait in the queue.
+                // Its own re-reads (is the pipeline still the one shown) share this slot.
+                await requestGateRegistry.holding(providerId, url, async () => beforeSend?.());
+                requireSignIn();
+                // Admitted again: the checks' own reads, or any other answer meanwhile, may have
+                // started a cooldown.
+                if (requestGateRegistry.cooldownEnd(providerId, url) > 0) {
+                    throw new RequestNotSentError(
+                        vscode.l10n.t(
+                            "Commit-check requests are temporarily paused due to rate limiting.",
+                        ),
+                        false,
                     );
                 }
                 return createHttpRequestJson((response) => {

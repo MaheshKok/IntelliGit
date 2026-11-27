@@ -70,6 +70,8 @@ const API_BASE = "https://api.bitbucket.org/2.0";
 // ponytail: a single commit's statuses fit in one page (pagelen=100); the cap only
 // guards against a pathological `next` chain. Raise it if real repos ever exceed it.
 const MAX_PAGES = 5;
+/** Headers that carry the Bitbucket Cloud credential; a log redirect off the API drops them. */
+const CREDENTIAL_HEADERS: readonly string[] = ["authorization"];
 
 /** Narrows ProviderRepoRef with the workspace and repo parsed from a bitbucket.org remote. */
 interface BitbucketCloudRepoRef extends ProviderRepoRef {
@@ -265,6 +267,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         let truncated: boolean;
         try {
             ({ rows, truncated } = await this.fetchAllPages(
+                ref,
                 first,
                 headers,
                 this.etags?.forCommit(commitKey),
@@ -305,8 +308,10 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
      * Follows the `next` pagination links from a starting URL, accumulating statuses.
      *
      * Stops at the first non-page response, when no `next` link remains, or when
-     * MAX_PAGES is reached (a runaway-chain guard). Headers are reused for each page.
+     * MAX_PAGES is reached (a runaway-chain guard). Headers are reused for each page, so a next
+     * link is followed only under the selected repository (`allowNext`).
      *
+     * @param ref - The selected repository.
      * @param firstUrl - The first page URL.
      * @param headers - The auth headers to send on every page request.
      * @param conditional - The conditional-request store, for a commit still running at its
@@ -315,6 +320,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
      *   unread (the bound was hit, or a page was not a status page).
      */
     private async fetchAllPages(
+        ref: ProviderRepoRef,
         firstUrl: string,
         headers: Record<string, string>,
         conditional: EtagStore | undefined,
@@ -329,7 +335,9 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             rows.push(...raw.values);
             url = normalizeBitbucketCloudNextUrl(raw.next);
             // A next link that is present but refused or malformed leaves its page unread.
-            if (url === undefined && raw.next != null) return { rows, truncated: true };
+            if (raw.next != null && (url === undefined || !this.allowNext(ref, url))) {
+                return { rows, truncated: true };
+            }
         }
         return { rows, truncated: url !== undefined };
     }
@@ -419,6 +427,19 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             ) {
                 throw new Error(vscode.l10n.t("Remote data changed. Reload and try again."));
             }
+            // A step that names no attempt cannot show it belongs to the listed one: the pipeline
+            // is read again, and a re-run since it was listed leaves no tree.
+            if (stepsPage.items.some((s) => optionalNumber(s.run_number) === undefined)) {
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
+                const fresh = (await fetch(`${base}/pipelines/${encodeURIComponent(runId)}`))
+                    .body as BitbucketPipeline | null;
+                if (
+                    readString(fresh?.uuid) !== runId ||
+                    optionalNumber(fresh?.run_number) !== pipelineAttempt
+                ) {
+                    throw new Error(vscode.l10n.t("Remote data changed. Reload and try again."));
+                }
+            }
             const run = toRun(ref, pipeline, runId, stepsPage.items, stepsPage.coverage);
             runs.push(run);
             if (run.runNumber !== undefined) buildNumbers.add(String(run.runNumber));
@@ -502,6 +523,15 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             const pipeline = await current();
             if (!pipeline || runChanged(pipeline)) return changed;
             const items = valuesOf<BitbucketStep>(response.body);
+            // Unchanged before and after the page, yet a row may still name another attempt.
+            if (
+                items.some((step) => {
+                    const attempt = optionalNumber(step.run_number);
+                    return attempt !== undefined && attempt !== cursor.runAttempt;
+                })
+            ) {
+                return changed;
+            }
             const failed = items
                 .map((step) => toJob(step, cursor.runName, runUrlOf(cloudRef, pipeline), pipeline))
                 .filter((job) => job.state === "failure");
@@ -550,35 +580,48 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         const url = `${repoApiUrl(cloudRef)}/pipelines/${encodeURIComponent(job.runId)}/steps/${encodeURIComponent(job.jobId)}/log`;
         // The redirect to storage drops the token, and so does one that stays on the API origin
         // but leaves this repository.
-        return this.downloadLog(url, authHeaders(token), signal, `${repoApiUrl(cloudRef)}/`);
+        return this.downloadLog(
+            url,
+            authHeaders(token),
+            signal,
+            `${repoApiUrl(cloudRef)}/`,
+            CREDENTIAL_HEADERS,
+        );
     }
 
     /**
      * Stops a pipeline with the stored token; a token without `pipeline:write` is refused with
-     * 403. Cancel is the only write action the capabilities offer, so no other one reaches here.
+     * 403. Cancel is the only write action the capabilities offer; any other is refused here too.
      */
     async runAction(
         ref: ProviderRepoRef,
         request: CiActionRequest,
         beforeSend: () => Promise<void>,
     ): Promise<void> {
+        if (request.action !== "cancel") {
+            throw new Error(vscode.l10n.t("This provider cannot re-run or cancel CI runs."));
+        }
         const cloudRef = ref as BitbucketCloudRepoRef;
         const url = `${repoApiUrl(cloudRef)}/pipelines/${encodeURIComponent(request.runId)}/stopPipeline`;
+        const paused = vscode.l10n.t(
+            "Commit-check requests are temporarily paused due to rate limiting.",
+        );
         const until = this.cooldownEnd(url);
-        if (until > 0) {
-            throw new RequestGateCooldownError(
-                vscode.l10n.t("Commit-check requests are temporarily paused due to rate limiting."),
-                until,
-            );
-        }
+        if (until > 0) throw new RequestGateCooldownError(paused, until);
         const token = await this.readToken(cloudRef.host, "");
         if (typeof token !== "string") throw new HttpError(401, token.error ?? token.summary, {});
         try {
             await this.write("POST", url, authHeaders(token), undefined, async () => {
                 // Admitted by the request gate, before the fence: the pipeline may have finished
-                // or been re-run while the write waited in the queue.
+                // or been re-run while the write waited in the queue, and the read itself may
+                // have started a cooldown.
                 await this.requireStoppable(cloudRef, token, request);
+                // Not a gate refusal (that would cool the bucket down again): nothing was sent.
+                if (this.cooldownEnd(url) > 0) throw new RequestNotSentError(paused, false);
                 await beforeSend();
+                // The fence write is awaited, so the pipeline may have changed meanwhile; a
+                // refusal here is a Stop not sent, and its fence is removed.
+                await this.requireStoppable(cloudRef, token, request);
             });
         } catch (error) {
             throw redactError(error, token);

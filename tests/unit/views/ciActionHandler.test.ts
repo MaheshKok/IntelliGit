@@ -402,6 +402,17 @@ describe("answerCiActionMessage", () => {
         );
     });
 
+    it("passes the attempt the user saw, so Stop never acts on a later one", async () => {
+        const { source, run } = actionSource({ outcome: "ok" });
+        await answerCiActionMessage(source, message({ action: "cancel", attempt: 2 }), vi.fn());
+        expect(run).toHaveBeenCalledWith(
+            HASH,
+            { action: "cancel", runId: "77", attempt: 2 },
+            expect.anything(),
+            expect.any(Function),
+        );
+    });
+
     it("hands the action the live repository, so a switch during the write is seen", async () => {
         const { source, run, switchRepo } = actionSource({ outcome: "ok" });
         await answerCiActionMessage(source, message(), vi.fn());
@@ -433,6 +444,8 @@ describe("answerCiActionMessage", () => {
             { runId: "" },
             { action: "rerunJob" },
             { action: "cancel", jobId: "5001" },
+            { action: "cancel", attempt: "1" },
+            { action: "cancel", attempt: 1.5 },
         ]) {
             await expect(
                 answerCiActionMessage(source, message(bad), vi.fn()),

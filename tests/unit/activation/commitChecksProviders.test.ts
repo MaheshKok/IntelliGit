@@ -460,4 +460,129 @@ describe("createCommitChecksProviders", () => {
             "the API's own limit cools it down",
         ).toBeGreaterThan(0);
     });
+
+    describe("Bitbucket Cloud Stop admission", () => {
+        const CLOUD = "https://api.bitbucket.org/2.0/repositories/acme/app";
+        const cloudRef = {
+            host: "bitbucket.org",
+            workspace: "acme",
+            repo: "app",
+        } as ProviderRepoRef;
+
+        function cloudWriter(
+            registry: CommitChecksRequestGateRegistry,
+            generations = new CiGenerations(),
+        ) {
+            const store = { get: async () => "fixture-token" } as unknown as CredentialStore;
+            return createCommitChecksProviders(registry, store, undefined, generations).find(
+                (provider) => provider instanceof BitbucketCloudProvider,
+            ) as BitbucketCloudProvider;
+        }
+
+        /** The pipeline read answers 200 with `headers`; the POST is never stubbed. */
+        function answerPipelineRead(headers: Record<string, string>) {
+            mocks.httpsGet.mockImplementation(((
+                _url: string,
+                _options: unknown,
+                respond: (response: unknown) => void,
+            ) => {
+                const request = Object.assign(new EventEmitter(), {
+                    setTimeout: vi.fn(),
+                    destroy: vi.fn(),
+                });
+                const response = Object.assign(new EventEmitter(), {
+                    statusCode: 200,
+                    headers,
+                    destroy: vi.fn(),
+                });
+                queueMicrotask(() => {
+                    respond(response);
+                    response.emit(
+                        "data",
+                        Buffer.from(JSON.stringify({ uuid: "1", state: { name: "IN_PROGRESS" } })),
+                    );
+                    response.emit("end");
+                });
+                return request;
+            }) as never);
+        }
+
+        it("a queued Stop does not read with the old token after sign-out", async () => {
+            mocks.httpsGet.mockClear();
+            const registry = new CommitChecksRequestGateRegistry("paused");
+            const generations = new CiGenerations();
+            const cloud = cloudWriter(registry, generations);
+            const locker = Promise.withResolvers<void>();
+            const busy = Array.from({ length: 4 }, () =>
+                registry.run("bitbucket-cloud", CLOUD, () => locker.promise),
+            );
+            const queued = vi.spyOn(registry, "run");
+            const stop = cloud
+                .runAction(cloudRef, { action: "cancel", runId: "1" }, async () => {})
+                .catch(() => {});
+            await vi.waitFor(() => expect(queued).toHaveBeenCalledOnce());
+
+            generations.bumpAuth();
+            locker.resolve();
+            await Promise.all([...busy, stop]);
+
+            expect(
+                mocks.httpsGet,
+                "the queued Stop must check auth before its credentialed re-read",
+            ).not.toHaveBeenCalled();
+        });
+
+        it("a Stop sends no write if its admission read starts a cooldown", async () => {
+            mocks.httpsRequest.mockClear();
+            const registry = new CommitChecksRequestGateRegistry("paused");
+            const cloud = cloudWriter(registry);
+            const oldGet = mocks.httpsGet.getMockImplementation();
+            answerPipelineRead({ "x-ratelimit-nearlimit": "true" });
+            const begin = vi.fn(async () => {});
+            try {
+                await cloud
+                    .runAction(cloudRef, { action: "cancel", runId: "1" }, begin)
+                    .catch(() => {});
+
+                expect(registry.cooldownEnd("bitbucket-cloud", CLOUD)).toBeGreaterThan(0);
+                expect(
+                    mocks.httpsRequest,
+                    "cooldown started by the read must stop the POST",
+                ).not.toHaveBeenCalled();
+                expect(begin, "no fence for a Stop the cooldown stopped").not.toHaveBeenCalled();
+            } finally {
+                if (oldGet) mocks.httpsGet.mockImplementation(oldGet);
+                else mocks.httpsGet.mockReset();
+            }
+        });
+
+        it("a write sends nothing if a cooldown starts while its fence is written", async () => {
+            mocks.httpsRequest.mockClear();
+            const registry = new CommitChecksRequestGateRegistry("paused");
+            const github = createCommitChecksProviders(
+                registry,
+                {} as CredentialStore,
+                undefined,
+                new CiGenerations(),
+            ).find((provider) => provider instanceof GitHubProvider) as GitHubProvider;
+            const begin = vi.fn(async () => {
+                registry.observeResponse("github", {
+                    url: API,
+                    statusCode: 429,
+                    headers: { "retry-after": "60" },
+                });
+            });
+
+            const error = await github
+                .runAction(ref, { action: "cancel", runId: "1" }, begin)
+                .catch((reason: unknown) => reason);
+
+            expect(begin).toHaveBeenCalledOnce();
+            expect(
+                mocks.httpsRequest,
+                "the POST is admitted again after the fence",
+            ).not.toHaveBeenCalled();
+            expect(error).toMatchObject({ name: "RequestNotSentError" });
+        });
+    });
 });
