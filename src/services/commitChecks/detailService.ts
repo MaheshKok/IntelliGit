@@ -357,20 +357,20 @@ export class CommitCiDetailService {
                         // A scan that finds its run changed must start a new fetch, not join this one.
                         if (this.inflight.get(key) === request) this.inflight.delete(key);
                         this.startScans(key, entry, generation);
-                        // The newest requester gets this entry as its reply; a failed Refresh's
-                        // hooks would otherwise keep showing the entry this one replaced.
-                        // The same served copy is the reply: a view that gets both drops one.
+                        // A failed Refresh's hooks would otherwise keep showing the entry this
+                        // one replaced. None is skipped: the newest requester may never have
+                        // joined this fetch. The same served copy is the reply, so a view that
+                        // gets both drops one.
                         // A failed normal read holds no data, so it must not blank their tree;
-                        // the list stays for the next entry that does hold data.
+                        // they get their tree with its orphaned scan stopped, and the list stays
+                        // for the next entry that does hold data.
                         const reply = served(entry);
-                        if (this.failedRefreshHooks.has(key) && data.outcome !== "unavailable") {
-                            this.updateFailedRefreshHooks(
-                                key,
-                                entry,
-                                serve,
-                                this.scanHooks.get(key)?.hooks,
-                                reply,
-                            );
+                        if (this.failedRefreshHooks.has(key)) {
+                            if (data.outcome !== "unavailable") {
+                                this.updateFailedRefreshHooks(key, entry, serve, undefined, reply);
+                            } else if (previous && previous !== entry) {
+                                this.retireFailedRefreshHooks(key, previous);
+                            }
                         }
                         return reply;
                     }
@@ -411,6 +411,7 @@ export class CommitCiDetailService {
      */
     async invalidate(key: string): Promise<void> {
         this.keyGenerations.set(key, (this.keyGenerations.get(key) ?? 0) + 1);
+        this.retireFailedRefreshHooks(key, this.cache.get(key));
         this.cache.delete(key);
         this.inflight.delete(key);
         this.scanHooks.delete(key);
@@ -525,6 +526,7 @@ export class CommitCiDetailService {
         while (this.cache.size > this.maxEntries) {
             const oldest = this.cache.keys().next().value;
             if (!oldest) return;
+            this.retireFailedRefreshHooks(oldest, this.cache.get(oldest));
             this.cache.delete(oldest);
             this.failedRefreshHooks.delete(oldest);
         }
@@ -693,6 +695,27 @@ export class CommitCiDetailService {
         return update;
     }
 
+    /**
+     * `entry`, which the listed hooks of failed Refreshes show, is leaving the cache with a scan
+     * still running or paused: no page of it will reach them, and they never re-read on their
+     * own. They get its tree with that scan stopped, which a Refresh resumes. The list itself
+     * stays as the caller leaves it.
+     */
+    private retireFailedRefreshHooks(key: string, entry: DetailEntry | undefined): void {
+        const listed = this.failedRefreshHooks.get(key);
+        const serve = this.scanHooks.get(key)?.serve;
+        const scanning = [...(entry?.scans?.values() ?? [])].some((each) => isScanning(each.state));
+        if (!listed || !entry || !serve || !scanning) return;
+        const update = attach(
+            retired(entry),
+            serve,
+            this.fences?.fenceFor(serve.repoKey, entry.data.hash),
+        );
+        for (const hooks of listed) {
+            if (hooks.isCurrent()) hooks.onUpdate?.(update);
+        }
+    }
+
     /** The scan still belongs to the current entry for the key, under the same generation. */
     private isScanLive(key: string, scan: ScanState, generation: Generation): boolean {
         return (
@@ -835,6 +858,17 @@ function served(entry: DetailEntry): ServedDetailData {
         [SNAPSHOT]: ++snapshots,
         [ENTRY]: entry,
     };
+}
+
+/** The entry served with each scan still running or paused shown as stopped. */
+function retired(entry: DetailEntry): ServedDetailData {
+    const data = served(entry);
+    const runs = data.runs.map((run) =>
+        run.failedScan && isScanning(run.failedScan.state)
+            ? { ...run, failedScan: { ...run.failedScan, state: "stopped" as const } }
+            : run,
+    );
+    return { ...data, runs };
 }
 
 /** Whether an overflow scan in this state may still send pages. */

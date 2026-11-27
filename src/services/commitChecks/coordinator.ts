@@ -71,6 +71,10 @@ const ACCOUNT_ATTEMPTS = 2;
 /** A fetch finished under another account than the one its cache key was built for. */
 class AccountChangedError extends Error {}
 
+/** What a request, or a scan page, that saw a sign-in change reports instead of its answer. */
+const ACCOUNT_CHANGED = (): string =>
+    vscode.l10n.t("The signed-in account changed during the request.");
+
 /**
  * The caller that started a shared fetch went stale before a provider request: nothing is
  * sent or cached. A caller that joined that fetch and is still live starts its own.
@@ -522,8 +526,16 @@ export class CommitChecksCoordinator {
                         try {
                             // Each page is a request of its own: a caller gone stale sends no more.
                             if (!live()) throw new StaleCallerError();
-                            return await continueFailedScan(ref, cursor, ctx);
+                            const page = await continueFailedScan(ref, cursor, ctx);
+                            // A newer request may own the scan by now, so the page is checked
+                            // against the sign-in it was read under before it reaches this
+                            // account's cached detail. The cursor stays, so a Refresh resumes.
+                            await confirm();
+                            return page;
                         } catch (err) {
+                            if (err instanceof AccountChangedError) {
+                                return { error: ACCOUNT_CHANGED() };
+                            }
                             return { error: getErrorMessage(err) };
                         }
                     },
@@ -954,8 +966,10 @@ export class CommitChecksCoordinator {
      * account's key. `run` also gets `confirm`, which the cache calls once the answer is
      * saved: a change by then makes the cache remove that saved answer. The account is
      * read once more when `run` returns (a saved answer read from disk may finish after a
-     * switch). Any change starts the operation over under the new account; when the tries
-     * run out the caller gets `unavailable` and no try's answer stays saved.
+     * switch). A sign-in change counts even when the same account is back by the next read
+     * (A -> B -> A), so the auth generation is compared as well as the account. Any change
+     * starts the operation over under the new account; when the tries run out the caller
+     * gets `unavailable` and no try's answer stays saved.
      */
     private async withAccount<R, T>(
         match: ProviderMatch,
@@ -968,9 +982,14 @@ export class CommitChecksCoordinator {
         unavailable: (error: string) => T,
     ): Promise<T> {
         for (let attempt = 1; attempt <= ACCOUNT_ATTEMPTS; attempt += 1) {
+            // Captured before the account read, so a switch during that read also counts.
+            const signIns = this.signInGeneration();
             const account = await this.readAccount(match);
             const confirm = async (): Promise<void> => {
-                if ((await this.readAccount(match)) !== account) throw new AccountChangedError();
+                const current = await this.readAccount(match);
+                if (current !== account || this.signInGeneration() !== signIns) {
+                    throw new AccountChangedError();
+                }
             };
             const checkedFetch = async (): Promise<R> => {
                 const result = await fetch();
@@ -985,7 +1004,12 @@ export class CommitChecksCoordinator {
                 if (!(err instanceof AccountChangedError)) throw err;
             }
         }
-        return unavailable(vscode.l10n.t("The signed-in account changed during the request."));
+        return unavailable(ACCOUNT_CHANGED());
+    }
+
+    /** Goes up on every sign-in, sign-out and token change; undefined without generations. */
+    private signInGeneration(): number | undefined {
+        return this.generations?.capture("").authGeneration;
     }
 
     private fetchSnapshot(
