@@ -930,4 +930,16 @@ describe("failed Refresh during a running scan: fix round 1", () => {
             "A must not promise progress after the only scan settled",
         ).not.toContain(state(a));
     });
+
+    it("R4 then invalidate: the outage entry with no scan never reaches A", async () => {
+        const f = fixture({ ttlMs: 1000, unavailableTtlMs: 60_000 });
+        const { a } = await afterSkippedFailure(f);
+        const posts = a.post.mock.calls.length;
+        await f.service.invalidate(KEY);
+        await settle();
+        expect(
+            [a.post.mock.calls.length, a.last()?.runs.length, a.last()?.refreshError],
+            "invalidating the outage entry posts nothing to A, which keeps its tree and error",
+        ).toEqual([posts, 1, "HTTP 502"]);
+    });
 });
