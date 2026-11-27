@@ -433,6 +433,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
                 },
                 `${base}/pipelines/${encodeURIComponent(runId)}/steps/?pagelen=${CI_PAGE_SIZE}`,
                 valuesOf<BitbucketStep>,
+                (url) => this.allowStepsNext(ref, runId, url),
             );
             // A re-run between pages leaves steps of two attempts; no tree is built from them.
             const attempts = new Set(stepsPage.items.map((s) => optionalNumber(s.run_number)));
@@ -496,10 +497,9 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         fetch: (url: string) => Promise<FetchResponse>,
         firstUrl: string,
         itemsOf: (body: unknown) => T[],
+        allow = (url: string) => this.allowNext(ref, url),
     ) {
-        return paginate(fetch, firstUrl, nextOf, itemsOf, CI_MAX_PAGES, (url) =>
-            this.allowNext(ref, url),
-        );
+        return paginate(fetch, firstUrl, nextOf, itemsOf, CI_MAX_PAGES, allow);
     }
 
     /**
@@ -512,7 +512,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
     ): Promise<CiFailedScanPage> {
         const cloudRef = ref as BitbucketCloudRepoRef;
         const refused = vscode.l10n.t("The provider's next-page link was refused.");
-        if (!this.allowNext(ref, cursor.url)) return { error: refused };
+        if (!this.allowStepsNext(ref, cursor.runId, cursor.url)) return { error: refused };
         const token = await this.readToken(cloudRef.host, "");
         if (typeof token !== "string") return { error: token.error ?? "" };
         const fetch = (url: string) => this.fetchWithMeta(url, authHeaders(token));
@@ -560,7 +560,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             const read = [...(cursor.read ?? []), cursor.url];
             // A link back to a page already read makes no progress; an empty page with a new
             // link does. The first page's count is not a stop: it can be stale by now.
-            if (!this.allowNext(ref, next) || read.includes(next)) {
+            if (!this.allowStepsNext(ref, cursor.runId, next) || read.includes(next)) {
                 return { failed, error: refused, ...kept() };
             }
             return { failed, next: { ...cursor, url: next, read, jobsRead, jobsTotal } };
@@ -585,6 +585,16 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         // Slugs match case-blind, as Bitbucket reads them.
         const repoPath = `${new URL(repoApiUrl(ref as BitbucketCloudRepoRef)).pathname}/`;
         return new URL(next).pathname.toLowerCase().startsWith(repoPath.toLowerCase());
+    }
+
+    /** A steps link also stays in the steps of the pipeline being read, so no other run's join it. */
+    private allowStepsNext(ref: ProviderRepoRef, runId: string, url: string): boolean {
+        const next = normalizeBitbucketCloudNextUrl(url);
+        if (next === undefined) return false;
+        const steps = new URL(
+            `${repoApiUrl(ref as BitbucketCloudRepoRef)}/pipelines/${encodeURIComponent(runId)}/steps/`,
+        ).pathname;
+        return new URL(next).pathname.toLowerCase().startsWith(steps.toLowerCase());
     }
 
     /** Downloads a step's log with the stored token; the redirect to storage drops it. */
@@ -734,6 +744,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
                                 ? secondsToMs(step.duration_in_seconds)
                                 : null,
                     })),
+                (url) => this.allowStepsNext(cloudRef, baselineRunId, url),
             );
             return {
                 baselineRunId,

@@ -73,8 +73,8 @@ const FAILED = { ...pipelineFixture, state: completed("FAILED") } as Json;
 interface Fake {
     pipelines: Json[];
     steps: Json[];
-    /** Replaces the `next` link of every list page. */
-    nextOf?: () => string | undefined;
+    /** Replaces the `next` link of every list page it answers for. */
+    nextOf?: (url: string) => string | undefined;
 }
 
 /** A trimmed Bitbucket Cloud API 2.0: the commit's pipelines, one pipeline and its steps. */
@@ -85,7 +85,7 @@ function fakeBitbucket(state: Fake) {
         const page = Number(parsed.searchParams.get("page") ?? "1");
         const pagelen = Number(parsed.searchParams.get("pagelen") ?? "10");
         parsed.searchParams.set("page", String(page + 1));
-        const next = state.nextOf?.() ?? (page * pagelen < all.length ? parsed.href : undefined);
+        const next = state.nextOf?.(url) ?? (page * pagelen < all.length ? parsed.href : undefined);
         return {
             statusCode: 200,
             headers: {},
@@ -248,6 +248,56 @@ describe("Bitbucket Cloud review fixes", () => {
         expect(page).not.toHaveProperty("error");
     });
 
+    it("a steps link to another pipeline's steps in the same repository is not followed", async () => {
+        const otherSteps = `${REPO_API}/pipelines/${encodeURIComponent("{other}")}/steps/`;
+        const toOther = (url: string) =>
+            url.includes("/steps/") && !url.startsWith(otherSteps)
+                ? `${otherSteps}?pagelen=100&page=2`
+                : undefined;
+        const ownSteps = `${REPO_API}/pipelines/${encodeURIComponent(PIPE)}/steps/`;
+        const cursor = (url: string): CiFailedScanCursor => ({
+            runId: PIPE,
+            runAttempt: 1,
+            runName: "main",
+            url,
+        });
+        const bb = fakeBitbucket({ pipelines: [FAILED], steps: [stepFixture], nextOf: toOther });
+        const bitbucket = provider(bb);
+
+        await bitbucket.getDetail(ref, SHA);
+        const fromCursor = await bitbucket.continueFailedScan(ref, cursor(`${otherSteps}?page=2`));
+        const fromPage = await bitbucket.continueFailedScan(ref, cursor(`${ownSteps}?page=2`));
+        const baseline = fakeBitbucket({
+            pipelines: [{ ...pipelineFixture, state: completed("SUCCESSFUL") }],
+            steps: [stepFixture],
+            nextOf: toOther,
+        });
+        await provider(baseline).getUsualDuration(ref, {
+            id: "{selected}",
+            name: "main",
+            state: "failure",
+            ref: pipelineFixture.target.ref_name,
+            createdAt: "2030-01-01T00:00:00.000000Z",
+            jobs: [],
+            jobsCoverage: "full",
+        });
+
+        expect(
+            [...bb.log, ...baseline.log].filter((url) => url.startsWith(otherSteps)),
+            "no request reads another pipeline's steps",
+        ).toEqual([]);
+        expect(
+            baseline.log.some((url) => url.startsWith(ownSteps)),
+            "baseline steps read",
+        ).toBe(true);
+        expect(fromCursor, "a cursor into another pipeline's steps").toMatchObject({
+            error: "The provider's next-page link was refused.",
+        });
+        expect(fromPage, "a next link into another pipeline's steps").toMatchObject({
+            error: "The provider's next-page link was refused.",
+        });
+    });
+
     it("a timed completed pipeline gives the Checks header a duration", async () => {
         const bb = fakeBitbucket({ pipelines: [{ ...pipelineFixture }], steps: [stepFixture] });
 
@@ -268,7 +318,13 @@ describe("Bitbucket Cloud review fixes", () => {
     it("independent already finished pipeline sends no Stop", async () => {
         // The window's cache may still show the run as running; the fresh read shows it finished.
         const bb = fakeBitbucket({ pipelines: [{ ...pipelineFixture }], steps: [stepFixture] });
-        const write: WriteJson = vi.fn(async () => ({}));
+        // Like the real writer: the provider's last check runs first, and a refusal sends nothing.
+        const sent = vi.fn();
+        const write: WriteJson = async (_method, _url, _headers, _body, beforeSend) => {
+            await beforeSend?.();
+            sent();
+            return {};
+        };
         const bitbucket = provider(bb, write);
         const begin = vi.fn(async () => {});
         const deps = {
@@ -285,11 +341,11 @@ describe("Bitbucket Cloud review fixes", () => {
         const outcome = await runCiAction(
             deps as never,
             SHA,
-            { action: "cancel", runId: PIPE },
+            { action: "cancel", runId: PIPE, attempt: pipelineFixture.run_number },
             new CiGenerations().capture("/repo"),
         );
 
-        expect(write, "a fresh read already showed the pipeline finished").not.toHaveBeenCalled();
+        expect(sent, "a fresh read already showed the pipeline finished").not.toHaveBeenCalled();
         expect(begin).not.toHaveBeenCalled();
         expect(outcome.outcome).toBe("failed");
     });
@@ -349,29 +405,34 @@ describe("Bitbucket Cloud review fixes, round 2", () => {
             store,
             vi.fn() as unknown as FetchJsonWithMeta,
         );
-        await bitbucket
+        const result = await bitbucket
             .getJobLog(ref, { runId: PIPE, jobId: stepFixture.uuid }, new AbortController().signal)
             .catch(() => undefined);
-        return sent;
+        return { sent, result };
     }
 
     it("does not send the stored token outside the repository after a same-origin log redirect", async () => {
         const elsewhere = `https://api.bitbucket.org/2.0/repositories/acme/another/log`;
-        const sent = await logRequests({
+        const { sent, result } = await logRequests({
             [stepLog]: [{ status: 307, location: elsewhere }],
             [elsewhere]: [{ status: 200, body: "example log" }],
         });
 
         expect(
-            sent.some(({ url, headers }) => url === elsewhere && !!headers.Authorization),
+            sent.map(({ url }) => url),
+            "the redirect is followed",
+        ).toEqual([stepLog, elsewhere]);
+        expect(
+            sent[1].headers.Authorization,
             "no authorization outside the selected repository",
-        ).toBe(false);
+        ).toBeUndefined();
+        expect(result?.text, "the redirected download returns the log").toBe("example log");
     });
 
     it("keeps the token stripped after a log redirect leaves the repository and comes back", async () => {
         const elsewhere = `https://api.bitbucket.org/2.0/repositories/acme/another/log`;
         const back = `${REPO_API}/pipelines/other/log`;
-        const sent = await logRequests({
+        const { sent } = await logRequests({
             [stepLog]: [{ status: 307, location: elsewhere }],
             [elsewhere]: [{ status: 302, location: back }],
             [back]: [{ status: 200, body: "example log" }],
@@ -384,7 +445,7 @@ describe("Bitbucket Cloud review fixes, round 2", () => {
 
     it("keeps the token on a log redirect inside the repository", async () => {
         const inside = `${REPO_API}/downloads/log`;
-        const sent = await logRequests({
+        const { sent } = await logRequests({
             [stepLog]: [{ status: 307, location: inside }],
             [inside]: [{ status: 200, body: "example log" }],
         });

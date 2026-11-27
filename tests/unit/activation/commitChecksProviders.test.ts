@@ -373,7 +373,14 @@ describe("createCommitChecksProviders", () => {
         expect(outcome, "the re-reads waited for slots their own writes hold").not.toBe(
             "deadlocked",
         );
-        expect(mocks.httpsGet, "every write reached its re-read").toHaveBeenCalled();
+        const reads = mocks.httpsGet.mock.calls.map((call) => String((call as unknown[])[0]));
+        for (let i = 0; i < 4; i++) {
+            const pipeline = `/pipelines/${encodeURIComponent(`{p${i}}`)}`;
+            expect(
+                reads.filter((url) => new URL(url).pathname.endsWith(pipeline)),
+                `write ${i} reached its re-read once`,
+            ).toHaveLength(1);
+        }
         expect(mocks.httpsRequest, "the failed re-read sends no POST").not.toHaveBeenCalled();
         expect(beforeSend, "no fence is written after a failed re-read").not.toHaveBeenCalled();
     });
