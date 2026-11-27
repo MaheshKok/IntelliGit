@@ -13,7 +13,7 @@ import type {
 import type { CiGenerations, CiOperationContext } from "../services/commitChecks/ciGenerations";
 import type { CiLogMemoryStore } from "../services/commitChecks/ciLogMemoryStore";
 import type { CiLogTarget } from "../services/commitChecks/coordinator";
-import { snapshotOf, withoutSnapshot } from "../services/commitChecks/detailService";
+import { entryOf, snapshotOf, withoutSnapshot } from "../services/commitChecks/detailService";
 import type { CommitChecksFetchOptions } from "../services/commitChecks/service";
 import type { CiActionRequest, CiLogJob } from "../services/commitChecks/types";
 import { isValidGitHash } from "../services/gitHelpers";
@@ -168,22 +168,37 @@ export async function answerCommitCiDetailRequest(
     // of order, and an old entry's page can reach a newer read's hooks: one whose snapshot is
     // older than the shown one is dropped. Unnumbered ones (no provider, a sign-in failure, a
     // fence re-post of the shown copy) are posted as they come. The number ranks only the data:
-    // what a dropped one says about the request itself still reaches the view on the shown data.
+    // what a dropped one says about the request itself still reaches the view on the shown data,
+    // unless the shown data is newer than the dropped one's. A failed Refresh's outcome stays on
+    // every later update of the same cache entry and goes with the first one of a newer entry.
     // A reply or page carries the fence of the moment it was built, so every post takes the
     // store's live fence instead, with no await.
     const fences = source.actions?.fences;
     let detail: CommitCiDetail | undefined;
     let newest = -1;
+    let shownEntry: unknown;
+    let held: ReturnType<typeof requestOutcome>;
+    // Set when any update carries a failed Refresh's outcome, even one dropped below for newer data.
+    let refreshFailed = false;
     const show = (update: CommitCiDetail | undefined): void => {
         if (!isCurrent()) return;
         const snapshot = update && snapshotOf(update);
+        const entry = update && entryOf(update);
+        const outcome = update && requestOutcome(update);
+        if (outcome) refreshFailed = true;
         let next = update;
-        if (snapshot !== undefined && snapshot < newest) {
-            const outcome = requestOutcome(update as CommitCiDetail);
-            if (!outcome || !detail) return;
+        if (snapshot !== undefined && snapshot <= newest) {
+            // The same served copy can reach this request twice (a re-read and a listed Refresh's hooks).
+            if (snapshot === newest || !outcome || !detail || entry !== shownEntry) return;
             next = { ...detail, ...outcome };
         } else if (snapshot !== undefined) {
             newest = snapshot;
+        }
+        if (entry !== undefined) {
+            if (entry !== shownEntry) held = undefined;
+            shownEntry = entry;
+            held = outcome ?? held;
+            if (held && next) next = { ...next, ...held };
         }
         detail =
             next &&
@@ -232,11 +247,15 @@ export async function answerCommitCiDetailRequest(
             refetch: () => reread(false),
         });
     }
-    // The scan pages reach only the newest requester of a commit's detail, so its progress is
-    // also re-read and re-posted under the same request id until the scan ends: another view
-    // asking for the same commit takes the page updates over. A newer request or a hidden tab
-    // stops the loop, its pending wait included. A failed forced Refresh is never retried on
-    // its own: its error stays shown until the next one.
+    // The scan pages reach the newest requester of a commit's detail, so its progress is also
+    // re-read and re-posted under the same request id until the scan ends: another view asking
+    // for the same commit takes the page updates over. A newer request or a hidden tab stops
+    // the loop, its pending wait included. A request that has seen a failed forced Refresh never
+    // starts the loop, even when its error is gone with newer data, and the loop ends on a shown
+    // error: a failed Refresh is never retried on its own. Its error stays shown over the same
+    // data, scan pages included, until newer data or the next request, and the detail service
+    // keeps sending this request the scan's pages, so the scan's end still shows.
+    if (refreshFailed) return;
     for (let rung = 0; scanInProgress(detail) && detail?.refreshError === undefined; rung += 1) {
         const delays = PENDING_CHECK_RETRY_DELAYS_MS;
         await sleep(delays[Math.min(rung, delays.length - 1)], stopped);
