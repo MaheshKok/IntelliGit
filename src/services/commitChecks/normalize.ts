@@ -4,7 +4,14 @@
 // No provider-specific logic and no network access live here.
 
 import * as vscode from "vscode";
-import type { CommitCheckItem, CommitChecksSnapshot, CommitCheckState } from "../../types";
+import { isCompleteSnapshot } from "../../shared/ci/completion";
+import type {
+    CommitCheckItem,
+    CommitChecksSnapshot,
+    CommitCheckState,
+    CommitCiDetailData,
+    ProviderId,
+} from "../../types";
 
 /** Matches check names that represent CI/CD pipeline work worth showing as a badge. */
 const CICD_CHECK_PATTERN =
@@ -137,6 +144,39 @@ export function unavailableSnapshot(
         items: [],
         error,
         signInHost: signInHost || undefined,
+    };
+}
+
+/**
+ * Builds the flat detail of a snapshot: no runs, every snapshot item as a flat check,
+ * complete exactly when the snapshot is.
+ */
+export function floorDetail(
+    snapshot: CommitChecksSnapshot,
+    provider: ProviderId,
+): CommitCiDetailData {
+    return {
+        hash: snapshot.hash,
+        provider,
+        complete: isCompleteSnapshot(snapshot),
+        outcome: snapshot.state,
+        runs: [],
+        runsCoverage: "full",
+        otherChecks: snapshot.items.map((item) => ({
+            id: item.id,
+            logicalId: item.logicalId,
+            name: item.name,
+            description: item.description,
+            state: item.state,
+            source: item.source,
+            url: item.url,
+        })),
+        // A snapshot names no reason for its unread remainder; "pageBound" is the usual one.
+        otherChecksCoverage: snapshot.partial
+            ? { reason: "pageBound", shown: snapshot.items.length }
+            : "full",
+        error: snapshot.error,
+        signInHost: snapshot.signInHost,
     };
 }
 

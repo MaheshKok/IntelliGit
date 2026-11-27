@@ -6,7 +6,6 @@
 import * as vscode from "vscode";
 import type { GitOps } from "../../git/operations";
 import type { ProviderCiCapabilities } from "../../shared/ci/capabilities";
-import { isCompleteSnapshot } from "../../shared/ci/completion";
 import type { CiHistory } from "../../shared/ci/history";
 import type {
     CiAttemptHistory,
@@ -31,7 +30,7 @@ import { applyUsual, usualCacheKey } from "./ciTiming";
 import { ciLogKey, type CiLogSource } from "./ciLogMemoryStore";
 import type { CiTrace } from "./ciTrace";
 import { attach, CommitCiDetailService, type CiFailedScanHooks } from "./detailService";
-import { summaryForState, unavailableSnapshot } from "./normalize";
+import { floorDetail, summaryForState, unavailableSnapshot } from "./normalize";
 import {
     applyRequired,
     RequiredChecksCache,
@@ -1069,34 +1068,4 @@ export class CommitChecksCoordinator {
         }
         return null;
     }
-}
-
-/**
- * Builds the flat detail of a provider without its own `getDetail`: no runs, every
- * snapshot item as a flat check, complete exactly when the snapshot is.
- */
-function floorDetail(snapshot: CommitChecksSnapshot, provider: ProviderId): CommitCiDetailData {
-    return {
-        hash: snapshot.hash,
-        provider,
-        complete: isCompleteSnapshot(snapshot),
-        outcome: snapshot.state,
-        runs: [],
-        runsCoverage: "full",
-        otherChecks: snapshot.items.map((item) => ({
-            id: item.id,
-            logicalId: item.logicalId,
-            name: item.name,
-            description: item.description,
-            state: item.state,
-            source: item.source,
-            url: item.url,
-        })),
-        // A snapshot names no reason for its unread remainder; "pageBound" is the usual one.
-        otherChecksCoverage: snapshot.partial
-            ? { reason: "pageBound", shown: snapshot.items.length }
-            : "full",
-        error: snapshot.error,
-        signInHost: snapshot.signInHost,
-    };
 }

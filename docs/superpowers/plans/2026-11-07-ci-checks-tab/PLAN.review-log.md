@@ -1587,3 +1587,5 @@ Phase 16 fix round 2 (builder): 1 finding (card and undocked menu opened on A co
 - Finding 3 (incomplete snapshot, ciBisect.ts:385): partial reads count in `failedReads`; Retry re-reads a commit cached as partial. Red before: "an incomplete empty snapshot is not a clean no-jobs result" and, after the count fix, "Retry reads the incomplete commit again: expected 1 to be undefined".
 - Proof: phase tests (126 files, 2482 passed, 1 skipped), format:check, lint, lint:strict, architecture:check, react-doctor, typecheck, build, build:prod, package, verify:manifest exit 0. `bun run test`: 558 of 560 files pass; commit-list-column-resize fails (Node 26 has no localStorage without `--localstorage-file`, recorded earlier; passes alone with the flag) and operationBenchmark failed once on a git temp-file error (passes alone, 12/12). E2E not run locally.
 PHASE 16: HALT review still failing after takeover
+
+Phase 17: built, review pending (base 93e148bc used: BASE_HEAD 6518aa81 is not an ancestor of HEAD; full suite red only on load-sensitive timing tests that pass alone, load average 61-73)

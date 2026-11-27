@@ -25,9 +25,13 @@ import type { CommitChecksProvider, ProviderId } from "../services/commitChecks/
  * as its manifest names it. `HEAD` follows the repository's default branch.
  *
  * @param packageJSON - The extension's manifest.
+ * @param section - The README section's anchor; another one links another section.
  * @returns Undefined when the manifest names no GitHub repository, so no link is shown.
  */
-export function writeActionsHelpUrl(packageJSON: unknown): string | undefined {
+export function writeActionsHelpUrl(
+    packageJSON: unknown,
+    section = "write-actions",
+): string | undefined {
     const repository = (packageJSON as { repository?: unknown } | undefined)?.repository;
     const url =
         typeof repository === "string" ? repository : (repository as { url?: unknown })?.url;
@@ -35,7 +39,7 @@ export function writeActionsHelpUrl(packageJSON: unknown): string | undefined {
     const base = /^(?:git\+)?(https:\/\/github\.com\/[\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(
         url,
     )?.[1];
-    return base && `${base}/blob/HEAD/docs/commit-checks/README.md#write-actions`;
+    return base && `${base}/blob/HEAD/docs/commit-checks/README.md#${section}`;
 }
 
 /**
@@ -46,12 +50,15 @@ export function writeActionsHelpUrl(packageJSON: unknown): string | undefined {
  * @param ciCdPattern - The user's CI/CD check-name pattern, if any.
  * @param generations - Its auth generation keys the window's conditional-request store, so a
  *   sign-in change never reuses a body read with another token.
+ * @param pipelineScopeHelpUrl - The docs section a Bitbucket Cloud token without the
+ *   `pipeline` scope is pointed to; none shows the hint without a link.
  */
 export function createCommitChecksProviders(
     requestGateRegistry: CommitChecksRequestGateRegistry,
     credentialStore: CredentialStore,
     ciCdPattern: RegExp | undefined,
     generations: CiGenerations,
+    pipelineScopeHelpUrl?: string,
 ): readonly CommitChecksProvider[] {
     const etags = new EtagStore(() => generations.capture("").authGeneration);
     const fetchFor =
@@ -113,6 +120,10 @@ export function createCommitChecksProviders(
             credentialStore,
             gatedFetchWithMeta(requestGateRegistry, "bitbucket-cloud"),
             etags,
+            (url) => requestGateRegistry.cooldownEnd("bitbucket-cloud", url),
+            downloadFor("bitbucket-cloud"),
+            writeFor("bitbucket-cloud"),
+            pipelineScopeHelpUrl,
         ),
         new BitbucketServerProvider(
             fetchFor("bitbucket-server"),

@@ -623,5 +623,8 @@
     "commit.checks.bisect.runAgain": "Executar novamente",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.noResult": "sem resultado",
-    "commit.menu.findCiBreak": "Encontrar onde a CI quebrou"
+    "commit.menu.findCiBreak": "Encontrar onde a CI quebrou",
+    "commit.checks.tab.writeScopeHelpBitbucketCloud": "Seu token do Bitbucket Cloud não pode parar pipelines. Adicione o escopo pipeline:write para parar um.",
+    "commit.checks.tab.pipelineScopeHint": "As etapas precisam do escopo pipeline.",
+    "commit.checks.tab.scopeHelpLink": "Como adicionar o escopo"
 }

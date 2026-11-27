@@ -240,6 +240,45 @@ describe("Commit details Checks tab", () => {
         );
     });
 
+    it("a flat detail with a scope hint shows the hint and opens its docs link (C3)", () => {
+        const docs =
+            "https://github.com/acme/tool/blob/HEAD/README.md#bitbucket-cloud-pipeline-scope";
+        const scopeHelp = { key: "commit.checks.tab.pipelineScopeHint", url: docs };
+        const flat = {
+            provider: "bitbucket-cloud",
+            runs: [],
+            capabilities: NO_CI_CAPABILITIES,
+            scopeHelp,
+        } as const;
+        const { container } = mount(pane(HASH_A));
+        reply(
+            lastRequest(),
+            ciDetail(HASH_A, {
+                ...flat,
+                otherChecks: [
+                    { name: "Jenkins", description: "", state: "success", source: "status" },
+                ],
+            }),
+        );
+        const hint = () =>
+            checksTab(container).querySelector<HTMLElement>('[data-testid="ci-scope-hint"]');
+        expect(hint()?.textContent).toContain("Steps need the pipeline scope.");
+        expect(
+            checksTab(container).querySelector('[data-testid="ci-check-row"]')?.textContent,
+        ).toContain("Jenkins");
+        act(() => button(hint()!, /How to add the scope/)!.click());
+        expect(posted("openCommitCheckUrl")).toEqual([{ type: "openCommitCheckUrl", url: docs }]);
+
+        // With no flat check either the tab shows its empty state, and the hint still says why.
+        mockVscodeApi.postMessage.mockClear();
+        const { container: empty } = mount(pane(HASH_B));
+        reply(lastRequest(), ciDetail(HASH_B, { ...flat, otherChecks: [] }));
+        expect(checksTab(empty).getAttribute("data-state")).toBe("none");
+        expect(
+            checksTab(empty).querySelector('[data-testid="ci-scope-hint"]')?.textContent,
+        ).toContain("Steps need the pipeline scope.");
+    });
+
     it("shows a spinner row while the detail loads", () => {
         const { container } = mount(pane(HASH_A));
         const tab = checksTab(container);

@@ -635,5 +635,8 @@
     "commit.checks.bisect.runAgain": "Запустить снова",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.noResult": "нет результата",
-    "commit.menu.findCiBreak": "Найти, где сломалась CI"
+    "commit.menu.findCiBreak": "Найти, где сломалась CI",
+    "commit.checks.tab.writeScopeHelpBitbucketCloud": "Ваш токен Bitbucket Cloud не может останавливать конвейеры. Добавьте область pipeline:write, чтобы остановить конвейер.",
+    "commit.checks.tab.pipelineScopeHint": "Для шагов нужна область pipeline.",
+    "commit.checks.tab.scopeHelpLink": "Как добавить область"
 }

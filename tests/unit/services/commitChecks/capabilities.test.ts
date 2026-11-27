@@ -49,7 +49,9 @@ describe("provider capabilities", () => {
         // cancel a run, and explain a refused write with their own scope help. Phase 9: both
         // read required checks; GitLab marks jobs allowed to fail as optional. Phase 10: both
         // read how long the previous successful run took. Phase 12: both list a job's re-runs.
-        // Phase 14: GitHub reads a failed check run's annotations.
+        // Phase 14: GitHub reads a failed check run's annotations. Phase 17: Bitbucket Cloud
+        // reads pipelines, their steps as jobs, step logs and the usual duration, and cancels a
+        // pipeline; it cannot re-run one.
         const write = ["rerunFailed", "rerunJob", "cancel"] as const;
         const landed: Record<string, readonly (keyof ProviderCiCapabilities)[]> = {
             github: [
@@ -77,10 +79,20 @@ describe("provider capabilities", () => {
                 "usualDuration",
                 "attemptHistory",
             ],
+            "bitbucket-cloud": [
+                "runs",
+                "jobs",
+                "runHeader",
+                "logs",
+                "failureSummary",
+                "cancel",
+                "usualDuration",
+            ],
         };
         const scopeHelp: Record<string, string> = {
             github: "commit.checks.tab.writeScopeHelpGithub",
             gitlab: "commit.checks.tab.writeScopeHelpGitlab",
+            "bitbucket-cloud": "commit.checks.tab.writeScopeHelpBitbucketCloud",
         };
         const providers: CommitChecksProvider[] = [
             new GitHubProvider(fetch),

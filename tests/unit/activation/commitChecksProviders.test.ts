@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import type { CredentialStore } from "../../../src/services/commitChecks/credentialStore";
-import type { ProviderRepoRef } from "../../../src/services/commitChecks/types";
+import type { ProviderId, ProviderRepoRef } from "../../../src/services/commitChecks/types";
 
 // `https.get` is the one place a request leaves the extension; counting its calls is the check.
 const mocks = vi.hoisted(() => ({
@@ -35,6 +35,7 @@ import {
     createCommitChecksProviders,
     writeActionsHelpUrl,
 } from "../../../src/activation/commitChecksProviders";
+import { BitbucketCloudProvider } from "../../../src/services/commitChecks/bitbucketCloudProvider";
 import { CiGenerations } from "../../../src/services/commitChecks/ciGenerations";
 import { GitHubProvider } from "../../../src/services/commitChecks/githubProvider";
 import { GitLabProvider } from "../../../src/services/commitChecks/gitlabProvider";
@@ -57,6 +58,17 @@ describe("writeActionsHelpUrl", () => {
         ).toBeUndefined();
         expect(writeActionsHelpUrl({})).toBeUndefined();
         expect(writeActionsHelpUrl(undefined)).toBeUndefined();
+    });
+
+    it("links another README section by its anchor", () => {
+        expect(
+            writeActionsHelpUrl(
+                { repository: { url: "https://github.com/acme/tool" } },
+                "bitbucket-cloud-pipeline-scope",
+            ),
+        ).toBe(
+            "https://github.com/acme/tool/blob/HEAD/docs/commit-checks/README.md#bitbucket-cloud-pipeline-scope",
+        );
     });
 });
 
@@ -261,7 +273,7 @@ describe("createCommitChecksProviders", () => {
         expect(error).toMatchObject({ name: "RequestNotSentError", superseded: true });
     });
 
-    /** Both write-capable providers, built over one gate the way the extension builds them. */
+    /** Every write-capable provider, built over one gate the way the extension builds them. */
     function writers(registry: CommitChecksRequestGateRegistry, onToken: () => void = () => {}) {
         const store = {
             get: async () => {
@@ -280,6 +292,13 @@ describe("createCommitChecksProviders", () => {
                 provider: all.find((p) => p instanceof GitLabProvider) as GitLabProvider,
                 ref: { host: "gitlab.com", owner: "group", repo: "app" } as ProviderRepoRef,
                 api: "https://gitlab.com/api/v4/projects/group%2Fapp",
+            },
+            {
+                provider: all.find(
+                    (p) => p instanceof BitbucketCloudProvider,
+                ) as BitbucketCloudProvider,
+                ref: { host: "bitbucket.org", workspace: "acme", repo: "app" } as ProviderRepoRef,
+                api: "https://api.bitbucket.org/2.0/repositories/acme/app",
             },
         ] as const;
     }
@@ -325,8 +344,9 @@ describe("createCommitChecksProviders", () => {
     it("a cooldown starting during the credential lookup writes no fence and sends nothing", async () => {
         const registry = new CommitChecksRequestGateRegistry("cooling down");
         let target = "";
+        let targetId: ProviderId = "github";
         const coolDown = () =>
-            registry.observeResponse(target === API ? "github" : "gitlab", {
+            registry.observeResponse(targetId, {
                 url: target,
                 statusCode: 429,
                 headers: { "retry-after": "60" },
@@ -335,6 +355,7 @@ describe("createCommitChecksProviders", () => {
         for (const { provider, ref: repo, api } of writers(registry, coolDown)) {
             mocks.httpsRequest.mockClear();
             target = api;
+            targetId = provider.id;
             const beforeSend = vi.fn(async () => undefined);
 
             const error = await provider

@@ -599,5 +599,8 @@
     "commit.checks.bisect.runAgain": "もう一度実行",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.noResult": "結果なし",
-    "commit.menu.findCiBreak": "CI が壊れた箇所を探す"
+    "commit.menu.findCiBreak": "CI が壊れた箇所を探す",
+    "commit.checks.tab.writeScopeHelpBitbucketCloud": "Bitbucket Cloud トークンではパイプラインを停止できません。停止するには pipeline:write スコープを追加してください。",
+    "commit.checks.tab.pipelineScopeHint": "ステップには pipeline スコープが必要です。",
+    "commit.checks.tab.scopeHelpLink": "スコープを追加する方法"
 }

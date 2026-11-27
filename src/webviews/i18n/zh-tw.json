@@ -599,5 +599,8 @@
     "commit.checks.bisect.runAgain": "重新執行",
     "commit.checks.bisect.square": "{hash}: {state}",
     "commit.checks.bisect.noResult": "無結果",
-    "commit.menu.findCiBreak": "尋找 CI 出錯的位置"
+    "commit.menu.findCiBreak": "尋找 CI 出錯的位置",
+    "commit.checks.tab.writeScopeHelpBitbucketCloud": "你的 Bitbucket Cloud 權杖無法停止管線。請新增 pipeline:write 範圍以停止管線。",
+    "commit.checks.tab.pipelineScopeHint": "步驟需要 pipeline 範圍。",
+    "commit.checks.tab.scopeHelpLink": "如何新增範圍"
 }

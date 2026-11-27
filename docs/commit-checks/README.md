@@ -46,9 +46,12 @@ it in a narrower pane.
   "push by <actor> · <ref> · #<run>". **Refresh** always fetches again; **Open in
   browser** appears when the provider gives a link.
 - Controls appear only for what the provider can do. GitLab shows pipelines and their
-  jobs, grouped by stage; its API reports no steps, so jobs have none. A provider whose
-  workflow detail this release does not read (Bitbucket Cloud and Bitbucket Server /
-  Data Center) shows a flat list with no empty sections.
+  jobs, grouped by stage; its API reports no steps, so jobs have none. Bitbucket Cloud
+  shows pipelines with their steps as the jobs. Bitbucket Server / Data Center, whose
+  workflow detail this release does not read, shows a flat list with no empty sections.
+  When your Bitbucket Cloud token cannot read pipelines, the tab keeps the flat list and
+  says **Steps need the pipeline scope.** with a link to
+  [the scope section](#bitbucket-cloud-pipeline-scope).
 - A very large run shows a note when its list was cut short, with a link to the rest
   in the browser. Failed jobs past that limit are still listed as they are found.
 - The tab shows the same signed-out, error and rate-limit states as the popover, and a
@@ -99,6 +102,8 @@ guesses a time.
 - GitLab: the latest successful pipeline on the same ref created before the one shown,
   found with `created_before` and newest id first, so a pipeline that was still running
   when the shown one began still counts. Its own duration and its jobs' durations are used.
+- Bitbucket Cloud: the latest successful pipeline on the same branch or tag created before
+  the one shown, read newest first. Its duration and its steps' durations are used.
 - A found earlier run is kept for a day, in memory and across restarts, per repository,
   account and shown run; signing in or out drops it. "No earlier run" and a failed lookup
   are not kept, so the next look asks again.
@@ -168,7 +173,8 @@ compare: &lt;error&gt;**. This works for every provider.
 ### Write actions
 
 On GitHub and GitLab the tab can **Re-run failed** jobs of a failed run, **Re-run job**
-for one finished job, and **Cancel run** for a queued or running run. Cancel asks once
+for one finished job, and **Cancel run** for a queued or running run. On Bitbucket Cloud
+it can **Cancel run** (stop a pipeline) only. Cancel asks once
 more (**Confirm cancel** or **Keep running**) before anything is sent. While a request is
 on its way every action button waits, so a second click sends nothing. Afterwards the
 tab shows "Waiting for re-run to start" (or "Waiting for cancel to take effect") until
@@ -182,9 +188,21 @@ These actions need a token that can write:
 - GitLab needs a personal access token with the `api` scope; a `read_api` token can only
   read. Create one in GitLab under **Preferences → Access tokens**, then store it with
   `IntelliGit: Sign in to Commit Checks Provider`.
+- Bitbucket Cloud needs a token with the `pipeline:write` scope to stop a pipeline.
 
 When the token cannot write, the tab says so, keeps the checks on screen, and links to
 this section.
+
+### Bitbucket Cloud pipeline scope
+
+IntelliGit asks for no extra scope up front. Your Bitbucket Cloud token always shows the
+commit's build statuses; to see pipelines with their steps, timings and logs it also needs
+the `pipeline` scope (read). Without it the Checks tab keeps the flat list of build statuses
+and says **Steps need the pipeline scope.** Stopping a pipeline also needs `pipeline:write`.
+
+Create a repository, project or workspace access token in Bitbucket with the **Pipelines:
+Read** permission (add **Pipelines: Write** to stop pipelines), then store it with
+`IntelliGit: Sign in to Commit Checks Provider`. The tab shows the steps at its next read.
 
 ## Current commit in the status bar
 
@@ -294,7 +312,7 @@ The break point is the oldest red of the newest run of reds that follows a green
 |----------|------------|-------------------|--------------------|
 | GitHub (`github.com`) | Built-in VS Code GitHub session | Existing VS Code session only — automatic checks do not open a GitHub sign-in prompt | `repo` |
 | GitLab (`gitlab.com` + self-hosted) | Personal access token | `IntelliGit: Sign in to Commit Checks Provider` command | `read_api` |
-| Bitbucket Cloud (`bitbucket.org`) | Access token or OAuth Bearer token (app passwords are not supported) | `IntelliGit: Sign in to Commit Checks Provider` command | `repository` (read) |
+| Bitbucket Cloud (`bitbucket.org`) | Access token or OAuth Bearer token (app passwords are not supported) | `IntelliGit: Sign in to Commit Checks Provider` command | `repository` (read); `pipeline` (read) for steps, see [pipeline scope](#bitbucket-cloud-pipeline-scope) |
 | Bitbucket Server / Data Center (self-hosted) | HTTP access token | `IntelliGit: Sign in to Commit Checks Provider` command | Repository read |
 
 GitHub uses the editor's built-in account, so it never needs a stored token. The other
@@ -443,10 +461,12 @@ availability result, not a quota cooldown.
 ## CI logs
 
 > Planned: like the Checks tab itself, the log view below stays hidden in released versions
-> until the tab is finished. GitHub and GitLab logs work today; Bitbucket logs come later.
+> until the tab is finished. GitHub, GitLab and Bitbucket Cloud logs work today; Bitbucket
+> Server / Data Center logs come later.
 
 In the Checks tab, a finished failed job shows why it failed when the provider says so
-(GitHub: the check run's title and summary; GitLab: the job's failure reason), and a short
+(GitHub: the check run's title and summary; GitLab: the job's failure reason; Bitbucket
+Cloud: the step's error message, else the pipeline's), and a short
 excerpt of its log around the first error line: GitHub's `##[error]` line, GitLab's
 `ERROR:` line, else the first line that says error or failed. The summary and the
 excerpt are shown as plain text, at most 2 000 characters for the summary and 40 lines or
@@ -470,7 +490,8 @@ the Checks tab.
 Each log keeps at most its first 50 MB. A log that reaches 50 MB ends with the line
 `[IntelliGit: log truncated at 50 MB — open the run in the browser for the rest]`.
 
-Log downloads follow redirects (such as GitHub's short-lived log links) only to `https:`
+Log downloads follow redirects (such as GitHub's short-lived log links and Bitbucket Cloud's
+step log storage) only to `https:`
 addresses and at most five times. When a redirect leads to another host, scheme or port,
 IntelliGit removes the `Authorization`, `Cookie`, `Private-Token` and `Job-Token` headers
 and does not send them again for the rest of that download.
