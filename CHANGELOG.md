@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.26] - 2026-11-27
+
+### Fixed
+
+- Groundwork for the coming Checks tab: if a run is restarted while you are being asked to confirm Cancel, the confirmation now closes, so you cannot stop the new attempt by accident. Cancelling it needs a fresh click. Nothing changes in the extension yet.
+
 ## [0.43.25] - 2026-11-27
 
 ### Added
