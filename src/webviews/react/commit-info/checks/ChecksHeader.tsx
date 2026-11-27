@@ -143,7 +143,9 @@ function HeaderActions({
     if (!run || !capabilities) return null;
     const canRerun = run.state === "failure" && capabilities.rerunFailed;
     const canCancel = (run.state === "queued" || run.state === "running") && capabilities.cancel;
-    const confirmingCancel = canCancel && confirming === run.id;
+    // A new attempt keeps the run id, so the confirmation belongs to the attempt the user saw.
+    const confirmKey = JSON.stringify([run.id, run.attempt ?? null]);
+    const confirmingCancel = canCancel && confirming === confirmKey;
     const send = (target: CiActionTarget): void => {
         setConfirming(null);
         onAction?.(target);
@@ -163,7 +165,7 @@ function HeaderActions({
                     type="button"
                     style={actionButtonStyle}
                     disabled={busy !== null}
-                    onClick={() => setConfirming(run.id)}
+                    onClick={() => setConfirming(confirmKey)}
                 >
                     {t("commit.checks.tab.cancelRun")}
                 </button>
