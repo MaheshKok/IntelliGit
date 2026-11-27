@@ -225,6 +225,122 @@ async function expectFrameLayout(tab: Locator, bodyWidth?: number | null): Promi
     }
 }
 
+type FooterBox = {
+    button: number[];
+    panel: number[];
+    viewport: number;
+    hit: boolean;
+    refreshing: string | null | undefined;
+};
+type FooterProbeWindow = Window & {
+    measureFooter?: () => FooterBox;
+    refreshingFooter?: FooterBox;
+};
+
+/**
+ * Installs a probe in the webview. `measureFooter` reads the popover's Open in Checks box, the
+ * panel's box, the webview height, whether a click at the button's centre lands on it, and the
+ * Refresh state, in one pass. When Refresh first switches to in flight, the probe stores that
+ * reading in `refreshingFooter`: a mutation observer runs right after the render, before the
+ * host's reply (a later message) can end the refresh, which lasts only milliseconds here.
+ */
+async function installFooterProbe(
+    graph: Awaited<ReturnType<IntelliGitView["revealPanel"]>>,
+): Promise<void> {
+    await graph.locator("body").evaluate(() => {
+        const probe = window as FooterProbeWindow;
+        probe.measureFooter = () => {
+            const popover = document.querySelector('[data-testid="commit-checks-popover"]')!;
+            const button = Array.from(popover.querySelectorAll("button")).find(
+                (candidate) => candidate.textContent?.trim() === "Open in Checks",
+            )!;
+            const box = button.getBoundingClientRect();
+            const panelElement = button.parentElement!.parentElement!;
+            const panel = panelElement.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+                box.left + box.width / 2,
+                box.top + box.height / 2,
+            );
+            return {
+                button: [box.top, box.bottom],
+                panel: [panel.top, panel.bottom],
+                viewport: window.innerHeight,
+                hit: hit !== null && button.contains(hit),
+                refreshing: panelElement
+                    .querySelector("[data-refreshing]")
+                    ?.getAttribute("data-refreshing"),
+            };
+        };
+        new MutationObserver(() => {
+            if (
+                probe.refreshingFooter === undefined &&
+                document.querySelector('[data-refreshing="true"]') !== null
+            ) {
+                probe.refreshingFooter = probe.measureFooter!();
+            }
+        }).observe(document.body, {
+            attributes: true,
+            subtree: true,
+            attributeFilter: ["data-refreshing"],
+        });
+    });
+}
+
+test("a short Git Log panel keeps the popover's Open in Checks in view (#445)", async ({
+    fixtureWorkspace,
+}, testInfo) => {
+    test.setTimeout(240_000);
+    await withGitLog(fixtureWorkspace, testInfo, async ({ graph }) => {
+        // The bug needs a fully visible row with less room below it than the popup's 190 px
+        // minimum plus the 8 px margin: such a row opened downward past the panel's bottom.
+        const rows = await graph
+            .locator('[data-testid^="commit-checks-button-"]')
+            .evaluateAll((buttons) =>
+                buttons.map((button) => {
+                    const box = button.getBoundingClientRect();
+                    return {
+                        id: button.getAttribute("data-testid")!,
+                        top: box.top,
+                        bottom: box.bottom,
+                    };
+                }),
+            );
+        const viewport = await graph.locator("body").evaluate(() => window.innerHeight);
+        const cramped = rows.find(
+            (row) => row.top >= 0 && row.bottom <= viewport && viewport - row.top < 198,
+        );
+        expect(
+            cramped,
+            `no row lacks room below: ${JSON.stringify({ viewport, rows })}`,
+        ).toBeDefined();
+        await graph.getByTestId(cramped!.id).click();
+        const popover = graph.getByTestId("commit-checks-popover");
+        await expect(popover.getByRole("button", { name: "Open in Checks" })).toBeVisible();
+        await installFooterProbe(graph);
+        const body = graph.locator("body");
+        const atRest = await body.evaluate(() => (window as FooterProbeWindow).measureFooter!());
+        await popover.getByRole("button", { name: "Refresh" }).click();
+        await expect
+            .poll(() => body.evaluate(() => (window as FooterProbeWindow).refreshingFooter))
+            .toBeDefined();
+        const whileRefreshing = await body.evaluate(
+            () => (window as FooterProbeWindow).refreshingFooter!,
+        );
+        for (const [moment, footer] of [
+            ["at rest", atRest],
+            ["while refreshing", whileRefreshing],
+        ] as const) {
+            const label = `${moment}: ${JSON.stringify(footer)}`;
+            expect(footer.refreshing, label).toBe(String(moment !== "at rest"));
+            expect(footer.panel[0], label).toBeGreaterThanOrEqual(0);
+            expect(footer.panel[1], label).toBeLessThanOrEqual(footer.viewport);
+            expect(footer.button[0], label).toBeGreaterThanOrEqual(footer.panel[0]);
+            expect(footer.button[1], label).toBeLessThanOrEqual(footer.panel[1]);
+            expect(footer.hit, label).toBe(true);
+        }
+    });
+});
+
 test("Open in Checks from the popover", async ({ fixtureWorkspace }, testInfo) => {
     test.setTimeout(240_000);
     await withGitLog(fixtureWorkspace, testInfo, async ({ graph, head }) => {

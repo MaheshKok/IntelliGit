@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.23] - 2026-11-27
+
+### Fixed
+
+- In a short Git Log panel, a commit's checks popup no longer runs off the top or bottom of the panel. It now opens toward the side with more room and shrinks to fit, so every check in it stays within reach.
+
 ## [0.43.22] - 2026-11-26
 
 ### Added
