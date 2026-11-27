@@ -213,6 +213,18 @@ describe("Checks tab write actions", () => {
         expect(posted("runCiAction")).toHaveLength(0);
     });
 
+    it("a refresh of the same attempt keeps the open cancel confirmation", () => {
+        const { container } = openPane(runningDetail());
+        click(button(container, "Cancel run"));
+
+        replyDetail(runningDetail());
+
+        expect(
+            button(container, "Confirm cancel"),
+            "the same attempt keeps its confirmation across a refresh",
+        ).toBeDefined();
+    });
+
     it("the header's Re-run failed targets the run of the selected job", () => {
         const first = { ...run("failure", [job("first-failed", "failure")]), id: "first" };
         const second = { ...run("failure", [job("second-failed", "failure")]), id: "second" };
