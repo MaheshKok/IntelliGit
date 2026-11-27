@@ -83,7 +83,7 @@ export async function runCiAction(
     let fenced = false;
     let stale = false;
     try {
-        await provider.runAction(match.ref, request, async () => {
+        await provider.runAction(match.ref, { ...request, attempt: run.attempt }, async () => {
             await deps.fences.begin(start);
             fenced = true;
             // Runs once the request gate admitted the write: the sign-in or repository may have

@@ -77,6 +77,20 @@ export class CommitChecksRequestGateRegistry {
     }
 
     /**
+     * Runs `work` inside a slot the calling task already holds on the bucket for `url`: the
+     * requests `work` makes through this registry share that slot instead of queuing for another.
+     * Only for work awaited by the holding task, such as a write's admission check.
+     *
+     * @param providerId - Provider that owns the held bucket.
+     * @param url - Any URL on the held bucket's API origin.
+     * @param work - The reads to run in the held slot.
+     */
+    holding<T>(providerId: ProviderId, url: string, work: () => Promise<T>): Promise<T> {
+        const gate = this.gateFor(providerId, url);
+        return heldBuckets.run([...(heldBuckets.getStore() ?? []), gate], work);
+    }
+
+    /**
      * Records token-free HTTP response metadata against the response's provider/API-origin bucket.
      *
      * @param providerId - Commit-check provider that received the response.
@@ -247,6 +261,9 @@ export class RequestGateCooldownError extends HttpError {
 
 const sendGuards = new AsyncLocalStorage<() => boolean>();
 
+/** The buckets whose slot the running task already holds, so its own reads never queue for a second. */
+const heldBuckets = new AsyncLocalStorage<readonly object[]>();
+
 /** A request the gate admitted was refused by its caller's send guard (the caller was cancelled). */
 class SendRefusedError extends Error {}
 
@@ -305,6 +322,9 @@ class ProviderRequestGate {
     ) {}
 
     async run<T>(task: (generation: number) => Promise<T>, origin?: string): Promise<T> {
+        // Inside `holding`, a read shares the slot its caller holds: queuing for another could
+        // wait on that very slot.
+        if (heldBuckets.getStore()?.includes(this)) return task(this.generation);
         this.pruneStartedAt();
         this.throwIfCoolingDown();
         this.throwIfRequestBudgetExhausted();

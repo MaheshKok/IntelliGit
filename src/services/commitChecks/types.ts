@@ -211,6 +211,8 @@ export interface CiActionRequest {
     readonly runId: string;
     /** Set for `rerunJob` only. */
     readonly jobId?: string;
+    /** The attempt the user saw; a provider that can tell refuses the action on another one. */
+    readonly attempt?: number;
 }
 
 /** The job whose log is downloaded; ids as the detail names them. */

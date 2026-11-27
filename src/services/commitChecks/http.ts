@@ -404,6 +404,11 @@ export interface RedirectOptions {
     maxHops: number;
     /** Extra credential headers of the provider, stripped with the shared ones. */
     credentialHeaders?: readonly string[];
+    /**
+     * URL prefix (compared case-blind) the credential headers may be sent to; a redirect to a URL
+     * outside it removes them like a change of origin does.
+     */
+    credentialScope?: string;
     /** Aborts the request in flight and rejects with an `AbortError`. */
     signal?: AbortSignal;
 }
@@ -427,8 +432,9 @@ export interface DownloadedText {
 /**
  * GETs `url`, following 301/302/303/307/308 redirects to `https:` targets only.
  *
- * On any change of origin (scheme, host or port) the credential headers are removed and never
- * restored on a later hop, even when the chain returns to the first origin. More than `maxHops`
+ * On any change of origin (scheme, host or port), or a move outside `credentialScope`, the
+ * credential headers are removed and never restored on a later hop, even when the chain returns
+ * to the first origin or scope. More than `maxHops`
  * redirects, a non-HTTPS target or a redirect with no `Location` rejects.
  *
  * @param url - First URL; must be `https:`.
@@ -454,7 +460,10 @@ export async function followRedirects(
         const location = opened.response.headers.location;
         if (!location) throw new Error("Redirect without a Location header");
         const next = parseHttpsUrl(new URL(location, current).href);
-        if (next.origin !== current.origin) {
+        const outsideScope =
+            options.credentialScope !== undefined &&
+            !next.href.toLowerCase().startsWith(options.credentialScope.toLowerCase());
+        if (next.origin !== current.origin || outsideScope) {
             sentHeaders = withoutCredentials(sentHeaders, options.credentialHeaders ?? []);
         }
         current = next;
@@ -476,6 +485,7 @@ export async function followRedirects(
  * @param maxBytes - Byte bound of the kept body.
  * @param signal - Aborts the download.
  * @param credentialHeaders - Extra credential headers of the provider for redirects.
+ * @param credentialScope - URL prefix the credentials may stay on across redirects.
  */
 export async function downloadToString(
     url: string,
@@ -483,6 +493,7 @@ export async function downloadToString(
     maxBytes: number,
     signal: AbortSignal,
     credentialHeaders?: readonly string[],
+    credentialScope?: string,
 ): Promise<DownloadedText> {
     const {
         response,
@@ -492,6 +503,7 @@ export async function downloadToString(
     } = await followRedirects(url, headers, {
         maxHops: 5,
         credentialHeaders,
+        credentialScope,
         signal,
     });
     const status = response.statusCode ?? 0;
@@ -507,6 +519,7 @@ export type DownloadCiLog = (
     url: string,
     headers: Record<string, string>,
     signal: AbortSignal,
+    credentialScope?: string,
 ) => Promise<DownloadedText>;
 
 /**
@@ -515,9 +528,10 @@ export type DownloadCiLog = (
  * @param url - Log URL; must be `https:`.
  * @param headers - Request headers, credentials included.
  * @param signal - Aborts the download.
+ * @param credentialScope - URL prefix the credentials may stay on across redirects.
  */
-export const downloadCiLog: DownloadCiLog = (url, headers, signal) =>
-    downloadToString(url, headers, CI_LOG_MAX_BYTES, signal);
+export const downloadCiLog: DownloadCiLog = (url, headers, signal, credentialScope) =>
+    downloadToString(url, headers, CI_LOG_MAX_BYTES, signal, undefined, credentialScope);
 
 /** One HTTPS GET resolved at its response head; the idle timeout stays armed for the body. */
 function openResponse(

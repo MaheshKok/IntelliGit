@@ -29,6 +29,7 @@ import {
     HttpError,
     httpGetJsonWithMeta,
     httpRequestJson,
+    RequestNotSentError,
     type DownloadCiLog,
     type DownloadedText,
     type FetchJson,
@@ -409,7 +410,13 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             // A re-run between pages leaves steps of two attempts; no tree is built from them.
             const attempts = new Set(stepsPage.items.map((s) => optionalNumber(s.run_number)));
             attempts.delete(undefined);
-            if (attempts.size > 1) {
+            // The listed pipeline's attempt must be the steps' attempt: a re-run before the steps
+            // were read leaves a complete tree of the newer attempt under the older pipeline.
+            const pipelineAttempt = optionalNumber(pipeline.run_number);
+            if (
+                attempts.size > 1 ||
+                (pipelineAttempt !== undefined && [...attempts].some((a) => a !== pipelineAttempt))
+            ) {
                 throw new Error(vscode.l10n.t("Remote data changed. Reload and try again."));
             }
             const run = toRun(ref, pipeline, runId, stepsPage.items, stepsPage.coverage);
@@ -502,9 +509,9 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             if (next === undefined) return { failed };
             const jobsRead = (cursor.jobsRead ?? 0) + items.length;
             const read = [...(cursor.read ?? []), cursor.url];
-            // A link back to a page already read or an empty page that links onward makes no
-            // progress. The first page's count is not a stop: it can be stale by now.
-            if (!this.allowNext(ref, next) || read.includes(next) || items.length === 0) {
+            // A link back to a page already read makes no progress; an empty page with a new
+            // link does. The first page's count is not a stop: it can be stale by now.
+            if (!this.allowNext(ref, next) || read.includes(next)) {
                 return { failed, error: refused, ...kept() };
             }
             return { failed, next: { ...cursor, url: next, read, jobsRead, jobsTotal } };
@@ -541,7 +548,9 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         const token = await this.readToken(cloudRef.host, "");
         if (typeof token !== "string") throw new Error(token.error ?? token.summary);
         const url = `${repoApiUrl(cloudRef)}/pipelines/${encodeURIComponent(job.runId)}/steps/${encodeURIComponent(job.jobId)}/log`;
-        return this.downloadLog(url, authHeaders(token), signal);
+        // The redirect to storage drops the token, and so does one that stays on the API origin
+        // but leaves this repository.
+        return this.downloadLog(url, authHeaders(token), signal, `${repoApiUrl(cloudRef)}/`);
     }
 
     /**
@@ -565,9 +574,39 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         const token = await this.readToken(cloudRef.host, "");
         if (typeof token !== "string") throw new HttpError(401, token.error ?? token.summary, {});
         try {
-            await this.write("POST", url, authHeaders(token), undefined, beforeSend);
+            await this.write("POST", url, authHeaders(token), undefined, async () => {
+                // Admitted by the request gate, before the fence: the pipeline may have finished
+                // or been re-run while the write waited in the queue.
+                await this.requireStoppable(cloudRef, token, request);
+                await beforeSend();
+            });
         } catch (error) {
             throw redactError(error, token);
+        }
+    }
+
+    /** Reads the pipeline again; refuses a Stop for one that is over or is another attempt. */
+    private async requireStoppable(
+        ref: BitbucketCloudRepoRef,
+        token: string,
+        request: CiActionRequest,
+    ): Promise<void> {
+        const { body } = await this.fetchWithMeta(
+            `${repoApiUrl(ref)}/pipelines/${encodeURIComponent(request.runId)}`,
+            authHeaders(token),
+        );
+        const pipeline = body as BitbucketPipeline | null;
+        const state = mapBitbucketCiState(pipeline?.state);
+        if (
+            readString(pipeline?.uuid) !== request.runId ||
+            (state !== "queued" && state !== "running") ||
+            (request.attempt !== undefined &&
+                optionalNumber(pipeline?.run_number) !== request.attempt)
+        ) {
+            throw new RequestNotSentError(
+                vscode.l10n.t("Remote data changed. Reload and try again."),
+                true,
+            );
         }
     }
 
@@ -691,8 +730,12 @@ function nextOf(response: FetchResponse): string | undefined {
     return typeof next === "string" ? next : JSON.stringify(next);
 }
 
+/** A page without a `values` list is a failed read, never an empty collection. */
 function valuesOf<T>(body: unknown): T[] {
-    return isStatusPage(body) ? (body.values as T[]) : [];
+    if (!isStatusPage(body)) {
+        throw new Error(vscode.l10n.t("Remote data changed. Reload and try again."));
+    }
+    return body.values as T[];
 }
 
 /** The collection's item count in a page body; null when it names none. */

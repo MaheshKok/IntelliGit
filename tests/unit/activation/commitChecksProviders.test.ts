@@ -341,6 +341,37 @@ describe("createCommitChecksProviders", () => {
         }
     });
 
+    it("four Stops at once re-read their pipeline in the slot they hold instead of waiting on each other", async () => {
+        mocks.httpsGet.mockClear();
+        mocks.httpsRequest.mockClear();
+        const registry = new CommitChecksRequestGateRegistry("cooling down");
+        const bitbucket = writers(registry)[2];
+        const beforeSend = vi.fn(async () => undefined);
+
+        // Four writes fill the bucket; each one reads its pipeline again once admitted.
+        const outcome = await Promise.race([
+            Promise.all(
+                Array.from({ length: 4 }, (_, i) =>
+                    bitbucket.provider
+                        .runAction(
+                            bitbucket.ref,
+                            { action: "cancel", runId: `{p${i}}` },
+                            beforeSend,
+                        )
+                        .catch((reason: unknown) => reason),
+                ),
+            ),
+            new Promise<string>((resolve) => setTimeout(() => resolve("deadlocked"), 1000)),
+        ]);
+
+        expect(outcome, "the re-reads waited for slots their own writes hold").not.toBe(
+            "deadlocked",
+        );
+        expect(mocks.httpsGet, "every write reached its re-read").toHaveBeenCalled();
+        expect(mocks.httpsRequest, "the failed re-read sends no POST").not.toHaveBeenCalled();
+        expect(beforeSend, "no fence is written after a failed re-read").not.toHaveBeenCalled();
+    });
+
     it("a cooldown starting during the credential lookup writes no fence and sends nothing", async () => {
         const registry = new CommitChecksRequestGateRegistry("cooling down");
         let target = "";

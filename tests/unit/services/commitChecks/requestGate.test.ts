@@ -392,6 +392,34 @@ describe("CommitChecksRequestGateRegistry", () => {
         await Promise.all([...originalTasks, fifthTask]);
     });
 
+    it("runs a request made inside an admitted task of its own bucket without a second slot", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+        const url = "https://api.bitbucket.org/2.0/repositories/acme/app/pipelines/";
+        const nested = vi.fn(async () => "read");
+
+        // Four admitted tasks fill the bucket; each one reads once more before it finishes.
+        const results = await Promise.race([
+            Promise.all(
+                Array.from({ length: 4 }, () =>
+                    registry.run("bitbucket-cloud", url, () =>
+                        registry.holding("bitbucket-cloud", url, () =>
+                            registry.run("bitbucket-cloud", url, nested),
+                        ),
+                    ),
+                ),
+            ),
+            new Promise<string>((resolve) => setTimeout(() => resolve("deadlocked"), 200)),
+        ]);
+
+        expect(results, "a nested request must not wait for its own task's slot").toEqual([
+            "read",
+            "read",
+            "read",
+            "read",
+        ]);
+        expect(nested).toHaveBeenCalledTimes(4);
+    });
+
     it("clears an idle cooldown without sharing it with another self-hosted host", async () => {
         const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 1_000);
         const cooledUrl = "https://git.alpha.example.test/api/v4/projects/1/statuses/main";

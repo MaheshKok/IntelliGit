@@ -72,8 +72,10 @@ export function createCommitChecksProviders(
             });
     const downloadFor =
         (providerId: ProviderId): DownloadCiLog =>
-        (url, headers, signal) =>
-            requestGateRegistry.run(providerId, url, () => downloadCiLog(url, headers, signal));
+        (url, headers, signal, credentialScope) =>
+            requestGateRegistry.run(providerId, url, () =>
+                downloadCiLog(url, headers, signal, credentialScope),
+            );
     const writeFor =
         (providerId: ProviderId): WriteJson =>
         (method, url, headers, body, beforeSend) => {
@@ -81,7 +83,8 @@ export function createCommitChecksProviders(
             return requestGateRegistry.run(providerId, url, async (generation) => {
                 // Admitted, so no cooldown refused it: only now is the fence written and the
                 // caller's repository and provider checks run, after any wait in the queue.
-                await beforeSend?.();
+                // Its own re-reads (is the pipeline still the one shown) share this slot.
+                await requestGateRegistry.holding(providerId, url, async () => beforeSend?.());
                 // The headers hold the token read before the request queued: a sign-in change
                 // while it waited for admission must not send it.
                 if (!generations.isCurrent(asked, "")) {
