@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.44.0] - 2026-11-27
+## [0.43.24] - 2026-11-27
 
 ### Added
 
-- Bitbucket Cloud pipelines now show their steps, logs, timings and a Stop button in the Checks tab.
+- Groundwork for the coming Checks tab: IntelliGit can now read Bitbucket Cloud pipelines with their steps, logs and usual run time, and stop a running pipeline, but only the exact run you confirmed and only in the repository you are looking at. The tab is still hidden, so nothing changes in the extension yet.
+
+## [0.43.23] - 2026-11-27
+
+### Fixed
+
+- In a short Git Log panel, a commit's checks popup no longer runs off the top or bottom of the panel. It now opens toward the side with more room and shrinks to fit, so every check in it stays within reach.
 
 ## [0.43.22] - 2026-11-26
 

@@ -45,6 +45,7 @@ type PanelPosition = {
     top: number;
     placement: PanelPlacement;
     verticalPlacement: VerticalPlacement;
+    maxHeight: number;
 };
 
 /** Renders the commit-row GitHub checks icon and its floating result popover. */
@@ -92,22 +93,40 @@ export function CommitChecksButton({
             rect.left >= PANEL_MAX_WIDTH + 16 || rect.right + 8 + panelWidth > window.innerWidth
                 ? "left"
                 : "right";
+        // The popup is fixed-position, so it cannot be scrolled into view once it runs off the
+        // window: clamp the row's edges into the window (8 px margin) and cap the popup to the
+        // room on its side of the row.
+        const edgeMargin = 8;
+        const clampToWindow = (y: number): number =>
+            Math.min(Math.max(y, edgeMargin), window.innerHeight - edgeMargin);
+        const belowAnchor = clampToWindow(rect.top);
+        const aboveAnchor = clampToWindow(rect.bottom);
+        const roomBelow = window.innerHeight - edgeMargin - belowAnchor;
+        const roomAbove = aboveAnchor - edgeMargin;
         const verticalPlacement =
-            rect.top < PANEL_MAX_HEIGHT / 2 + 8
+            rect.top < PANEL_MAX_HEIGHT / 2 + 8 && roomBelow >= roomAbove
                 ? "below"
-                : rect.bottom > window.innerHeight - PANEL_MAX_HEIGHT / 2 - 8
+                : rect.bottom > window.innerHeight - PANEL_MAX_HEIGHT / 2 - 8 ||
+                    rect.top < PANEL_MAX_HEIGHT / 2 + 8
                   ? "above"
                   : "center";
+        const room =
+            verticalPlacement === "below"
+                ? roomBelow
+                : verticalPlacement === "above"
+                  ? roomAbove
+                  : window.innerHeight - 2 * edgeMargin;
         setPosition({
             left: placement === "left" ? rect.left - 8 : rect.right + 8,
             top:
                 verticalPlacement === "below"
-                    ? rect.top
+                    ? belowAnchor
                     : verticalPlacement === "above"
-                      ? rect.bottom
+                      ? aboveAnchor
                       : rect.top + rect.height / 2,
             placement,
             verticalPlacement,
+            maxHeight: Math.min(PANEL_MAX_HEIGHT, Math.max(0, room)),
         });
         if (!checks) onRequestChecks(hash);
     };
@@ -269,79 +288,93 @@ function CommitChecksPanel({
                         : { left: -10, borderRightColor: JETBRAINS_UI.color.panel }),
                 }}
             />
-            <div style={panelStyle}>
+            <div
+                style={{
+                    ...panelStyle,
+                    maxHeight: position.maxHeight,
+                    minHeight: Math.min(PANEL_MIN_HEIGHT, position.maxHeight),
+                }}
+            >
                 <div style={titleStyle}>
-                    <span>
-                        {t("commit.checks.title")}
-                        <span style={panelHashStyle}>{hash.slice(0, 7)}</span>
-                    </span>
-                    <button
-                        type="button"
-                        aria-label={t("common.refresh")}
-                        title={t("common.refresh")}
-                        disabled={refreshDisabled}
-                        onClick={onRefresh}
-                        data-refreshing={String(refreshing)}
-                        style={{
-                            ...refreshButtonStyle,
-                            ...(refreshDisabled ? refreshButtonDisabledStyle : {}),
-                        }}
-                    >
-                        <VscRefresh size={14} aria-hidden="true" focusable="false" />
-                    </button>
+                    <div style={titleContentStyle}>
+                        <span>
+                            {t("commit.checks.title")}
+                            <span style={panelHashStyle}>{hash.slice(0, 7)}</span>
+                        </span>
+                        <button
+                            type="button"
+                            aria-label={t("common.refresh")}
+                            title={t("common.refresh")}
+                            disabled={refreshDisabled}
+                            onClick={onRefresh}
+                            data-refreshing={String(refreshing)}
+                            style={{
+                                ...refreshButtonStyle,
+                                ...(refreshDisabled ? refreshButtonDisabledStyle : {}),
+                            }}
+                        >
+                            <VscRefresh size={14} aria-hidden="true" focusable="false" />
+                        </button>
+                    </div>
                 </div>
                 {refreshing ? (
-                    <output aria-live="polite" style={refreshStatusStyle}>
-                        {t("commit.checks.loading")}
-                    </output>
+                    <div style={refreshStatusSlotStyle}>
+                        <output aria-live="polite" style={refreshStatusStyle}>
+                            {t("commit.checks.loading")}
+                        </output>
+                    </div>
                 ) : null}
                 <div style={bodyStyle} aria-busy={refreshing}>
-                    {checks === "loading" || !checks ? (
-                        <div style={emptyStyle}>{t("commit.checks.loading")}</div>
-                    ) : snapshot && snapshot.items.length > 0 ? (
-                        snapshot.items.map((item, index) => {
-                            const itemUrl = item.url;
-                            return (
-                                <div
-                                    // Provider payloads expose no stable item ID and may contain identical rows.
-                                    // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- Position is the only collision-safe discriminator for duplicate provider results.
-                                    key={`${item.source}:${item.name}:${index}`}
-                                    style={rowStyle}
-                                >
-                                    <StateIcon state={item.state} />
-                                    <div style={rowTextStyle}>
-                                        {itemUrl ? (
-                                            <button
-                                                type="button"
-                                                style={linkButtonStyle}
-                                                onClick={() => onOpenCheckUrl(itemUrl)}
-                                            >
-                                                {item.name}
-                                            </button>
-                                        ) : (
-                                            <span style={nameStyle}>{item.name}</span>
-                                        )}
-                                        {item.description ? (
-                                            <span style={descriptionStyle}>{item.description}</span>
-                                        ) : null}
+                    <div style={bodyContentStyle}>
+                        {checks === "loading" || !checks ? (
+                            <div style={emptyStyle}>{t("commit.checks.loading")}</div>
+                        ) : snapshot && snapshot.items.length > 0 ? (
+                            snapshot.items.map((item, index) => {
+                                const itemUrl = item.url;
+                                return (
+                                    <div
+                                        // Provider payloads expose no stable item ID and may contain identical rows.
+                                        // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- Position is the only collision-safe discriminator for duplicate provider results.
+                                        key={`${item.source}:${item.name}:${index}`}
+                                        style={rowStyle}
+                                    >
+                                        <StateIcon state={item.state} />
+                                        <div style={rowTextStyle}>
+                                            {itemUrl ? (
+                                                <button
+                                                    type="button"
+                                                    style={linkButtonStyle}
+                                                    onClick={() => onOpenCheckUrl(itemUrl)}
+                                                >
+                                                    {item.name}
+                                                </button>
+                                            ) : (
+                                                <span style={nameStyle}>{item.name}</span>
+                                            )}
+                                            {item.description ? (
+                                                <span style={descriptionStyle}>
+                                                    {item.description}
+                                                </span>
+                                            ) : null}
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })
-                    ) : (
-                        <div style={emptyStyle}>
-                            {snapshot?.error ?? snapshot?.summary ?? t("commit.checks.none")}
-                            {signInHost && onSignIn ? (
-                                <button
-                                    type="button"
-                                    style={signInButtonStyle}
-                                    onClick={() => onSignIn(signInHost)}
-                                >
-                                    {t("commit.checks.signIn")}
-                                </button>
-                            ) : null}
-                        </div>
-                    )}
+                                );
+                            })
+                        ) : (
+                            <div style={emptyStyle}>
+                                {snapshot?.error ?? snapshot?.summary ?? t("commit.checks.none")}
+                                {signInHost && onSignIn ? (
+                                    <button
+                                        type="button"
+                                        style={signInButtonStyle}
+                                        onClick={() => onSignIn(signInHost)}
+                                    >
+                                        {t("commit.checks.signIn")}
+                                    </button>
+                                ) : null}
+                            </div>
+                        )}
+                    </div>
                 </div>
                 <OpenInChecksFooter onOpenInChecks={onOpenInChecks} />
             </div>
@@ -440,11 +473,10 @@ const panelContainerStyle: React.CSSProperties = {
 const panelStyle: React.CSSProperties = {
     width: "max-content",
     minWidth: PANEL_MIN_WIDTH,
-    minHeight: PANEL_MIN_HEIGHT,
     maxWidth: `min(${PANEL_MAX_WIDTH}px, calc(100vw - 16px))`,
-    maxHeight: `min(${PANEL_MAX_HEIGHT}px, calc(100vh - 16px))`,
     overflow: "hidden",
-    // A column, so a capped panel shrinks the list body and keeps the footer in view.
+    // A column, so a panel capped by the inline maxHeight shrinks the list body and keeps the
+    // footer in view.
     display: "flex",
     flexDirection: "column",
     background: JETBRAINS_UI.color.panel,
@@ -485,13 +517,20 @@ const caretFillStyle: React.CSSProperties = {
     zIndex: 1,
 };
 
+// The title and list carry their padding on an inner box: a flex item never shrinks below its own
+// padding, so padded items would push the footer out of a very short panel.
 const titleStyle: React.CSSProperties = {
-    padding: "12px 14px",
-    textAlign: "center",
+    minHeight: 0,
+    overflow: "hidden",
     fontSize: 13,
     fontWeight: 700,
     background: "var(--vscode-textLink-foreground)",
     color: "var(--vscode-button-foreground)",
+};
+
+const titleContentStyle: React.CSSProperties = {
+    padding: "12px 14px",
+    textAlign: "center",
     position: "relative",
 };
 
@@ -518,6 +557,11 @@ const refreshButtonDisabledStyle: React.CSSProperties = {
     cursor: "default",
 };
 
+const refreshStatusSlotStyle: React.CSSProperties = {
+    minHeight: 0,
+    overflow: "hidden",
+};
+
 const refreshStatusStyle: React.CSSProperties = {
     // `display` is explicit because this styles an `<output>`, which is inline by default --
     // an inline box drops the vertical padding below, so the status would sit flush against
@@ -537,17 +581,22 @@ const panelHashStyle: React.CSSProperties = {
 };
 
 const bodyStyle: React.CSSProperties = {
-    padding: "14px 18px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 11,
     boxSizing: "border-box",
     width: "max-content",
     maxWidth: "100%",
     maxHeight: 250,
-    flex: "1 1 auto",
+    // Shrinks far ahead of the title, so the title and its Refresh button stay whole until the
+    // list has almost no height left.
+    flex: "1 1000 auto",
     minHeight: 0,
     overflow: "auto",
+};
+
+const bodyContentStyle: React.CSSProperties = {
+    padding: "14px 18px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 11,
 };
 
 const rowStyle: React.CSSProperties = {

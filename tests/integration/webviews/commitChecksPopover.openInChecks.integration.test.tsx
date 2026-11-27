@@ -133,7 +133,8 @@ describe("Commit checks popover", () => {
         const body = panel.querySelector<HTMLElement>("[aria-busy]")!;
         expect(panel.style.display, "panel display").toBe("flex");
         expect(panel.style.flexDirection, "panel direction").toBe("column");
-        expect(body.style.flex, "list flex").toBe("1 1 auto");
+        expect(body.style.flexGrow, "list grows").toBe("1");
+        expect(Number(body.style.flexShrink), "list shrinks").toBeGreaterThan(0);
         expect(body.style.minHeight, "list min height").toMatch(/^0(px)?$/);
         expect(body.style.overflow, "list scrolls").toBe("auto");
         expect(footer.style.flexShrink, "footer shrink").toBe("0");
