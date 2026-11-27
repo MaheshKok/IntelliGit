@@ -553,6 +553,51 @@ describe("CommitChecksRequestGateRegistry", () => {
                 await Promise.all([...others, detached, done]);
             }
         });
+
+        it("a read queued behind a detached read leaves the released slot instead of holding it", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            const releaseFirst = Promise.withResolvers<void>();
+            const sentSecond = vi.fn();
+            const starts: Promise<void>[] = [];
+            const reads: Promise<void>[] = [];
+            // Four holders fill the bucket; each ends with read A in flight and read B queued
+            // behind it in the same slot.
+            const holders = Array.from({ length: 4 }, () => {
+                const started = Promise.withResolvers<void>();
+                starts.push(started.promise);
+                return gate.run("bitbucket-cloud", url, () =>
+                    gate.holding("bitbucket-cloud", url, async () => {
+                        reads.push(
+                            gate.run("bitbucket-cloud", url, async () => {
+                                started.resolve();
+                                await releaseFirst.promise;
+                            }),
+                            gate.run("bitbucket-cloud", url, async () => {
+                                sentSecond();
+                            }),
+                        );
+                        await started.promise;
+                    }),
+                );
+            });
+            await Promise.all(starts);
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            releaseFirst.resolve();
+
+            let timer!: ReturnType<typeof setTimeout>;
+            const outcome = await Promise.race([
+                Promise.all([...reads, ...holders]).then(() => "sent"),
+                new Promise<string>((resolve) => {
+                    timer = setTimeout(() => resolve("deadlocked"), 1000);
+                }),
+            ]).finally(() => clearTimeout(timer));
+
+            expect(
+                outcome,
+                "each queued read B left its released slot, so the holders freed theirs",
+            ).toBe("sent");
+            expect(sentSecond).toHaveBeenCalledTimes(4);
+        });
     });
 
     it("clears an idle cooldown without sharing it with another self-hosted host", async () => {

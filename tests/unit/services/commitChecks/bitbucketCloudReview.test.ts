@@ -895,6 +895,45 @@ describe("Bitbucket Cloud review fixes, independent review", () => {
         expect(fences.begin).not.toHaveBeenCalled();
     });
 
+    it("a Stop without an attempt sends nothing to a pipeline that names none", async () => {
+        const { cloud, sent } = fixtureStop({ ...RUNNING, run_number: undefined });
+        const { action, fences } = makeAction(cloud);
+
+        await action();
+
+        expect(
+            sent,
+            "no confirmed attempt authorizes Stop, even when the pipeline names none",
+        ).not.toHaveBeenCalled();
+        expect(fences.begin).not.toHaveBeenCalled();
+    });
+
+    it("a Stop writes its fence once though it is checked again after the final read", async () => {
+        const { cloud, sent } = fixtureStop();
+        const { action, fences } = makeAction(cloud);
+
+        expect((await action(1)).outcome).toBe("ok");
+        expect(sent).toHaveBeenCalledOnce();
+        expect(
+            fences.begin,
+            "the second pre-send check must not write a second fence",
+        ).toHaveBeenCalledOnce();
+    });
+
+    it("a 401 on the final admission GET keeps the sign-in path", async () => {
+        const { cloud, sent } = fixtureStop({ ...RUNNING }, (read) => {
+            if (read === 2) throw new HttpError(401, "admission read unauthorized", {});
+            return RUNNING;
+        });
+        const { action, fences } = makeAction(cloud);
+
+        const result = await action(1);
+
+        expect(sent).not.toHaveBeenCalled();
+        expect(result.outcome, "a 401 offers sign-in, not a failure message").toBe("signedOut");
+        expect(fences.fail, "the fence of the unsent Stop is removed").toHaveBeenCalledOnce();
+    });
+
     it("switching repository during the final pipeline read leaves no Stop", async () => {
         let current = true;
         const { cloud, sent } = fixtureStop({ ...RUNNING }, (read) => {
