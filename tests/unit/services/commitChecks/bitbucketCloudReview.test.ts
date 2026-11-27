@@ -818,3 +818,151 @@ describe("Bitbucket Cloud review fixes, takeover", () => {
         expect(page.failed).toBeUndefined();
     });
 });
+
+// Phase 17 independent review: Stop needs the attempt the user confirmed and the repository it
+// started in up to the POST, a failed admission read is a Stop not sent, the C3 fallback names a
+// refused status link, and steps of two attempts never make a tree.
+describe("Bitbucket Cloud review fixes, independent review", () => {
+    const RUNNING: Json = { ...pipelineFixture, state: { name: "IN_PROGRESS" } };
+
+    const noFence = () => ({
+        begin: vi.fn(async () => {}),
+        fail: vi.fn(async () => {}),
+        fenceFor: vi.fn(),
+        endByUserRefresh: vi.fn(),
+    });
+
+    /** Stop through `runCiAction`; `current` is the repository guard it checks before sending. */
+    function makeAction(
+        bitbucket: BitbucketCloudProvider,
+        fences = noFence(),
+        current = () => true,
+    ) {
+        return {
+            fences,
+            action: (attempt?: number) =>
+                runCiAction(
+                    {
+                        coordinator: {
+                            actionTarget: async () => ({ provider: bitbucket, ref }),
+                            actionGuard: () => current,
+                            getDetail: async () => bitbucket.getDetail(ref, SHA),
+                            getChecks: vi.fn(async () => ({})),
+                            invalidate: vi.fn(async () => {}),
+                        },
+                        fences,
+                    } as never,
+                    SHA,
+                    { action: "cancel", runId: PIPE, ...(attempt !== undefined && { attempt }) },
+                    new CiGenerations().capture("/repo"),
+                ),
+        };
+    }
+
+    /** One pipeline; `readOne` answers the Stop's own pipeline reads, numbered from 1. */
+    function fixtureStop(pipeline: Json = { ...RUNNING }, readOne?: (read: number) => unknown) {
+        const fake = fakeBitbucket({ pipelines: [pipeline], steps: [] });
+        const sent = vi.fn();
+        let reads = 0;
+        const cloud = provider(
+            {
+                ...fake,
+                fetchWithMeta: async (url, headers) =>
+                    new URL(url).pathname.endsWith(`/pipelines/${encodeURIComponent(PIPE)}`)
+                        ? {
+                              statusCode: 200,
+                              headers: {},
+                              body: readOne ? readOne(++reads) : pipeline,
+                          }
+                        : fake.fetchWithMeta(url, headers),
+            },
+            async (_method, _url, _headers, _body, beforeSend) => {
+                await beforeSend?.();
+                sent();
+                return {};
+            },
+        );
+        return { cloud, sent };
+    }
+
+    it("a Stop without confirmation evidence cannot adopt a newly visible attempt", async () => {
+        const { cloud, sent } = fixtureStop({ ...RUNNING, run_number: 2 });
+        const { action, fences } = makeAction(cloud);
+
+        await action();
+
+        expect(sent, "the host has no confirmed attempt to authorize Stop").not.toHaveBeenCalled();
+        expect(fences.begin).not.toHaveBeenCalled();
+    });
+
+    it("switching repository during the final pipeline read leaves no Stop", async () => {
+        let current = true;
+        const { cloud, sent } = fixtureStop({ ...RUNNING }, (read) => {
+            if (read === 2) current = false;
+            return RUNNING;
+        });
+        const { action, fences } = makeAction(cloud, noFence(), () => current);
+
+        await action(1);
+
+        expect(sent, "the original repository no longer owns the action").not.toHaveBeenCalled();
+        expect(fences.fail, "the fence of the unsent Stop is removed").toHaveBeenCalledOnce();
+    });
+
+    it.each([
+        [503, "admission read unavailable"],
+        [403, "admission read forbidden"],
+    ])(
+        "a %i on the final admission GET is a Stop not sent, shown with the read's error",
+        async (status, message) => {
+            const { cloud, sent } = fixtureStop({ ...RUNNING }, (read) => {
+                if (read === 2) throw new HttpError(status, message, {});
+                return RUNNING;
+            });
+            const { action, fences } = makeAction(cloud);
+
+            const result = await action(1);
+
+            expect(sent).not.toHaveBeenCalled();
+            expect(
+                result,
+                "a failed read is neither an uncertain POST nor missing write scope",
+            ).toEqual({ outcome: "failed", message });
+            expect(fences.fail, "the fence of the unsent Stop is removed").toHaveBeenCalledOnce();
+        },
+    );
+
+    it("C3 displays a refused-continuation warning instead of a page-limit warning", async () => {
+        const fetchJson = vi.fn(async () => ({
+            values: [{ key: "one", name: "one", state: "SUCCESSFUL" }],
+            next: "https://api.bitbucket.org/2.0/repositories/acme/other/statuses",
+        }));
+        const bitbucket = provider({
+            log: [],
+            fetchJson,
+            fetchWithMeta: async () => {
+                throw new HttpError(403, "HTTP 403: Forbidden", {});
+            },
+        });
+
+        const detail = await bitbucket.getDetail(ref, SHA);
+
+        expect(
+            detail.otherChecksCoverage,
+            "K33: a refused link is named as refused, with the rows shown",
+        ).toEqual({ reason: "rejectedNext", shown: 1 });
+    });
+
+    it("mixed step attempts are unavailable when the pipeline listing has no attempt", async () => {
+        const bitbucket = provider(
+            fakeBitbucket({
+                pipelines: [{ ...FAILED, run_number: undefined }],
+                steps: [step(1, "FAILED", { run_number: 1 }), step(2, "FAILED", { run_number: 2 })],
+            }),
+        );
+
+        const detail = await bitbucket.getDetail(ref, SHA);
+
+        expect(detail.outcome, "mixed steps lack one coherent attempt").toBe("unavailable");
+    });
+});

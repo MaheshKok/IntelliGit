@@ -516,6 +516,43 @@ describe("CommitChecksRequestGateRegistry", () => {
             ).rejects.toThrow();
             expect(sent, "the send guard applies inside a held slot too").not.toHaveBeenCalled();
         });
+
+        it("an already-started detached read still occupies the concurrency slot", async () => {
+            const gate = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+            const started = Promise.withResolvers<void>();
+            const stallRead = Promise.withResolvers<void>();
+            const stallOthers = Promise.withResolvers<void>();
+            const sent = vi.fn();
+            let detached!: Promise<void>;
+            const done = gate.run("bitbucket-cloud", url, () =>
+                gate.holding("bitbucket-cloud", url, async () => {
+                    // Detached: the shared read is still in flight when the holding task ends.
+                    detached = gate.run("bitbucket-cloud", url, async () => {
+                        started.resolve();
+                        await stallRead.promise;
+                    });
+                    await started.promise;
+                }),
+            );
+            await started.promise;
+            const others = Array.from({ length: 4 }, () =>
+                gate.run("bitbucket-cloud", url, async () => {
+                    sent();
+                    await stallOthers.promise;
+                }),
+            );
+            try {
+                await new Promise<void>((resolve) => setImmediate(resolve));
+                expect(
+                    sent,
+                    "a running detached read plus four newly admitted requests exceeds the four-slot limit",
+                ).toHaveBeenCalledTimes(3);
+            } finally {
+                stallRead.resolve();
+                stallOthers.resolve();
+                await Promise.all([...others, detached, done]);
+            }
+        });
     });
 
     it("clears an idle cooldown without sharing it with another self-hosted host", async () => {

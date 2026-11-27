@@ -15,6 +15,11 @@ const mocks = vi.hoisted(() => ({
     duringSignIn: vi.fn(),
 }));
 
+// The real download, spied on, so a test can read what activation hands it.
+vi.mock("../../../src/services/commitChecks/http", async (importOriginal) => {
+    const http = await importOriginal<typeof import("../../../src/services/commitChecks/http")>();
+    return { ...http, downloadCiLog: vi.fn(http.downloadCiLog) };
+});
 vi.mock("https", () => ({ get: mocks.httpsGet, request: mocks.httpsRequest }));
 vi.mock("vscode", () => ({
     authentication: {
@@ -40,6 +45,7 @@ import { CiGenerations } from "../../../src/services/commitChecks/ciGenerations"
 import { GitHubProvider } from "../../../src/services/commitChecks/githubProvider";
 import { GitLabProvider } from "../../../src/services/commitChecks/gitlabProvider";
 import { CommitChecksRequestGateRegistry } from "../../../src/services/commitChecks/requestGate";
+import { downloadCiLog } from "../../../src/services/commitChecks/http";
 
 const ref = { host: "github.com", owner: "microsoft", repo: "vscode" } as ProviderRepoRef;
 const API = "https://api.github.com";
@@ -584,5 +590,34 @@ describe("createCommitChecksProviders", () => {
             ).not.toHaveBeenCalled();
             expect(error).toMatchObject({ name: "RequestNotSentError" });
         });
+    });
+
+    it("activation forwards the provider credential header list to the download boundary", async () => {
+        const cloudBase = "https://api.bitbucket.org/2.0/repositories/acme/app";
+        const cloud = createCommitChecksProviders(
+            new CommitChecksRequestGateRegistry("paused"),
+            { get: async () => "fixture-token" } as unknown as CredentialStore,
+            undefined,
+            new CiGenerations(),
+        ).find((provider) => provider instanceof BitbucketCloudProvider) as BitbucketCloudProvider;
+        vi.mocked(downloadCiLog).mockResolvedValueOnce({ text: "log", truncated: false });
+        const signal = new AbortController().signal;
+
+        await cloud.getJobLog(
+            { host: "bitbucket.org", workspace: "acme", repo: "app" } as ProviderRepoRef,
+            { runId: "p", jobId: "s" },
+            signal,
+        );
+
+        expect(
+            downloadCiLog,
+            "the headers a redirect off the repository must drop reach the download",
+        ).toHaveBeenCalledWith(
+            `${cloudBase}/pipelines/p/steps/s/log`,
+            { Authorization: "Bearer fixture-token" },
+            signal,
+            `${cloudBase}/`,
+            ["authorization"],
+        );
     });
 });
