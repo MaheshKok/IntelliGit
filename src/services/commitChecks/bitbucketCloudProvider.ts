@@ -377,7 +377,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
                 const refused = { next: false };
                 const snapshot = await this.getChecks(ref, hash, () => {
                     refused.next = true;
-                });
+                }).catch((reason: unknown) => failedSnapshot(hash, cloudRef.host, reason, token));
                 if (snapshot.state === "unavailable") return flatDetail(snapshot);
                 return {
                     ...floorDetail(snapshot, this.id),
@@ -468,6 +468,11 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
                 scanCursors.push({
                     runId,
                     ...(run.attempt !== undefined && { runAttempt: run.attempt }),
+                    // Steps the first read accepted for a pipeline that names no attempt.
+                    ...(run.attempt === undefined &&
+                        attempts.size === 1 && {
+                            stepAttempt: [...attempts][0],
+                        }),
                     runName: runScope(pipeline),
                     url: stepsPage.next,
                     jobsRead: stepsPage.items.length,
@@ -546,7 +551,10 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             if (
                 items.some((step) => {
                     const attempt = optionalNumber(step.run_number);
-                    return attempt !== undefined && attempt !== cursor.runAttempt;
+                    return (
+                        attempt !== undefined &&
+                        attempt !== (cursor.runAttempt ?? cursor.stepAttempt)
+                    );
                 })
             ) {
                 return changed;
@@ -810,12 +818,12 @@ function authHeaders(token: string): Record<string, string> {
 }
 
 /**
- * The body's `next` link. A value that is not a string is handed on as text, so the next-link
- * rule refuses it and the page never counts as the last.
+ * The body's `next` link. A value that is not a string, or an empty one, is handed on as text,
+ * so the next-link rule refuses it and the page never counts as the last.
  */
 function nextOf(response: FetchResponse): string | undefined {
     const next = (response.body as { next?: unknown } | null)?.next;
-    if (next === undefined || next === null || next === "") return undefined;
+    if (next === undefined || next === null) return undefined;
     return typeof next === "string" ? next : JSON.stringify(next);
 }
 
@@ -974,10 +982,12 @@ function isPipelineStatus(
     if (url.hostname.toLowerCase() !== CLOUD_HOST) return false;
     // The pipelines page keeps the result number in the fragment (`#!/results/42`).
     const where = `${url.pathname}${url.hash}`.toLowerCase();
-    if (!where.startsWith(`/${ref.workspace.toLowerCase()}/${ref.repo.toLowerCase()}/`)) {
-        return false;
-    }
-    const buildNumber = /\/results\/(\d+)/.exec(where)?.[1];
+    const repo = `/${ref.workspace.toLowerCase()}/${ref.repo.toLowerCase()}/`;
+    if (!where.startsWith(repo)) return false;
+    // Only the pipeline result routes, old and new; `downloads/results/42-report.html` is not one.
+    const buildNumber = /^(?:addon\/pipelines\/home#!\/|pipelines\/)results\/(\d+)(?:[/?#]|$)/.exec(
+        where.slice(repo.length),
+    )?.[1];
     return buildNumber !== undefined && buildNumbers.has(buildNumber);
 }
 
@@ -1042,8 +1052,13 @@ function detailOf(
     otherChecks: CiFlatCheck[],
     otherChecksCoverage: CiCoverage,
 ): CommitCiDetailData {
+    // Only a pipeline paused at a manual step maps to a neutral run, and it still waits for a person.
+    const paused = (run: CiRun) => run.state === "neutral";
     const states = [
-        ...runs.flatMap((run) => [run.state, ...run.jobs.map((job) => job.state)]),
+        ...runs.flatMap((run) => [
+            paused(run) ? "running" : run.state,
+            ...run.jobs.map((job) => job.state),
+        ]),
         ...otherChecks.map((check) => check.state),
     ];
     const outcome = aggregateState(
@@ -1054,7 +1069,7 @@ function detailOf(
     return {
         hash,
         provider: "bitbucket-cloud",
-        complete: outcome !== "none" && !hasUnfinishedWork(runs, otherChecks),
+        complete: outcome !== "none" && !runs.some(paused) && !hasUnfinishedWork(runs, otherChecks),
         outcome,
         runs,
         runsCoverage,

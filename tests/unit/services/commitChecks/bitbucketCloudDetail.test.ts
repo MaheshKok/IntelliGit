@@ -693,6 +693,43 @@ describe("Bitbucket Cloud failed-step overflow scan", () => {
         });
         expect(stepPages(bb.log)).toEqual([]);
     });
+
+    it("a pipeline without run_number scans its steps by the attempt the first read accepted", async () => {
+        // Every fixture step names attempt 1; the pipeline itself names none.
+        const bb = fakeBitbucket(
+            state({
+                pipelines: [pipeline({ state: completed("FAILED"), run_number: undefined })],
+                stepsByPipeline: new Map([[PIPE, [...steps(1000), ...steps(50, "FAILED", 1001)]]]),
+            }),
+        );
+        const { get, last } = scanning(provider(bb));
+
+        await get();
+
+        await vi.waitFor(() => expect(last()?.runs[0].failedScan?.state).toBe("done"));
+        expect(
+            last().runs[0].failedScan,
+            "steps of the same attempt on a later page are kept",
+        ).toEqual({ state: "done", found: 50 });
+
+        // A later page of another attempt still stops the scan.
+        const rerun = fakeBitbucket(
+            state({
+                pipelines: [pipeline({ state: completed("FAILED"), run_number: undefined })],
+                stepsByPipeline: new Map([[PIPE, [step(1, "FAILED", { run_number: 2 })]]]),
+            }),
+        );
+        const page = await provider(rerun).continueFailedScan(ref, {
+            runId: PIPE,
+            stepAttempt: 1,
+            runName: "main",
+            url: `${REPO_API}/pipelines/${encodeURIComponent(PIPE)}/steps/?pagelen=100&page=1`,
+        });
+        expect(page, "a step of attempt 2 after attempt 1 was accepted").toEqual({
+            runChanged: true,
+            error: "Remote data changed. Reload and try again.",
+        });
+    });
 });
 
 describe("Bitbucket Cloud step log", () => {
@@ -974,5 +1011,100 @@ describe("Bitbucket Cloud cancel", () => {
         expect(EN[bitbucket.capabilities.writeScopeHelp!]).toBe(
             "Your Bitbucket Cloud token cannot stop pipelines. Add the pipeline:write scope to stop one.",
         );
+    });
+});
+
+describe("Bitbucket Cloud detail edge rows (PR #461 review)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("a malformed status row in the scope fallback yields an unavailable detail, not a rejection", async () => {
+        const bb = fakeBitbucket(
+            state({
+                statuses: [null as unknown as Json],
+                fail: (url) =>
+                    new URL(url).pathname.startsWith(`${REPO_PATH}/pipelines/`)
+                        ? new HttpError(403, "HTTP 403: Forbidden", {})
+                        : undefined,
+            }),
+        );
+
+        const detail = await provider(bb)
+            .getDetail(ref, SHA)
+            .catch((err: unknown) => ({ rejected: String(err) }));
+
+        expect(detail, "getDetail never throws").toMatchObject({
+            outcome: "unavailable",
+            complete: false,
+        });
+    });
+
+    it("an empty next link on a steps page is refused, not read as the last page", async () => {
+        const bb = fakeBitbucket(
+            state({
+                nextOf: (url, page) =>
+                    new URL(url).pathname.endsWith("/steps/") && page === 1 ? "" : undefined,
+            }),
+        );
+
+        const detail = await provider(bb).getDetail(ref, SHA);
+
+        expect(detail.runs[0].jobsCoverage, "an empty next link leaves its page unread").toEqual({
+            reason: "rejectedNext",
+            shown: 1,
+        });
+    });
+
+    it("only a status that links to the pipeline's result is folded into its run", async () => {
+        const bb = fakeBitbucket(
+            state({
+                statuses: [
+                    {
+                        key: "pipe-new",
+                        name: "Pipeline #42",
+                        state: "SUCCESSFUL",
+                        url: `${RESULTS}/42`,
+                    },
+                    {
+                        key: "pipe-old",
+                        name: "Pipeline #42 (old link)",
+                        state: "SUCCESSFUL",
+                        url: "https://bitbucket.org/acme/app/addon/pipelines/home#!/results/42",
+                    },
+                    {
+                        key: "report",
+                        name: "Coverage report",
+                        state: "FAILED",
+                        url: "https://bitbucket.org/acme/app/downloads/results/42-report.html",
+                    },
+                ],
+            }),
+        );
+
+        const detail = await provider(bb).getDetail(ref, SHA);
+
+        expect(
+            detail.otherChecks.map((check) => check.name),
+            "an unrelated link containing /results/42 is kept",
+        ).toEqual(["Coverage report"]);
+        expect(detail.outcome).toBe("failure");
+    });
+
+    it("a pipeline paused at a manual step is unfinished and never a success", async () => {
+        const bb = fakeBitbucket(
+            state({
+                pipelines: [
+                    pipeline({ state: { name: "IN_PROGRESS", stage: { name: "PAUSED" } } }),
+                ],
+                stepsByPipeline: new Map([[PIPE, [stepFixture]]]),
+            }),
+        );
+
+        const detail = await provider(bb).getDetail(ref, SHA);
+
+        expect(detail.runs[0].state, "the run still shows as waiting").toBe("neutral");
+        expect(detail.outcome, "a paused pipeline with a passed step").toBe("pending");
+        expect(detail.complete, "a paused pipeline still waits for a person").toBe(false);
     });
 });

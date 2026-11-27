@@ -43,6 +43,11 @@ export interface CiFailedScanCursor {
     readonly runId: string;
     readonly runAttempt?: number;
     /**
+     * Bitbucket Cloud: the attempt the first read's steps named when the pipeline names none. Only
+     * the scan reads it; it never stands in for the run's attempt, so it never authorizes a Stop.
+     */
+    readonly stepAttempt?: number;
+    /**
      * GitLab: the pipeline's `updated_at` when the scan started. GitLab runs have no attempt, and
      * a retry rewrites the pipeline even when it fails again, so a different value discards the scan.
      */
