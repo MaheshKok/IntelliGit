@@ -129,12 +129,20 @@ describe("overflow scan pages follow the signed-in account", () => {
         c.releaseScan();
         await new Promise((resolve) => setTimeout(resolve, 30));
         c.signInAs("reader");
-        const back = JSON.stringify(await c.detail());
+        const shown = await c.detail();
+        const back = JSON.stringify(shown);
 
         expect(
             back.includes("admin-only-job"),
             "reader cache must not contain the page read as admin",
         ).toBe(false);
+        expect(
+            shown?.runs[0]?.failedScan,
+            "the reader sees the scan stopped with the account-changed text",
+        ).toMatchObject({
+            state: "stopped",
+            error: "The signed-in account changed during the request.",
+        });
     });
 
     it("a page read as the admin that lands after the reader is back and asked again is not kept", async () => {

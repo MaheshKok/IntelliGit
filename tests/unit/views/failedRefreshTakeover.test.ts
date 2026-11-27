@@ -279,7 +279,11 @@ describe("failed Refresh during a running scan: fix round 1", () => {
         };
     }
 
-    function fixture(options: CommitCiDetailServiceOptions = {}, fences?: CiActionFenceStore) {
+    function fixture(
+        options: CommitCiDetailServiceOptions = {},
+        fences?: CiActionFenceStore,
+        confirm?: () => Promise<void>,
+    ) {
         const service = new CommitCiDetailService({ ...options, fences });
         const generations = new CiGenerations();
         const fetch = vi.fn(
@@ -295,7 +299,7 @@ describe("failed Refresh during a running scan: fix round 1", () => {
             ctx: CiOperationContext,
             update?: (data: CommitCiDetail) => void,
         ) =>
-            service.getOrFetch(KEY, fetch, serve, options, undefined, {
+            service.getOrFetch(KEY, fetch, serve, options, confirm, {
                 continueScan: page,
                 isCurrent: () => generations.isCurrent(ctx, "/repo"),
                 onUpdate: (data: CommitCiDetail) => {
@@ -941,5 +945,154 @@ describe("failed Refresh during a running scan: fix round 1", () => {
             [a.post.mock.calls.length, a.last()?.runs.length, a.last()?.refreshError],
             "invalidating the outage entry posts nothing to A, which keeps its tree and error",
         ).toEqual([posts, 1, "HTTP 502"]);
+    });
+
+    it("S1: a successful L2 read retires the scan it replaces", async () => {
+        const l2 = deferred<ReturnType<typeof fetched>>();
+        const persistentCache = {
+            get: vi.fn(() => l2.promise).mockImplementationOnce(async () => undefined as never),
+            set: vi.fn(async () => {}),
+            delete: vi.fn(async () => {}),
+            generation: () => undefined,
+        };
+        const f = fixture({ ttlMs: 1_000, persistentCache: persistentCache as never });
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        vi.setSystemTime(Date.now() + 5_000);
+        const b = view(f.source);
+        const read = b.ask();
+        await settle();
+        l2.resolve(fetched(2, false));
+        await read;
+        expect(b.last()?.runs[0]?.attempt, "B has the stored replacement").toBe(2);
+        pending.resolve(terminal);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.fetch, "the failed Refresh stays idle").toHaveBeenCalledTimes(2);
+        expect(
+            ["running", "paused"],
+            "A cannot show progress after an L2 hit replaces its scan",
+        ).not.toContain(state(a));
+    });
+
+    it("S2: invalidate during confirmation of an outage still retires A", async () => {
+        const confirmation = deferred<void>();
+        const confirm = vi.fn(async () => {});
+        const f = fixture({ ttlMs: 1_000 }, undefined, confirm);
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        vi.setSystemTime(Date.now() + 5_000);
+        confirm.mockReturnValueOnce(confirmation.promise);
+        f.fetch
+            .mockResolvedValueOnce(down("HTTP 503") as never)
+            .mockResolvedValueOnce(fetched(2, false));
+        const b = view(f.source);
+        const read = b.ask();
+        await settle();
+        expect(confirm, "B installed the outage and is still confirming it").toHaveBeenCalledTimes(
+            2,
+        );
+        await f.service.invalidate(KEY);
+        confirmation.resolve();
+        pending.resolve(terminal);
+        await read;
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(b.last()?.runs[0]?.attempt, "B gets the new attempt").toBe(2);
+        expect(f.fetch, "A never retries the provider").toHaveBeenCalledTimes(4);
+        expect(
+            [a.last()?.runs.length, a.last()?.refreshError],
+            "A keeps its tree and its own error",
+        ).toEqual([1, "HTTP 502"]);
+        expect(
+            ["running", "paused"],
+            "A cannot show progress after invalidating an unconfirmed outage",
+        ).not.toContain(state(a));
+    });
+
+    it("S3: invalidation before a failed reply subscribes cannot leave A running", async () => {
+        const f = fixture({
+            trace: ({ outcome }) => {
+                if (outcome === "failed") queueMicrotask(() => void f.service.invalidate(KEY));
+            },
+        });
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        pending.resolve(terminal);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.fetch, "A never retries the provider").toHaveBeenCalledTimes(2);
+        expect(
+            ["running", "paused"],
+            "A cannot show progress after losing its entry before subscription",
+        ).not.toContain(state(a));
+        expect(a.last()?.refreshError, "A keeps its own error").toBe("HTTP 502");
+    });
+
+    it("S4: a newest requester that leaves while a page is read retires A's scan", async () => {
+        const f = fixture();
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        expect(state(a), "setup: A is on a running scan").toBe("running");
+        // B has its own liveness flag; its normal read hits L1 and takes the scan hooks.
+        let open = true;
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => open,
+        } as never);
+        expect(f.fetch, "setup: B's read hit L1").toHaveBeenCalledTimes(2);
+        open = false;
+        pending.resolve({ failed: [], next: { ...cursor, url: "page-12" } });
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.fetch, "nothing re-reads the provider").toHaveBeenCalledTimes(2);
+        expect(f.page, "nothing reads the next page").toHaveBeenCalledTimes(1);
+        expect(
+            ["running", "paused"],
+            "A cannot show progress after the newest requester left",
+        ).not.toContain(state(a));
+        expect(a.last()?.refreshError, "A keeps its own error").toBe("HTTP 502");
+    });
+
+    it("S5: two failed Refreshes on one paused scan get one retirement each", async () => {
+        const f = fixture();
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        pending.resolve({ pausedUntil: Date.now() + 60_000, next: cursor });
+        await settle();
+        expect(state(a), "setup: the scan is paused").toBe("paused");
+        const b = view(f.source);
+        f.fetch.mockResolvedValueOnce(failed("HTTP 504"));
+        await b.ask(true);
+        const aCount = a.post.mock.calls.length;
+        const bCount = b.post.mock.calls.length;
+        await f.service.invalidate(KEY);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect([state(a), state(b)], "both paused views retire").toEqual(["stopped", "stopped"]);
+        expect([a.last()?.refreshError, b.last()?.refreshError]).toEqual(["HTTP 502", "HTTP 504"]);
+        expect(
+            [a.post.mock.calls.length - aCount, b.post.mock.calls.length - bCount],
+            "one retirement each",
+        ).toEqual([1, 1]);
+        expect(f.fetch).toHaveBeenCalledTimes(3);
+        expect(f.page).toHaveBeenCalledTimes(1);
+    });
+
+    it("S6: a listed view that is no longer current gets no retired copy", async () => {
+        const f = fixture();
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        f.generations.bumpAuth();
+        const posts = a.post.mock.calls.length;
+        // The view's handler drops a stale post itself, so the hook call is what counts.
+        f.deliver.mockClear();
+        await f.service.invalidate(KEY);
+        await settle();
+        expect(f.deliver, "a stale view's hook is not called").not.toHaveBeenCalled();
+        expect(a.post, "a stale view is not posted to").toHaveBeenCalledTimes(posts);
+        pending.resolve(terminal);
+        await settle();
     });
 });
