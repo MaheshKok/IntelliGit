@@ -326,6 +326,7 @@ describe("Bitbucket Cloud review fixes", () => {
             return {};
         };
         const bitbucket = provider(bb, write);
+        const runAction = vi.spyOn(bitbucket, "runAction");
         const begin = vi.fn(async () => {});
         const deps = {
             coordinator: {
@@ -345,6 +346,10 @@ describe("Bitbucket Cloud review fixes", () => {
             new CiGenerations().capture("/repo"),
         );
 
+        expect(
+            runAction,
+            "the host refuses a finished run before the provider",
+        ).not.toHaveBeenCalled();
         expect(sent, "a fresh read already showed the pipeline finished").not.toHaveBeenCalled();
         expect(begin).not.toHaveBeenCalled();
         expect(outcome.outcome).toBe("failed");
