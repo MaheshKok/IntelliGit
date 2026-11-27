@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.24] - 2026-11-27
+
+### Fixed
+
+- Groundwork for the coming Checks tab: when a Refresh fails while IntelliGit is still looking through a commit's failed CI jobs, the view now keeps its error and follows the search to its end, even after another view picks the search up. Another view's failed read no longer clears it either. Nothing changes in the extension yet.
+
 ## [0.43.23] - 2026-11-27
 
 ### Fixed
