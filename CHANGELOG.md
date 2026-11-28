@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.27] - 2026-11-28
+
+### Fixed
+
+- Groundwork for the coming Checks tab: if you switch accounts while checks are loading, results read under one account are no longer saved under the other. After a failed Refresh, the tab no longer keeps showing a scan for failed jobs as running once nothing is reading it any more. Nothing changes in the extension yet.
+
 ## [0.43.26] - 2026-11-27
 
 ### Fixed
