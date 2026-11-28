@@ -1118,4 +1118,112 @@ describe("failed Refresh during a running scan: fix round 1", () => {
             "A cannot show progress after the newest requester left during a pause",
         ).not.toContain(state(a));
     });
+
+    it("T1: a forced reply can arrive after the last requester left", async () => {
+        const f = fixture();
+        const page = deferred<object>();
+        const failedReply = deferred<ReturnType<typeof failed>>();
+        f.page.mockReturnValueOnce(page.promise);
+        const a = view(f.source);
+        void a.ask();
+        await settle();
+        expect(state(a), "the original page is pending").toBe("running");
+        f.fetch.mockReturnValueOnce(failedReply.promise);
+        const refresh = a.ask(true);
+        await settle();
+        let bOpen = true;
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => bOpen,
+        } as never);
+        bOpen = false;
+        page.resolve({ failed: [], next: { ...cursor, url: "page-12" } });
+        await settle();
+        failedReply.resolve(failed());
+        await refresh;
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.page, "no requester reads the next page").toHaveBeenCalledTimes(1);
+        expect(f.fetch, "failed Refresh does not re-read").toHaveBeenCalledTimes(2);
+        expect(a.last()?.refreshError).toBe("HTTP 502");
+        expect(state(a), "late failed reply must not advertise an ownerless scan").toBe("stopped");
+    });
+
+    it("T2: a replacement confirmation after the newest requester left", async () => {
+        const confirmation = deferred<void>();
+        const confirm = vi.fn(async () => {});
+        const f = fixture({ ttlMs: 1_000 }, undefined, confirm);
+        const oldPage = deferred<object>();
+        f.page.mockReturnValueOnce(oldPage.promise);
+        const a = await openAndFail(f);
+        vi.setSystemTime(Date.now() + 5_000);
+        confirm.mockReturnValueOnce(confirmation.promise);
+        f.fetch.mockResolvedValueOnce(fetched(2));
+        let bOpen = true;
+        const b = f.service.getOrFetch(KEY, f.fetch, serve, {}, confirm, {
+            continueScan: f.page,
+            isCurrent: () => bOpen,
+        } as never);
+        await settle();
+        expect(confirm, "B installed the replacement and is confirming it").toHaveBeenCalledTimes(
+            2,
+        );
+        bOpen = false;
+        confirmation.resolve();
+        await b;
+        oldPage.resolve(terminal);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.page, "neither scan can send any more pages").toHaveBeenCalledTimes(1);
+        expect(f.fetch, "no failed-Refresh retry").toHaveBeenCalledTimes(3);
+        expect(state(a), "replacement must not revive progress after retirement").toBe("stopped");
+    });
+
+    it("T3: terminal scan tracing can synchronously invalidate", async () => {
+        const f = fixture({
+            trace: ({ kind, outcome }) => {
+                if (kind === "scan" && outcome === "fetched") void f.service.invalidate(KEY);
+            },
+        });
+        const page = deferred<object>();
+        f.page.mockReturnValueOnce(page.promise);
+        const a = await openAndFail(f);
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => true,
+        } as never);
+        const count = a.post.mock.calls.length;
+        page.resolve(terminal);
+        await settle();
+        expect(f.fetch, "nothing re-reads the provider").toHaveBeenCalledTimes(2);
+        expect(a.post, "terminal transition should produce one final post").toHaveBeenCalledTimes(
+            count + 1,
+        );
+        expect(state(a), "final post reflects the terminal page").toBe("done");
+    });
+
+    it("T4: a later retirement uses the replacement actually shown", async () => {
+        const f = fixture({ ttlMs: 1_000 });
+        const oldPage = deferred<object>();
+        f.page.mockReturnValueOnce(oldPage.promise);
+        const a = await openAndFail(f);
+        const newPage = deferred<object>();
+        f.page.mockReturnValueOnce(newPage.promise);
+        vi.setSystemTime(Date.now() + 5_000);
+        f.fetch.mockResolvedValueOnce(fetched(2));
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => true,
+        } as never);
+        expect([a.last()?.runs[0]?.attempt, state(a)], "A sees the newer running entry").toEqual([
+            2,
+            "running",
+        ]);
+        await f.service.invalidate(KEY);
+        expect(
+            [a.last()?.runs[0]?.attempt, state(a)],
+            "retirement keeps the replacement tree",
+        ).toEqual([2, "stopped"]);
+        oldPage.resolve(terminal);
+        newPage.resolve(terminal);
+        await settle();
+    });
 });
