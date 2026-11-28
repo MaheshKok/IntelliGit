@@ -279,7 +279,11 @@ describe("failed Refresh during a running scan: fix round 1", () => {
         };
     }
 
-    function fixture(options: CommitCiDetailServiceOptions = {}, fences?: CiActionFenceStore) {
+    function fixture(
+        options: CommitCiDetailServiceOptions = {},
+        fences?: CiActionFenceStore,
+        confirm?: () => Promise<void>,
+    ) {
         const service = new CommitCiDetailService({ ...options, fences });
         const generations = new CiGenerations();
         const fetch = vi.fn(
@@ -295,7 +299,7 @@ describe("failed Refresh during a running scan: fix round 1", () => {
             ctx: CiOperationContext,
             update?: (data: CommitCiDetail) => void,
         ) =>
-            service.getOrFetch(KEY, fetch, serve, options, undefined, {
+            service.getOrFetch(KEY, fetch, serve, options, confirm, {
                 continueScan: page,
                 isCurrent: () => generations.isCurrent(ctx, "/repo"),
                 onUpdate: (data: CommitCiDetail) => {
@@ -818,5 +822,550 @@ describe("failed Refresh during a running scan: fix round 1", () => {
             [a.last()?.outcome, a.last()?.runs.length, a.last()?.refreshError],
             "A keeps its last data and its own Refresh error after B's failed read",
         ).toEqual(["failure", 1, "HTTP 502"]);
+    });
+
+    // #463: the cache entry a failed-Refresh view was showing is replaced or dropped and its
+    // scan ends, but nothing tells that view.
+    it("P1a: invalidate leaves A on a running scan", async () => {
+        const f = fixture();
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        await f.service.invalidate(KEY);
+        pending.resolve(terminal);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(a.last()?.refreshError, "P1a: error still shown").toBe("HTTP 502");
+        expect(state(a), "P1a: A's last post scan state after invalidate").not.toBe("running");
+    });
+
+    it("P1b: eviction leaves A on a running scan", async () => {
+        const f = fixture({ maxEntries: 1 });
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        await f.service.getOrFetch("other", async () => fetched(2, false), serve, {});
+        pending.resolve(terminal);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(a.last()?.refreshError, "P1b: error still shown").toBe("HTTP 502");
+        expect(state(a), "P1b: A's last post scan state after eviction").not.toBe("running");
+    });
+
+    it("P2: Y's L2-awaiting read supersedes A, A never joined", async () => {
+        const l2 = deferred<undefined>();
+        const persistentCache = {
+            get: vi.fn(() => l2.promise),
+            set: vi.fn(async () => {}),
+            delete: vi.fn(async () => {}),
+            deleteHash: vi.fn(async () => {}),
+            clear: vi.fn(async () => {}),
+            confirmWrite: vi.fn(async () => {}),
+            generation: () => undefined,
+        };
+        const f = fixture({ ttlMs: 1000, persistentCache: persistentCache as never });
+        // The open read also goes through the (held) L2 read: release it for this one only.
+        persistentCache.get.mockImplementationOnce(async () => undefined);
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = view(f.source);
+        void a.ask();
+        await settle();
+        expect(state(a), "setup: scan running").toBe("running");
+        // Entry now past its TTL (clock only; no ladder timer fires).
+        vi.setSystemTime(Date.now() + 5_000);
+        const y = view(f.source);
+        void y.ask(); // non-forced, now waiting on the held L2 read
+        await settle();
+        expect(persistentCache.get, "setup: Y is awaiting the stored read").toHaveBeenCalledTimes(
+            2,
+        );
+        f.fetch.mockResolvedValueOnce(failed());
+        await a.ask(true); // A's forced Refresh fails fast; A is listed + newest scan requester
+        expect(a.last()?.refreshError, "setup: A's Refresh failed").toBe("HTTP 502");
+        f.fetch.mockResolvedValueOnce(fetched(2, false));
+        l2.resolve(undefined);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(y.last()?.runs[0]?.attempt, "setup: Y shows the newer entry (attempt 2)").toBe(2);
+        pending.resolve(terminal);
+        await settle();
+        expect(
+            [a.last()?.runs[0]?.attempt, state(a)],
+            "P2: A's last post [attempt, scan state]",
+        ).toEqual([2, undefined]);
+    });
+
+    const down = (error: string, signInHost?: string) => {
+        const { scanCursors: _, signInHost: _host, ...data } = failed(error);
+        return { ...data, signInHost };
+    };
+
+    async function afterSkippedFailure(f: ReturnType<typeof fixture>) {
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        vi.setSystemTime(Date.now() + 5_000);
+        const b = view(f.source);
+        f.fetch.mockResolvedValueOnce(down("HTTP 503") as never);
+        await b.ask();
+        expect(b.last()?.outcome, "B received its own outage").toBe("unavailable");
+        expect(
+            [a.last()?.runs.length, a.last()?.refreshError],
+            "A keeps its last tree and error",
+        ).toEqual([1, "HTTP 502"]);
+        return { a, b, pending };
+    }
+
+    it("R4 outage replacement retires an orphaned running scan", async () => {
+        const f = fixture({ ttlMs: 1000, unavailableTtlMs: 1000 });
+        const { a, pending } = await afterSkippedFailure(f);
+        pending.resolve({ error: "HTTP 503" });
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(f.fetch, "neither view has a scheduled provider retry").toHaveBeenCalledTimes(3);
+        expect(f.page, "the only page request already settled").toHaveBeenCalledTimes(1);
+        expect(
+            await f.service.getCached(KEY, serve),
+            "there is no fresh scan entry",
+        ).toBeUndefined();
+        expect(
+            [a.last()?.runs.length, a.last()?.refreshError],
+            "the tree and error remain",
+        ).toEqual([1, "HTTP 502"]);
+        expect(
+            ["running", "paused"],
+            "A must not promise progress after the only scan settled",
+        ).not.toContain(state(a));
+    });
+
+    it("R4 then invalidate: the outage entry with no scan never reaches A", async () => {
+        const f = fixture({ ttlMs: 1000, unavailableTtlMs: 60_000 });
+        const { a } = await afterSkippedFailure(f);
+        const posts = a.post.mock.calls.length;
+        await f.service.invalidate(KEY);
+        await settle();
+        expect(
+            [a.post.mock.calls.length, a.last()?.runs.length, a.last()?.refreshError],
+            "invalidating the outage entry posts nothing to A, which keeps its tree and error",
+        ).toEqual([posts, 1, "HTTP 502"]);
+    });
+
+    it("S1: a successful L2 read retires the scan it replaces", async () => {
+        const l2 = deferred<ReturnType<typeof fetched>>();
+        const persistentCache = {
+            get: vi.fn(() => l2.promise).mockImplementationOnce(async () => undefined as never),
+            set: vi.fn(async () => {}),
+            delete: vi.fn(async () => {}),
+            generation: () => undefined,
+        };
+        const f = fixture({ ttlMs: 1_000, persistentCache: persistentCache as never });
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        vi.setSystemTime(Date.now() + 5_000);
+        const b = view(f.source);
+        const read = b.ask();
+        await settle();
+        l2.resolve(fetched(2, false));
+        await read;
+        expect(b.last()?.runs[0]?.attempt, "B has the stored replacement").toBe(2);
+        pending.resolve(terminal);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.fetch, "the failed Refresh stays idle").toHaveBeenCalledTimes(2);
+        expect(
+            ["running", "paused"],
+            "A cannot show progress after an L2 hit replaces its scan",
+        ).not.toContain(state(a));
+    });
+
+    it("S2: invalidate during confirmation of an outage still retires A", async () => {
+        const confirmation = deferred<void>();
+        const confirm = vi.fn(async () => {});
+        const f = fixture({ ttlMs: 1_000 }, undefined, confirm);
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        vi.setSystemTime(Date.now() + 5_000);
+        confirm.mockReturnValueOnce(confirmation.promise);
+        f.fetch
+            .mockResolvedValueOnce(down("HTTP 503") as never)
+            .mockResolvedValueOnce(fetched(2, false));
+        const b = view(f.source);
+        const read = b.ask();
+        await settle();
+        expect(confirm, "B installed the outage and is still confirming it").toHaveBeenCalledTimes(
+            2,
+        );
+        await f.service.invalidate(KEY);
+        confirmation.resolve();
+        pending.resolve(terminal);
+        await read;
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(b.last()?.runs[0]?.attempt, "B gets the new attempt").toBe(2);
+        expect(f.fetch, "A never retries the provider").toHaveBeenCalledTimes(4);
+        expect(
+            [a.last()?.runs.length, a.last()?.refreshError],
+            "A keeps its tree and its own error",
+        ).toEqual([1, "HTTP 502"]);
+        expect(
+            ["running", "paused"],
+            "A cannot show progress after invalidating an unconfirmed outage",
+        ).not.toContain(state(a));
+    });
+
+    it("S3: invalidation before a failed reply subscribes cannot leave A running", async () => {
+        const f = fixture({
+            trace: ({ outcome }) => {
+                if (outcome === "failed") queueMicrotask(() => void f.service.invalidate(KEY));
+            },
+        });
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        pending.resolve(terminal);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.fetch, "A never retries the provider").toHaveBeenCalledTimes(2);
+        expect(
+            ["running", "paused"],
+            "A cannot show progress after losing its entry before subscription",
+        ).not.toContain(state(a));
+        expect(a.last()?.refreshError, "A keeps its own error").toBe("HTTP 502");
+    });
+
+    it("S4: a newest requester that leaves while a page is read retires A's scan", async () => {
+        const f = fixture();
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        expect(state(a), "setup: A is on a running scan").toBe("running");
+        // B has its own liveness flag; its normal read hits L1 and takes the scan hooks.
+        let open = true;
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => open,
+        } as never);
+        expect(f.fetch, "setup: B's read hit L1").toHaveBeenCalledTimes(2);
+        open = false;
+        pending.resolve({ failed: [], next: { ...cursor, url: "page-12" } });
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.fetch, "nothing re-reads the provider").toHaveBeenCalledTimes(2);
+        expect(f.page, "nothing reads the next page").toHaveBeenCalledTimes(1);
+        expect(
+            ["running", "paused"],
+            "A cannot show progress after the newest requester left",
+        ).not.toContain(state(a));
+        expect(a.last()?.refreshError, "A keeps its own error").toBe("HTTP 502");
+    });
+
+    it("S5: two failed Refreshes on one paused scan get one retirement each", async () => {
+        const f = fixture();
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        pending.resolve({ pausedUntil: Date.now() + 60_000, next: cursor });
+        await settle();
+        expect(state(a), "setup: the scan is paused").toBe("paused");
+        const b = view(f.source);
+        f.fetch.mockResolvedValueOnce(failed("HTTP 504"));
+        await b.ask(true);
+        const aCount = a.post.mock.calls.length;
+        const bCount = b.post.mock.calls.length;
+        await f.service.invalidate(KEY);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect([state(a), state(b)], "both paused views retire").toEqual(["stopped", "stopped"]);
+        expect([a.last()?.refreshError, b.last()?.refreshError]).toEqual(["HTTP 502", "HTTP 504"]);
+        expect(
+            [a.post.mock.calls.length - aCount, b.post.mock.calls.length - bCount],
+            "one retirement each",
+        ).toEqual([1, 1]);
+        expect(f.fetch).toHaveBeenCalledTimes(3);
+        expect(f.page).toHaveBeenCalledTimes(1);
+    });
+
+    it("S6: a listed view that is no longer current gets no retired copy", async () => {
+        const f = fixture();
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        f.generations.bumpAuth();
+        const posts = a.post.mock.calls.length;
+        // The view's handler drops a stale post itself, so the hook call is what counts.
+        f.deliver.mockClear();
+        await f.service.invalidate(KEY);
+        await settle();
+        expect(f.deliver, "a stale view's hook is not called").not.toHaveBeenCalled();
+        expect(a.post, "a stale view is not posted to").toHaveBeenCalledTimes(posts);
+        pending.resolve(terminal);
+        await settle();
+    });
+
+    it("S7: a newest requester that leaves during a pause retires A's scan when it resumes", async () => {
+        const f = fixture();
+        const pending = deferred<object>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = await openAndFail(f);
+        let open = true;
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => open,
+        } as never);
+        pending.resolve({ pausedUntil: Date.now() + 1_000, next: cursor });
+        await settle();
+        expect(state(a), "setup: A sees the pause").toBe("paused");
+        open = false;
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.page, "nothing reads the next page").toHaveBeenCalledTimes(1);
+        expect(f.fetch, "nothing re-reads the provider").toHaveBeenCalledTimes(2);
+        expect(
+            ["running", "paused"],
+            "A cannot show progress after the newest requester left during a pause",
+        ).not.toContain(state(a));
+    });
+
+    it("T1: a forced reply can arrive after the last requester left", async () => {
+        const f = fixture();
+        const page = deferred<object>();
+        const failedReply = deferred<ReturnType<typeof failed>>();
+        f.page.mockReturnValueOnce(page.promise);
+        const a = view(f.source);
+        void a.ask();
+        await settle();
+        expect(state(a), "the original page is pending").toBe("running");
+        f.fetch.mockReturnValueOnce(failedReply.promise);
+        const refresh = a.ask(true);
+        await settle();
+        let bOpen = true;
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => bOpen,
+        } as never);
+        bOpen = false;
+        page.resolve({ failed: [], next: { ...cursor, url: "page-12" } });
+        await settle();
+        failedReply.resolve(failed());
+        await refresh;
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.page, "no requester reads the next page").toHaveBeenCalledTimes(1);
+        expect(f.fetch, "failed Refresh does not re-read").toHaveBeenCalledTimes(2);
+        expect(a.last()?.refreshError).toBe("HTTP 502");
+        expect(state(a), "late failed reply must not advertise an ownerless scan").toBe("stopped");
+        const posts = a.post.mock.calls.length;
+        await f.service.invalidate(KEY);
+        await settle();
+        expect(
+            a.post,
+            "a reply with no scan left to read is not listed for a retirement",
+        ).toHaveBeenCalledTimes(posts);
+    });
+
+    it("T2: a replacement confirmation after the newest requester left", async () => {
+        const confirmation = deferred<void>();
+        const confirm = vi.fn(async () => {});
+        const f = fixture({ ttlMs: 1_000 }, undefined, confirm);
+        const oldPage = deferred<object>();
+        f.page.mockReturnValueOnce(oldPage.promise);
+        const a = await openAndFail(f);
+        vi.setSystemTime(Date.now() + 5_000);
+        confirm.mockReturnValueOnce(confirmation.promise);
+        f.fetch.mockResolvedValueOnce(fetched(2));
+        let bOpen = true;
+        const b = f.service.getOrFetch(KEY, f.fetch, serve, {}, confirm, {
+            continueScan: f.page,
+            isCurrent: () => bOpen,
+        } as never);
+        await settle();
+        expect(confirm, "B installed the replacement and is confirming it").toHaveBeenCalledTimes(
+            2,
+        );
+        bOpen = false;
+        confirmation.resolve();
+        const reply = await b;
+        expect(
+            reply.runs[0]?.failedScan?.state,
+            "the requester's reply shows the replacement stopped too",
+        ).toBe("stopped");
+        oldPage.resolve(terminal);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.page, "neither scan can send any more pages").toHaveBeenCalledTimes(1);
+        expect(f.fetch, "no failed-Refresh retry").toHaveBeenCalledTimes(3);
+        expect(state(a), "replacement must not revive progress after retirement").toBe("stopped");
+    });
+
+    it("T3: terminal scan tracing can synchronously invalidate", async () => {
+        const order: string[] = [];
+        const f = fixture({
+            trace: ({ kind, outcome }) => {
+                if (kind !== "scan" || outcome !== "fetched") return;
+                order.push("trace");
+                void f.service.invalidate(KEY);
+            },
+        });
+        const page = deferred<object>();
+        f.page.mockReturnValueOnce(page.promise);
+        const a = await openAndFail(f);
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => true,
+            onUpdate: () => order.push("newest"),
+        } as never);
+        const count = a.post.mock.calls.length;
+        page.resolve(terminal);
+        await settle();
+        expect(f.fetch, "nothing re-reads the provider").toHaveBeenCalledTimes(2);
+        expect(a.post, "terminal transition should produce one final post").toHaveBeenCalledTimes(
+            count + 1,
+        );
+        expect(state(a), "final post reflects the terminal page").toBe("done");
+        expect(order, "the newest requester gets the page before the trace").toEqual([
+            "newest",
+            "trace",
+        ]);
+    });
+
+    it("T4: a later retirement uses the replacement actually shown", async () => {
+        const f = fixture({ ttlMs: 1_000 });
+        const oldPage = deferred<object>();
+        f.page.mockReturnValueOnce(oldPage.promise);
+        const a = await openAndFail(f);
+        const newPage = deferred<object>();
+        f.page.mockReturnValueOnce(newPage.promise);
+        vi.setSystemTime(Date.now() + 5_000);
+        f.fetch.mockResolvedValueOnce(fetched(2));
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => true,
+        } as never);
+        expect([a.last()?.runs[0]?.attempt, state(a)], "A sees the newer running entry").toEqual([
+            2,
+            "running",
+        ]);
+        await f.service.invalidate(KEY);
+        expect(
+            [a.last()?.runs[0]?.attempt, state(a)],
+            "retirement keeps the replacement tree",
+        ).toEqual([2, "stopped"]);
+        oldPage.resolve(terminal);
+        newPage.resolve(terminal);
+        await settle();
+    });
+
+    it("U1: a sibling run's page cannot revive a scan no page loop reads", async () => {
+        const f = fixture();
+        const firstPage = deferred<object>();
+        const secondPage = deferred<object>();
+        const failure = deferred<ReturnType<typeof failed>>();
+        const secondCursor = { ...cursor, runId: "2", url: "page-21" };
+        const detail = fetched();
+        f.fetch.mockResolvedValueOnce({
+            ...detail,
+            runs: [detail.runs[0]!, { ...detail.runs[0]!, id: "2" }],
+            scanCursors: [cursor, secondCursor],
+        });
+        f.page.mockReturnValueOnce(firstPage.promise).mockReturnValueOnce(secondPage.promise);
+        const a = view(f.source);
+        void a.ask();
+        await settle();
+        expect(f.page, "setup: both runs started").toHaveBeenCalledTimes(2);
+        f.fetch.mockReturnValueOnce(failure.promise);
+        const refresh = a.ask(true);
+        await settle();
+        let bOpen = true;
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => bOpen,
+        } as never);
+        bOpen = false;
+        firstPage.resolve(terminal);
+        await settle();
+        const c = view(f.source);
+        const joinedRefresh = c.ask(true);
+        await settle();
+        failure.resolve(failed());
+        await Promise.all([refresh, joinedRefresh]);
+        const states = (v: typeof a) => v.last()?.runs.map((run) => run.failedScan?.state);
+        expect(states(a), "setup: the failed reply shows run 1 idle, run 2 read").toEqual([
+            "stopped",
+            "running",
+        ]);
+        secondPage.resolve(terminal);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.fetch, "neither failed Refresh re-reads").toHaveBeenCalledTimes(2);
+        expect(f.page, "the idle scan was never restarted").toHaveBeenCalledTimes(2);
+        expect(states(a), "run 2's last page cannot show idle run 1 as running").toEqual([
+            "stopped",
+            "done",
+        ]);
+    });
+
+    it("U2: invalidation does not repost a replacement already shown stopped", async () => {
+        const confirmation = deferred<void>();
+        const confirm = vi.fn(async () => {});
+        const f = fixture({ ttlMs: 1_000 }, undefined, confirm);
+        const oldPage = deferred<object>();
+        f.page.mockReturnValueOnce(oldPage.promise);
+        const a = await openAndFail(f);
+        vi.setSystemTime(Date.now() + 5_000);
+        confirm.mockReturnValueOnce(confirmation.promise);
+        f.fetch.mockResolvedValueOnce(fetched(2));
+        let bOpen = true;
+        const b = f.service.getOrFetch(KEY, f.fetch, serve, {}, confirm, {
+            continueScan: f.page,
+            isCurrent: () => bOpen,
+        } as never);
+        await settle();
+        bOpen = false;
+        confirmation.resolve();
+        await b;
+        expect([a.last()?.runs[0]?.attempt, state(a)], "setup: replacement shown stopped").toEqual([
+            2,
+            "stopped",
+        ]);
+        const posts = a.post.mock.calls.length;
+        await f.service.invalidate(KEY);
+        oldPage.resolve(terminal);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.fetch).toHaveBeenCalledTimes(3);
+        expect(f.page).toHaveBeenCalledTimes(1);
+        expect(a.post, "nothing shown running is left to retire").toHaveBeenCalledTimes(posts);
+    });
+
+    it("U3: a scan shown stopped to a failed Refresh stays restartable", async () => {
+        const f = fixture();
+        const pending = deferred<object>();
+        const failure = deferred<ReturnType<typeof failed>>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = view(f.source);
+        void a.ask();
+        await settle();
+        f.fetch.mockReturnValueOnce(failure.promise);
+        const refresh = a.ask(true);
+        await settle();
+        let open = true;
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => open,
+        } as never);
+        open = false;
+        pending.resolve(terminal);
+        await settle();
+        failure.resolve(failed());
+        await refresh;
+        expect(state(a), "setup: the late failed Refresh sees the idle scan stopped").toBe(
+            "stopped",
+        );
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => true,
+        } as never);
+        await settle();
+        expect(f.page, "a normal read restarts the kept cursor").toHaveBeenCalledTimes(2);
+        expect(f.fetch, "from the cache, with no provider read").toHaveBeenCalledTimes(2);
+    });
+
+    it("U4: a fetch with no failed Refresh listed keeps the ordinary reply", async () => {
+        const f = fixture();
+        const reply = await f.service.getOrFetch(KEY, f.fetch, serve);
+        expect(f.page).not.toHaveBeenCalled();
+        expect(
+            reply.runs[0]?.failedScan?.state,
+            "absent a failed Refresh the fetch replies with the cached scan state",
+        ).toBe("running");
     });
 });
