@@ -1176,7 +1176,11 @@ describe("failed Refresh during a running scan: fix round 1", () => {
         );
         bOpen = false;
         confirmation.resolve();
-        await b;
+        const reply = await b;
+        expect(
+            reply.runs[0]?.failedScan?.state,
+            "the requester's reply shows the replacement stopped too",
+        ).toBe("stopped");
         oldPage.resolve(terminal);
         await vi.advanceTimersByTimeAsync(120_000);
         expect(f.page, "neither scan can send any more pages").toHaveBeenCalledTimes(1);
@@ -1185,9 +1189,12 @@ describe("failed Refresh during a running scan: fix round 1", () => {
     });
 
     it("T3: terminal scan tracing can synchronously invalidate", async () => {
+        const order: string[] = [];
         const f = fixture({
             trace: ({ kind, outcome }) => {
-                if (kind === "scan" && outcome === "fetched") void f.service.invalidate(KEY);
+                if (kind !== "scan" || outcome !== "fetched") return;
+                order.push("trace");
+                void f.service.invalidate(KEY);
             },
         });
         const page = deferred<object>();
@@ -1196,6 +1203,7 @@ describe("failed Refresh during a running scan: fix round 1", () => {
         await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
             continueScan: f.page,
             isCurrent: () => true,
+            onUpdate: () => order.push("newest"),
         } as never);
         const count = a.post.mock.calls.length;
         page.resolve(terminal);
@@ -1205,6 +1213,10 @@ describe("failed Refresh during a running scan: fix round 1", () => {
             count + 1,
         );
         expect(state(a), "final post reflects the terminal page").toBe("done");
+        expect(order, "the newest requester gets the page before the trace").toEqual([
+            "newest",
+            "trace",
+        ]);
     });
 
     it("T4: a later retirement uses the replacement actually shown", async () => {
@@ -1232,5 +1244,128 @@ describe("failed Refresh during a running scan: fix round 1", () => {
         oldPage.resolve(terminal);
         newPage.resolve(terminal);
         await settle();
+    });
+
+    it("U1: a sibling run's page cannot revive a scan no page loop reads", async () => {
+        const f = fixture();
+        const firstPage = deferred<object>();
+        const secondPage = deferred<object>();
+        const failure = deferred<ReturnType<typeof failed>>();
+        const secondCursor = { ...cursor, runId: "2", url: "page-21" };
+        const detail = fetched();
+        f.fetch.mockResolvedValueOnce({
+            ...detail,
+            runs: [detail.runs[0]!, { ...detail.runs[0]!, id: "2" }],
+            scanCursors: [cursor, secondCursor],
+        });
+        f.page.mockReturnValueOnce(firstPage.promise).mockReturnValueOnce(secondPage.promise);
+        const a = view(f.source);
+        void a.ask();
+        await settle();
+        expect(f.page, "setup: both runs started").toHaveBeenCalledTimes(2);
+        f.fetch.mockReturnValueOnce(failure.promise);
+        const refresh = a.ask(true);
+        await settle();
+        let bOpen = true;
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => bOpen,
+        } as never);
+        bOpen = false;
+        firstPage.resolve(terminal);
+        await settle();
+        const c = view(f.source);
+        const joinedRefresh = c.ask(true);
+        await settle();
+        failure.resolve(failed());
+        await Promise.all([refresh, joinedRefresh]);
+        const states = (v: typeof a) => v.last()?.runs.map((run) => run.failedScan?.state);
+        expect(states(a), "setup: the failed reply shows run 1 idle, run 2 read").toEqual([
+            "stopped",
+            "running",
+        ]);
+        secondPage.resolve(terminal);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.fetch, "neither failed Refresh re-reads").toHaveBeenCalledTimes(2);
+        expect(f.page, "the idle scan was never restarted").toHaveBeenCalledTimes(2);
+        expect(states(a), "run 2's last page cannot show idle run 1 as running").toEqual([
+            "stopped",
+            "done",
+        ]);
+    });
+
+    it("U2: invalidation does not repost a replacement already shown stopped", async () => {
+        const confirmation = deferred<void>();
+        const confirm = vi.fn(async () => {});
+        const f = fixture({ ttlMs: 1_000 }, undefined, confirm);
+        const oldPage = deferred<object>();
+        f.page.mockReturnValueOnce(oldPage.promise);
+        const a = await openAndFail(f);
+        vi.setSystemTime(Date.now() + 5_000);
+        confirm.mockReturnValueOnce(confirmation.promise);
+        f.fetch.mockResolvedValueOnce(fetched(2));
+        let bOpen = true;
+        const b = f.service.getOrFetch(KEY, f.fetch, serve, {}, confirm, {
+            continueScan: f.page,
+            isCurrent: () => bOpen,
+        } as never);
+        await settle();
+        bOpen = false;
+        confirmation.resolve();
+        await b;
+        expect([a.last()?.runs[0]?.attempt, state(a)], "setup: replacement shown stopped").toEqual([
+            2,
+            "stopped",
+        ]);
+        const posts = a.post.mock.calls.length;
+        await f.service.invalidate(KEY);
+        oldPage.resolve(terminal);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(f.fetch).toHaveBeenCalledTimes(3);
+        expect(f.page).toHaveBeenCalledTimes(1);
+        expect(a.post, "nothing shown running is left to retire").toHaveBeenCalledTimes(posts);
+    });
+
+    it("U3: a scan shown stopped to a failed Refresh stays restartable", async () => {
+        const f = fixture();
+        const pending = deferred<object>();
+        const failure = deferred<ReturnType<typeof failed>>();
+        f.page.mockReturnValueOnce(pending.promise);
+        const a = view(f.source);
+        void a.ask();
+        await settle();
+        f.fetch.mockReturnValueOnce(failure.promise);
+        const refresh = a.ask(true);
+        await settle();
+        let open = true;
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => open,
+        } as never);
+        open = false;
+        pending.resolve(terminal);
+        await settle();
+        failure.resolve(failed());
+        await refresh;
+        expect(state(a), "setup: the late failed Refresh sees the idle scan stopped").toBe(
+            "stopped",
+        );
+        await f.service.getOrFetch(KEY, f.fetch, serve, {}, undefined, {
+            continueScan: f.page,
+            isCurrent: () => true,
+        } as never);
+        await settle();
+        expect(f.page, "a normal read restarts the kept cursor").toHaveBeenCalledTimes(2);
+        expect(f.fetch, "from the cache, with no provider read").toHaveBeenCalledTimes(2);
+    });
+
+    it("U4: a fetch with no failed Refresh listed keeps the ordinary reply", async () => {
+        const f = fixture();
+        const reply = await f.service.getOrFetch(KEY, f.fetch, serve);
+        expect(f.page).not.toHaveBeenCalled();
+        expect(
+            reply.runs[0]?.failedScan?.state,
+            "absent a failed Refresh the fetch replies with the cached scan state",
+        ).toBe("running");
     });
 });
