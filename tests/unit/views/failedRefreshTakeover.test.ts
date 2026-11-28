@@ -1146,6 +1146,13 @@ describe("failed Refresh during a running scan: fix round 1", () => {
         expect(f.fetch, "failed Refresh does not re-read").toHaveBeenCalledTimes(2);
         expect(a.last()?.refreshError).toBe("HTTP 502");
         expect(state(a), "late failed reply must not advertise an ownerless scan").toBe("stopped");
+        const posts = a.post.mock.calls.length;
+        await f.service.invalidate(KEY);
+        await settle();
+        expect(
+            a.post,
+            "a reply with no scan left to read is not listed for a retirement",
+        ).toHaveBeenCalledTimes(posts);
     });
 
     it("T2: a replacement confirmation after the newest requester left", async () => {
