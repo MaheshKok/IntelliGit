@@ -220,11 +220,14 @@ export class CommitCiDetailService {
             // and shows its scans stopped: no page of that entry will reach it.
             const entry = this.cache.get(key);
             if (entry && data[ENTRY] === entry) {
-                data = {
-                    ...served(entry),
-                    refreshError: data.refreshError,
-                    ...(data.signInHost !== undefined && { signInHost: data.signInHost }),
-                };
+                data = stopIdleScans(
+                    {
+                        ...served(entry),
+                        refreshError: data.refreshError,
+                        ...(data.signInHost !== undefined && { signInHost: data.signInHost }),
+                    },
+                    entry,
+                );
                 if (data.runs.some((run) => isScanning(run.failedScan?.state))) {
                     const live = (this.failedRefreshHooks.get(key) ?? []).filter((each) =>
                         each.isCurrent(),
@@ -394,14 +397,13 @@ export class CommitCiDetailService {
         data: CommitCiDetailData,
         serve: CiDetailServeContext,
     ): ServedDetailData {
-        const reply = served(entry);
-        if (this.failedRefreshHooks.has(key)) {
-            if (data.outcome !== "unavailable") {
-                this.updateFailedRefreshHooks(key, entry, serve, undefined, reply);
-            } else {
-                this.retireFailedRefreshHooks(key);
-            }
+        if (!this.failedRefreshHooks.has(key)) return served(entry);
+        if (data.outcome === "unavailable") {
+            this.retireFailedRefreshHooks(key);
+            return served(entry);
         }
+        const reply = stopIdleScans(served(entry), entry);
+        this.updateFailedRefreshHooks(key, entry, serve, undefined, reply);
         return reply;
     }
 
@@ -661,13 +663,14 @@ export class CommitCiDetailService {
                     return;
                 }
                 const entry = this.cache.get(key) as DetailEntry;
+                let outcome: CiTraceOutcome;
                 if ("runChanged" in page) {
                     // No automatic refetch, which a run re-run before every page would repeat
                     // without bound; the detail stays incomplete, so its next read starts over.
                     scan.state = "stopped";
                     scan.error = page.error;
                     scan.remoteChanged = true;
-                    this.traceScan("failed", entry.data, requester.serve);
+                    outcome = "failed";
                 } else if ("pausedUntil" in page) {
                     if (page.next) scan.cursor = page.next;
                     scan.state = "paused";
@@ -684,9 +687,9 @@ export class CommitCiDetailService {
                         },
                         Math.max(0, page.pausedUntil - this.now()),
                     );
-                    this.traceScan("paused", entry.data, requester.serve);
+                    outcome = "paused";
                 } else {
-                    this.traceScan(applyPage(scan, page), entry.data, requester.serve);
+                    outcome = applyPage(scan, page);
                 }
                 // Built before the optional call: a newest read without onUpdate (a log or
                 // action read) would otherwise skip the listed hooks and their cleanup.
@@ -697,6 +700,8 @@ export class CommitCiDetailService {
                     latest.hooks,
                 );
                 latest.hooks.onUpdate?.(update);
+                // After the updates: a trace sink may invalidate the key synchronously.
+                this.traceScan(outcome, entry.data, requester.serve);
             }
         } finally {
             scan.active = false;
@@ -900,6 +905,16 @@ function served(entry: DetailEntry): ServedDetailData {
 function stopScans(data: ServedDetailData): ServedDetailData {
     const runs = data.runs.map((run) =>
         run.failedScan && isScanning(run.failedScan.state)
+            ? { ...run, failedScan: { ...run.failedScan, state: "stopped" as const } }
+            : run,
+    );
+    return { ...data, runs };
+}
+
+/** The served detail with each scan marked running but with no page loop shown as stopped. */
+function stopIdleScans(data: ServedDetailData, entry: DetailEntry): ServedDetailData {
+    const runs = data.runs.map((run) =>
+        run.failedScan?.state === "running" && entry.scans?.get(run.id)?.active === false
             ? { ...run, failedScan: { ...run.failedScan, state: "stopped" as const } }
             : run,
     );
